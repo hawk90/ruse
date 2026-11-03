@@ -12,8 +12,8 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use crossterm::terminal as ct_terminal;
 
 use ruse_core::{
-    CaretGravity, Command, DocumentId, EditorOption, ExCmd, ExOutcome, GroupKind, Mode, OpenKind,
-    SplitDir, Trace, TransactionOrigin, Workspace,
+    BytePos, CaretGravity, Command, DocumentId, EditorOption, ExCmd, ExOutcome, GroupKind, Mode,
+    OpenKind, SplitDir, Trace, TransactionOrigin, Workspace,
 };
 
 use crate::app::dispatch::{
@@ -82,7 +82,7 @@ fn repeat_substitute_lines(
         return "E33: No previous substitute regular expression".to_string();
     };
     let bytes = ws.focused().doc.bytes();
-    let first = ruse_core::pos::line_of(bytes, ws.focused().view.cursor()) + 1;
+    let first = ruse_core::pos::line_of(bytes, ws.focused().view.cursor().0) + 1;
     let lines = bytes.split(|b| *b == b'\n').count() - usize::from(bytes.ends_with(b"\n"));
     let last = first + count - 1;
     if last > lines.max(1) {
@@ -255,7 +255,7 @@ fn run_scroll(
             bytes,
             idx: line_idx,
         };
-        let cursor = f.view.cursor().min(bytes.len());
+        let cursor = f.view.cursor().0.min(bytes.len());
         let line = line_idx.line_of(cursor);
         let curswant = match *screen_want {
             Some((at, w)) if at == cursor => w,
@@ -306,7 +306,7 @@ fn run_scroll(
     ws.set_top(i, done.pos.top);
     ws.set_skipcol(i, done.pos.skipcol);
     let at = start + done.pos.byte;
-    let cursor = ws.focused().view.cursor();
+    let cursor = ws.focused().view.cursor().0;
     if at != cursor {
         if done.pos.curswant == curswant {
             // The wanted column stays (nvim's scrollup/scrolldown keep `curswant`).
@@ -323,12 +323,12 @@ fn run_scroll(
             );
         }
     }
-    *screen_want = Some((ws.focused().view.cursor(), done.pos.curswant));
+    *screen_want = Some((ws.focused().view.cursor().0, done.pos.curswant));
     // nvim marks the top line valid after a scroll: the next redraw keeps it (no 'scrolloff' pull back)
     // until the cursor or the text moves.
     *valid = done.keep_top.then(|| ScrollValid {
         window: i,
-        cursor: ws.focused().view.cursor(),
+        cursor: ws.focused().view.cursor().0,
         top: done.pos.top,
         revision: ws.focused().doc.revision(),
     });
@@ -389,7 +389,7 @@ fn resolve_screen_motion(
         bytes,
         idx: line_idx,
     };
-    let cursor = view.cursor().min(bytes.len());
+    let cursor = view.cursor().0.min(bytes.len());
     let line = line_idx.line_of(cursor);
     let curswant = match *want {
         Some((at, w)) if at == cursor => w,
@@ -526,7 +526,7 @@ fn resolve_tree_aware(
     {
         match tree_of(ws) {
             Some(tree) => {
-                let cur = ws.focused().view.cursor();
+                let cur = ws.focused().view.cursor().0;
                 let row = line_idx.line_of(cur);
                 let (kind, at, new_row) = match cmd {
                     Command::OpenBelow => {
@@ -628,7 +628,7 @@ fn goto_line(
     quit: &mut bool,
 ) {
     let b = ws.focused().doc.bytes();
-    let here = ruse_core::pos::line_of(b, ws.focused().view.cursor()) + 1;
+    let here = ruse_core::pos::line_of(b, ws.focused().view.cursor().0) + 1;
     let (n, motion) = if line >= here {
         (line - here, ruse_core::Motion::Down)
     } else {
@@ -993,7 +993,7 @@ impl Session {
                 Mode::Insert | Mode::Replace | Mode::VirtualReplace
             ) {
                 if let Some(fv) = folds.get_mut(&buf) {
-                    crate::folds::open_at(fv, line_idx.line_of(ws.focused().view.cursor()));
+                    crate::folds::open_at(fv, line_idx.line_of(ws.focused().view.cursor().0));
                 }
             }
         }
@@ -1101,7 +1101,7 @@ impl Session {
                     i == ws.focus() && has_signs,
                 )
                 .with_folds(pane_folds);
-                let cursor = p.view.cursor().min(text.bytes.len());
+                let cursor = p.view.cursor().0.min(text.bytes.len());
                 let cline = idx.line_of(cursor);
                 let lines = PaneLines {
                     text,
@@ -1430,7 +1430,7 @@ impl Session {
             .view
             .block_spans(bytes)
             .and_then(|rows| rows.first().copied());
-        let Some((s, e)) = span else {
+        let Some((BytePos(s), BytePos(e))) = span else {
             return false;
         };
         let at_line_start = s == 0 || bytes.get(s - 1) == Some(&b'\n');
@@ -1668,7 +1668,7 @@ impl Session {
                 {
                     let pane = ws.focused();
                     let b = pane.doc.bytes();
-                    if let Some((s, e)) = pane.view.selection_span(b) {
+                    if let Some((BytePos(s), BytePos(e))) = pane.view.selection_span(b) {
                         let first = ruse_core::pos::line_of(b, s);
                         let last = ruse_core::pos::line_of(b, e.saturating_sub(1).max(s));
                         macros.replay(b"\x1b");
@@ -1777,7 +1777,7 @@ impl Session {
                         if ws.focused_buffer() == before {
                             place_cursor(ws, recorded, at);
                         } else {
-                            ws.place_focused_cursor(at);
+                            ws.place_focused_cursor(BytePos(at));
                         }
                     } else {
                         *status = opened.status;
@@ -1915,7 +1915,7 @@ impl Session {
                 _ => None,
             };
             if let Some(to) = to {
-                let cur = line_idx.line_of(ws.focused().view.cursor());
+                let cur = line_idx.line_of(ws.focused().view.cursor().0);
                 let last = line_idx.line_of(snapshot.len().saturating_sub(1));
                 let top = ws.focused().view.top();
                 let row = match (key.code, count) {
@@ -1986,7 +1986,7 @@ impl Session {
                 let Some(win) = frame.wins.get(ws.focus()) else {
                     return;
                 };
-                let (cursor, mode) = (ws.focused().view.cursor(), ws.focused().view.mode());
+                let (cursor, mode) = (ws.focused().view.cursor().0, ws.focused().view.mode());
                 let text = PaneText {
                     bytes: snapshot,
                     idx: line_idx,
@@ -2049,14 +2049,16 @@ impl Session {
             }
             // Fold verbs (manual folds; F-007 carve-out). `zf` folds the Visual selection; the rest act on the fold at the cursor.
             let buf = ws.focused_buffer();
-            let cur_line = line_idx.line_of(ws.focused().view.cursor());
+            let cur_line = line_idx.line_of(ws.focused().view.cursor().0);
             let fv = folds.entry(buf).or_default();
             match key.code {
                 // `zf` — create a CLOSED fold. From a Visual selection: fold the selection's lines. From
                 // Normal mode: arm the `zf{motion}` sub-state (handled at the top of the loop), which folds
                 // the range the following motion covers (slice 2).
                 KeyCode::Char('f') => {
-                    if let Some((s, e)) = ws.focused().view.selection_span(snapshot) {
+                    if let Some((BytePos(s), BytePos(e))) =
+                        ws.focused().view.selection_span(snapshot)
+                    {
                         let (a, b) = (line_idx.line_of(s), line_idx.line_of(e.saturating_sub(1)));
                         let (start, end) = (a.min(b), a.max(b));
                         if end > start {
@@ -2211,7 +2213,7 @@ impl Session {
             if normal && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
                 engine.take_count();
                 let buf = ws.focused_buffer();
-                let cur_line = line_idx.line_of(ws.focused().view.cursor());
+                let cur_line = line_idx.line_of(ws.focused().view.cursor().0);
                 if let Some(fv) = folds.get(&buf) {
                     if let Some((s, e)) = crate::app::fold_cmds::current_open_fold(fv, cur_line) {
                         let target = if open { s } else { e };
@@ -2567,7 +2569,7 @@ impl Session {
             // `c_CTRL-R_CTRL-L`: the buffer line under the cursor, without its newline.
             Feed::CmdlineInsertLine => {
                 let b = ws.focused().doc.bytes();
-                let line = ruse_core::pos::line_of(b, ws.focused().view.cursor());
+                let line = ruse_core::pos::line_of(b, ws.focused().view.cursor().0);
                 let start = ruse_core::pos::nth_line_start(b, line).min(b.len());
                 let end = b[start..]
                     .iter()
@@ -2643,7 +2645,7 @@ impl Session {
             // is E16 when it runs, as there.
             Feed::CountCmdline { count } => {
                 let first =
-                    ruse_core::pos::line_of(ws.focused().doc.bytes(), ws.focused().view.cursor())
+                    ruse_core::pos::line_of(ws.focused().doc.bytes(), ws.focused().view.cursor().0)
                         + 1;
                 let last = first + count as usize - 1;
                 engine.open_filter_cmdline(&if count == 1 {
@@ -2786,7 +2788,7 @@ impl Session {
                 Some(keyword) => {
                     let pane = ws.focused();
                     let bytes = pane.doc.bytes();
-                    let cursor_line = ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
+                    let cursor_line = ruse_core::pos::line_of(bytes, pane.view.cursor().0) + 1;
                     let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
                     if list {
                         let rows: Vec<(usize, String)> =
@@ -2894,7 +2896,7 @@ impl Session {
                 let pane = ws.focused();
                 crate::folds::open_at(
                     fv,
-                    ruse_core::pos::line_of(pane.doc.bytes(), pane.view.cursor()),
+                    ruse_core::pos::line_of(pane.doc.bytes(), pane.view.cursor().0),
                 );
             }
         }
@@ -2930,7 +2932,7 @@ impl Session {
             if mode != Mode::Normal {
                 // Only `i_CTRL-O` runs an Ex command in Insert mode; its return is dropped, and the
                 // cursor stays where `CTRL-O` left it (no `<Esc>` step back) unless it sat past the end.
-                let at = ws.focused().view.cursor();
+                let at = ws.focused().view.cursor().0;
                 run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
                 let b = ws.focused().doc.bytes();
                 if at < ruse_core::pos::line_end(b, at) {
@@ -2954,7 +2956,7 @@ impl Session {
             run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
             let pane = ws.focused();
             let b = pane.doc.bytes();
-            let end = ruse_core::pos::line_end(b, pane.view.cursor());
+            let end = ruse_core::pos::line_end(b, pane.view.cursor().0);
             place_cursor(ws, recorded, end);
         }
         run_cmd(enter, ws, files, recorded, status, quit);
@@ -3284,7 +3286,7 @@ impl Session {
             // `:ascii`/`:as` — the ex synonym of `ga`: print the char-under-cursor's value.
             Ex::Ascii => {
                 let pane = ws.focused();
-                *status = ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor());
+                *status = ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor().0);
             }
             // `:digraphs` / `:dig`: open the view-only digraph-listing overlay.
             Ex::Digraphs => {
@@ -3300,7 +3302,7 @@ impl Session {
                 } else {
                     *status = format!("{} mark(s)", snapshot.len());
                     *overlay = Some(Overlay::Marks(marks_picker::open(
-                        snapshot,
+                        snapshot.into_iter().map(|(c, p)| (c, p.0)).collect(),
                         ws.focused().doc.bytes(),
                     )));
                 }
@@ -3328,7 +3330,7 @@ impl Session {
                 } else {
                     *status = format!("{} position(s)", positions.len());
                     *overlay = Some(Overlay::Positions(pos_picker::open(
-                        positions,
+                        positions.into_iter().map(|p| p.0).collect(),
                         ws.focused().doc.bytes(),
                     )));
                 }
@@ -3669,7 +3671,7 @@ impl Session {
                                 flags,
                                 Some(Vec::new()),
                             );
-                            let from = ws.focused().view.cursor();
+                            let from = ws.focused().view.cursor().0;
                             *confirm = Some(Confirm::new(subs, ex, from));
                         }
                         Err(e) => *status = crate::app::dispatch::invalid_command_msg(&e),
@@ -3696,7 +3698,7 @@ impl Session {
                             Some(pflags) => {
                                 let pane = ws.focused();
                                 let b = pane.doc.bytes();
-                                let line = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
+                                let line = ruse_core::pos::line_of(b, pane.view.cursor().0) + 1;
                                 crate::app::ex_print::rows(
                                     b,
                                     line,
@@ -3923,7 +3925,7 @@ impl Session {
                 let target = {
                     let pane = ws.focused();
                     let b = pane.doc.bytes();
-                    let cur = ruse_core::pos::line_of(b, pane.view.cursor());
+                    let cur = ruse_core::pos::line_of(b, pane.view.cursor().0);
                     put_addr.insert_index(cur, crate::app::dispatch::line_count(b))
                 };
                 let n = ws.resolve_addr(addr).map_or(0, |dest| {
@@ -4070,7 +4072,7 @@ impl Session {
                 let pane = ws.focused();
                 let b = pane.doc.bytes();
                 let nlines = crate::app::dispatch::line_count(b);
-                let cur = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
+                let cur = ruse_core::pos::line_of(b, pane.view.cursor().0) + 1;
                 let (start, end, curs) =
                     crate::app::ex_print::z_window(&spec, lnum, addressed, window, nlines);
                 let dashes = "-".repeat(usize::from(cols).saturating_sub(1));
@@ -4459,7 +4461,7 @@ impl Session {
             return None;
         }
         let b = self.ws.focused().doc.bytes();
-        let cur = self.ws.focused().view.cursor().min(b.len());
+        let cur = self.ws.focused().view.cursor().0.min(b.len());
         let line = ruse_core::pos::line_of(b, cur);
         let start = ruse_core::pos::nth_line_start(b, line).min(b.len());
         let at_eol = cur > start && b.get(cur).is_none_or(|&c| c == b'\n');
@@ -4485,7 +4487,7 @@ impl Session {
             return;
         }
         let b = self.ws.focused().doc.bytes();
-        let cur = self.ws.focused().view.cursor().min(b.len());
+        let cur = self.ws.focused().view.cursor().0.min(b.len());
         let on_last = b.get(cur).is_some_and(|&c| c != b'\n')
             && b.get(next_char_start(b, cur)).is_none_or(|&c| c == b'\n');
         let cmd = if ret.at_eol && on_last && ruse_core::pos::line_of(b, cur) == ret.line {
@@ -4851,7 +4853,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             let focus_hl: Vec<(usize, usize)> = if let Some(c) = &s.confirm {
                 c.subs
                     .get(c.idx)
-                    .map(|s| vec![(s.start, s.end)])
+                    .map(|s| vec![(s.start.0, s.end.0)])
                     .unwrap_or_default()
             } else {
                 let active = match s.engine.cmdline() {
@@ -5112,11 +5114,14 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
     match cmd {
         Command::AsciiInfo => {
             let pane = ws.focused();
-            Some(ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor()))
+            Some(ruse_core::ascii_info(
+                pane.doc.bytes(),
+                pane.view.cursor().0,
+            ))
         }
         Command::Utf8Info => {
             let pane = ws.focused();
-            Some(ruse_core::utf8_info(pane.doc.bytes(), pane.view.cursor()))
+            Some(ruse_core::utf8_info(pane.doc.bytes(), pane.view.cursor().0))
         }
         Command::FileInfo => {
             let id = ws.focused_buffer();
@@ -5126,7 +5131,7 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
                 name,
                 pane.doc.is_modified(),
                 pane.doc.bytes(),
-                pane.view.cursor(),
+                pane.view.cursor().0,
             ))
         }
         Command::CursorInfo => {
@@ -5135,7 +5140,7 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
             // the renderer paints tabs at, so it reflects the on-screen layout the user actually sees.
             Some(ruse_core::cursor_pos_info(
                 pane.doc.bytes(),
-                pane.view.cursor(),
+                pane.view.cursor().0,
                 pane.view.tab_width(),
             ))
         }
@@ -5287,7 +5292,7 @@ mod info_tests {
     #[test]
     fn ascii_info_reads_char_under_cursor() {
         let mut ws = Workspace::new(&b"Hi"[..]);
-        ws.place_focused_cursor(1); // on 'i'
+        ws.place_focused_cursor(ruse_core::BytePos(1)); // on 'i'
         assert_eq!(
             info_status(&Command::AsciiInfo, &ws).as_deref(),
             Some("<i>  105,  Hex 69,  Octal 151")
@@ -5298,7 +5303,7 @@ mod info_tests {
     fn file_info_uses_name_and_line_count() {
         let mut ws = Workspace::new(&b"one\ntwo\nthree\n"[..]);
         ws.set_focused_buffer_name("f.txt");
-        ws.place_focused_cursor(0); // line 1 of 3 -> 33%
+        ws.place_focused_cursor(ruse_core::BytePos(0)); // line 1 of 3 -> 33%
         assert_eq!(
             info_status(&Command::FileInfo, &ws).as_deref(),
             Some("\"f.txt\" 3 lines --33%--")
@@ -5308,7 +5313,7 @@ mod info_tests {
     #[test]
     fn file_info_unnamed_buffer() {
         let mut ws = Workspace::new(&b"x\n"[..]);
-        ws.place_focused_cursor(0);
+        ws.place_focused_cursor(ruse_core::BytePos(0));
         assert_eq!(
             info_status(&Command::FileInfo, &ws).as_deref(),
             Some("\"[No Name]\" 1 line --100%--")
@@ -5318,7 +5323,7 @@ mod info_tests {
     #[test]
     fn cursor_info_counts_over_the_buffer() {
         let mut ws = Workspace::new(&b"foo bar baz\n"[..]);
-        ws.place_focused_cursor(4); // on 'b' of "bar" (byte 4, word 2)
+        ws.place_focused_cursor(ruse_core::BytePos(4)); // on 'b' of "bar" (byte 4, word 2)
         assert_eq!(
             info_status(&Command::CursorInfo, &ws).as_deref(),
             Some("Col 5 of 11; Line 1 of 1; Word 2 of 3; Byte 5 of 12")

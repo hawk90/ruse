@@ -68,7 +68,7 @@ fn run(lines: &[&str], keys: &str) -> (Vec<String>, usize, usize, Mode) {
         }
     }
     let text = st.as_str().expect("utf-8").to_string();
-    let before = &text[..st.cursor().min(text.len())];
+    let before = &text[..st.cursor().0.min(text.len())];
     let row = before.matches('\n').count() + 1;
     let col = before.len() - before.rfind('\n').map_or(0, |i| i + 1);
     (

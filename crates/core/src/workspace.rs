@@ -34,6 +34,7 @@ use crate::editor::{
 };
 use crate::effect::Effect;
 use crate::pattern::RegexError;
+use crate::pos::BytePos;
 use crate::register::{RegKind, RegisterStore};
 use crate::transaction::TransactionOrigin;
 
@@ -181,7 +182,7 @@ impl Workspace {
                 continue;
             };
             let mut t = v.tracked();
-            t.push(Tracked::line(Some(v.cursor()), LineGravity::Cursor));
+            t.push(Tracked::line(Some(v.cursor().0), LineGravity::Cursor));
             let at = doc.pin_tracked(&t);
             self.pins.push((ViewId(i), at..at + t.len()));
         }
@@ -218,7 +219,7 @@ impl Workspace {
                 .expect("the cursor is pinned last");
             v.untrack(marks);
             let cursor = cursor.pos.unwrap_or(0).min(doc.len());
-            v.set_cursor(crate::motion::snap(doc.bytes(), cursor));
+            v.set_cursor(BytePos(crate::motion::snap(doc.bytes(), cursor)));
         }
         (doc, view)
     }
@@ -367,7 +368,7 @@ impl Workspace {
         let lines = crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
         let view = self.views[vid.0].as_mut().expect("focused view live");
         let line = match range {
-            SubRange::CurrentLine => crate::pos::line_of(b, view.cursor()),
+            SubRange::CurrentLine => crate::pos::line_of(b, view.cursor().0),
             SubRange::WholeFile => lines.saturating_sub(1),
             SubRange::Lines(_, last) => last.clamp(1, lines.max(1)) - 1,
         };
@@ -376,7 +377,7 @@ impl Workspace {
 
     /// Place the FOCUSED view's cursor at byte offset `pos` (the frontend uses this to scroll a
     /// `:s///c` match into view during the confirm loop). Clamped to the buffer.
-    pub fn place_focused_cursor(&mut self, pos: usize) {
+    pub fn place_focused_cursor(&mut self, pos: BytePos) {
         let vid = self.windows[self.focus].view;
         let did = self.views[vid.0].as_ref().expect("focused view live").doc();
         let len = self.docs[Self::doc_slot(did)]
@@ -385,16 +386,16 @@ impl Workspace {
             .bytes()
             .len();
         if let Some(v) = self.views[vid.0].as_mut() {
-            v.set_cursor(pos.min(len));
+            v.set_cursor(pos.min(BytePos(len)));
         }
     }
 
     /// Record `from` on the FOCUSED view's jumplist (Vim's `setpcmark`), for a jump the frontend runs: a
     /// `:s` that found a match (#940).
-    pub fn push_focused_jump(&mut self, from: usize) {
+    pub fn push_focused_jump(&mut self, from: BytePos) {
         let vid = self.windows[self.focus].view;
         if let Some(v) = self.views[vid.0].as_mut() {
-            v.push_jump(from);
+            v.push_jump(from.0);
         }
     }
 
@@ -537,7 +538,7 @@ impl Workspace {
     /// clamped, snapped to a char boundary, and seeding the sticky column, so a following vertical move
     /// aims at `pos`'s column (the swap-trick). For homing a test fixture's start point;
     /// [`Workspace::place_focused_cursor`] leaves the sticky column alone.
-    pub fn set_focused_cursor(&mut self, pos: usize) {
+    pub fn set_focused_cursor(&mut self, pos: BytePos) {
         self.with_focused(|st| st.set_cursor(pos));
     }
 
@@ -596,17 +597,17 @@ impl Workspace {
     }
 
     /// The FOCUSED view's set marks (`a`-`z`, `.`, `^`) as `(name, byte offset)` for `:marks` (swap-trick).
-    pub fn marks_snapshot(&mut self) -> Vec<(char, usize)> {
+    pub fn marks_snapshot(&mut self) -> Vec<(char, BytePos)> {
         self.with_focused(|st| st.marks_snapshot())
     }
 
     /// The FOCUSED view's jumplist positions for `:jumps` (swap-trick).
-    pub fn jumps_snapshot(&mut self) -> Vec<usize> {
+    pub fn jumps_snapshot(&mut self) -> Vec<BytePos> {
         self.with_focused(|st| st.jumps_snapshot())
     }
 
     /// The FOCUSED view's change-list positions for `:changes` (swap-trick).
-    pub fn changes_snapshot(&mut self) -> Vec<usize> {
+    pub fn changes_snapshot(&mut self) -> Vec<BytePos> {
         self.with_focused(|st| st.changes_snapshot())
     }
 
@@ -705,7 +706,7 @@ impl Workspace {
     /// [`EditorState::apply_edits`]: all or nothing, `false` when refused.
     pub fn apply_edits(
         &mut self,
-        edits: &[(crate::pos::BytePos, crate::pos::BytePos, String)],
+        edits: &[(BytePos, BytePos, String)],
         origin: TransactionOrigin,
     ) -> bool {
         self.with_focused(|st| st.apply_edits(edits, origin))
@@ -1060,12 +1061,12 @@ impl Workspace {
         doc.mark_saved();
         // Every other view of the buffer keeps its place, clamped into the new text (#686, #687).
         for v in self.views.iter_mut().flatten().filter(|v| v.doc() == id) {
-            let c = crate::motion::snap(doc.bytes(), v.cursor());
-            v.set_cursor(c);
+            let c = crate::motion::snap(doc.bytes(), v.cursor().0);
+            v.set_cursor(BytePos(c));
             v.snap_offsets(doc.bytes());
         }
         self.docs[slot] = Some(doc);
-        self.place_focused_cursor(0);
+        self.place_focused_cursor(BytePos(0));
     }
 
     /// Add a new buffer over `bytes` with optional display `name`, plus a fresh View onto it (not shown
@@ -1247,7 +1248,7 @@ impl Workspace {
     pub fn reindent_range(&self, motion: crate::Motion, count: u32) -> Option<(usize, usize)> {
         let pane = self.focused();
         let b = pane.doc.bytes();
-        let (s, e, _) = crate::editor::op_span(b, pane.view.cursor(), motion, count);
+        let (s, e, _) = crate::editor::op_span(b, pane.view.cursor().0, motion, count);
         if s >= e {
             return None;
         }
@@ -1268,7 +1269,8 @@ impl Workspace {
     #[must_use]
     pub fn word_search_pattern(&self, whole_word: bool) -> Option<String> {
         let pane = self.focused();
-        crate::editor::word_search(pane.doc.bytes(), pane.view.cursor(), whole_word).map(|(_, p)| p)
+        crate::editor::word_search(pane.doc.bytes(), pane.view.cursor().0, whole_word)
+            .map(|(_, p)| p)
     }
 
     /// The keyword under (or forward-on-line from) the focused cursor — the pattern source for Vim `*`/`#`.
@@ -1277,7 +1279,7 @@ impl Workspace {
     pub fn word_under_cursor(&self) -> Option<String> {
         let pane = self.focused();
         let b = pane.doc.bytes();
-        let (s, e) = crate::motion::word_under_cursor(b, pane.view.cursor())?;
+        let (s, e) = crate::motion::word_under_cursor(b, pane.view.cursor().0)?;
         std::str::from_utf8(&b[s..e]).ok().map(str::to_string)
     }
 
@@ -1299,7 +1301,7 @@ impl Workspace {
     fn cword_impl(&self, big: bool) -> Option<String> {
         let pane = self.focused();
         let b = pane.doc.bytes();
-        let (s, e) = crate::motion::cword_under_cursor(b, pane.view.cursor(), big)?;
+        let (s, e) = crate::motion::cword_under_cursor(b, pane.view.cursor().0, big)?;
         std::str::from_utf8(&b[s..e]).ok().map(str::to_string)
     }
 
@@ -1317,7 +1319,7 @@ impl Workspace {
     pub fn adjacent_line_char(&self, above: bool) -> Option<char> {
         let pane = self.focused();
         let b = pane.doc.bytes();
-        let cur = pane.view.cursor();
+        let cur = pane.view.cursor().0;
         // Char column of the caret on the current line.
         let ls = crate::pos::line_start(b, cur);
         let col = std::str::from_utf8(b.get(ls..cur)?).ok()?.chars().count();
@@ -1341,7 +1343,7 @@ impl Workspace {
     pub fn keyword_completion(&self) -> (String, Vec<String>) {
         let pane = self.focused();
         let b = pane.doc.bytes();
-        let cur = pane.view.cursor();
+        let cur = pane.view.cursor().0;
         let (_, base) = crate::motion::keyword_before_cursor(b, cur);
         let base = base.to_string();
         let cands = crate::motion::keyword_completions(b, cur, &base);
@@ -1360,7 +1362,7 @@ impl Workspace {
     pub fn line_completion(&self) -> (String, Vec<String>) {
         let pane = self.focused();
         let b = pane.doc.bytes();
-        let cur = pane.view.cursor();
+        let cur = pane.view.cursor().0;
         crate::motion::line_completions(b, cur)
     }
 
@@ -1405,7 +1407,7 @@ impl Workspace {
         let p = self.focused();
         let b = p.doc.bytes();
         let spans = crate::editor::line_spans(b);
-        let cursor_line = crate::pos::line_of(b, p.view.cursor());
+        let cursor_line = crate::pos::line_of(b, p.view.cursor().0);
         let (first, last) = crate::editor::resolve_line_range(range, &spans, cursor_line);
         (first + 1, last + 1)
     }
@@ -1422,7 +1424,7 @@ impl Workspace {
         } else {
             crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'))
         };
-        addr.insert_index(crate::pos::line_of(b, p.view.cursor()), nlines)
+        addr.insert_index(crate::pos::line_of(b, p.view.cursor().0), nlines)
     }
 
     /// Set one `:set` option on the focused view and as the global value every View created afterward
@@ -1681,11 +1683,11 @@ mod tests {
 
         // Move the cursor in the focused (new) pane; the other pane's cursor is untouched.
         w.focus = 0;
-        let before = w.pane(1).view.cursor();
+        let before = w.pane(1).view.cursor().0;
         w.apply(&Command::Move(1, Motion::Down));
-        assert_ne!(w.pane(0).view.cursor(), before, "focused cursor moved");
+        assert_ne!(w.pane(0).view.cursor().0, before, "focused cursor moved");
         assert_eq!(
-            w.pane(1).view.cursor(),
+            w.pane(1).view.cursor().0,
             before,
             "the other view's cursor is independent"
         );
@@ -1800,7 +1802,7 @@ mod tests {
         assert_eq!(w.focused().doc.bytes(), b"foo bar\nbaz\n");
         // Unlike normal `J` (cursor on the join seam), `:j` leaves the cursor on the joined line's first
         // non-blank (`ex_join` → `beginline`; re-probed on nvim v0.12.6, parity `ex_join_cursor_first_non_blank`).
-        assert_eq!(w.focused().view.cursor(), 0);
+        assert_eq!(w.focused().view.cursor().0, 0);
         // One undo restores both lines (single group).
         w.apply(&Command::Undo);
         assert_eq!(w.focused().doc.bytes(), b"foo\nbar\nbaz\n");
@@ -1848,7 +1850,11 @@ mod tests {
         w.set_option(EditorOption::ShiftWidth(2));
         assert_eq!(w.shift_lines(SubRange::CurrentLine, false, 1), 1);
         assert_eq!(w.focused().doc.bytes(), b"  aa\nbb\ncc\ndd\nee\n");
-        assert_eq!(w.focused().view.cursor(), 2, "first non-blank of the line");
+        assert_eq!(
+            w.focused().view.cursor().0,
+            2,
+            "first non-blank of the line"
+        );
         // One undo restores it (single group).
         w.apply(&Command::Undo);
         assert_eq!(w.focused().doc.bytes(), b"aa\nbb\ncc\ndd\nee\n");
@@ -1860,7 +1866,7 @@ mod tests {
         assert_eq!(w.shift_lines(SubRange::Lines(2, 4), false, 1), 3);
         assert_eq!(w.focused().doc.bytes(), b"aa\n  bb\n  cc\n  dd\nee\n");
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             15,
             "first non-blank of the last line"
         );
@@ -1870,7 +1876,7 @@ mod tests {
         w.set_option(EditorOption::ShiftWidth(2));
         assert_eq!(w.shift_lines(SubRange::CurrentLine, false, 3), 1);
         assert_eq!(w.focused().doc.bytes(), b"      aa\nbb\ncc\ndd\nee\n");
-        assert_eq!(w.focused().view.cursor(), 6);
+        assert_eq!(w.focused().view.cursor().0, 6);
         // A single undo reverses all three levels — the levels merge into one group.
         w.apply(&Command::Undo);
         assert_eq!(
@@ -1885,7 +1891,7 @@ mod tests {
         assert_eq!(w.shift_lines(SubRange::Lines(1, 2), true, 1), 2);
         assert_eq!(w.focused().doc.bytes(), b"  aa\n  bb\ncc\n");
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             7,
             "line 2 '  bb' first non-blank"
         );
@@ -1954,8 +1960,8 @@ mod tests {
             Some(1)
         );
         assert_eq!(w.focused().doc.bytes(), b"a\nc\nbxy\nd\n");
-        assert_eq!(w.focused().view.named_mark('a'), Some(4));
-        assert_eq!(w.focused().view.named_mark('c'), Some(2));
+        assert_eq!(w.focused().view.named_mark('a'), Some(BytePos(4)));
+        assert_eq!(w.focused().view.named_mark('c'), Some(BytePos(2)));
 
         // Destination inside the source → declined (Vim E134).
         let mut w = Workspace::new(b"a\nb\nc\nd\n".to_vec());
@@ -2107,7 +2113,7 @@ mod tests {
 
         // On whitespace → the next keyword forward on the line.
         let mut w = Workspace::new(b"foo bar\n".to_vec());
-        w.place_focused_cursor(3); // the space
+        w.place_focused_cursor(BytePos(3)); // the space
         assert_eq!(w.word_under_cursor().as_deref(), Some("bar"));
 
         // No keyword on the line → None.
@@ -2120,7 +2126,7 @@ mod tests {
         let mut w = Workspace::new(b"foo foobar foo\n".to_vec());
         w.apply(&Command::SearchNext("\\<foo\\>".to_string()));
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             11,
             "whole-word search skips foobar"
         );
@@ -2158,7 +2164,7 @@ mod tests {
         ];
         for (line, cur, cword, cbig) in cases {
             let mut w = Workspace::new(line.to_vec());
-            w.place_focused_cursor(*cur);
+            w.place_focused_cursor(BytePos(*cur));
             assert_eq!(
                 w.cword_under_cursor().as_deref(),
                 *cword,
@@ -2182,35 +2188,35 @@ mod tests {
         // Base "fo" on a fresh last line: forward scan finds nothing, wraps from the top; the two "foo"
         // occurrences dedupe. (nvim: match set = foo, food, foobar.)
         let mut w = Workspace::new(b"foo food\nfoobar\nfoo\nfo".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len()); // end of the "fo" line
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len())); // end of the "fo" line
         let (base, cands) = w.keyword_completion();
         assert_eq!(base, "fo");
         assert_eq!(cands, vec!["foo", "food", "foobar"]);
 
         // Mid-buffer caret: forward to end, then wrap from the top; the caret's own "aa" is excluded.
         let mut w = Workspace::new(b"aa1 aa2\naa3\naa\naa4 aa5\naa6".to_vec());
-        w.place_focused_cursor(14); // end of the bare "aa" on line 3
+        w.place_focused_cursor(BytePos(14)); // end of the bare "aa" on line 3
         let (base, cands) = w.keyword_completion();
         assert_eq!(base, "aa");
         assert_eq!(cands, vec!["aa4", "aa5", "aa6", "aa1", "aa2", "aa3"]);
 
         // Exact match is a candidate distinct from the original text.
         let mut w = Workspace::new(b"foo foobar\nfoo".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len());
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len()));
         let (base, cands) = w.keyword_completion();
         assert_eq!(base, "foo");
         assert_eq!(cands, vec!["foo", "foobar"]);
 
         // No match → empty candidate list (a Vim no-op / bell).
         let mut w = Workspace::new(b"foo bar\nzz".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len());
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len()));
         let (base, cands) = w.keyword_completion();
         assert_eq!(base, "zz");
         assert!(cands.is_empty());
 
         // Empty base (caret after a non-word char) matches every keyword, none excluded.
         let mut w = Workspace::new(b"foo bar\n(".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len()); // just after '('
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len())); // just after '('
         let (base, cands) = w.keyword_completion();
         assert_eq!(base, "");
         assert_eq!(cands, vec!["foo", "bar"]);
@@ -2224,35 +2230,35 @@ mod tests {
         // Prefix "foobar" on a fresh last line: backward scan (the two identical "foobar baz" dedupe).
         let mut w =
             Workspace::new(b"foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len());
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len()));
         let (base, cands) = w.line_completion();
         assert_eq!(base, "foobar");
         assert_eq!(cands, vec!["foobar baz", "foobar qux"]);
 
         // Mid-buffer caret: backward to the top, then wrap from the bottom upward; the caret line excluded.
         let mut w = Workspace::new(b"foo A\nfoo B\nfoo\nfoo C\nfoo D".to_vec());
-        w.place_focused_cursor(15); // end of the bare "foo" on line 3 (0-based row 2)
+        w.place_focused_cursor(BytePos(15)); // end of the bare "foo" on line 3 (0-based row 2)
         let (base, cands) = w.line_completion();
         assert_eq!(base, "foo");
         assert_eq!(cands, vec!["foo B", "foo A", "foo D", "foo C"]);
 
         // Indent is ignored for matching and dedup: "foo bar" and "    foo bar" collapse to one candidate.
         let mut w = Workspace::new(b"foo bar\n    foo bar\nfoo baz\nfoo".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len());
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len()));
         let (base, cands) = w.line_completion();
         assert_eq!(base, "foo");
         assert_eq!(cands, vec!["foo baz", "foo bar"]);
 
         // The prefix's own indent is stripped from `base` (its length is what the completion deletes).
         let mut w = Workspace::new(b"    indented alpha\nplain beta\n  in".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len());
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len()));
         let (base, cands) = w.line_completion();
         assert_eq!(base, "in");
         assert_eq!(cands, vec!["indented alpha"]);
 
         // No matching line → empty candidate list (a Vim no-op / bell).
         let mut w = Workspace::new(b"foo bar\nbaz\nzz".to_vec());
-        w.place_focused_cursor(w.focused().doc.bytes().len());
+        w.place_focused_cursor(BytePos(w.focused().doc.bytes().len()));
         let (base, cands) = w.line_completion();
         assert_eq!(base, "zz");
         assert!(cands.is_empty());
@@ -2267,15 +2273,15 @@ mod tests {
         assert_eq!(w.adjacent_line_char(false), Some('w'));
         assert_eq!(w.adjacent_line_char(true), None);
         // Caret at col 2 of line 1 ('l'): below 'world' at col 2 = 'r'.
-        w.place_focused_cursor(2);
+        w.place_focused_cursor(BytePos(2));
         assert_eq!(w.adjacent_line_char(false), Some('r'));
         // Caret on line 2, col 0: above 'hello' col 0 = 'h', below = None (no line below).
-        w.place_focused_cursor(6);
+        w.place_focused_cursor(BytePos(6));
         assert_eq!(w.adjacent_line_char(true), Some('h'));
         assert_eq!(w.adjacent_line_char(false), None);
         // Column past the end of the adjacent (shorter) line → None.
         let mut w = Workspace::new(b"hello\nab\n".to_vec());
-        w.place_focused_cursor(4); // col 4 of "hello"; "ab" has no col 4
+        w.place_focused_cursor(BytePos(4)); // col 4 of "hello"; "ab" has no col 4
         assert_eq!(w.adjacent_line_char(false), None);
     }
 
@@ -2299,44 +2305,44 @@ mod tests {
             .0;
 
         let mut w = Workspace::new(src.clone());
-        w.place_focused_cursor(last_foo);
+        w.place_focused_cursor(BytePos(last_foo));
         // Mirror the frontend rewrite (session.rs): keyword under cursor → whole-word first-match jump.
         let word = w.word_under_cursor().expect("on a keyword");
         assert_eq!(word, "foo");
         w.apply(&Command::GotoFirstMatch(format!("\\<{word}\\>")));
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             decl,
             "gd/gD lands on the first whole-word match from the top of the file"
         );
         // It was a JUMP: the leaving position (last `foo`) is on the jumplist and `CTRL-O` returns there.
         assert!(
-            w.jumps_snapshot().contains(&last_foo),
+            w.jumps_snapshot().contains(&BytePos(last_foo)),
             "the jump records the position it left"
         );
         w.apply(&Command::GotoOlderJump); // CTRL-O
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             last_foo,
             "CTRL-O returns to where gd/gD jumped from"
         );
 
         // No match → the cursor stays put (Vim rings the bell).
         let mut w = Workspace::new(src);
-        w.place_focused_cursor(last_foo);
+        w.place_focused_cursor(BytePos(last_foo));
         w.apply(&Command::GotoFirstMatch("\\<nope\\>".to_string()));
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             last_foo,
             "no match leaves the cursor put"
         );
 
         // The whole-word pattern skips substrings: `foobar` is not a match for `\<foo\>`.
         let mut w = Workspace::new(b"foobar\nfoo\n".to_vec());
-        w.place_focused_cursor(7); // on the standalone `foo` (line 2)
+        w.place_focused_cursor(BytePos(7)); // on the standalone `foo` (line 2)
         w.apply(&Command::GotoFirstMatch("\\<foo\\>".to_string()));
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             7,
             "the first WHOLE-word match is the standalone foo, not the foobar substring"
         );
@@ -2392,7 +2398,7 @@ mod tests {
         w.reload_focused(b"ab".to_vec());
         assert!(w.focused().doc.revision() > edited, "revisions continue");
         for i in 0..2 {
-            assert!(w.pane(i).view.cursor() <= 2, "pane {i} clamped");
+            assert!(w.pane(i).view.cursor().0 <= 2, "pane {i} clamped");
         }
     }
 
@@ -2414,7 +2420,7 @@ mod tests {
         w.focus_next();
         assert_eq!(
             w.focused().view.named_mark('a'),
-            Some(10),
+            Some(BytePos(10)),
             "the mark followed its line"
         );
         w.apply(&Command::DeleteUnder(1));
@@ -2808,7 +2814,7 @@ mod tests {
         w.substitute(SubRange::CurrentLine, "x", "y", SubFlags::default())
             .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"y x\nx x\n", "first x on line 1");
-        w.place_focused_cursor(4); // start of line 2
+        w.place_focused_cursor(BytePos(4)); // start of line 2
         w.substitute(SubRange::CurrentLine, "x", "y", SubFlags::default())
             .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"y x\ny x\n", "repeat on line 2");
@@ -2820,7 +2826,7 @@ mod tests {
     fn substitute_count_reports_without_editing_or_undo() {
         let src = b"foo bar foo\nfoo baz\nno match here\nfoo foo foo\n";
         let mut w = Workspace::new(src.to_vec());
-        w.place_focused_cursor(2); // anywhere — count must not move the cursor
+        w.place_focused_cursor(BytePos(2)); // anywhere — count must not move the cursor
         let global = SubFlags {
             global: true,
             ignore_case: None,
@@ -2840,7 +2846,7 @@ mod tests {
             "count-only must not edit the buffer"
         );
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             2,
             "count-only must not move the cursor"
         );
@@ -2894,7 +2900,7 @@ mod tests {
     fn marks_snapshot_lists_named_then_dot_and_caret() {
         let mut w = Workspace::new(b"abc\ndef\n".to_vec());
         assert!(w.marks_snapshot().is_empty(), "nothing set yet");
-        w.place_focused_cursor(5);
+        w.place_focused_cursor(BytePos(5));
         w.apply(&Command::SetNamedMark('a'));
         w.apply(&Command::DeleteUnder(1)); // sets the `.` last-change mark
         let snap = w.marks_snapshot();
@@ -3024,16 +3030,16 @@ mod tests {
 
         // Move the cursor in buffer A, then switch to B — B starts at its own cursor (0).
         w.apply(&Command::Move(1, Motion::Down));
-        let a_cursor = w.focused().view.cursor();
+        let a_cursor = w.focused().view.cursor().0;
         assert!(a_cursor > 0);
         assert!(w.focus_buffer(b), "switch to a live buffer succeeds");
         assert_eq!(w.focused_buffer(), b);
-        assert_eq!(w.focused().view.cursor(), 0, "B has its own cursor");
+        assert_eq!(w.focused().view.cursor().0, 0, "B has its own cursor");
 
         // Back to A — its cursor is preserved (the hidden view survived).
         assert!(w.focus_buffer(a));
         assert_eq!(
-            w.focused().view.cursor(),
+            w.focused().view.cursor().0,
             a_cursor,
             "A's cursor is restored on return"
         );

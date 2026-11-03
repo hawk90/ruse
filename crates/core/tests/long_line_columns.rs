@@ -41,7 +41,7 @@ fn vertical_moves_and_dollar_on_a_long_non_ascii_line_are_linear() {
             ],
         );
         assert!(took < LIMIT, "{unit:?}: {took:?}");
-        assert_eq!(st.cursor(), line_len + 1, "{unit:?}: column 0 of line 2");
+        assert_eq!(st.cursor().0, line_len + 1, "{unit:?}: column 0 of line 2");
     }
 }
 
@@ -61,7 +61,7 @@ fn a_visual_block_over_long_non_ascii_lines_is_linear() {
     );
     assert!(took < LIMIT, "{took:?}");
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         0,
         "a block yank returns to the top-left corner"
     );

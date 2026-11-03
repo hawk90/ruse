@@ -857,15 +857,16 @@ impl View {
     /// from its first line's start to its last line's end). The marks a jump or an operator reads by name
     /// (`` `^ ``, `` d`> ``, #1088).
     #[must_use]
-    pub fn named_mark(&self, c: char) -> Option<usize> {
+    pub fn named_mark(&self, c: char) -> Option<BytePos> {
         match c {
             '^' => self.last_insert,
             '<' | '>' => {
                 let (s, e, _) = self.last_visual_bounds()?;
-                Some(if c == '<' { s } else { e })
+                return Some(if c == '<' { s } else { e });
             }
             _ => self.named_marks[mark_slot(c)?],
         }
+        .map(BytePos)
     }
 
     /// Set named mark `c` (`a`–`z`, `A`–`Z`) to `pos`. Any other `c` is ignored (the input layer only sends
@@ -878,34 +879,34 @@ impl View {
 
     /// The position of the last change (Vim `` `. ``), or `None` before the first edit.
     #[must_use]
-    pub fn last_change(&self) -> Option<usize> {
-        self.changes.last().copied()
+    pub fn last_change(&self) -> Option<BytePos> {
+        self.changes.last().copied().map(BytePos)
     }
 
     /// Vim's `[` mark — the first char of the last changed/yanked text, or `None` before the first change.
-    pub fn change_mark_start(&self) -> Option<usize> {
-        self.change_start
+    pub fn change_mark_start(&self) -> Option<BytePos> {
+        self.change_start.map(BytePos)
     }
 
     /// Vim's `]` mark — the end of the last changed/yanked text (see [`View::change_end`]), or `None`.
-    pub fn change_mark_end(&self) -> Option<usize> {
-        self.change_end
+    pub fn change_mark_end(&self) -> Option<BytePos> {
+        self.change_end.map(BytePos)
     }
 
     /// The last visual selection's bounds `(start, end, kind)` — the byte-min and byte-max of the remembered
     /// selection's two ends, in its kind. This is the store behind Vim's `<`/`>` marks (`` `< ``/`` `> ``/
     /// `'<`/`'>`) and `gv`, all reading the one depth-1 `last_visual` (set on every Visual/Select exit). `None`
     /// before any visual selection has ended. The planner turns `(start, end, kind)` into the per-mark target.
-    pub fn last_visual_bounds(&self) -> Option<(usize, usize, SelectKind)> {
+    pub fn last_visual_bounds(&self) -> Option<(BytePos, BytePos, SelectKind)> {
         let (a, e, kind) = self.last_visual?;
-        Some((a.min(e), a.max(e), kind))
+        Some((BytePos(a.min(e)), BytePos(a.max(e)), kind))
     }
 
     /// The context mark (Vim `` ` ``/`'`): the position before the latest jump — the newest jumplist entry.
     /// `None` before any jump. Read by `` `` ``/`''`; the jump they perform then records a fresh entry, so
     /// repeating toggles between the two positions.
-    pub fn context_mark(&self) -> Option<usize> {
-        self.jumps.last().copied()
+    pub fn context_mark(&self) -> Option<BytePos> {
+        self.jumps.last().copied().map(BytePos)
     }
 
     /// Record a change at `pos` in the change list, as Vim's `changed_common` does (#722): a change that
@@ -1061,15 +1062,15 @@ impl View {
 
     /// The cursor's byte offset (on a char boundary) — view-local.
     #[must_use]
-    pub fn cursor(&self) -> usize {
-        self.cursor
+    pub fn cursor(&self) -> BytePos {
+        BytePos(self.cursor)
     }
 
     /// The Emacs mark's byte offset, or `None` when no mark is set — view-local (see
     /// [`EditorState::mark`]).
     #[must_use]
-    pub fn mark(&self) -> Option<usize> {
-        self.mark
+    pub fn mark(&self) -> Option<BytePos> {
+        self.mark.map(BytePos)
     }
 
     /// The one-shot register a `"x` selected for the next command, or `None` for the unnamed one.
@@ -1080,8 +1081,8 @@ impl View {
 
     /// Place the cursor at byte offset `pos` (the frontend uses this to follow a `:s///c` match; the
     /// caller passes an on-boundary offset). View-local; does not touch the document.
-    pub fn set_cursor(&mut self, pos: usize) {
-        self.cursor = pos;
+    pub fn set_cursor(&mut self, pos: BytePos) {
+        self.cursor = pos.0;
     }
 
     /// Select this View's caret gravity (D-050): the Emacs profile constructs `BetweenChar` views so its
@@ -1275,22 +1276,25 @@ impl View {
     /// `bytes`, or `None` in Normal/Insert and for a blockwise selection (a rectangle is not one range —
     /// use [`View::block_spans`]). See [`EditorState::selection_span`] for the full contract.
     #[must_use]
-    pub fn selection_span(&self, bytes: &[u8]) -> Option<(usize, usize)> {
+    pub fn selection_span(&self, bytes: &[u8]) -> Option<(BytePos, BytePos)> {
         match self.mode.selection()? {
             SelectKind::Blockwise => None,
-            kind => Some(selection_range(
-                bytes,
-                self.anchor?,
-                self.cursor,
-                kind == SelectKind::Linewise,
-            )),
+            kind => {
+                let (s, e) = selection_range(
+                    bytes,
+                    self.anchor?,
+                    self.cursor,
+                    kind == SelectKind::Linewise,
+                );
+                Some((BytePos(s), BytePos(e)))
+            }
         }
     }
 
     /// The per-row highlighted byte ranges of the current BLOCKWISE selection over `bytes`, or `None`
     /// when the selection is not blockwise. See [`EditorState::block_spans`].
     #[must_use]
-    pub fn block_spans(&self, bytes: &[u8]) -> Option<Vec<(usize, usize)>> {
+    pub fn block_spans(&self, bytes: &[u8]) -> Option<Vec<(BytePos, BytePos)>> {
         match self.mode.selection()? {
             SelectKind::Blockwise => Some(
                 block_geom(
@@ -1300,7 +1304,10 @@ impl View {
                     self.indent.tab_width,
                     self.curswant == MAXCOL,
                 )
-                .spans(),
+                .spans()
+                .into_iter()
+                .map(|(s, e)| (BytePos(s), BytePos(e)))
+                .collect(),
             ),
             _ => None,
         }
@@ -1813,7 +1820,7 @@ impl EditorState {
             .iter()
             .map(|s| {
                 lines_seen.insert(s.line);
-                Edit::replace(s.start, s.end - s.start, s.replacement.clone())
+                Edit::replace(s.start.0, s.end.0 - s.start.0, s.replacement.clone())
             })
             .collect();
         let replacements = edits.len();
@@ -1822,9 +1829,9 @@ impl EditorState {
         let last_end = subs.last().map(|last| {
             let before: isize = subs[..subs.len() - 1]
                 .iter()
-                .map(|s| s.replacement.len() as isize - (s.end - s.start) as isize)
+                .map(|s| s.replacement.len() as isize - (s.end.0 - s.start.0) as isize)
                 .sum();
-            (last.start as isize + before) as usize + last.replacement.len()
+            (last.start.0 as isize + before) as usize + last.replacement.len()
         });
         // Disjoint + ordered by construction; `new` re-validates (a bad accepted set is a caller bug).
         let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
@@ -2851,7 +2858,7 @@ impl EditorState {
             return false;
         }
         self.view.last_was_edit = true;
-        self.set_cursor(cursor.min(self.doc.bytes().len()));
+        self.set_cursor(BytePos(cursor.min(self.doc.bytes().len())));
         self.settle_offsets();
         true
     }
@@ -2942,7 +2949,7 @@ impl EditorState {
     /// use [`EditorState::block_spans`] to paint that). Charwise includes the character under the active
     /// end; linewise spans whole lines. For the frontend to paint the selection.
     #[must_use]
-    pub fn selection_span(&self) -> Option<(usize, usize)> {
+    pub fn selection_span(&self) -> Option<(BytePos, BytePos)> {
         // Visual and Select paint the same selection (they share the anchor and toggle via CTRL-G).
         self.view.selection_span(self.bytes())
     }
@@ -2951,7 +2958,7 @@ impl EditorState {
     /// the rectangle crosses; short lines contribute an empty range at their end), or `None` when the
     /// selection is not blockwise. For the frontend to paint a column-aligned block.
     #[must_use]
-    pub fn block_spans(&self) -> Option<Vec<(usize, usize)>> {
+    pub fn block_spans(&self) -> Option<Vec<(BytePos, BytePos)>> {
         self.view.block_spans(self.bytes())
     }
 
@@ -2969,26 +2976,26 @@ impl EditorState {
 
     /// The cursor's byte offset (on a char boundary).
     #[must_use]
-    pub fn cursor(&self) -> usize {
-        self.view.cursor
+    pub fn cursor(&self) -> BytePos {
+        BytePos(self.view.cursor)
     }
 
     /// The jumplist positions (oldest → newest) for `:jumps`.
     #[must_use]
-    pub fn jumps_snapshot(&self) -> Vec<usize> {
-        self.view.jumps.clone()
+    pub fn jumps_snapshot(&self) -> Vec<BytePos> {
+        self.view.jumps.iter().copied().map(BytePos).collect()
     }
 
     /// The change-list positions (oldest → newest) for `:changes`.
     #[must_use]
-    pub fn changes_snapshot(&self) -> Vec<usize> {
-        self.view.changes.clone()
+    pub fn changes_snapshot(&self) -> Vec<BytePos> {
+        self.view.changes.iter().copied().map(BytePos).collect()
     }
 
     /// The SET marks for `:marks` — the named marks `a`–`z`, the `.` last-change mark, and the `^`
     /// last-insert mark — as `(name, byte offset)`, in that order (unset marks omitted).
     #[must_use]
-    pub fn marks_snapshot(&self) -> Vec<(char, usize)> {
+    pub fn marks_snapshot(&self) -> Vec<(char, BytePos)> {
         let mut out = Vec::new();
         for c in ('a'..='z').chain('A'..='Z') {
             if let Some(p) = self.view.named_mark(c) {
@@ -2999,7 +3006,7 @@ impl EditorState {
             out.push(('.', p));
         }
         if let Some(p) = self.view.last_insert() {
-            out.push(('^', p));
+            out.push(('^', BytePos(p)));
         }
         out
     }
@@ -3008,8 +3015,8 @@ impl EditorState {
     /// the region (`set-mark-command` and the region ops); one-caret degenerate is `None`. View-local. For
     /// the Emacs parity comparator and a future `:marks`.
     #[must_use]
-    pub fn mark(&self) -> Option<usize> {
-        self.view.mark
+    pub fn mark(&self) -> Option<BytePos> {
+        self.view.mark.map(BytePos)
     }
 
     /// Place the cursor at byte offset `pos` (on a char boundary). View-local; does not touch the document.
@@ -3019,7 +3026,8 @@ impl EditorState {
     /// committed motion would: a subsequent `j`/`k` (`next-line`/`previous-line`) aims at the column the
     /// caret was placed on, not column 0. Without this a teleport (goto, mouse, a fixture's start point)
     /// would leave `curswant` stale at 0 and vertical moves would snap to the line start.
-    pub fn set_cursor(&mut self, pos: usize) {
+    pub fn set_cursor(&mut self, pos: BytePos) {
+        let pos = pos.0;
         let b = self.doc.bytes();
         // Clamp to the buffer and snap to a char boundary: `set_cursor` is a public seam (tests, a
         // future goto/mouse), so an out-of-range or mid-codepoint `pos` must not leave the cursor where
@@ -3610,25 +3618,31 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             }
         }
         Action::Undo => {
-            let placed = undo_step(st, entry_cursor, |d, t| d.undo_tracked(entry_cursor, t));
+            let placed = undo_step(st, entry_cursor, |d, t| {
+                d.undo_tracked(BytePos(entry_cursor), t)
+            });
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
             undo_marks = placed.map(|p| p.marks);
         }
         Action::Redo => {
-            let placed = undo_step(st, entry_cursor, |d, t| d.redo_tracked(entry_cursor, t));
+            let placed = undo_step(st, entry_cursor, |d, t| {
+                d.redo_tracked(BytePos(entry_cursor), t)
+            });
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
             undo_marks = placed.map(|p| p.marks);
         }
         Action::UndoChrono { older } => {
             let placed = undo_step(st, entry_cursor, |d, t| {
-                d.chronological_tracked(older, entry_cursor, t)
+                d.chronological_tracked(older, BytePos(entry_cursor), t)
             });
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
             undo_marks = placed.map(|p| p.marks);
         }
         Action::LineUndo => {
             let origin = st.origin;
-            nav_target = st.with_tracked(|d, t| d.line_undo_tracked(entry_cursor, origin, t));
+            nav_target = st
+                .with_tracked(|d, t| d.line_undo_tracked(BytePos(entry_cursor), origin, t))
+                .map(|p| p.0);
         }
         Action::JumpChange { older } => {
             nav_target = st.view.nav_change(older);

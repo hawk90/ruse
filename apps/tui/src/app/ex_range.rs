@@ -2,7 +2,7 @@
 //! focused buffer into plain line numbers, so the per-command parsers in `input::ex` only ever see `N`,
 //! `N,M` or `%`. This is the one place an address is read; every range-taking command goes through it.
 
-use ruse_core::{SubRange, Workspace};
+use ruse_core::{BytePos, SubRange, Workspace};
 
 /// An ex line whose leading range [`resolve_ex_range`] turned into plain line numbers.
 #[derive(Debug, PartialEq, Eq)]
@@ -123,13 +123,16 @@ fn resolve(
         let b = pane.doc.bytes();
         let nlines =
             (b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"))).max(1) as i64;
-        let cur = (ruse_core::pos::line_of(b, pane.view.cursor()) as i64 + 1).min(nlines);
-        let visual = pane.view.last_visual_bounds().map(|(s, e, _)| {
-            (
-                ruse_core::pos::line_of(b, s) as i64 + 1,
-                ruse_core::pos::line_of(b, e) as i64 + 1,
-            )
-        });
+        let cur = (ruse_core::pos::line_of(b, pane.view.cursor().0) as i64 + 1).min(nlines);
+        let visual = pane
+            .view
+            .last_visual_bounds()
+            .map(|(BytePos(s), BytePos(e), _)| {
+                (
+                    ruse_core::pos::line_of(b, s) as i64 + 1,
+                    ruse_core::pos::line_of(b, e) as i64 + 1,
+                )
+            });
         (nlines, cur, visual)
     };
     let unchanged = || ExRange::Line(rest.to_string());
@@ -326,7 +329,7 @@ fn mark_line(ws: &Workspace, c: u8, visual: Option<(i64, i64)>) -> Option<Option
         _ => return None,
     };
     let b = ws.focused().doc.bytes();
-    Some(pos.map(|p| ruse_core::pos::line_of(b, p) as i64 + 1))
+    Some(pos.map(|p| ruse_core::pos::line_of(b, p.0) as i64 + 1))
 }
 
 /// The pattern of a `/pat/` or `?pat?` address that starts at byte `from` of `s`: the text up to the next
@@ -462,7 +465,7 @@ mod tests {
     fn ex_ranges_resolve_and_refuse_past_the_end() {
         let resolve = |cursor_line: usize, line: &str| {
             let mut ws = Workspace::new(b"a\nb\nc\nd\n".to_vec());
-            ws.place_focused_cursor(cursor_line * 2);
+            ws.place_focused_cursor(BytePos(cursor_line * 2));
             resolve_in(&mut ws, line)
         };
         let line = |s: &str| Ok(ExRange::Line(s.to_string()));
@@ -577,9 +580,9 @@ mod tests {
         // Marks.
         assert_eq!(resolve_in(&mut ws, "'a,'bd"), Err(ExRangeError::MarkNotSet));
         assert_eq!(resolve_in(&mut ws, "'Ad"), Err(ExRangeError::MarkNotSet));
-        ws.place_focused_cursor(3);
+        ws.place_focused_cursor(BytePos(3));
         ws.apply(&ruse_core::Command::SetNamedMark('a'));
-        ws.place_focused_cursor(9);
+        ws.place_focused_cursor(BytePos(9));
         ws.apply(&ruse_core::Command::SetNamedMark('b'));
         assert_eq!(resolve_in(&mut ws, "'a,'bd"), line("2,4d"));
         assert_eq!(
@@ -594,7 +597,7 @@ mod tests {
     fn a_count_after_the_command_is_a_range() {
         let resolve = |cursor_line: usize, line: &str| {
             let mut ws = Workspace::new(b"a1\nb2\na3\nb4\na5\n".to_vec());
-            ws.place_focused_cursor(cursor_line * 3);
+            ws.place_focused_cursor(BytePos(cursor_line * 3));
             resolve_in(&mut ws, line)
         };
         let line = |s: &str| Ok(ExRange::Line(s.to_string()));

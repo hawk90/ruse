@@ -61,7 +61,7 @@ fn run(engine: &mut InputEngine, text: &str, seq: &str) -> (String, usize) {
             _ => {}
         }
     }
-    (st.as_str().expect("utf-8").to_string(), st.cursor())
+    (st.as_str().expect("utf-8").to_string(), st.cursor().0)
 }
 
 fn vim(text: &str, seq: &str) -> (String, usize) {
@@ -137,13 +137,13 @@ fn emacs_counted_char_motions_still_cross_lines() {
             apply_command(&mut st, &cmd);
         }
     }
-    assert_eq!(st.cursor(), 4, "C-u 4 C-f from 0 steps over the newline");
+    assert_eq!(st.cursor().0, 4, "C-u 4 C-f from 0 steps over the newline");
     for k in [ctrl('u'), key(KeyCode::Char('3')), ctrl('b')] {
         if let Feed::Cmd(cmd) = e.feed(k, st.mode()) {
             apply_command(&mut st, &cmd);
         }
     }
-    assert_eq!(st.cursor(), 1);
+    assert_eq!(st.cursor().0, 1);
 }
 
 /// Whether `ex` is `:x` (write when modified, then close the window).

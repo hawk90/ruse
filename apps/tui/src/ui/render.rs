@@ -1015,7 +1015,7 @@ pub(crate) fn render(
     };
     // The focused caret's buffer row — from the revision-cached line index (O(log n)) rather than an
     // O(cursor-offset) newline scan every frame. `line_idx` is refreshed on this same focused buffer.
-    let caret_line = line_idx.line_of(focus.view.cursor().min(fbytes.len()));
+    let caret_line = line_idx.line_of(focus.view.cursor().0.min(fbytes.len()));
     // #616: the focused buffer's diagnostics as signs, the most severe one on each line.
     let signs: Vec<(usize, char, Color)> = {
         use crate::lsp::model::Severity;
@@ -1055,7 +1055,7 @@ pub(crate) fn render(
             focus.view.top(),
             folds,
             virt_lines,
-            focus.view.cursor(),
+            focus.view.cursor().0,
             focus.view.mode(),
         ),
         None => (0, 0),
@@ -1077,8 +1077,11 @@ pub(crate) fn render(
         } else {
             &[]
         };
-        let sel = p.view.selection_span(pbytes);
-        let block = p.view.block_spans(pbytes);
+        let sel = p.view.selection_span(pbytes).map(|(s, e)| (s.0, e.0));
+        let block: Option<Vec<(usize, usize)>> = p
+            .view
+            .block_spans(pbytes)
+            .map(|rows| rows.into_iter().map(|(s, e)| (s.0, e.0)).collect());
         // The focused pane also paints the `:s///c` confirm match / incsearch+hlsearch matches (F-009
         // #1) in reverse video, on top of any live Visual selection.
         let hl: &[(usize, usize)] = if i == ws.focus() { focus_hl } else { &[] };
@@ -1140,7 +1143,7 @@ pub(crate) fn render(
             underline: &underline,
             conceal: pane_conceal,
             caret_line,
-            cursor_line: idx.line_of(p.view.cursor().min(pbytes.len())),
+            cursor_line: idx.line_of(p.view.cursor().0.min(pbytes.len())),
             virt: pane_virt,
             folds: pane_folds,
             signs: if i == ws.focus() { &signs } else { &[] },

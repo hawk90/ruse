@@ -207,7 +207,7 @@ impl LspCoordinator {
         revision: Revision,
     ) {
         if let Some((key_s, uri)) = self.focused_server(ws, files) {
-            let cur = ws.focused().view.cursor().min(snapshot.len());
+            let cur = ws.focused().view.cursor().0.min(snapshot.len());
             let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, cur);
             self.completion_req = self.send(
                 key_s,
@@ -411,7 +411,7 @@ impl LspCoordinator {
             }
         }
         // Apply completion responses now the `self.lsp` borrow is released (ingest_completion is `&mut self`).
-        let cur = ws.focused().view.cursor().min(snapshot.len());
+        let cur = ws.focused().view.cursor().0.min(snapshot.len());
         for (rid, req_rev, result) in completion_responses {
             self.ingest_completion(rid, req_rev, &result, cur, snapshot, revision);
         }
@@ -499,7 +499,7 @@ impl LspCoordinator {
                     open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);
                 if opened.id.is_some() {
                     let bytes = ws.focused().doc.bytes().to_vec();
-                    ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                    ws.place_focused_cursor(BytePos(lsp::model::lsp_pos_to_byte(&bytes, l, c)));
                 } else {
                     *status = opened.status;
                 }
@@ -624,7 +624,7 @@ impl LspCoordinator {
             let item = menu.items[menu.selected].clone();
             let prefix_len = menu.prefix_len;
             self.close_completion();
-            let cursor = ws.focused().view.cursor();
+            let cursor = ws.focused().view.cursor().0;
             let start = cursor.saturating_sub(prefix_len);
             // A snippet item's `insert` is a snippet body → expand to plain text + the first-tabstop cursor;
             // a plain item inserts literally (cursor after it).
@@ -721,7 +721,7 @@ impl LspCoordinator {
             return false;
         }
         if let Some((key_s, uri)) = self.focused_server(ws, files) {
-            let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, ws.focused().view.cursor());
+            let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, ws.focused().view.cursor().0);
             let hover = k;
             let method = if hover {
                 "textDocument/hover"
@@ -775,7 +775,8 @@ impl LspCoordinator {
                 *status = "formatting…".to_string();
             }
             Ex::Rename(new_name) => {
-                let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, ws.focused().view.cursor());
+                let (line, ch) =
+                    lsp::model::byte_to_lsp_pos(snapshot, ws.focused().view.cursor().0);
                 self.send(
                     key_s,
                     "textDocument/rename",
@@ -785,7 +786,8 @@ impl LspCoordinator {
                 *status = format!("renaming → {new_name}…");
             }
             Ex::References => {
-                let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, ws.focused().view.cursor());
+                let (line, ch) =
+                    lsp::model::byte_to_lsp_pos(snapshot, ws.focused().view.cursor().0);
                 self.send(
                     key_s,
                     "textDocument/references",
@@ -795,7 +797,7 @@ impl LspCoordinator {
                 *status = "finding references…".to_string();
             }
             Ex::CodeAction => {
-                let cursor = ws.focused().view.cursor();
+                let cursor = ws.focused().view.cursor().0;
                 let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, cursor);
                 // Reconstruct the LSP diagnostics overlapping the cursor so the server offers their
                 // quickfixes (alongside cursor-position assists/refactors).

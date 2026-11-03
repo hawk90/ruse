@@ -33,7 +33,7 @@ fn drive_ruse(text: &str, ops: &[String], point: usize) -> (EditorState, Vec<Str
     // The Emacs profile rests point BETWEEN characters (D-050 / RFC-0015), the same gravity the frontend
     // installs for `RUSE_PROFILE=emacs`; without it every Emacs edit would be Vim-clamped one column short.
     st.set_caret_gravity(CaretGravity::BetweenChar);
-    st.set_cursor(char_to_byte(text, point));
+    st.set_cursor(ruse_core::BytePos(char_to_byte(text, point)));
     let mut unknown = Vec::new();
     for op in ops {
         match by_name(op) {
@@ -148,8 +148,8 @@ fn parity_ruse_vs_emacs_oracle() {
         // ruse observables.
         let r_text = ruse_text(&st);
         let joined = r_text.join("\n");
-        let r_point = byte_to_char(&joined, st.cursor());
-        let r_mark = st.mark().map(|m| byte_to_char(&joined, m));
+        let r_point = byte_to_char(&joined, st.cursor().0);
+        let r_mark = st.mark().map(|m| byte_to_char(&joined, m.0));
         let r_kill = ruse_kill(&st);
 
         // oracle observables.

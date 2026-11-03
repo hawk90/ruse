@@ -399,9 +399,9 @@ mod tests {
         ];
         let t = Trace::record_with_options(initial, &opts, &[], vec![search.clone()]);
         let t = Trace::from_text(&t.to_text()).unwrap();
-        assert_eq!(t.replay(initial).unwrap().cursor(), 2);
+        assert_eq!(t.replay(initial).unwrap().cursor().0, 2);
         let plain = Trace::record(initial, vec![search]);
-        assert_eq!(plain.replay(initial).unwrap().cursor(), 6);
+        assert_eq!(plain.replay(initial).unwrap().cursor().0, 6);
         let t = Trace::record_with_options(initial, &opts, &[], vec![]);
         assert!(t
             .to_text()

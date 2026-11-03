@@ -5,6 +5,7 @@
 //! The public types stay `pub` and remain reachable at the crate root via `crate::lib`'s re-export.
 
 use crate::pattern::{Match, Regex};
+use crate::pos::BytePos;
 
 /// The pure decision for one command.
 #[must_use]
@@ -72,9 +73,9 @@ pub struct SubFlags {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Substitution {
     /// Byte offset of the reported match start (the `\zs`-adjusted start).
-    pub start: usize,
+    pub start: BytePos,
     /// Byte offset of the reported match end.
-    pub end: usize,
+    pub end: BytePos,
     /// The replacement bytes to write over `[start, end)`.
     pub replacement: Vec<u8>,
     /// 0-based line index the match sits on (for the "M lines" echo + cursor placement).
@@ -187,8 +188,8 @@ pub(crate) fn find_substitutions(
             };
             for m in matches {
                 out.push(Substitution {
-                    start: ls + m.start,
-                    end: ls + m.end,
+                    start: BytePos(ls + m.start),
+                    end: BytePos(ls + m.end),
                     replacement: expand_replacement(replacement, &line[m.start..m.end]),
                     line: li,
                 });
@@ -258,8 +259,8 @@ pub(crate) fn find_substitutions(
                 // A match through the last line break replaces up to it; the break stays.
                 stop = m.end >= n;
                 out.push(Substitution {
-                    start: m.start,
-                    end: m.end.min(n - 1).max(m.start),
+                    start: BytePos(m.start),
+                    end: BytePos(m.end.min(n - 1).max(m.start)),
                     replacement: expand_replacement(replacement, &hay[m.start..m.end]),
                     line: group,
                 });

@@ -55,7 +55,7 @@ impl<'a> Win<'a> {
             ruse_core::OptionLevel::Both,
         );
         ws.update_window_options(ruse_core::OptionLevel::Both, opts);
-        ws.place_focused_cursor(self.cursor);
+        ws.place_focused_cursor(ruse_core::BytePos(self.cursor));
         let bytes = self.text.as_bytes();
         let idx = li(bytes);
         let text = PaneText { bytes, idx: &idx };

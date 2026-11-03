@@ -27,7 +27,7 @@ fn modal_insert_session_edits_the_document() {
     assert_eq!(st.as_str(), Some("hello world"));
     assert_eq!(st.mode(), Mode::Normal);
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         10,
         "leaving insert nudges the cursor left onto 'd'"
     );
@@ -87,7 +87,7 @@ fn motions_and_deletes() {
     apply_command(&mut st, &Command::DeleteUnder(1)); // delete 'c'
     assert_eq!(st.as_str(), Some("ab"));
     apply_command(&mut st, &Command::MoveLineStart);
-    assert_eq!(st.cursor(), 0);
+    assert_eq!(st.cursor().0, 0);
     apply_command(&mut st, &Command::DeleteUnder(1)); // delete 'a'
     assert_eq!(st.as_str(), Some("b"));
 }
@@ -99,10 +99,10 @@ fn multibyte_cursor_moves_by_char_not_byte() {
     for _ in 0..4 {
         apply_command(&mut st, &Command::MoveRight);
     }
-    assert_eq!(st.cursor(), 5, "4 chars = 5 bytes (é is 2)");
+    assert_eq!(st.cursor().0, 5, "4 chars = 5 bytes (é is 2)");
     apply_command(&mut st, &Command::MoveLeft);
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         3,
         "back over é lands on its boundary, not byte 4"
     );
@@ -116,21 +116,21 @@ fn cursor_moves_by_grapheme_cluster_not_codepoint() {
     let emoji_end = 1 + "👨\u{200D}👩\u{200D}👧".len(); // 19
     let mut st = EditorState::new(s.as_bytes().to_vec());
     apply_command(&mut st, &Command::MoveRight);
-    assert_eq!(st.cursor(), 1, "past 'a'");
+    assert_eq!(st.cursor().0, 1, "past 'a'");
     apply_command(&mut st, &Command::MoveRight);
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         emoji_end,
         "one `l` crosses the ENTIRE ZWJ emoji, not one codepoint"
     );
     apply_command(&mut st, &Command::MoveRight);
-    assert_eq!(st.cursor(), emoji_end + 1, "past 'b'");
+    assert_eq!(st.cursor().0, emoji_end + 1, "past 'b'");
     // And back: `h` returns over the whole cluster in one step.
     apply_command(&mut st, &Command::MoveLeft);
-    assert_eq!(st.cursor(), emoji_end);
+    assert_eq!(st.cursor().0, emoji_end);
     apply_command(&mut st, &Command::MoveLeft);
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         1,
         "h crosses the whole emoji back to just after 'a'"
     );
@@ -142,7 +142,7 @@ fn cursor_crosses_a_combining_sequence_as_one() {
     let mut st = EditorState::new("e\u{0301}z".as_bytes().to_vec());
     apply_command(&mut st, &Command::MoveRight);
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         3,
         "past the base+combining cluster, not stopping on the mark"
     );
@@ -170,12 +170,12 @@ fn trace_replay_is_deterministic() {
         .unwrap_or_else(|e| panic!("replay: {e:?}"));
     // Same initial document + same trace ⇒ identical final state (the determinism contract).
     assert_eq!(a.as_str(), b.as_str());
-    assert_eq!(a.cursor(), b.cursor());
+    assert_eq!(a.cursor().0, b.cursor().0);
     assert_eq!(a.mode(), b.mode());
     // …and it equals driving the commands directly.
     let direct = drive("hello", &insert_world());
     assert_eq!(a.as_str(), direct.as_str());
-    assert_eq!(a.cursor(), direct.cursor());
+    assert_eq!(a.cursor().0, direct.cursor().0);
 }
 
 #[test]
@@ -214,11 +214,11 @@ fn trace_refuses_a_mismatched_initial_document() {
 fn word_motions() {
     let mut st = EditorState::new(b"foo bar baz".to_vec());
     apply_command(&mut st, &Command::Move(1, Motion::WordFwd));
-    assert_eq!(st.cursor(), 4, "start of bar");
+    assert_eq!(st.cursor().0, 4, "start of bar");
     apply_command(&mut st, &Command::Move(1, Motion::WordFwd));
-    assert_eq!(st.cursor(), 8, "start of baz");
+    assert_eq!(st.cursor().0, 8, "start of baz");
     apply_command(&mut st, &Command::Move(1, Motion::WordBack));
-    assert_eq!(st.cursor(), 4);
+    assert_eq!(st.cursor().0, 4);
 }
 
 #[test]
@@ -330,11 +330,11 @@ fn ciw_changes_inner_word() {
 fn search_next_prev_with_wrap() {
     let mut st = EditorState::new(b"foo bar foo baz".to_vec());
     apply_command(&mut st, &Command::SearchNext("foo".into()));
-    assert_eq!(st.cursor(), 8, "next foo after the cursor");
+    assert_eq!(st.cursor().0, 8, "next foo after the cursor");
     apply_command(&mut st, &Command::SearchNext("foo".into()));
-    assert_eq!(st.cursor(), 0, "wraps to the first");
+    assert_eq!(st.cursor().0, 0, "wraps to the first");
     apply_command(&mut st, &Command::SearchPrev("foo".into()));
-    assert_eq!(st.cursor(), 8, "prev wraps to the last");
+    assert_eq!(st.cursor().0, 8, "prev wraps to the last");
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn search_is_replayable() {
     let st = trace
         .replay(b"a foo b foo")
         .unwrap_or_else(|e| panic!("{e:?}"));
-    assert_eq!(st.cursor(), 2, "moved to the first foo");
+    assert_eq!(st.cursor().0, 2, "moved to the first foo");
     assert_eq!(
         Trace::from_text(&trace.to_text()).unwrap(),
         trace,

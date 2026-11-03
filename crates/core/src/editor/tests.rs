@@ -18,13 +18,13 @@ mod register_tests {
     fn set_cursor_clamps_out_of_range_and_mid_codepoint() {
         // Past the buffer end → clamped to the end (no panic in the following col_of/slice).
         let mut st = EditorState::new(b"abc".to_vec());
-        st.set_cursor(999);
-        assert_eq!(st.cursor(), 3);
+        st.set_cursor(BytePos(999));
+        assert_eq!(st.cursor().0, 3);
 
         // Mid-codepoint → snapped back to the char boundary (`é` is 2 bytes).
         let mut st = EditorState::new("é".as_bytes().to_vec());
-        st.set_cursor(1);
-        assert_eq!(st.cursor(), 0);
+        st.set_cursor(BytePos(1));
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod register_tests {
         );
         assert_eq!(text(&st), "foo ");
         assert_eq!(st.mode(), Mode::Insert);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         // At column 0 it is a no-op.
         let st = run("hi", &[Command::EnterInsert, Command::InsertDeleteWordBack]);
         assert_eq!(text(&st), "hi");
@@ -153,7 +153,7 @@ mod register_tests {
             &[Command::AppendLineEnd, Command::InsertDeleteToLineStart],
         );
         assert_eq!(text(&st), "    ", "indent preserved on the first C-u");
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         let st = run(
             "    hello",
             &[
@@ -171,11 +171,11 @@ mod register_tests {
         let st = run("x", &[Command::AppendLineEnd, Command::InsertIndent]);
         assert_eq!(text(&st), "    x");
         assert_eq!(st.mode(), Mode::Insert);
-        assert_eq!(st.cursor(), 5, "caret moved right by the inserted indent");
+        assert_eq!(st.cursor().0, 5, "caret moved right by the inserted indent");
         // `<C-d>` on an indented line removes one shiftwidth; the caret rides left.
         let st = run("    x", &[Command::AppendLineEnd, Command::InsertDedent]);
         assert_eq!(text(&st), "x");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
         // `<C-d>` with no indent is a no-op.
         let st = run("x", &[Command::EnterInsert, Command::InsertDedent]);
         assert_eq!(text(&st), "x");
@@ -194,7 +194,7 @@ mod register_tests {
         );
         assert_eq!(text(&st), "foofoobar");
         assert_eq!(st.mode(), Mode::Insert, "stays in Insert after <C-r>");
-        assert_eq!(st.cursor(), 3, "cursor lands after the inserted text");
+        assert_eq!(st.cursor().0, 3, "cursor lands after the inserted text");
     }
 
     #[test]
@@ -314,7 +314,7 @@ mod register_tests {
             apply_command(&mut st, &Command::SetRegister(Some('/')));
             apply_command(&mut st, &op);
             assert_eq!(st.bytes(), WORDS, "{op:?}: nothing is deleted");
-            st.cursor()
+            st.cursor().0
         };
         let line2_w = [
             Command::Move(1, Motion::Down),
@@ -353,10 +353,10 @@ mod register_tests {
             },
         );
         assert!(effects.contains(&Effect::Beep));
-        assert_eq!(st.cursor(), 31 + 8);
+        assert_eq!(st.cursor().0, 31 + 8);
         apply_command(&mut st, &Command::Move(1, Motion::Up));
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             8,
             "the wanted column is the cursor's, not the line's end"
         );
@@ -371,7 +371,7 @@ mod register_tests {
         );
         assert_eq!(text(&st), "7xy");
         assert_eq!(st.mode(), Mode::Insert, "stays in Insert after <C-r>=");
-        assert_eq!(st.cursor(), 1, "cursor lands after the inserted result");
+        assert_eq!(st.cursor().0, 1, "cursor lands after the inserted result");
     }
 
     #[test]
@@ -557,8 +557,8 @@ mod register_tests {
         assert_eq!(text(&p), "ffoo");
         assert_eq!(text(&gp), "ffoo", "same text as p");
         assert_eq!(
-            gp.cursor(),
-            p.cursor() + 1,
+            gp.cursor().0,
+            p.cursor().0 + 1,
             "gp rests one past where p rested"
         );
     }
@@ -615,7 +615,7 @@ mod register_tests {
         );
         assert_eq!(text(&st), "    foo\n    foo\nbar");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             12,
             "on the 'f' of the pasted line, past its indent"
         );
@@ -633,7 +633,7 @@ mod register_tests {
             ],
         );
         assert_eq!(text(&st), "    foo\n    foo\nbar");
-        assert_eq!(st.cursor(), 4, "on the 'f' of the pasted-above line");
+        assert_eq!(st.cursor().0, 4, "on the 'f' of the pasted-above line");
     }
 
     #[test]
@@ -674,7 +674,7 @@ mod register_tests {
             ],
         );
         assert_eq!(text(&st), "aaabc");
-        assert_eq!(st.cursor(), 2, "cursor lands on the last pasted byte");
+        assert_eq!(st.cursor().0, 2, "cursor lands on the last pasted byte");
         assert_eq!(
             st.register().text(),
             b"a",
@@ -718,7 +718,7 @@ mod register_tests {
             ],
         );
         assert_eq!(text(&st), "foo barfoo");
-        assert_eq!(st.cursor(), 9);
+        assert_eq!(st.cursor().0, 9);
     }
 
     #[test]
@@ -781,7 +781,11 @@ mod register_tests {
         // at the indent end, and captures the WHOLE line linewise (indent + trailing newline included).
         let st = run("  hello\nworld", &[Command::Change(1, Motion::Line)]);
         assert_eq!(text(&st), "  \nworld", "leading indent survives cc");
-        assert_eq!(st.cursor(), 2, "cursor sits at the end of the kept indent");
+        assert_eq!(
+            st.cursor().0,
+            2,
+            "cursor sits at the end of the kept indent"
+        );
         assert_eq!(st.mode(), Mode::Insert);
         assert!(st.register().is_linewise());
         assert_eq!(st.register().text(), b"  hello\n");
@@ -851,7 +855,7 @@ mod visual_swap_tests {
             "\ngamma\n",
             "one empty line replaces the two; gamma kept"
         );
-        assert_eq!(st.cursor(), 0, "caret on the new empty line");
+        assert_eq!(st.cursor().0, 0, "caret on the new empty line");
         assert_eq!(st.mode(), Mode::Insert, "change enters Insert");
         assert!(
             st.register().is_linewise(),
@@ -868,7 +872,7 @@ mod visual_swap_tests {
         apply_command(&mut st, &Command::InsertChar('X'));
         apply_command(&mut st, &Command::EnterNormal);
         assert_eq!(text(&st), "X\ngamma\n", "final bytes match nvim VjcX<Esc>");
-        assert_eq!(st.cursor(), 0, "caret on the changed line's only char");
+        assert_eq!(st.cursor().0, 0, "caret on the changed line's only char");
     }
 
     #[test]
@@ -888,7 +892,7 @@ mod visual_swap_tests {
             "  \nworld\n",
             "leading indent survives visual-linewise change"
         );
-        assert_eq!(st.cursor(), 2, "caret at the end of the kept indent");
+        assert_eq!(st.cursor().0, 2, "caret at the end of the kept indent");
         assert_eq!(st.mode(), Mode::Insert);
         assert!(st.register().is_linewise());
         assert_eq!(st.register().text(), b"  hello\n");
@@ -1043,7 +1047,7 @@ mod visual_swap_tests {
             ],
         );
         assert_eq!(text(&st), " world");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         assert_eq!(st.register().text(), b"hello");
         assert!(!st.register().is_linewise());
         assert_eq!(st.mode(), Mode::Normal);
@@ -1085,7 +1089,7 @@ mod visual_swap_tests {
         let st = run("abc", &[Command::ReselectVisual]);
         assert_eq!(text(&st), "abc");
         assert_eq!(st.mode(), Mode::Normal);
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     // Build the last-visual store by making a selection and leaving it (Esc = EnterNormal). Shared setup.
@@ -1108,9 +1112,9 @@ mod visual_swap_tests {
         ];
         let mut st = select_then_normal("foo bar baz", &sel);
         apply_command(&mut st, &Command::GotoVisualMarkStart);
-        assert_eq!(st.cursor(), 4, "`< on word start");
+        assert_eq!(st.cursor().0, 4, "`< on word start");
         apply_command(&mut st, &Command::GotoVisualMarkEnd);
-        assert_eq!(st.cursor(), 6, "`> on word end (inclusive last char)");
+        assert_eq!(st.cursor().0, 6, "`> on word end (inclusive last char)");
     }
 
     #[test]
@@ -1127,13 +1131,13 @@ mod visual_swap_tests {
         let text = "  alpha\nbeta\n  gamma";
         let mut st = select_then_normal(text, &sel);
         apply_command(&mut st, &Command::GotoVisualMarkStartLine);
-        assert_eq!(st.cursor(), 2, "'< first non-blank of first line");
+        assert_eq!(st.cursor().0, 2, "'< first non-blank of first line");
         apply_command(&mut st, &Command::GotoVisualMarkEndLine);
-        assert_eq!(st.cursor(), 8, "'> first non-blank of last line");
+        assert_eq!(st.cursor().0, 8, "'> first non-blank of last line");
         apply_command(&mut st, &Command::GotoVisualMarkStart);
-        assert_eq!(st.cursor(), 0, "`< col 0 of first line (linewise)");
+        assert_eq!(st.cursor().0, 0, "`< col 0 of first line (linewise)");
         apply_command(&mut st, &Command::GotoVisualMarkEnd);
-        assert_eq!(st.cursor(), 11, "`> last char of last line (linewise)");
+        assert_eq!(st.cursor().0, 11, "`> last char of last line (linewise)");
     }
 
     #[test]
@@ -1151,9 +1155,9 @@ mod visual_swap_tests {
         let mut st = run("foo bar baz", &st_setup);
         assert_eq!(text(&st), "foo  baz");
         apply_command(&mut st, &Command::GotoVisualMarkStart);
-        assert_eq!(st.cursor(), 4, "`< around the deleted region");
+        assert_eq!(st.cursor().0, 4, "`< around the deleted region");
         apply_command(&mut st, &Command::GotoVisualMarkEnd);
-        assert_eq!(st.cursor(), 6, "`> around the deleted region");
+        assert_eq!(st.cursor().0, 6, "`> around the deleted region");
     }
 
     #[test]
@@ -1170,9 +1174,9 @@ mod visual_swap_tests {
         ];
         let mut st = select_then_normal("abcde\nfghij\nklmno", &sel);
         apply_command(&mut st, &Command::GotoVisualMarkStart);
-        assert_eq!(st.cursor(), 1, "`< top corner");
+        assert_eq!(st.cursor().0, 1, "`< top corner");
         apply_command(&mut st, &Command::GotoVisualMarkEnd);
-        assert_eq!(st.cursor(), 8, "`> bottom corner");
+        assert_eq!(st.cursor().0, 8, "`> bottom corner");
     }
 
     #[test]
@@ -1185,9 +1189,9 @@ mod visual_swap_tests {
             Command::GotoVisualMarkEndLine,
         ] {
             let mut st = run("hello", &[Command::Move(1, Motion::Right)]);
-            let before = st.cursor();
+            let before = st.cursor().0;
             apply_command(&mut st, &cmd);
-            assert_eq!(st.cursor(), before, "no-op before any visual selection");
+            assert_eq!(st.cursor().0, before, "no-op before any visual selection");
             assert_eq!(text(&st), "hello");
         }
     }
@@ -1249,13 +1253,13 @@ mod visual_swap_tests {
             ],
         );
         let span_before = base.selection_span();
-        let cur_before = base.cursor();
+        let cur_before = base.cursor().0;
 
         let mut st = base;
         apply_command(&mut st, &Command::SwapSelectionEnds);
         apply_command(&mut st, &Command::SwapSelectionEnds);
         assert_eq!(st.selection_span(), span_before, "oo restores the span");
-        assert_eq!(st.cursor(), cur_before, "oo restores the active end");
+        assert_eq!(st.cursor().0, cur_before, "oo restores the active end");
     }
 
     #[test]
@@ -1281,7 +1285,7 @@ mod visual_swap_tests {
     fn swap_outside_a_selection_is_a_noop() {
         let st = run("abcde", &[Command::SwapSelectionEnds]);
         assert_eq!(text(&st), "abcde");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         assert_eq!(st.mode(), Mode::Normal);
         assert!(st.selection_span().is_none());
     }
@@ -1307,7 +1311,7 @@ mod single_key_edit_tests {
     fn replace_char_keeps_the_cursor() {
         let st = run("abc", &[Command::MoveRight, Command::ReplaceChar(1, 'X')]);
         assert_eq!(text(&st), "aXc");
-        assert_eq!(st.cursor(), 1, "r leaves the cursor on the replaced char");
+        assert_eq!(st.cursor().0, 1, "r leaves the cursor on the replaced char");
         assert_eq!(st.mode(), Mode::Normal);
     }
 
@@ -1331,7 +1335,7 @@ mod single_key_edit_tests {
         // Vim: a bare `$` rests ON the last char (byte 4 of "hello"), unlike the `d$` operator span which
         // reaches the line end. This is what makes `$d0` leave the final char (parity fixture d_to_bol).
         let st = run("hello", &[Command::Move(1, Motion::LineEnd)]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         let st = run(
             "hello world",
             &[
@@ -1349,11 +1353,11 @@ mod single_key_edit_tests {
         // `3rz` replaces three chars and leaves the cursor on the last one.
         let st = run("abcdef", &[Command::ReplaceChar(3, 'z')]);
         assert_eq!(text(&st), "zzzdef");
-        assert_eq!(st.cursor(), 2, "cursor lands on the last replaced char");
+        assert_eq!(st.cursor().0, 2, "cursor lands on the last replaced char");
         // Fewer than `count` chars remain on the line: a clean no-op (Vim never partial-replaces).
         let st = run("ab", &[Command::ReplaceChar(3, 'z')]);
         assert_eq!(text(&st), "ab");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -1372,7 +1376,7 @@ mod single_key_edit_tests {
             "ab\ndef",
             "replacing 'c' with a newline splits after 'ab'"
         );
-        assert_eq!(st.cursor(), 3, "cursor on 'd' (start of the new line)");
+        assert_eq!(st.cursor().0, 3, "cursor on 'd' (start of the new line)");
         // `{count}r<CR>` replaces count chars with a SINGLE newline, not count newlines.
         let st = run("abcdef", &[Command::ReplaceChar(3, '\n')]);
         assert_eq!(
@@ -1380,7 +1384,7 @@ mod single_key_edit_tests {
             "\ndef",
             "3r<CR> removes 'abc', inserts one line break"
         );
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
     }
 
     #[test]
@@ -1388,7 +1392,7 @@ mod single_key_edit_tests {
         // `3x` deletes three chars into the unnamed register (charwise); clamps at EOL.
         let st = run("abcdef", &[Command::DeleteUnder(3)]);
         assert_eq!(text(&st), "def");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         assert_eq!(st.register().text(), b"abc");
         assert!(!st.register().is_linewise());
         // Fewer than `count` chars left: delete to EOL (not across the newline).
@@ -1400,11 +1404,11 @@ mod single_key_edit_tests {
     fn toggle_case_flips_and_moves_right() {
         let st = run("aBc", &[Command::ToggleCase(1)]);
         assert_eq!(text(&st), "ABc");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
         // On a non-letter, `~` just moves right.
         let st = run("1a", &[Command::ToggleCase(1)]);
         assert_eq!(text(&st), "1a");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
     }
 
     #[test]
@@ -1412,19 +1416,19 @@ mod single_key_edit_tests {
         // `3~` toggles three chars, leaving the cursor past the last (clamped at EOL).
         let st = run("abcdef", &[Command::ToggleCase(3)]);
         assert_eq!(text(&st), "ABCdef");
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
         // Clamp: fewer than `count` chars left toggles to EOL. The cursor would land past the last char,
         // but Vim never rests the Normal-mode cursor on the newline, so `commit` pulls it onto the last char.
         let st = run("aB", &[Command::ToggleCase(9)]);
         assert_eq!(text(&st), "Ab");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
     }
 
     #[test]
     fn join_lines_uses_one_space_and_drops_indent() {
         let st = run("foo\n   bar", &[Command::JoinLines(1)]);
         assert_eq!(text(&st), "foo bar");
-        assert_eq!(st.cursor(), 3, "cursor lands on the joined space");
+        assert_eq!(st.cursor().0, 3, "cursor lands on the joined space");
     }
 
     #[test]
@@ -1439,7 +1443,7 @@ mod single_key_edit_tests {
         let st = run("a\nb\nc\nd", &[Command::JoinLines(3)]);
         assert_eq!(text(&st), "a b c\nd", "3J joins three lines");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             3,
             "cursor on the last join (the space before 'c')"
         );
@@ -1480,7 +1484,7 @@ mod single_key_edit_tests {
         // gJ removes only the newline: the next line's leading whitespace is preserved, no space added.
         let st = run("foo\n   bar", &[Command::JoinLinesNoSpace(1)]);
         assert_eq!(text(&st), "foo   bar");
-        assert_eq!(st.cursor(), 3, "cursor rests at the join seam");
+        assert_eq!(st.cursor().0, 3, "cursor rests at the join seam");
     }
 
     #[test]
@@ -1497,14 +1501,14 @@ mod single_key_edit_tests {
             &[Command::Move(4, Motion::Right), Command::IncrementNumber(1)],
         );
         assert_eq!(text(&st), "x = 5");
-        assert_eq!(st.cursor(), 4, "cursor on the last digit of the result");
+        assert_eq!(st.cursor().0, 4, "cursor on the last digit of the result");
         // Cursor BEFORE the number still finds it forward on the line.
         let st = run("x = 4", &[Command::IncrementNumber(3)]);
         assert_eq!(text(&st), "x = 7");
         // A carry grows the digit count; cursor on the new last digit.
         let st = run("9", &[Command::IncrementNumber(1)]);
         assert_eq!(text(&st), "10");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
     }
 
     #[test]
@@ -1606,7 +1610,7 @@ mod single_key_edit_tests {
         );
         assert_eq!(text(&st), "2\n6\n10");
         assert_eq!(st.mode(), Mode::Normal, "returns to Normal");
-        assert_eq!(st.cursor(), 0, "caret on the first changed line");
+        assert_eq!(st.cursor().0, 0, "caret on the first changed line");
         // Lines without a number are skipped, not errored; the first number on a line is the target.
         let st = run(
             "a 3 b\nnope\nx 10",
@@ -1679,7 +1683,7 @@ mod single_key_edit_tests {
         );
         assert_eq!(text(&st), "008\n009");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             0,
             "caret at col 0 of the first line, not on the last digit"
         );
@@ -1699,7 +1703,7 @@ mod single_key_edit_tests {
         );
         assert_eq!(text(&st), "-2\n-1");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             0,
             "caret at col 0, not on the digit after the '-'"
         );
@@ -1719,7 +1723,7 @@ mod single_key_edit_tests {
         );
         assert_eq!(text(&st), "abc\n6\n7");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             0,
             "caret on the first SELECTED line (numberless), not the first CHANGED"
         );
@@ -1740,7 +1744,7 @@ mod single_key_edit_tests {
         );
         assert_eq!(text(&st), "a 08");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             2,
             "caret at the charwise selection's left edge"
         );
@@ -1835,13 +1839,13 @@ mod single_key_edit_tests {
             ],
         );
         // The change was at the start of line 2 (byte 4); `` `. `` lands there.
-        assert_eq!(st.cursor(), 4, "`. returns to the last change position");
+        assert_eq!(st.cursor().0, 4, "`. returns to the last change position");
     }
 
     #[test]
     fn goto_last_change_before_any_edit_is_noop() {
         let st = run("abc", &[Command::GotoLastChange]);
-        assert_eq!(st.cursor(), 0, "no last change yet → cursor unmoved");
+        assert_eq!(st.cursor().0, 0, "no last change yet → cursor unmoved");
     }
 
     #[test]
@@ -1857,19 +1861,19 @@ mod single_key_edit_tests {
                 Command::Move(1, Motion::Up),   // move away
             ],
         );
-        let change2 = st.cursor(); // where we are is near change #2's line; capture positions via nav
-                                   // g; → newest change (#2), g; again → older (#1 at byte 0), g, → back to newest (#2).
+        let change2 = st.cursor().0; // where we are is near change #2's line; capture positions via nav
+                                     // g; → newest change (#2), g; again → older (#1 at byte 0), g, → back to newest (#2).
         let mut st = st;
         crate::editor::apply_command(&mut st, &Command::GotoOlderChange);
-        let newest = st.cursor();
+        let newest = st.cursor().0;
         crate::editor::apply_command(&mut st, &Command::GotoOlderChange);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             0,
             "second g; reaches the oldest change at byte 0"
         );
         crate::editor::apply_command(&mut st, &Command::GotoNewerChange);
-        assert_eq!(st.cursor(), newest, "g, returns to the newer change");
+        assert_eq!(st.cursor().0, newest, "g, returns to the newer change");
         let _ = change2;
     }
 
@@ -1885,13 +1889,13 @@ mod single_key_edit_tests {
                 Command::GotoNamedMark('a'),
             ],
         );
-        assert_eq!(st.cursor(), 3, "`a returns to where mark a was set");
+        assert_eq!(st.cursor().0, 3, "`a returns to where mark a was set");
     }
 
     #[test]
     fn goto_unset_named_mark_is_noop() {
         let st = run("abc", &[Command::GotoNamedMark('q')]);
-        assert_eq!(st.cursor(), 0, "jumping an unset mark does not move");
+        assert_eq!(st.cursor().0, 0, "jumping an unset mark does not move");
     }
 
     #[test]
@@ -1961,7 +1965,7 @@ mod single_key_edit_tests {
             "abc DEF ghi",
             "gU`a upcases cursor..mark charwise"
         );
-        assert_eq!(st.cursor(), 4, "cursor lands at the span start");
+        assert_eq!(st.cursor().0, 4, "cursor lands at the span start");
         // Direction independence: mark AFTER the cursor recases the same span.
         let st = run(
             "ABC DEF GHI",
@@ -2105,7 +2109,7 @@ mod single_key_edit_tests {
             ],
         );
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             5,
             "'a lands on the line's first non-blank, not the mark column"
         );
@@ -2125,7 +2129,7 @@ mod single_key_edit_tests {
             ],
         );
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             6,
             "'. lands on line 2's first non-blank (byte 6, the 'c')"
         );
@@ -2147,7 +2151,7 @@ mod single_key_edit_tests {
             ],
         );
         assert_eq!(st.mode(), Mode::Insert, "gi enters Insert");
-        assert_eq!(st.cursor(), 5, "gi resumes at the last-insert caret");
+        assert_eq!(st.cursor().0, 5, "gi resumes at the last-insert caret");
         assert_eq!(text(&st), "ab\nXYcd", "no text change from gi itself");
     }
 
@@ -2155,7 +2159,7 @@ mod single_key_edit_tests {
     fn gi_before_any_insert_goes_to_start() {
         let st = run("abc", &[Command::InsertAtLastInsert]);
         assert_eq!(st.mode(), Mode::Insert);
-        assert_eq!(st.cursor(), 0, "no prior insert → start of buffer");
+        assert_eq!(st.cursor().0, 0, "no prior insert → start of buffer");
     }
 
     #[test]
@@ -2172,7 +2176,7 @@ mod single_key_edit_tests {
             ],
         );
         assert!(
-            st.cursor() <= text(&st).len(),
+            st.cursor().0 <= text(&st).len(),
             "mark jump stays in range after shrink"
         );
     }
@@ -2185,23 +2189,27 @@ mod single_key_edit_tests {
         // Start on line 2, jump to line 1 (gg), then to last line (G).
         let mut st = crate::editor::EditorState::new(src.as_bytes().to_vec());
         crate::editor::apply_command(&mut st, &Command::Move(2, Motion::Down)); // → line 3 area (not a jump)
-        let before_gg = st.cursor();
+        let before_gg = st.cursor().0;
         crate::editor::apply_command(&mut st, &Command::Move(1, Motion::GotoLine)); // gg → line 1 (a jump)
-        assert_eq!(st.cursor(), 0, "gg to line 1");
+        assert_eq!(st.cursor().0, 0, "gg to line 1");
         crate::editor::apply_command(&mut st, &Command::Move(0, Motion::LastLine)); // G → last line (a jump)
-        let at_last = st.cursor();
+        let at_last = st.cursor().0;
         // CTRL-O: first back saves the current (last line), steps to the newest recorded jump (line-1 pos 0).
         crate::editor::apply_command(&mut st, &Command::GotoOlderJump);
-        assert_eq!(st.cursor(), 0, "CTRL-O returns to the gg position");
+        assert_eq!(st.cursor().0, 0, "CTRL-O returns to the gg position");
         // CTRL-O again: to the position gg jumped FROM (before_gg).
         crate::editor::apply_command(&mut st, &Command::GotoOlderJump);
-        assert_eq!(st.cursor(), before_gg, "second CTRL-O to where gg started");
+        assert_eq!(
+            st.cursor().0,
+            before_gg,
+            "second CTRL-O to where gg started"
+        );
         // CTRL-I forward returns toward the newer jumps.
         crate::editor::apply_command(&mut st, &Command::GotoNewerJump);
-        assert_eq!(st.cursor(), 0, "CTRL-I forward to the gg position");
+        assert_eq!(st.cursor().0, 0, "CTRL-I forward to the gg position");
         crate::editor::apply_command(&mut st, &Command::GotoNewerJump);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             at_last,
             "CTRL-I forward to the saved last-line position"
         );
@@ -2210,7 +2218,7 @@ mod single_key_edit_tests {
     #[test]
     fn jumplist_nav_is_noop_without_jumps() {
         let st = run("abc", &[Command::GotoOlderJump, Command::GotoNewerJump]);
-        assert_eq!(st.cursor(), 0, "nothing recorded → no movement");
+        assert_eq!(st.cursor().0, 0, "nothing recorded → no movement");
     }
 
     #[test]
@@ -2218,15 +2226,19 @@ mod single_key_edit_tests {
         let src = "one\ntwo\nthree\nfour";
         let mut st = crate::editor::EditorState::new(src.as_bytes().to_vec());
         crate::editor::apply_command(&mut st, &Command::Move(2, Motion::Down)); // → line 3 (not a jump)
-        let origin = st.cursor();
+        let origin = st.cursor().0;
         crate::editor::apply_command(&mut st, &Command::Move(1, Motion::GotoLine)); // gg (a jump) → 0
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         // `` `` `` jumps back to where gg left from (the context mark).
         crate::editor::apply_command(&mut st, &Command::GotoContextMark);
-        assert_eq!(st.cursor(), origin, "`` returns to the pre-jump position");
+        assert_eq!(st.cursor().0, origin, "`` returns to the pre-jump position");
         // Repeating toggles back to where we just were (0), because `` is itself a jump.
         crate::editor::apply_command(&mut st, &Command::GotoContextMark);
-        assert_eq!(st.cursor(), 0, "repeated `` toggles to the other position");
+        assert_eq!(
+            st.cursor().0,
+            0,
+            "repeated `` toggles to the other position"
+        );
     }
 
     #[test]
@@ -2235,7 +2247,7 @@ mod single_key_edit_tests {
             "abc",
             &[Command::GotoContextMark, Command::GotoContextMarkLine],
         );
-        assert_eq!(st.cursor(), 0, "no jump recorded → no movement");
+        assert_eq!(st.cursor().0, 0, "no jump recorded → no movement");
     }
 
     #[test]
@@ -2246,7 +2258,7 @@ mod single_key_edit_tests {
             &[Command::Move(3, Motion::Right), Command::GotoOlderJump],
         );
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             3,
             "a plain motion is not a jump; CTRL-O is a no-op"
         );
@@ -2256,14 +2268,14 @@ mod single_key_edit_tests {
     fn change_list_nav_is_noop_at_the_ends_and_before_edits() {
         // No edits → g;/g, do nothing.
         let st = run("abc", &[Command::GotoOlderChange, Command::GotoNewerChange]);
-        assert_eq!(st.cursor(), 0, "no changes → nav is a no-op");
+        assert_eq!(st.cursor().0, 0, "no changes → nav is a no-op");
         // One edit, then g, (newer) with nothing newer is a no-op; g; reaches it.
         let mut st = run("abcd", &[Command::DeleteUnder(1)]);
-        let at_edit = st.cursor();
+        let at_edit = st.cursor().0;
         crate::editor::apply_command(&mut st, &Command::GotoNewerChange);
-        assert_eq!(st.cursor(), at_edit, "g, at the newest end does not move");
+        assert_eq!(st.cursor().0, at_edit, "g, at the newest end does not move");
         crate::editor::apply_command(&mut st, &Command::GotoOlderChange);
-        assert_eq!(st.cursor(), at_edit, "g; lands on the single change");
+        assert_eq!(st.cursor().0, at_edit, "g; lands on the single change");
     }
 
     // --- Vim `[`/`]` change/yank marks (`` `[ `` / `` `] `` / `'[` / `']`) --------------------------
@@ -2280,7 +2292,8 @@ mod single_key_edit_tests {
                 Command::GotoChangeMarkStart,
             ],
         )
-        .cursor();
+        .cursor()
+        .0;
         assert_eq!(start, 4, "`[ lands on the first char of the yanked word");
         let end = run(
             "foo bar baz",
@@ -2290,7 +2303,8 @@ mod single_key_edit_tests {
                 Command::GotoChangeMarkEnd,
             ],
         )
-        .cursor();
+        .cursor()
+        .0;
         assert_eq!(end, 6, "`] lands on the last char of the yanked word");
     }
 
@@ -2310,13 +2324,13 @@ mod single_key_edit_tests {
         let start = {
             let mut cmds = typed.to_vec();
             cmds.push(Command::GotoChangeMarkStart);
-            run("abc", &cmds).cursor()
+            run("abc", &cmds).cursor().0
         };
         assert_eq!(start, 0, "`[ is the first inserted char");
         let end = {
             let mut cmds = typed.to_vec();
             cmds.push(Command::GotoChangeMarkEnd);
-            run("abc", &cmds).cursor()
+            run("abc", &cmds).cursor().0
         };
         assert_eq!(
             end, 5,
@@ -2336,7 +2350,8 @@ mod single_key_edit_tests {
                 Command::GotoChangeMarkStart,
             ],
         )
-        .cursor();
+        .cursor()
+        .0;
         assert_eq!(start, 2, "`[ is the deletion point");
         let end = run(
             "abcdef",
@@ -2347,7 +2362,8 @@ mod single_key_edit_tests {
                 Command::GotoChangeMarkEnd,
             ],
         )
-        .cursor();
+        .cursor()
+        .0;
         assert_eq!(
             end, 2,
             "`] is the deletion point too (a pure delete collapses the marks)"
@@ -2368,13 +2384,13 @@ mod single_key_edit_tests {
         let start = {
             let mut cmds = base.to_vec();
             cmds.push(Command::GotoChangeMarkStart);
-            run("one\ntwo", &cmds).cursor()
+            run("one\ntwo", &cmds).cursor().0
         };
         assert_eq!(start, 4, "`[ is the first char of the put line");
         let end = {
             let mut cmds = base.to_vec();
             cmds.push(Command::GotoChangeMarkEnd);
-            run("one\ntwo", &cmds).cursor()
+            run("one\ntwo", &cmds).cursor().0
         };
         assert_eq!(
             end, 6,
@@ -2393,7 +2409,8 @@ mod single_key_edit_tests {
                 Command::GotoChangeMarkStartLine,
             ],
         )
-        .cursor();
+        .cursor()
+        .0;
         assert_eq!(
             start, 2,
             "'[ is the first non-blank of the first yanked line"
@@ -2405,7 +2422,8 @@ mod single_key_edit_tests {
                 Command::GotoChangeMarkEndLine,
             ],
         )
-        .cursor();
+        .cursor()
+        .0;
         assert_eq!(end, 7, "'] is the first non-blank of the last yanked line");
     }
 
@@ -2418,7 +2436,7 @@ mod single_key_edit_tests {
                 Command::GotoChangeMarkStart,
             ],
         );
-        assert_eq!(st.cursor(), 1, "no change/yank yet → `[ does not move");
+        assert_eq!(st.cursor().0, 1, "no change/yank yet → `[ does not move");
     }
 }
 
@@ -2454,7 +2472,7 @@ mod shift_tests {
         let st = run("hello", &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "    hello");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             0,
             "cursor stays at column 0, on the new indent"
         );
@@ -2469,14 +2487,14 @@ mod shift_tests {
     fn shift_right_stacks_onto_existing_indent() {
         let st = run("  hi", &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "      hi"); // 2 + 4 spaces
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
     fn shift_right_uses_a_tab_when_indent_style_is_tab() {
         let st = run_indent("hello", 4, IndentStyle::Tab, &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "\thello");
-        assert_eq!(st.cursor(), 0, "cursor on the tab that covers column 0");
+        assert_eq!(st.cursor().0, 0, "cursor on the tab that covers column 0");
     }
 
     #[test]
@@ -2489,7 +2507,7 @@ mod shift_tests {
             &[Command::EnterInsert, Command::InsertTab],
         );
         assert_eq!(text(&st), "    hello");
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
 
         // Mid-line (caret after "he", vcol 2): only 2 spaces to reach the next tabstop (col 4).
         let st = run_indent(
@@ -2503,7 +2521,7 @@ mod shift_tests {
             ],
         );
         assert_eq!(text(&st), "he  llo");
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
 
         // On a tabstop boundary (vcol 4): a full unit is inserted, not zero.
         let st = run_indent(
@@ -2517,7 +2535,7 @@ mod shift_tests {
             ],
         );
         assert_eq!(text(&st), "hell    o");
-        assert_eq!(st.cursor(), 8);
+        assert_eq!(st.cursor().0, 8);
     }
 
     #[test]
@@ -2533,14 +2551,14 @@ mod shift_tests {
             ],
         );
         assert_eq!(text(&st), "he\tllo");
-        assert_eq!(st.cursor(), 3, "caret after the one-byte tab");
+        assert_eq!(st.cursor().0, 3, "caret after the one-byte tab");
     }
 
     #[test]
     fn shift_right_leaves_a_truly_empty_line_untouched() {
         let st = run("", &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "", "Vim never indents an empty line");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -2551,14 +2569,14 @@ mod shift_tests {
             "    a\n    b\nc",
             "2>> shifts the first two lines"
         );
-        assert_eq!(st.cursor(), 0, "cursor stays on the first line, column 0");
+        assert_eq!(st.cursor().0, 0, "cursor stays on the first line, column 0");
     }
 
     #[test]
     fn shift_left_removes_one_level_of_spaces() {
         let st = run("    hello", &[Command::ShiftLeft(1)]);
         assert_eq!(text(&st), "hello");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -2566,7 +2584,7 @@ mod shift_tests {
         // 6 leading spaces, tab_width 4 -> removes 4, leaves 2.
         let st = run("      hi", &[Command::ShiftLeft(1)]);
         assert_eq!(text(&st), "  hi");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -2577,14 +2595,14 @@ mod shift_tests {
             "hi",
             "fewer than tab_width spaces: remove them all, no more"
         );
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
     fn shift_left_on_unindented_line_is_a_noop() {
         let st = run("hi", &[Command::ShiftLeft(1)]);
         assert_eq!(text(&st), "hi");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -2592,14 +2610,14 @@ mod shift_tests {
         let st = run("\thello", &[Command::ShiftLeft(1)]);
         assert_eq!(text(&st), "hello");
         // The cursor on the tab wants its last column (3 at tabstop 4), and stays there.
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
     }
 
     #[test]
     fn shift_right_then_left_round_trips() {
         let st = run("hello", &[Command::ShiftRight(1), Command::ShiftLeft(1)]);
         assert_eq!(text(&st), "hello", ">> then << restores the original");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -2677,7 +2695,7 @@ mod format_tests {
             ],
         );
         assert_eq!(text(&st), "aa bb cc\ndd ee ff\n");
-        assert_eq!(st.cursor(), 4, "gw restores the caret column");
+        assert_eq!(st.cursor().0, 4, "gw restores the caret column");
     }
 
     #[test]
@@ -2801,7 +2819,7 @@ mod insert_entry_tests {
                 Command::Undo,
             ],
         );
-        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\ndef", 5));
+        assert_eq!((text(&st).as_str(), st.cursor().0), ("abc\ndef", 5));
         // Redo goes there too, and so do `g-` / `g+`.
         let st = run(
             "abc\ndef",
@@ -2814,7 +2832,7 @@ mod insert_entry_tests {
                 Command::Redo,
             ],
         );
-        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\ndf", 5));
+        assert_eq!((text(&st).as_str(), st.cursor().0), ("abc\ndf", 5));
         let st = run(
             "abc\ndef",
             &[
@@ -2824,7 +2842,7 @@ mod insert_entry_tests {
                 Command::UndoOlder,
             ],
         );
-        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\ndef", 4));
+        assert_eq!((text(&st).as_str(), st.cursor().0), ("abc\ndef", 4));
         let st = run(
             "abc\ndef",
             &[
@@ -2835,7 +2853,7 @@ mod insert_entry_tests {
                 Command::UndoNewer,
             ],
         );
-        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\nef", 4));
+        assert_eq!((text(&st).as_str(), st.cursor().0), ("abc\nef", 4));
     }
 
     #[test]
@@ -2849,7 +2867,7 @@ mod insert_entry_tests {
                 Command::Undo,
             ],
         );
-        assert_eq!((text(&st).as_str(), st.cursor()), ("ab", 2));
+        assert_eq!((text(&st).as_str(), st.cursor().0), ("ab", 2));
         let st = run(
             "ab",
             &[
@@ -2859,7 +2877,7 @@ mod insert_entry_tests {
                 Command::Undo,
             ],
         );
-        assert_eq!((text(&st).as_str(), st.cursor()), ("ab", 1));
+        assert_eq!((text(&st).as_str(), st.cursor().0), ("ab", 1));
     }
 
     #[test]
@@ -2960,7 +2978,7 @@ mod insert_entry_tests {
         ));
         assert_eq!(text(&st), "한글");
         let mut st = EditorState::new(b"one\ntwo\n".to_vec());
-        st.set_cursor(5);
+        st.set_cursor(BytePos(5));
         assert!(st.apply_edits(
             &[(
                 crate::BytePos(0),
@@ -2969,7 +2987,7 @@ mod insert_entry_tests {
             )],
             lsp
         ));
-        assert_eq!(st.cursor(), 13);
+        assert_eq!(st.cursor().0, 13);
         assert_eq!(&text(&st)[13..14], "w");
     }
 
@@ -3088,7 +3106,7 @@ mod insert_entry_tests {
     // Like `run`, but seeds the cursor at the end of `initial` (where a closer would be typed).
     fn run_at_end(initial: &str, cmds: &[Command]) -> EditorState {
         let mut st = EditorState::new(initial.as_bytes().to_vec());
-        st.set_cursor(initial.len());
+        st.set_cursor(BytePos(initial.len()));
         for c in cmds {
             apply_command(&mut st, c);
         }
@@ -3175,7 +3193,11 @@ mod insert_entry_tests {
             "X\thello",
             "gI inserts at column 0, before the tab"
         );
-        assert_eq!(st.cursor(), 0, "cursor rests on the inserted X after <Esc>");
+        assert_eq!(
+            st.cursor().0,
+            0,
+            "cursor rests on the inserted X after <Esc>"
+        );
     }
 }
 
@@ -3199,7 +3221,7 @@ mod word_class_tests {
     fn small_word_stops_at_punctuation() {
         // "foo.bar baz": w → '.', w → 'bar', w → 'baz'.
         let st = run("foo.bar baz", &[Command::Move(1, Motion::WordFwd)]);
-        assert_eq!(st.cursor(), 3, "w stops on the '.'");
+        assert_eq!(st.cursor().0, 3, "w stops on the '.'");
         let st = run(
             "foo.bar baz",
             &[
@@ -3207,14 +3229,14 @@ mod word_class_tests {
                 Command::Move(1, Motion::WordFwd),
             ],
         );
-        assert_eq!(st.cursor(), 4, "second w → start of 'bar'");
+        assert_eq!(st.cursor().0, 4, "second w → start of 'bar'");
     }
 
     #[test]
     fn big_word_spans_punctuation() {
         // "foo.bar baz": W → 'baz' (foo.bar is one WORD).
         let st = run("foo.bar baz", &[Command::Move(1, Motion::BigWordFwd)]);
-        assert_eq!(st.cursor(), 8);
+        assert_eq!(st.cursor().0, 8);
     }
 
     #[test]
@@ -3223,17 +3245,17 @@ mod word_class_tests {
         // past it. Verified vs nvim v0.12.4 (fixtures w_last_word_rests_on_last_char etc.).
         let st = run("abc def", &[Command::Move(2, Motion::WordFwd)]);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             6,
             "second w rests on 'f' (last char), not past it"
         );
         let st = run("abc", &[Command::Move(1, Motion::WordFwd)]);
-        assert_eq!(st.cursor(), 2, "w on the only word rests on 'c'");
+        assert_eq!(st.cursor().0, 2, "w on the only word rests on 'c'");
         let st = run("foo.bar baz", &[Command::Move(2, Motion::BigWordFwd)]);
-        assert_eq!(st.cursor(), 10, "W rests on the last char 'z'");
+        assert_eq!(st.cursor().0, 10, "W rests on the last char 'z'");
         // Mid-buffer w still lands on the next word start (clamp is a no-op there).
         let st = run("abc def ghi", &[Command::Move(2, Motion::WordFwd)]);
-        assert_eq!(st.cursor(), 8, "w to a real next word is unaffected");
+        assert_eq!(st.cursor().0, 8, "w to a real next word is unaffected");
     }
 
     #[test]
@@ -3246,7 +3268,7 @@ mod word_class_tests {
                 Command::Move(1, Motion::WordBack),
             ],
         );
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
     }
 
     #[test]
@@ -3329,7 +3351,7 @@ mod word_class_tests {
         // "가나 다": w skips the Hangul word to the next.
         let st = run("가나 다", &[Command::Move(1, Motion::WordFwd)]);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             7,
             "w lands on '다' after the multibyte word + space"
         );
@@ -3339,7 +3361,7 @@ mod word_class_tests {
     fn whitespace_only_text_is_unchanged_from_word_style() {
         // The pre-existing WORD behavior is preserved for plain words.
         let st = run("foo bar baz", &[Command::Move(2, Motion::WordFwd)]);
-        assert_eq!(st.cursor(), 8);
+        assert_eq!(st.cursor().0, 8);
     }
 }
 
@@ -3367,41 +3389,41 @@ mod bracket_match_tests {
     fn jumps_between_a_pair_both_ways() {
         // "a(bc)d": '(' at 1, ')' at 4.
         let st = run("a(bc)d", &[Command::MoveRight, pct()]);
-        assert_eq!(st.cursor(), 4, "from '(' to ')'");
+        assert_eq!(st.cursor().0, 4, "from '(' to ')'");
         let st = run(
             "a(bc)d",
             &[Command::Move(4, Motion::Right), pct()], // cursor onto ')'
         );
-        assert_eq!(st.cursor(), 1, "from ')' back to '('");
+        assert_eq!(st.cursor().0, 1, "from ')' back to '('");
     }
 
     #[test]
     fn respects_nesting() {
         // "((x))": outer '(' at 0 ↔ ')' at 4; inner '(' at 1 ↔ ')' at 3.
         let st = run("((x))", &[pct()]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         let st = run("((x))", &[Command::MoveRight, pct()]);
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
     }
 
     #[test]
     fn finds_first_bracket_forward_when_not_on_one() {
         // cursor at 0 ('a'), first bracket forward is '(' at 2, its match ')' at 5.
         let st = run("ab(cd)", &[pct()]);
-        assert_eq!(st.cursor(), 5);
+        assert_eq!(st.cursor().0, 5);
     }
 
     #[test]
     fn matches_across_lines() {
         let st = run("(\n)", &[pct()]);
-        assert_eq!(st.cursor(), 2, "% matches across a newline");
+        assert_eq!(st.cursor().0, 2, "% matches across a newline");
     }
 
     #[test]
     fn matches_by_type_ignoring_other_brackets() {
         // "([)]": '(' at 0 matches ')' at 2, ignoring the '[' — same as Vim.
         let st = run("([)]", &[pct()]);
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor().0, 2);
     }
 
     #[test]
@@ -3417,7 +3439,7 @@ mod bracket_match_tests {
     #[test]
     fn unmatched_bracket_is_a_noop() {
         let st = run("a(b", &[Command::MoveRight, pct()]);
-        assert_eq!(st.cursor(), 1, "no closer → no move");
+        assert_eq!(st.cursor().0, 1, "no closer → no move");
     }
 }
 
@@ -3449,14 +3471,14 @@ mod line_jump_tests {
                 Command::Move(1, Motion::GotoLine),
             ],
         );
-        assert_eq!(st.cursor(), 0, "gg keeps column 0 on line 1");
+        assert_eq!(st.cursor().0, 0, "gg keeps column 0 on line 1");
     }
 
     #[test]
     fn cap_g_goes_to_last_line() {
         let st = run("abc\ndef\nxyz", &[Command::Move(1, Motion::LastLine)]);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             8,
             "G lands on the start of the last line 'xyz'"
         );
@@ -3466,7 +3488,7 @@ mod line_jump_tests {
     fn count_g_goes_to_that_line() {
         // {2}G → line 2 ('def' starts at byte 4).
         let st = run("abc\ndef\nghi", &[Command::Move(2, Motion::GotoLine)]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
     }
 
     #[test]
@@ -3527,7 +3549,7 @@ mod line_jump_tests {
         // `G` on a buffer ending in '\n' lands on the last CONTENT line, not a blank line below it.
         let st = run("one\ntwo\n", &[Command::Move(0, Motion::LastLine)]);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             4,
             "G lands on 'two', not the phantom line at byte 8"
         );
@@ -3537,14 +3559,14 @@ mod line_jump_tests {
             &[Command::Move(0, Motion::LastLine), Command::MoveDown],
         );
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             4,
             "j on the last line is a no-op (no phantom below)"
         );
         // A genuinely empty last line (before the final '\n') is still reachable.
         let st = run("a\n\n", &[Command::Move(0, Motion::LastLine)]);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             2,
             "the real empty line at byte 2 is the last line"
         );
@@ -3558,7 +3580,7 @@ mod line_jump_tests {
         let st = run("a\nb\n", &[Command::Move(99, Motion::GotoLine)]);
         // line 99 doesn't exist → clamp to the last CONTENT line ('b' at byte 2). The trailing '\n' is a
         // terminator, not a new empty line (Vim), so the cursor never lands on the phantom slot at byte 4.
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor().0, 2);
     }
 
     #[test]
@@ -3566,11 +3588,11 @@ mod line_jump_tests {
         // `{count}%` → line (count*line_count+99)/100, first non-blank. Verified vs nvim v0.12.4.
         // 4 lines: 50% → line 2, 25% → line 1, 100% → line 4.
         let st = run("a\nb\nc\nd", &[Command::Move(50, Motion::GotoPercent)]);
-        assert_eq!(st.cursor(), 2, "50% of 4 lines → line 2 ('b')");
+        assert_eq!(st.cursor().0, 2, "50% of 4 lines → line 2 ('b')");
         let st = run("a\nb\nc\nd", &[Command::Move(25, Motion::GotoPercent)]);
-        assert_eq!(st.cursor(), 0, "25% → line 1 ('a')");
+        assert_eq!(st.cursor().0, 0, "25% → line 1 ('a')");
         let st = run("a\nb\nc\nd", &[Command::Move(100, Motion::GotoPercent)]);
-        assert_eq!(st.cursor(), 6, "100% → line 4 ('d')");
+        assert_eq!(st.cursor().0, 6, "100% → line 4 ('d')");
         // `d{count}%` is linewise.
         let st = run("a\nb\nc\nd", &[Command::Delete(50, Motion::GotoPercent)]);
         assert_eq!(text(&st), "c\nd", "d50% deletes lines 1-2 linewise");
@@ -3580,13 +3602,13 @@ mod line_jump_tests {
     fn goto_byte_moves_to_the_nth_byte() {
         // `{count}go` — count is a 1-based byte offset. "abc\ndef": 'a'=1,'b'=2,'c'=3,'\n'=4,'d'=5...
         let st = run("abc\ndef", &[Command::Move(5, Motion::GotoByte)]);
-        assert_eq!(st.cursor(), 4, "byte 5 (1-based) = offset 4 = 'd'");
+        assert_eq!(st.cursor().0, 4, "byte 5 (1-based) = offset 4 = 'd'");
         // Bare `go` (count 1) → the first byte.
         let st = run("abc\ndef", &[Command::Move(1, Motion::GotoByte)]);
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         // A count past the end clamps into range (Normal-mode clamp keeps it off the newline/EOF).
         let st = run("abc", &[Command::Move(99, Motion::GotoByte)]);
-        assert_eq!(st.cursor(), 2, "clamped to the last char");
+        assert_eq!(st.cursor().0, 2, "clamped to the last char");
     }
 
     #[test]
@@ -3635,15 +3657,15 @@ mod find_char_tests {
     fn f_lands_on_the_char_t_stops_before() {
         // "abcxef", cursor 0.
         let st = run("abcxef", &[Command::Move(1, find('x', true, false))]);
-        assert_eq!(st.cursor(), 3, "fx lands on x");
+        assert_eq!(st.cursor().0, 3, "fx lands on x");
         let st = run("abcxef", &[Command::Move(1, find('x', true, true))]);
-        assert_eq!(st.cursor(), 2, "tx stops one before x");
+        assert_eq!(st.cursor().0, 2, "tx stops one before x");
     }
 
     #[test]
     fn count_finds_the_nth() {
         let st = run("axbxcx", &[Command::Move(2, find('x', true, false))]);
-        assert_eq!(st.cursor(), 3, "2fx lands on the second x");
+        assert_eq!(st.cursor().0, 3, "2fx lands on the second x");
     }
 
     #[test]
@@ -3656,7 +3678,7 @@ mod find_char_tests {
                 Command::Move(1, find('x', false, false)),
             ],
         );
-        assert_eq!(st.cursor(), 2, "Fx searches backward onto x");
+        assert_eq!(st.cursor().0, 2, "Fx searches backward onto x");
     }
 
     #[test]
@@ -3671,20 +3693,20 @@ mod find_char_tests {
     fn stays_within_the_line() {
         // The x on the next line must not be found from line 1.
         let st = run("abc\nxyz", &[Command::Move(1, find('x', true, false))]);
-        assert_eq!(st.cursor(), 0, "f does not cross the newline");
+        assert_eq!(st.cursor().0, 0, "f does not cross the newline");
     }
 
     #[test]
     fn multibyte_target() {
         // "a가b" — find the multibyte '가' (bytes 1..4).
         let st = run("a가b", &[Command::Move(1, find('가', true, false))]);
-        assert_eq!(st.cursor(), 1, "lands on the multibyte char boundary");
+        assert_eq!(st.cursor().0, 1, "lands on the multibyte char boundary");
     }
 
     #[test]
     fn missing_target_is_a_noop() {
         let st = run("abc", &[Command::Move(1, find('z', true, false))]);
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 }
 
@@ -3721,7 +3743,7 @@ mod visual_tests {
         );
         assert_eq!(text(&st), "HELlo");
         assert_eq!(st.mode(), Mode::Normal);
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         // `u` lowercases.
         let st = run(
             "HELLO",
@@ -3765,7 +3787,7 @@ mod visual_tests {
         );
         assert_eq!(text(&st), "xxxlo");
         assert_eq!(st.mode(), Mode::Normal);
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -3847,7 +3869,7 @@ mod visual_tests {
             }
         );
         // Anchor == cursor: the selection covers exactly the character under the caret (inclusive).
-        assert_eq!(st.selection_span(), Some((0, 1)));
+        assert_eq!(st.selection_span(), Some((BytePos(0), BytePos(1))));
     }
 
     #[test]
@@ -3868,7 +3890,11 @@ mod visual_tests {
                 kind: SelectKind::Charwise
             }
         );
-        assert_eq!(st.selection_span(), Some((0, 3)), "v + l + l selects 'hel'");
+        assert_eq!(
+            st.selection_span(),
+            Some((BytePos(0), BytePos(3))),
+            "v + l + l selects 'hel'"
+        );
     }
 
     #[test]
@@ -3999,7 +4025,10 @@ mod blockwise_tests {
                 kind: SelectKind::Blockwise
             }
         );
-        assert_eq!(st.block_spans(), Some(vec![(0, 2), (4, 6)]));
+        assert_eq!(
+            st.block_spans(),
+            Some(vec![(BytePos(0), BytePos(2)), (BytePos(4), BytePos(6))])
+        );
         assert_eq!(
             st.selection_span(),
             None,
@@ -4016,7 +4045,7 @@ mod blockwise_tests {
         assert_eq!(st.mode(), Mode::Normal);
         assert!(st.register().is_blockwise());
         assert_eq!(st.register().text(), b"ab\nde");
-        assert_eq!(st.cursor(), 0, "cursor at the block's top-left");
+        assert_eq!(st.cursor().0, 0, "cursor at the block's top-left");
     }
 
     #[test]
@@ -4032,7 +4061,7 @@ mod blockwise_tests {
         // Yank leaves the buffer; `P` drops "ab"/"de" back at column 0 on rows 0 and 1.
         assert!(st.register().is_blockwise());
         assert_eq!(text(&st), "ababc\ndedef\nghi");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -4168,7 +4197,7 @@ mod blockwise_tests {
         // #694 (nvim v0.12.6): `abc\ndef` `<C-v>jU` → `Abc\nDef`, `<C-v>jrx` → `xbc\nxef`.
         let up = block_then("abc\ndef", &[Command::CaseSelection(WordCase::Upcase)]);
         assert_eq!(text(&up), "Abc\nDef");
-        assert_eq!(up.cursor(), 0);
+        assert_eq!(up.cursor().0, 0);
         let rot = block_then("abc\ndef", &[Command::CaseSelection(WordCase::Rot13)]);
         assert_eq!(text(&rot), "nbc\nqef");
         let r = block_then("abc\ndef", &[Command::ReplaceSelectionChar('x')]);
@@ -4213,7 +4242,7 @@ mod blockwise_tests {
             ],
         );
         assert_eq!(text(&st), "ab\ncd\na\nc\n");
-        assert_eq!(st.cursor(), 6, "top-left of the pasted block");
+        assert_eq!(st.cursor().0, 6, "top-left of the pasted block");
     }
 
     #[test]
@@ -4232,7 +4261,7 @@ mod blockwise_tests {
                 ],
             );
             assert_eq!(text(&st), want, "from {start:?}");
-            assert_eq!(st.cursor(), 6);
+            assert_eq!(st.cursor().0, 6);
         }
         // An empty buffer: the first row fills its one line.
         let mut st = run("ab\ncd", &[]);
@@ -4269,7 +4298,7 @@ mod blockwise_tests {
             ],
         );
         assert_eq!(text(&st), "a\na\nc");
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor().0, 2);
         assert_eq!(st.view.registers.get(None).text(), b"b\n");
         // Charwise selection + linewise register: the line splits around the put lines.
         let st = run(
@@ -4289,7 +4318,7 @@ mod blockwise_tests {
             ],
         );
         assert_eq!(text(&st), "\nx\n bar\nx");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
         assert_eq!(
             st.view.registers.get(None).text(),
             b"x\n",
@@ -4356,7 +4385,7 @@ mod blockwise_tests {
         );
         assert_eq!(text(&st), "Xabc\nXdef\nXghi");
         assert_eq!(st.mode(), Mode::Normal);
-        assert_eq!(st.cursor(), 0, "cursor returns to the block top-left");
+        assert_eq!(st.cursor().0, 0, "cursor returns to the block top-left");
     }
 
     #[test]
@@ -4469,7 +4498,7 @@ mod blockwise_tests {
         );
         assert_eq!(text(&st), "Xaaaa\nXbbbb\nXcccc\nXdddd");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             12,
             "cursor rests at the rebuilt block's top-left"
         );
@@ -4579,7 +4608,7 @@ mod blockwise_tests {
         );
         assert_eq!(text(&st), "Xbc\nXef\nXhi");
         assert_eq!(st.mode(), Mode::Normal);
-        assert_eq!(st.cursor(), 0, "cursor returns to the block top-left");
+        assert_eq!(st.cursor().0, 0, "cursor returns to the block top-left");
         assert!(
             st.register().is_blockwise(),
             "the deleted block is captured blockwise"
@@ -4617,7 +4646,7 @@ mod blockwise_tests {
         );
         assert_eq!(text(&st), "XYbc\nXYef\nXYhi");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             1,
             "block change rests one char left of the typed run"
         );
@@ -4643,7 +4672,7 @@ mod blockwise_tests {
         );
         assert_eq!(text(&st), "XYbc\nXYef\nXYhi");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             1,
             "Visual-block change also rests left of the typed run"
         );
@@ -4993,7 +5022,11 @@ mod text_object_tests {
                 kind: SelectKind::Charwise
             }
         );
-        assert_eq!(st.selection_span(), Some((0, 3)), "viw selects 'foo'");
+        assert_eq!(
+            st.selection_span(),
+            Some((BytePos(0), BytePos(3))),
+            "viw selects 'foo'"
+        );
         // `vi(` spans the interior of the enclosing pair.
         let st = run(
             "a(bc)d",
@@ -5005,7 +5038,11 @@ mod text_object_tests {
                 Command::Move(1, pair('(', ')', false)),
             ],
         );
-        assert_eq!(st.selection_span(), Some((2, 4)), "vi( selects 'bc'");
+        assert_eq!(
+            st.selection_span(),
+            Some((BytePos(2), BytePos(4))),
+            "vi( selects 'bc'"
+        );
     }
 }
 
@@ -5049,7 +5086,7 @@ mod select_tests {
         );
         assert_eq!(
             st.selection_span(),
-            Some((0, 3)),
+            Some((BytePos(0), BytePos(3))),
             "selection survives the toggle"
         );
     }
@@ -5079,7 +5116,7 @@ mod select_tests {
         );
         assert_eq!(
             st.selection_span(),
-            Some((0, 2)),
+            Some((BytePos(0), BytePos(2))),
             "toggling back keeps the span"
         );
     }
@@ -5103,7 +5140,7 @@ mod select_tests {
         assert_eq!(text(&st), "Zllo");
         assert_eq!(st.mode(), Mode::Insert);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             1,
             "cursor sits after the inserted char, ready to type"
         );
@@ -5198,7 +5235,7 @@ mod select_tests {
                 kind: SelectKind::Charwise
             }
         );
-        assert_eq!(st.selection_span(), Some((0, 3)));
+        assert_eq!(st.selection_span(), Some((BytePos(0), BytePos(3))));
     }
 
     #[test]
@@ -5251,7 +5288,7 @@ mod curswant_tests {
     // The char column of the cursor on its line.
     fn col(st: &EditorState) -> usize {
         let b = st.bytes();
-        motion::col_of(b, motion::line_start(b, st.cursor()), st.cursor())
+        motion::col_of(b, motion::line_start(b, st.cursor().0), st.cursor().0)
     }
 
     #[test]
@@ -5267,7 +5304,7 @@ mod curswant_tests {
             ],
         );
         assert_eq!(col(&st), 2);
-        assert_eq!(st.cursor(), 8); // the 'n' in "lmnop"
+        assert_eq!(st.cursor().0, 8); // the 'n' in "lmnop"
     }
 
     #[test]
@@ -5284,7 +5321,7 @@ mod curswant_tests {
             ],
         );
         assert_eq!(col(&st), 3);
-        assert_eq!(st.cursor(), 3); // the 'd' in "abcd"
+        assert_eq!(st.cursor().0, 3); // the 'd' in "abcd"
     }
 
     #[test]
@@ -5298,7 +5335,7 @@ mod curswant_tests {
                 Command::Move(1, Motion::Down),    // -> "wxyz" last char 'z'
             ],
         );
-        assert_eq!(st.cursor(), 6); // the 'z' in "wxyz" (not past it)
+        assert_eq!(st.cursor().0, 6); // the 'z' in "wxyz" (not past it)
         let st2 = run(
             "ab\nwxyz\nc\n",
             &[
@@ -5306,7 +5343,7 @@ mod curswant_tests {
                 Command::Move(2, Motion::Down), // ride down two lines to short "c"
             ],
         );
-        assert_eq!(st2.cursor(), 8); // the 'c' (its only char)
+        assert_eq!(st2.cursor().0, 8); // the 'c' (its only char)
     }
 
     #[test]
@@ -5321,7 +5358,7 @@ mod curswant_tests {
                 Command::Move(1, Motion::Down),    // "lmnop" col 2 ('n'), NOT the end
             ],
         );
-        assert_eq!(st.cursor(), 10); // the 'n' in "lmnop" (col 2), proving curswant = 2 not MAXCOL
+        assert_eq!(st.cursor().0, 10); // the 'n' in "lmnop" (col 2), proving curswant = 2 not MAXCOL
     }
 
     fn text(st: &EditorState) -> String {
@@ -5346,7 +5383,7 @@ mod curswant_tests {
             ],
         );
         assert_eq!(text(&st), "hiX");
-        assert_eq!(st.cursor(), 2); // on 'X' after the Esc nudge
+        assert_eq!(st.cursor().0, 2); // on 'X' after the Esc nudge
     }
 
     #[test]
@@ -5364,7 +5401,7 @@ mod curswant_tests {
             ],
         );
         assert_eq!(text(&st), "betaX");
-        assert_eq!(st.cursor(), 4); // on 'X' (col 4 of "betaX")
+        assert_eq!(st.cursor().0, 4); // on 'X' (col 4 of "betaX")
     }
 
     #[test]
@@ -5381,7 +5418,7 @@ mod curswant_tests {
             ],
         );
         assert_eq!(text(&st), "Xalpha\nbeta");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 }
 
@@ -5480,7 +5517,7 @@ mod virtual_replace_tests {
             ],
         );
         assert_eq!(text(&st), "aXcdef");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
         assert_eq!(st.view.mode, Mode::Normal);
     }
 
@@ -5489,7 +5526,7 @@ mod virtual_replace_tests {
         // `3grZ` from col 0 → `ZZZdef`, cursor on the last `Z` (col 2).
         let st = run("abcdef", &[Command::VirtualReplaceChar(3, 'Z')]);
         assert_eq!(text(&st), "ZZZdef");
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor().0, 2);
     }
 
     #[test]
@@ -5498,7 +5535,7 @@ mod virtual_replace_tests {
         // (the tab shrinks) rather than replacing it — `A<Tab>X` — keeping `X` at its original column.
         let st = run("\tX", &[Command::VirtualReplaceChar(1, 'A')]);
         assert_eq!(text(&st), "A\tX");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -5507,7 +5544,7 @@ mod virtual_replace_tests {
         // before the now-shrunk-but-still-multi-column tab → `AA<Tab>X`, cursor on the 2nd `A`.
         let st = run("\tX", &[Command::VirtualReplaceChar(2, 'A')]);
         assert_eq!(text(&st), "AA\tX");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
     }
 
     #[test]
@@ -5516,7 +5553,7 @@ mod virtual_replace_tests {
         // (virtual Replace grows the line) → `XXXX`. `r` would be a no-op here — this is the gr divergence.
         let st = run("ab", &[Command::VirtualReplaceChar(4, 'X')]);
         assert_eq!(text(&st), "XXXX");
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
     }
 }
 
@@ -5567,28 +5604,28 @@ mod search_tests {
         // (`SearchNext` goes through `search_fwd`, over the same `search_spans` as the `/pat` motion.)
         let next = |p: &str| Command::SearchNext(p.into());
         let st = run("abc\ndef\n", &[next("^$")]);
-        assert_eq!(st.cursor(), 0, "no empty line: the search fails");
+        assert_eq!(st.cursor().0, 0, "no empty line: the search fails");
         let st = run("abc\ndef\n", &[next("^$"), next("^$")]);
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
 
         let st = run("abc\ndef\n", &[next("^")]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         let st = run("abc\ndef\n", &[next("^"), next("^")]);
-        assert_eq!(st.cursor(), 0, "wraps instead of landing past the end");
+        assert_eq!(st.cursor().0, 0, "wraps instead of landing past the end");
         let st = run("abc\ndef\n", &[next("^"), next("^"), next("^")]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
 
         let st = run("abc\n\ndef\n", &[next("^$")]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         let st = run("abc\n\ndef\n", &[next("^$"), next("^$")]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
 
         for pat in ["$", r"\_$", "x*"] {
             let st = run("abc\ndef\n", &[next(pat), next(pat), next(pat), next(pat)]);
             assert!(
-                st.cursor() < 8,
+                st.cursor().0 < 8,
                 "{pat}: cursor {} is past the last line",
-                st.cursor()
+                st.cursor().0
             );
         }
     }
@@ -5600,14 +5637,14 @@ mod search_tests {
         // `a\+` is a Vim-regex quantifier (magic `\+`), not the literal "a\+".
         let st = run("x aa bbb aaa", &[search("a\\+")]);
         // From offset 0, the next match after cur+1 is the "aa" at offset 2.
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor().0, 2);
         // `n` (SearchNext) steps to the following, non-overlapping match ("cc" at offset 9).
         let st = run(
             "x aa bbb cc",
             &[search("cc"), Command::SearchNext("cc".into())],
         );
         // Single `cc` match at 9; `n` wraps back to it.
-        assert_eq!(st.cursor(), 9);
+        assert_eq!(st.cursor().0, 9);
     }
 
     /// F-009 #3: `\zs` moves the reported match START — `/foo\zsbar` lands the cursor on `bar`, but
@@ -5615,7 +5652,7 @@ mod search_tests {
     #[test]
     fn zs_lands_the_cursor_at_the_reset_start() {
         let st = run("a foobar foo bar", &[search("foo\\zsbar")]);
-        assert_eq!(st.cursor(), 5); // the 'b' of the bar inside "foobar"
+        assert_eq!(st.cursor().0, 5); // the 'b' of the bar inside "foobar"
     }
 
     /// F-009 #1: search is CASE-SENSITIVE by default (Vim's factory setting, what the oracle runs), so
@@ -5623,7 +5660,7 @@ mod search_tests {
     #[test]
     fn search_is_case_sensitive_by_default() {
         let st = run("a foo b", &[search("Foo")]);
-        assert_eq!(st.cursor(), 0, "no match → cursor unmoved");
+        assert_eq!(st.cursor().0, 0, "no match → cursor unmoved");
     }
 
     /// F-009 #1: with `smartcase` on, an all-lowercase pattern matches case-insensitively, but an
@@ -5634,12 +5671,16 @@ mod search_tests {
         let mut st = EditorState::new(b"x FOO y".to_vec());
         st.set_search_case(true, true);
         apply_command(&mut st, &search("foo"));
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor().0, 2);
         // uppercase in the pattern → case-sensitive → "Foo" does NOT match "foo"
         let mut st = EditorState::new(b"x foo y".to_vec());
         st.set_search_case(true, true);
         apply_command(&mut st, &search("Foo"));
-        assert_eq!(st.cursor(), 0, "smartcase forced case-sensitive → no match");
+        assert_eq!(
+            st.cursor().0,
+            0,
+            "smartcase forced case-sensitive → no match"
+        );
     }
 
     /// F-009: `d/pat` deletes `[cursor, match)` — the search operand still composes with operators.
@@ -5674,20 +5715,20 @@ mod search_tests {
     fn star_and_hash_search_from_the_keyword_start() {
         // `*` on the leading blanks of "  foo bar foo" lands on the SECOND foo (10), not the first (2).
         let st = run("  foo bar foo\n", &[word_under(true, SearchOp::Move, 1)]);
-        assert_eq!(st.cursor(), 10);
+        assert_eq!(st.cursor().0, 10);
         // `ll#` on "foo bar foo": from the word start (0) backward wraps to the last foo (8).
         let mut st = EditorState::new(b"foo bar foo\n".to_vec());
-        st.set_cursor(2);
+        st.set_cursor(BytePos(2));
         apply_command(&mut st, &word_under(false, SearchOp::Move, 1));
-        assert_eq!(st.cursor(), 8);
+        assert_eq!(st.cursor().0, 8);
         // `ld*` deletes from the cursor (1), not the word start, up to the next foo.
         let mut st = EditorState::new(b"foo bar foo baz\n".to_vec());
-        st.set_cursor(1);
+        st.set_cursor(BytePos(1));
         apply_command(&mut st, &word_under(true, SearchOp::Delete, 1));
         assert_eq!(st.as_str().unwrap(), "ffoo baz\n");
         // `2*` steps two matches.
         let st = run("foo bar foo foo\n", &[word_under(true, SearchOp::Move, 2)]);
-        assert_eq!(st.cursor(), 12);
+        assert_eq!(st.cursor().0, 12);
         // No keyword on the line: nothing happens (the frontend reports E348).
         let st = run("   \nfoo\n", &[word_under(true, SearchOp::Delete, 1)]);
         assert_eq!(st.as_str().unwrap(), "   \nfoo\n");
@@ -5744,16 +5785,16 @@ mod search_tests {
         // `  end` is indented, so the match is mid-line: no adjustment, the whole span is joined.
         let st = run("aa bb\ncc\n  end\nzz\n", &[gq(false)]);
         assert_eq!(st.as_str().unwrap(), "aa bb cc end\nzz\n");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         let st = run("aa bb\ncc\nend\nzz\n", &[gq(false)]);
         assert_eq!(st.as_str().unwrap(), "aa bb cc\nend\nzz\n");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             9,
             "first non-blank of the line below the block"
         );
         let st = run("aa bb\ncc\nend\nzz\n", &[gq(true)]);
-        assert_eq!(st.cursor(), 0, "gw restores the cursor");
+        assert_eq!(st.cursor().0, 0, "gw restores the cursor");
     }
 
     /// F-009: `?pat` lands the cursor on the match STRICTLY BEFORE the cursor. "foo" is at 0 and 8;
@@ -5761,14 +5802,14 @@ mod search_tests {
     #[test]
     fn backward_search_lands_on_previous_match() {
         let st = run("foo bar foo baz", &[eol(), search_back(1, "foo")]);
-        assert_eq!(st.cursor(), 8);
+        assert_eq!(st.cursor().0, 8);
     }
 
     /// F-009: `?pat` wraps to the LAST match when none starts before the cursor (cursor at BOL).
     #[test]
     fn backward_search_wraps_to_last_match() {
         let st = run("bar foo baz", &[search_back(1, "foo")]);
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
     }
 
     /// F-009: `[count]?pat` jumps to the count-th previous match. "foo" at 0/6/12; from EOL, `2?foo`
@@ -5776,7 +5817,7 @@ mod search_tests {
     #[test]
     fn backward_search_honours_count() {
         let st = run("foo x foo x foo x end", &[eol(), search_back(2, "foo")]);
-        assert_eq!(st.cursor(), 6);
+        assert_eq!(st.cursor().0, 6);
     }
 
     /// F-009: `n`/`N` are direction-RELATIVE. After a backward search, `SearchPrev` (what `n` maps to)
@@ -5793,7 +5834,7 @@ mod search_tests {
                 Command::SearchPrev("foo".into()),
             ],
         );
-        assert_eq!(st.cursor(), 6, "n after ? continues backward");
+        assert_eq!(st.cursor().0, 6, "n after ? continues backward");
         // `?foo` -> 12, then forward-repeat (N reverses) wraps past EOL to 0.
         let st = run(
             "foo x foo x foo",
@@ -5803,7 +5844,7 @@ mod search_tests {
                 Command::SearchNext("foo".into()),
             ],
         );
-        assert_eq!(st.cursor(), 0, "N after ? reverses to forward (wraps)");
+        assert_eq!(st.cursor().0, 0, "N after ? reverses to forward (wraps)");
     }
 
     /// F-009: `d?pat` is an EXCLUSIVE charwise motion over `[match, cursor)` — the char under the cursor
@@ -5825,7 +5866,7 @@ mod search_tests {
             ],
         );
         assert_eq!(st.as_str().unwrap(), "foo x");
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
     }
 
     /// F-009: `c?pat` deletes `[match, cursor)` and enters Insert AT the match — it must not inherit the
@@ -5846,7 +5887,7 @@ mod search_tests {
         );
         assert_eq!(st.as_str().unwrap(), "foo x");
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             4,
             "Insert caret at the match, not the line end"
         );
@@ -5871,7 +5912,7 @@ mod search_tests {
             ],
         );
         assert_eq!(st.as_str().unwrap(), "foo bar baz qux");
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         assert_eq!(st.register().text(), b"bar baz qu");
         assert!(!st.register().is_linewise());
     }
@@ -5906,7 +5947,8 @@ mod search_tests {
                 A,
                 &[soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(0))]
             )
-            .cursor(),
+            .cursor()
+            .0,
             14
         );
         // /foo/e+1 -> one char right, CROSSING to line 2 col 0 (nvim [2,0] = byte 16).
@@ -5915,7 +5957,8 @@ mod search_tests {
                 A,
                 &[soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(1))]
             )
-            .cursor(),
+            .cursor()
+            .0,
             16
         );
         // /foo/e-1 -> one left of the last char (nvim [1,13]).
@@ -5924,7 +5967,8 @@ mod search_tests {
                 A,
                 &[soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(-1))]
             )
-            .cursor(),
+            .cursor()
+            .0,
             13
         );
     }
@@ -5933,7 +5977,9 @@ mod search_tests {
     fn search_offsets_step_whole_grapheme_clusters() {
         // nvim v0.12.6 (#1132): `/ab/s-1` on "x e\u{301}ab z" lands on the `e`, not on its mark.
         let mv = |text: &str, pat: &str, off| {
-            run(text, &[soff(SearchOp::Move, 1, pat, false, off)]).cursor()
+            run(text, &[soff(SearchOp::Move, 1, pat, false, off)])
+                .cursor()
+                .0
         };
         assert_eq!(mv("x e\u{301}ab z", "ab", SearchOffset::Start(-1)), 2);
         assert_eq!(mv("x a\u{301}b z", "b", SearchOffset::Start(-1)), 2);
@@ -5965,7 +6011,8 @@ mod search_tests {
                     SearchOffset::Start(0)
                 )]
             )
-            .cursor(),
+            .cursor()
+            .0,
             12
         );
         // /foo/s+2 -> two right of start (nvim [1,14]).
@@ -5980,7 +6027,8 @@ mod search_tests {
                     SearchOffset::Start(2)
                 )]
             )
-            .cursor(),
+            .cursor()
+            .0,
             14
         );
         // /foo/s-1 -> one left of start (nvim [1,11]).
@@ -5995,7 +6043,8 @@ mod search_tests {
                     SearchOffset::Start(-1)
                 )]
             )
-            .cursor(),
+            .cursor()
+            .0,
             11
         );
     }
@@ -6014,7 +6063,8 @@ mod search_tests {
                     SearchOffset::Line(1)
                 )]
             )
-            .cursor(),
+            .cursor()
+            .0,
             33
         );
         // /foobar/-1 -> one line above (nvim [2,0]=byte 16).
@@ -6029,7 +6079,8 @@ mod search_tests {
                     SearchOffset::Line(-1)
                 )]
             )
-            .cursor(),
+            .cursor()
+            .0,
             16
         );
         // /foobar/-2 -> two lines above (nvim [1,0]=byte 0).
@@ -6044,7 +6095,8 @@ mod search_tests {
                     SearchOffset::Line(-2)
                 )]
             )
-            .cursor(),
+            .cursor()
+            .0,
             0
         );
     }
@@ -6150,7 +6202,7 @@ mod search_tests {
         assert_eq!(st.as_str().unwrap(), "e foo f\ng");
         assert_eq!(st.register().text(), b"a\nb foo c\nd\n");
         assert!(st.register().is_linewise());
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -6162,7 +6214,7 @@ mod search_tests {
             &soff(SearchOp::Change, 1, "foo", false, SearchOffset::Line(0)),
         );
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             2,
             "Insert caret at the indent end (nvim [1,2])"
         );
@@ -6178,17 +6230,17 @@ mod search_tests {
         let b = "abc foo def foo xyz";
         // /foo/e (-> 6) then n (-> 14).
         let e = || soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(0));
-        assert_eq!(run(b, &[e()]).cursor(), 6);
-        assert_eq!(run(b, &[e(), e()]).cursor(), 14);
+        assert_eq!(run(b, &[e()]).cursor().0, 6);
+        assert_eq!(run(b, &[e(), e()]).cursor().0, 14);
         // /foo/s+1 (-> 5) then n (-> 13).
         let s1 = || soff(SearchOp::Move, 1, "foo", false, SearchOffset::Start(1));
-        assert_eq!(run(b, &[s1()]).cursor(), 5);
-        assert_eq!(run(b, &[s1(), s1()]).cursor(), 13);
+        assert_eq!(run(b, &[s1()]).cursor().0, 5);
+        assert_eq!(run(b, &[s1(), s1()]).cursor().0, 13);
         // /foo/s-1 (-> 3, BEFORE the match) then n still advances to the next match's start-1 (-> 11).
         // This is the case a naive cursor+1 repeat would get stuck on; the offset-position rule fixes it.
         let sm1 = || soff(SearchOp::Move, 1, "foo", false, SearchOffset::Start(-1));
-        assert_eq!(run(b, &[sm1()]).cursor(), 3);
-        assert_eq!(run(b, &[sm1(), sm1()]).cursor(), 11);
+        assert_eq!(run(b, &[sm1()]).cursor().0, 3);
+        assert_eq!(run(b, &[sm1(), sm1()]).cursor().0, 11);
     }
 
     #[test]
@@ -6200,7 +6252,8 @@ mod search_tests {
                 b,
                 &[soff(SearchOp::Move, 2, "foo", false, SearchOffset::End(0))]
             )
-            .cursor(),
+            .cursor()
+            .0,
             6
         );
         // 3/foo/s -> only matches whose start > cursor(0) qualify, so #2/#3/#4 -> the 3rd is at byte 12.
@@ -6215,7 +6268,8 @@ mod search_tests {
                     SearchOffset::Start(0)
                 )]
             )
-            .cursor(),
+            .cursor()
+            .0,
             12
         );
     }
@@ -6224,17 +6278,17 @@ mod search_tests {
     fn backward_search_offset() {
         // From end-of-buffer, ?foobar?e -> last char ('r', byte 44) of the match on line 3.
         let mut st = EditorState::new(A.as_bytes().to_vec());
-        st.set_cursor(A.len() - 1);
+        st.set_cursor(BytePos(A.len() - 1));
         apply_command(
             &mut st,
             &soff(SearchOp::Move, 1, "foobar", true, SearchOffset::End(0)),
         );
-        assert_eq!(st.cursor(), 44, "?foobar?e -> last char of match");
+        assert_eq!(st.cursor().0, 44, "?foobar?e -> last char of match");
 
         // d?foobar?s from end -> exclusive [match_start, cursor) deletes "foobar lin" (nvim), leaving
         // "third e" on line 3; the register is charwise.
         let mut st = EditorState::new(A.as_bytes().to_vec());
-        st.set_cursor(A.len() - 1);
+        st.set_cursor(BytePos(A.len() - 1));
         apply_command(
             &mut st,
             &soff(SearchOp::Delete, 1, "foobar", true, SearchOffset::Start(0)),
@@ -6248,7 +6302,7 @@ mod search_tests {
 
         // d?foobar?e from end -> INCLUSIVE through the cursor char: deletes "r line" (byte 44..=49).
         let mut st = EditorState::new(A.as_bytes().to_vec());
-        st.set_cursor(A.len() - 1);
+        st.set_cursor(BytePos(A.len() - 1));
         apply_command(
             &mut st,
             &soff(SearchOp::Delete, 1, "foobar", true, SearchOffset::End(0)),
@@ -6281,7 +6335,7 @@ mod search_tests {
         );
         assert_eq!(
             st.selection_span(),
-            Some((2, 5)),
+            Some((BytePos(2), BytePos(5))),
             "selects the first foo [2,5)"
         );
     }
@@ -6298,7 +6352,7 @@ mod search_tests {
         );
         assert_eq!(
             st.selection_span(),
-            Some((2, 5)),
+            Some((BytePos(2), BytePos(5))),
             "the containing match, not the next"
         );
     }
@@ -6316,7 +6370,7 @@ mod search_tests {
         assert_eq!(st.as_str().unwrap(), "x  y");
         assert_eq!(st.mode(), Mode::Insert);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             2,
             "cursor at the match start, ready to type the replacement"
         );
@@ -6326,7 +6380,11 @@ mod search_tests {
     fn count_gn_reaches_a_later_match() {
         // `2gn` from the top selects the SECOND match.
         let st = run("a b a b a", &[gn(SearchOp::Move, 2, "a", false)]);
-        assert_eq!(st.selection_span(), Some((4, 5)), "the 2nd 'a'");
+        assert_eq!(
+            st.selection_span(),
+            Some((BytePos(4), BytePos(5))),
+            "the 2nd 'a'"
+        );
     }
 
     #[test]
@@ -6341,7 +6399,7 @@ mod search_tests {
         );
         assert_eq!(
             st.selection_span(),
-            Some((8, 11)),
+            Some((BytePos(8), BytePos(11))),
             "the last foo, selected backward"
         );
     }
@@ -6350,7 +6408,7 @@ mod search_tests {
     fn gn_with_no_match_is_a_noop() {
         let st = run("hello", &[gn(SearchOp::Move, 1, "zzz", false)]);
         assert_eq!(st.mode(), Mode::Normal, "no match — stays in Normal");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 }
 
@@ -6451,7 +6509,7 @@ mod substitute_tests {
         let none = SubFlags::default();
         let (st, out) = sub("ab\ncd\nef", SubRange::WholeFile, r"\n", "", none);
         assert_eq!(st.as_str().unwrap(), "abcdef");
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         assert_eq!((out.replacements, out.lines), (2, 1));
         let (st, _) = sub("ab\ncd\nef", SubRange::Lines(1, 2), r"\n", "", none);
         assert_eq!(st.as_str().unwrap(), "abcdef");
@@ -6472,7 +6530,7 @@ mod substitute_tests {
             SubFlags::default(),
         );
         assert_eq!(st.as_str().unwrap(), "x\n  a1\n  2c");
-        assert_eq!(st.cursor(), "x\n  a1\n  ".len());
+        assert_eq!(st.cursor().0, "x\n  a1\n  ".len());
         let (st, _) = sub(
             "a,b",
             SubRange::CurrentLine,
@@ -6726,7 +6784,7 @@ mod mark_tests {
 
         // On the newline it deletes forward across it, joining the lines (buffer-end clamp, not EOL).
         let mut joined = EditorState::new(b"ab\ncd".to_vec());
-        joined.set_cursor(2); // on the '\n'
+        joined.set_cursor(BytePos(2)); // on the '\n'
         apply_command(&mut joined, &Command::DeleteForward(1));
         assert_eq!(text(&joined), "abcd");
         assert!(joined.register().is_empty());
@@ -6794,7 +6852,7 @@ mod mark_tests {
         );
 
         let mut back = EditorState::new(b"  alpha\nbeta".to_vec());
-        back.set_cursor(10); // somewhere in "beta"
+        back.set_cursor(BytePos(10)); // somewhere in "beta"
         apply_command(&mut back, &Command::EmacsBufferEdge { start: true });
         assert_eq!(
             back.view.cursor, 0,
@@ -6810,7 +6868,7 @@ mod mark_tests {
         // Point before the line end: kill the line's rest (not the newline).
         let mut mid = EditorState::new(b"foo\nbar".to_vec());
         mid.set_caret_gravity(CaretGravity::BetweenChar);
-        mid.set_cursor(0);
+        mid.set_cursor(BytePos(0));
         apply_command(&mut mid, &Command::EmacsKillLine);
         assert_eq!(text(&mid), "\nbar");
         assert_eq!(mid.view.cursor, 0);
@@ -6826,7 +6884,7 @@ mod mark_tests {
         // At end-of-buffer there is nothing to kill: inert, register untouched.
         let mut eob = EditorState::new(b"foo".to_vec());
         eob.set_caret_gravity(CaretGravity::BetweenChar);
-        eob.set_cursor(3);
+        eob.set_cursor(BytePos(3));
         apply_command(&mut eob, &Command::EmacsKillLine);
         assert_eq!(text(&eob), "foo");
         assert_eq!(eob.view.cursor, 3);
@@ -6840,7 +6898,7 @@ mod mark_tests {
         // Mid-line: "abc" point 1 -> "bac" point 2 (swap 'a' and 'b').
         let mut mid = EditorState::new(b"abc".to_vec());
         mid.set_caret_gravity(CaretGravity::BetweenChar);
-        mid.set_cursor(1);
+        mid.set_cursor(BytePos(1));
         apply_command(&mut mid, &Command::EmacsTransposeChars);
         assert_eq!(text(&mid), "bac");
         assert_eq!(mid.view.cursor, 2);
@@ -6852,7 +6910,7 @@ mod mark_tests {
         // At end of line: "abc" point 3 -> transpose the last two chars -> "acb", point stays at 3.
         let mut eol = EditorState::new(b"abc".to_vec());
         eol.set_caret_gravity(CaretGravity::BetweenChar);
-        eol.set_cursor(3);
+        eol.set_cursor(BytePos(3));
         apply_command(&mut eol, &Command::EmacsTransposeChars);
         assert_eq!(text(&eol), "acb");
         assert_eq!(eol.view.cursor, 3);
@@ -6860,7 +6918,7 @@ mod mark_tests {
         // No pair (point at buffer start): inert.
         let mut bob = EditorState::new(b"abc".to_vec());
         bob.set_caret_gravity(CaretGravity::BetweenChar);
-        bob.set_cursor(0);
+        bob.set_cursor(BytePos(0));
         apply_command(&mut bob, &Command::EmacsTransposeChars);
         assert_eq!(text(&bob), "abc");
         assert_eq!(bob.view.cursor, 0);
@@ -6873,7 +6931,7 @@ mod mark_tests {
         // capitalize-word: "foo bar" point 0 -> "Foo bar", point at end of "foo" (3).
         let mut cap = EditorState::new(b"foo bar".to_vec());
         cap.set_caret_gravity(CaretGravity::BetweenChar);
-        cap.set_cursor(0);
+        cap.set_cursor(BytePos(0));
         apply_command(
             &mut cap,
             &Command::EmacsCaseWord {
@@ -6890,7 +6948,7 @@ mod mark_tests {
         // upcase-word: mixed case -> all upper.
         let mut up = EditorState::new(b"fooBar baz".to_vec());
         up.set_caret_gravity(CaretGravity::BetweenChar);
-        up.set_cursor(0);
+        up.set_cursor(BytePos(0));
         apply_command(
             &mut up,
             &Command::EmacsCaseWord {
@@ -6903,7 +6961,7 @@ mod mark_tests {
         // downcase-word skips leading non-word chars (the forward-word span): point before "  FOO".
         let mut down = EditorState::new(b"  FOO".to_vec());
         down.set_caret_gravity(CaretGravity::BetweenChar);
-        down.set_cursor(0);
+        down.set_cursor(BytePos(0));
         apply_command(
             &mut down,
             &Command::EmacsCaseWord {
@@ -6916,7 +6974,7 @@ mod mark_tests {
         // No word ahead: inert.
         let mut none = EditorState::new(b"foo".to_vec());
         none.set_caret_gravity(CaretGravity::BetweenChar);
-        none.set_cursor(3);
+        none.set_cursor(BytePos(3));
         apply_command(
             &mut none,
             &Command::EmacsCaseWord {
@@ -6934,7 +6992,7 @@ mod mark_tests {
         // Two kill-lines: "foo" then the joining "\n" append -> "foo\n".
         let mut kl = EditorState::new(b"foo\nbar".to_vec());
         kl.set_caret_gravity(CaretGravity::BetweenChar);
-        kl.set_cursor(0);
+        kl.set_cursor(BytePos(0));
         apply_command(&mut kl, &Command::EmacsKillLine);
         apply_command(&mut kl, &Command::EmacsKillLine);
         assert_eq!(text(&kl), "bar");
@@ -6947,7 +7005,7 @@ mod mark_tests {
         // Two kill-words accumulate: "foo" then " bar" -> "foo bar".
         let mut kw = EditorState::new(b"foo bar".to_vec());
         kw.set_caret_gravity(CaretGravity::BetweenChar);
-        kw.set_cursor(0);
+        kw.set_cursor(BytePos(0));
         apply_command(&mut kw, &Command::EmacsKillWord { count: 1 });
         apply_command(&mut kw, &Command::EmacsKillWord { count: 1 });
         assert_eq!(text(&kw), "");
@@ -6960,7 +7018,7 @@ mod mark_tests {
         // A non-kill (a plain move) between kills BREAKS the run: the second kill overwrites, not appends.
         let mut brk = EditorState::new(b"foo bar baz".to_vec());
         brk.set_caret_gravity(CaretGravity::BetweenChar);
-        brk.set_cursor(0);
+        brk.set_cursor(BytePos(0));
         apply_command(&mut brk, &Command::EmacsKillWord { count: 1 });
         apply_command(&mut brk, &Command::MoveRight); // not a kill -> resets last_was_kill
         apply_command(&mut brk, &Command::EmacsKillWord { count: 1 });
@@ -6987,7 +7045,7 @@ mod mark_tests {
     fn line_first_non_blank_lands_on_first_non_blank() {
         let mut st = EditorState::new(b"  foo".to_vec());
         st.set_caret_gravity(CaretGravity::BetweenChar);
-        st.set_cursor(5); // end of line
+        st.set_cursor(BytePos(5)); // end of line
         apply_command(&mut st, &Command::Move(1, Motion::LineFirstNonBlank));
         assert_eq!(
             st.view.cursor, 2,
@@ -6997,7 +7055,7 @@ mod mark_tests {
         // An all-blank line: land at the line end (no non-blank to find).
         let mut blank = EditorState::new(b"   \nx".to_vec());
         blank.set_caret_gravity(CaretGravity::BetweenChar);
-        blank.set_cursor(0);
+        blank.set_cursor(BytePos(0));
         apply_command(&mut blank, &Command::Move(1, Motion::LineFirstNonBlank));
         assert_eq!(blank.view.cursor, 3, "all-blank line: land at its end");
     }
@@ -7007,14 +7065,14 @@ mod mark_tests {
     fn emacs_horizontal_space_collapses_surrounding_whitespace() {
         let mut one = EditorState::new(b"foo   bar".to_vec());
         one.set_caret_gravity(CaretGravity::BetweenChar);
-        one.set_cursor(4); // inside the three spaces
+        one.set_cursor(BytePos(4)); // inside the three spaces
         apply_command(&mut one, &Command::EmacsHorizontalSpace { keep_one: true });
         assert_eq!(text(&one), "foo bar");
         assert_eq!(one.view.cursor, 4, "point rests after the single space");
 
         let mut none = EditorState::new(b"foo   bar".to_vec());
         none.set_caret_gravity(CaretGravity::BetweenChar);
-        none.set_cursor(4);
+        none.set_cursor(BytePos(4));
         apply_command(
             &mut none,
             &Command::EmacsHorizontalSpace { keep_one: false },
@@ -7025,7 +7083,7 @@ mod mark_tests {
         // just-one-space with no surrounding whitespace inserts one.
         let mut ins = EditorState::new(b"ab".to_vec());
         ins.set_caret_gravity(CaretGravity::BetweenChar);
-        ins.set_cursor(1);
+        ins.set_cursor(BytePos(1));
         apply_command(&mut ins, &Command::EmacsHorizontalSpace { keep_one: true });
         assert_eq!(text(&ins), "a b");
         assert_eq!(ins.view.cursor, 2);
@@ -7036,7 +7094,7 @@ mod mark_tests {
     fn emacs_open_line_inserts_newline_and_keeps_point() {
         let mut st = EditorState::new(b"foobar".to_vec());
         st.set_caret_gravity(CaretGravity::BetweenChar);
-        st.set_cursor(3);
+        st.set_cursor(BytePos(3));
         apply_command(&mut st, &Command::EmacsOpenLine);
         assert_eq!(text(&st), "foo\nbar");
         assert_eq!(st.view.cursor, 3, "point stays before the inserted newline");
@@ -7049,7 +7107,7 @@ mod mark_tests {
     fn emacs_backward_kill_word_kills_backward_and_prepends() {
         let mut one = EditorState::new(b"foo bar".to_vec());
         one.set_caret_gravity(CaretGravity::BetweenChar);
-        one.set_cursor(7);
+        one.set_cursor(BytePos(7));
         apply_command(&mut one, &Command::EmacsBackwardKillWord { count: 1 });
         assert_eq!(text(&one), "foo ");
         assert_eq!(one.view.cursor, 4);
@@ -7058,7 +7116,7 @@ mod mark_tests {
         // Two backward kills: the second PREPENDS ("bar " before "baz" -> "bar baz").
         let mut acc = EditorState::new(b"foo bar baz".to_vec());
         acc.set_caret_gravity(CaretGravity::BetweenChar);
-        acc.set_cursor(11);
+        acc.set_cursor(BytePos(11));
         apply_command(&mut acc, &Command::EmacsBackwardKillWord { count: 1 });
         apply_command(&mut acc, &Command::EmacsBackwardKillWord { count: 1 });
         assert_eq!(text(&acc), "foo ");
@@ -7072,7 +7130,7 @@ mod mark_tests {
         // At the separator between the two words.
         let mut a = EditorState::new(b"foo bar".to_vec());
         a.set_caret_gravity(CaretGravity::BetweenChar);
-        a.set_cursor(3);
+        a.set_cursor(BytePos(3));
         apply_command(&mut a, &Command::EmacsTransposeWords);
         assert_eq!(text(&a), "bar foo");
         assert_eq!(a.view.cursor, 7);
@@ -7081,7 +7139,7 @@ mod mark_tests {
         // Point inside the middle word of three swaps that word with the NEXT one (matches Emacs).
         let mut b = EditorState::new(b"foo bar baz".to_vec());
         b.set_caret_gravity(CaretGravity::BetweenChar);
-        b.set_cursor(5); // inside "bar"
+        b.set_cursor(BytePos(5)); // inside "bar"
         apply_command(&mut b, &Command::EmacsTransposeWords);
         assert_eq!(text(&b), "foo baz bar");
         assert_eq!(b.view.cursor, 11);
@@ -7097,14 +7155,14 @@ mod mark_tests {
         // forward-word skips a leading punctuation run then moves over the word: "...foo" -> point 6.
         let mut fw = EditorState::new(b"...foo".to_vec());
         fw.set_caret_gravity(CaretGravity::BetweenChar);
-        fw.set_cursor(0);
+        fw.set_cursor(BytePos(0));
         apply_command(&mut fw, &Command::Move(1, Motion::EmacsWordFwd));
         assert_eq!(fw.view.cursor, 6);
 
         // `_` is non-word: forward-word on "foo_bar" stops after "foo" (point 3).
         let mut us = EditorState::new(b"foo_bar".to_vec());
         us.set_caret_gravity(CaretGravity::BetweenChar);
-        us.set_cursor(0);
+        us.set_cursor(BytePos(0));
         apply_command(&mut us, &Command::Move(1, Motion::EmacsWordFwd));
         assert_eq!(us.view.cursor, 3);
 
@@ -7112,14 +7170,14 @@ mod mark_tests {
         // "foo.bar" it lands at the start of "foo" (point 0), NOT at the "." where Vim `b` would stop.
         let mut bw = EditorState::new(b"foo.bar".to_vec());
         bw.set_caret_gravity(CaretGravity::BetweenChar);
-        bw.set_cursor(4);
+        bw.set_cursor(BytePos(4));
         apply_command(&mut bw, &Command::Move(1, Motion::EmacsWordBack));
         assert_eq!(bw.view.cursor, 0);
 
         // kill-word inherits the two-class span: on "foo_bar" it kills just "foo" (stops at `_`).
         let mut kw = EditorState::new(b"foo_bar".to_vec());
         kw.set_caret_gravity(CaretGravity::BetweenChar);
-        kw.set_cursor(0);
+        kw.set_cursor(BytePos(0));
         apply_command(&mut kw, &Command::EmacsKillWord { count: 1 });
         assert_eq!(text(&kw), "_bar");
         assert_eq!(kw.register().text(), b"foo");
@@ -7127,7 +7185,7 @@ mod mark_tests {
         // upcase-word too: recases only "foo" of "foo_bar", leaving "_bar" untouched, point after "foo".
         let mut up = EditorState::new(b"foo_bar".to_vec());
         up.set_caret_gravity(CaretGravity::BetweenChar);
-        up.set_cursor(0);
+        up.set_cursor(BytePos(0));
         apply_command(
             &mut up,
             &Command::EmacsCaseWord {
@@ -7141,7 +7199,7 @@ mod mark_tests {
         // (back to the start of "foo"), leaving "bar".
         let mut bkw = EditorState::new(b"foo.bar".to_vec());
         bkw.set_caret_gravity(CaretGravity::BetweenChar);
-        bkw.set_cursor(4);
+        bkw.set_cursor(BytePos(4));
         apply_command(&mut bkw, &Command::EmacsBackwardKillWord { count: 1 });
         assert_eq!(text(&bkw), "bar");
         assert_eq!(bkw.view.cursor, 0);
@@ -7153,10 +7211,14 @@ mod mark_tests {
     fn emacs_mark_word_sets_mark_at_word_end() {
         let mut st = EditorState::new(b"foo bar".to_vec());
         st.set_caret_gravity(CaretGravity::BetweenChar);
-        st.set_cursor(0);
+        st.set_cursor(BytePos(0));
         apply_command(&mut st, &Command::EmacsMarkWord);
         assert_eq!(st.view.cursor, 0, "point does not move");
-        assert_eq!(st.mark(), Some(3), "mark lands at the end of 'foo'");
+        assert_eq!(
+            st.mark(),
+            Some(BytePos(3)),
+            "mark lands at the end of 'foo'"
+        );
         assert!(st.register().is_empty());
     }
 
@@ -7166,7 +7228,7 @@ mod mark_tests {
     fn emacs_kill_whole_line_kills_the_line_and_newline() {
         let mut st = EditorState::new(b"foo\nbar".to_vec());
         st.set_caret_gravity(CaretGravity::BetweenChar);
-        st.set_cursor(1); // mid-line — column is irrelevant
+        st.set_cursor(BytePos(1)); // mid-line — column is irrelevant
         apply_command(&mut st, &Command::EmacsKillWholeLine);
         assert_eq!(text(&st), "bar");
         assert_eq!(st.view.cursor, 0);
@@ -7183,9 +7245,9 @@ mod mark_tests {
     fn emacs_case_region_recases_the_active_region() {
         let mut up = EditorState::new(b"foo bar".to_vec());
         up.set_caret_gravity(CaretGravity::BetweenChar);
-        up.set_cursor(0);
+        up.set_cursor(BytePos(0));
         apply_command(&mut up, &Command::SetMark); // mark at 0
-        up.set_cursor(3); // region [0,3) = "foo"
+        up.set_cursor(BytePos(3)); // region [0,3) = "foo"
         apply_command(
             &mut up,
             &Command::EmacsCaseRegion {
@@ -7195,7 +7257,7 @@ mod mark_tests {
         assert_eq!(text(&up), "FOO bar");
         assert_eq!(
             (up.view.cursor, up.mark()),
-            (3, Some(0)),
+            (3, Some(BytePos(0))),
             "point and mark unchanged"
         );
         assert!(up.register().is_empty());
@@ -7203,7 +7265,7 @@ mod mark_tests {
         // No mark set: inert.
         let mut none = EditorState::new(b"foo".to_vec());
         none.set_caret_gravity(CaretGravity::BetweenChar);
-        none.set_cursor(3);
+        none.set_cursor(BytePos(3));
         apply_command(
             &mut none,
             &Command::EmacsCaseRegion {
@@ -7220,7 +7282,7 @@ mod mark_tests {
         let join = |buf: &[u8], cur: usize| {
             let mut st = EditorState::new(buf.to_vec());
             st.set_caret_gravity(CaretGravity::BetweenChar);
-            st.set_cursor(cur);
+            st.set_cursor(BytePos(cur));
             apply_command(&mut st, &Command::EmacsDeleteIndentation);
             (text(&st), st.view.cursor)
         };
@@ -7345,7 +7407,7 @@ mod caret_gravity_tests {
     ) -> EditorState {
         let mut st = EditorState::new(initial.as_bytes().to_vec());
         st.set_caret_gravity(gravity);
-        st.set_cursor(start);
+        st.set_cursor(BytePos(start));
         for c in cmds {
             apply_command(&mut st, c);
         }
@@ -7359,13 +7421,13 @@ mod caret_gravity_tests {
         let cmds = [Command::Delete(1, Motion::LineEnd)];
         let vim = run_with(CaretGravity::OnChar, "hello world", 6, &cmds);
         assert_eq!(
-            vim.cursor(),
+            vim.cursor().0,
             5,
             "Vim clamps the Normal-mode caret onto the last char"
         );
         let emacs = run_with(CaretGravity::BetweenChar, "hello world", 6, &cmds);
         assert_eq!(
-            emacs.cursor(),
+            emacs.cursor().0,
             6,
             "Emacs point rests on the after-last slot (not clamped)"
         );
@@ -7387,11 +7449,11 @@ mod caret_gravity_tests {
         ];
         let vim = run_with(CaretGravity::OnChar, "abc", 0, &cmds);
         assert_eq!(String::from_utf8(vim.bytes().to_vec()).unwrap(), "aabcbc");
-        assert_eq!(vim.cursor(), 3, "Vim paste rests on the last pasted byte");
+        assert_eq!(vim.cursor().0, 3, "Vim paste rests on the last pasted byte");
         let emacs = run_with(CaretGravity::BetweenChar, "abc", 0, &cmds);
         assert_eq!(String::from_utf8(emacs.bytes().to_vec()).unwrap(), "aabcbc");
         assert_eq!(
-            emacs.cursor(),
+            emacs.cursor().0,
             4,
             "Emacs profile rests point after the pasted text"
         );
@@ -7407,7 +7469,7 @@ mod caret_gravity_tests {
             &[Command::Move(1, Motion::Up)],
         );
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             7,
             "vertical move keeps the placed column (curswant seeded by set_cursor)"
         );
@@ -7446,17 +7508,17 @@ mod section_motion_tests {
     fn forward_section_start_lands_on_next_brace() {
         // `]]` from line 1 (`{`) skips itself → the next `{` in column 0 (line 5, byte 12).
         let st = run(B, &[Command::Move(1, Motion::SectionFwd)]);
-        assert_eq!(st.cursor(), 12);
+        assert_eq!(st.cursor().0, 12);
         // `2]]` runs out of sections after line 5 → clamps to the last content line (`}`, byte 18).
         let st = run(B, &[Command::Move(2, Motion::SectionFwd)]);
-        assert_eq!(st.cursor(), 18);
+        assert_eq!(st.cursor().0, 18);
     }
 
     #[test]
     fn forward_section_end_lands_on_next_close_brace() {
         // `][` from line 1 → the next `}` in column 0 (line 4, byte 10).
         let st = run(B, &[Command::Move(1, Motion::SectionEndFwd)]);
-        assert_eq!(st.cursor(), 10);
+        assert_eq!(st.cursor().0, 10);
     }
 
     #[test]
@@ -7464,7 +7526,7 @@ mod section_motion_tests {
         // From the last line (`}`, byte 18): `[[` → previous `{` (line 5, byte 12); `[]` → previous `}`
         // (line 4, byte 10) — strictly before the cursor, so it does not stop on the `}` under the cursor.
         let st = run(B, &[Command::Move(1, Motion::LastLine)]);
-        assert_eq!(st.cursor(), 18, "G lands on the last close brace");
+        assert_eq!(st.cursor().0, 18, "G lands on the last close brace");
         let st = run(
             B,
             &[
@@ -7472,7 +7534,7 @@ mod section_motion_tests {
                 Command::Move(1, Motion::SectionBack),
             ],
         );
-        assert_eq!(st.cursor(), 12);
+        assert_eq!(st.cursor().0, 12);
         let st = run(
             B,
             &[
@@ -7480,14 +7542,14 @@ mod section_motion_tests {
                 Command::Move(1, Motion::SectionEndBack),
             ],
         );
-        assert_eq!(st.cursor(), 10);
+        assert_eq!(st.cursor().0, 10);
     }
 
     #[test]
     fn eof_and_bof_clamp_to_first_non_blank() {
         // `]]` with no further `{` clamps to the last line's first non-blank ("    xy" → byte at 'x').
         let st = run("{\n  a\n    xy", &[Command::Move(1, Motion::SectionFwd)]);
-        assert_eq!(st.cursor(), 10, "'    xy' first non-blank");
+        assert_eq!(st.cursor().0, 10, "'    xy' first non-blank");
         // `[[`/`[]` with nothing before clamp to the first line (byte 0 here).
         let st = run(
             "{\n  a\n    xy",
@@ -7496,16 +7558,16 @@ mod section_motion_tests {
                 Command::Move(1, Motion::SectionEndBack),
             ],
         );
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
     fn form_feed_is_a_boundary_for_both_directions() {
         // A form-feed (\x0C) in column 0 is a section boundary for `]]` AND `][`.
         let st = run("aaa\n\x0C\nbbb", &[Command::Move(1, Motion::SectionFwd)]);
-        assert_eq!(st.cursor(), 4, "]] stops at the form-feed line");
+        assert_eq!(st.cursor().0, 4, "]] stops at the form-feed line");
         let st = run("aaa\n\x0C\nbbb", &[Command::Move(1, Motion::SectionEndFwd)]);
-        assert_eq!(st.cursor(), 4, "][ stops at the form-feed line");
+        assert_eq!(st.cursor().0, 4, "][ stops at the form-feed line");
     }
 
     #[test]
@@ -7514,7 +7576,7 @@ mod section_motion_tests {
         // Line starts: "a"@0, " {"@2, "b"@5, "{"@7, "c"@9.
         let st = run("a\n {\nb\n{\nc", &[Command::Move(1, Motion::SectionFwd)]);
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             7,
             "skips the indented brace, stops at the col-0 brace (byte 7)"
         );
@@ -7527,7 +7589,7 @@ mod section_motion_tests {
         assert_eq!(text(&st), "{\n  c\n}");
         assert!(st.register().is_linewise());
         assert_eq!(st.register().text(), b"{\n  a\n  b\n}\n");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         // `d][` from line 1 deletes lines 1-3 (up to but not including the `}` at line 4).
         let st = run(B, &[Command::Delete(1, Motion::SectionEndFwd)]);
         assert_eq!(text(&st), "}\n{\n  c\n}");
@@ -7541,7 +7603,7 @@ mod section_motion_tests {
         assert_eq!(text(&st), B, "yank leaves the buffer unchanged");
         assert!(st.register().is_linewise());
         assert_eq!(st.register().text(), b"{\n  a\n  b\n}\n");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -7609,19 +7671,19 @@ mod unmatched_bracket_motion_tests {
         // `[(` goes to the enclosing open paren; `])` to the enclosing close paren.
         let mut cmds = on_c("(abcdef)");
         cmds.push(Command::Move(1, Motion::UnmatchedParenBack));
-        assert_eq!(run("(abcdef)", &cmds).cursor(), 0);
+        assert_eq!(run("(abcdef)", &cmds).cursor().0, 0);
 
         let mut cmds = on_c("(abcdef)");
         cmds.push(Command::Move(1, Motion::UnmatchedParenFwd));
-        assert_eq!(run("(abcdef)", &cmds).cursor(), 7);
+        assert_eq!(run("(abcdef)", &cmds).cursor().0, 7);
 
         // Braces behave identically.
         let mut cmds = on_c("{abcdef}");
         cmds.push(Command::Move(1, Motion::UnmatchedBraceBack));
-        assert_eq!(run("{abcdef}", &cmds).cursor(), 0);
+        assert_eq!(run("{abcdef}", &cmds).cursor().0, 0);
         let mut cmds = on_c("{abcdef}");
         cmds.push(Command::Move(1, Motion::UnmatchedBraceFwd));
-        assert_eq!(run("{abcdef}", &cmds).cursor(), 7);
+        assert_eq!(run("{abcdef}", &cmds).cursor().0, 7);
     }
 
     #[test]
@@ -7636,7 +7698,7 @@ mod unmatched_bracket_motion_tests {
                 Command::Move(1, Motion::UnmatchedParenBack),
             ],
         );
-        assert_eq!(one.cursor(), 2, "[( → the INNER open paren");
+        assert_eq!(one.cursor().0, 2, "[( → the INNER open paren");
         let two = run(
             "(a(b)c)",
             &[
@@ -7646,7 +7708,7 @@ mod unmatched_bracket_motion_tests {
                 Command::Move(2, Motion::UnmatchedParenBack),
             ],
         );
-        assert_eq!(two.cursor(), 0, "2[( → out two levels to the OUTER open");
+        assert_eq!(two.cursor().0, 0, "2[( → out two levels to the OUTER open");
 
         // Forward mirror on braces: "{a{b}c}" cursor on 'b' (byte 3).
         let one = run(
@@ -7658,7 +7720,7 @@ mod unmatched_bracket_motion_tests {
                 Command::Move(1, Motion::UnmatchedBraceFwd),
             ],
         );
-        assert_eq!(one.cursor(), 4, "]}} → the inner close brace");
+        assert_eq!(one.cursor().0, 4, "]}} → the inner close brace");
         let two = run(
             "{a{b}c}",
             &[
@@ -7668,7 +7730,11 @@ mod unmatched_bracket_motion_tests {
                 Command::Move(2, Motion::UnmatchedBraceFwd),
             ],
         );
-        assert_eq!(two.cursor(), 6, "2]}} → out two levels to the outer close");
+        assert_eq!(
+            two.cursor().0,
+            6,
+            "2]}} → out two levels to the outer close"
+        );
     }
 
     #[test]
@@ -7681,10 +7747,10 @@ mod unmatched_bracket_motion_tests {
                 Command::Move(1, Motion::UnmatchedParenBack),
             ],
         );
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
         // Cursor ON the open paren: `[(` scans strictly left, finds nothing → no-op (nvim: stays put).
         let st = run("(abc)", &[Command::Move(1, Motion::UnmatchedParenBack)]);
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         // Cursor ON the close paren: `])` scans strictly right → no-op.
         let st = run(
             "(abc)",
@@ -7693,7 +7759,7 @@ mod unmatched_bracket_motion_tests {
                 Command::Move(1, Motion::UnmatchedParenFwd),
             ],
         );
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
     }
 
     #[test]
@@ -7705,7 +7771,7 @@ mod unmatched_bracket_motion_tests {
         assert_eq!(text(&st), "cdef)");
         assert!(!st.register().is_linewise());
         assert_eq!(st.register().text(), b"(ab");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
 
         // `d])` from 'c' deletes [cursor, close) = "cdef" — the `)` is EXCLUDED (verified: not `d%`'s inclusive).
         let mut cmds = on_c("(abcdef)");
@@ -7714,7 +7780,7 @@ mod unmatched_bracket_motion_tests {
         assert_eq!(text(&st), "(ab)");
         assert!(!st.register().is_linewise());
         assert_eq!(st.register().text(), b"cdef");
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
     }
 
     #[test]
@@ -7725,7 +7791,7 @@ mod unmatched_bracket_motion_tests {
         let st = run("(abcdef)", &cmds);
         assert_eq!(text(&st), "(abcdef)");
         assert_eq!(st.register().text(), b"cdef");
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
 
         // `c]}` on braces deletes the inner span and enters insert; typing replaces it.
         let st = run(
@@ -7859,7 +7925,7 @@ mod tag_text_object_tests {
 
     fn at(initial: &str, cur: usize, cmds: &[Command]) -> EditorState {
         let mut st = EditorState::new(initial.as_bytes().to_vec());
-        st.set_cursor(cur);
+        st.set_cursor(BytePos(cur));
         for c in cmds {
             apply_command(&mut st, c);
         }
@@ -8000,7 +8066,7 @@ mod tag_text_object_tests {
     #[test]
     fn change_inner_deletes_content_and_enters_insert() {
         let mut st = EditorState::new(b"<div>hello</div>".to_vec());
-        st.set_cursor(5);
+        st.set_cursor(BytePos(5));
         apply_command(&mut st, &Command::Change(1, Motion::Tag { around: false }));
         assert_eq!(text(&st), "<div></div>");
         assert_eq!(st.mode(), Mode::Insert);
@@ -8071,7 +8137,7 @@ mod put_lines_tests {
     /// The cursor's 0-based (line, column).
     fn cursor_line_col(st: &EditorState) -> (usize, usize) {
         let b = st.doc.bytes();
-        let c = st.cursor();
+        let c = st.cursor().0;
         let line = b[..c].iter().filter(|&&x| x == b'\n').count();
         let line_start = b[..c]
             .iter()
@@ -8160,7 +8226,7 @@ mod put_lines_tests {
     #[test]
     fn bare_put_inserts_after_the_current_line() {
         let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
-        st.set_cursor(0); // line1
+        st.set_cursor(BytePos(0)); // line1
         st.yank_lines(SubRange::Lines(1, 1));
         assert_eq!(st.put_lines(LineAddr::Current, None), 1);
         assert_eq!(text(&st), "line1\nline1\nline2\nline3\n");
@@ -8189,7 +8255,7 @@ mod put_lines_tests {
     #[test]
     fn empty_register_is_a_no_op() {
         let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
-        st.set_cursor(6); // line2
+        st.set_cursor(BytePos(6)); // line2
         assert_eq!(
             st.put_lines(LineAddr::Line(1), Some('z')),
             0,
@@ -8232,7 +8298,7 @@ mod read_filter_tests {
     /// The cursor's 0-based (line, column).
     fn cursor_line_col(st: &EditorState) -> (usize, usize) {
         let b = st.doc.bytes();
-        let c = st.cursor();
+        let c = st.cursor().0;
         let line = b[..c].iter().filter(|&&x| x == b'\n').count();
         let line_start = b[..c]
             .iter()
@@ -8260,7 +8326,7 @@ mod read_filter_tests {
     #[test]
     fn read_at_line_zero_inserts_at_the_top() {
         let mut st = EditorState::new(b"alpha\nbeta\ngamma\n".to_vec());
-        st.set_cursor(12); // gamma, to prove `:0r` ignores the cursor line
+        st.set_cursor(BytePos(12)); // gamma, to prove `:0r` ignores the cursor line
         assert_eq!(st.read_lines(LineAddr::Line(0), b"X1\nX2\n", false), 2);
         assert_eq!(text(&st), "X1\nX2\nalpha\nbeta\ngamma\n");
         assert_eq!(cursor_line_col(&st), (0, 0));
@@ -8271,7 +8337,7 @@ mod read_filter_tests {
     #[test]
     fn bare_read_inserts_after_the_current_line() {
         let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
-        st.set_cursor(0); // alpha
+        st.set_cursor(BytePos(0)); // alpha
         assert_eq!(st.read_lines(LineAddr::Current, b"X1\nX2\n", false), 2);
         assert_eq!(text(&st), "alpha\nX1\nX2\nbeta\n");
         assert_eq!(cursor_line_col(&st), (1, 0));
@@ -8291,7 +8357,7 @@ mod read_filter_tests {
     #[test]
     fn read_cursor_lands_on_first_non_blank() {
         let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
-        st.set_cursor(0); // alpha
+        st.set_cursor(BytePos(0)); // alpha
         assert_eq!(
             st.read_lines(LineAddr::Current, b"  indented\nX2\n", false),
             2
@@ -8305,7 +8371,7 @@ mod read_filter_tests {
     #[test]
     fn read_file_without_trailing_newline_keeps_its_last_line() {
         let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
-        st.set_cursor(0);
+        st.set_cursor(BytePos(0));
         assert_eq!(
             st.read_lines(LineAddr::Current, b"no_nl_a\nno_nl_b", false),
             2
@@ -8319,7 +8385,7 @@ mod read_filter_tests {
     #[test]
     fn read_command_leaves_cursor_on_last_line() {
         let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
-        st.set_cursor(0); // alpha
+        st.set_cursor(BytePos(0)); // alpha
         assert_eq!(st.read_lines(LineAddr::Current, b"C1\nC2\n", true), 2);
         assert_eq!(text(&st), "alpha\nC1\nC2\nbeta\n");
         assert_eq!(
@@ -8333,7 +8399,7 @@ mod read_filter_tests {
     #[test]
     fn empty_read_is_a_no_op() {
         let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
-        st.set_cursor(6); // beta
+        st.set_cursor(BytePos(6)); // beta
         assert_eq!(st.read_lines(LineAddr::Current, b"", false), 0);
         assert_eq!(text(&st), "alpha\nbeta\n");
         assert_eq!(cursor_line_col(&st), (1, 0));
@@ -8366,7 +8432,7 @@ mod read_filter_tests {
             Some(&b"one\ntwo\nthree\nfour\n"[..]),
             "the whole-file range does not include a phantom trailing empty line"
         );
-        st.set_cursor(0);
+        st.set_cursor(BytePos(0));
         assert_eq!(
             st.range_text(SubRange::CurrentLine).as_deref(),
             Some(&b"one\n"[..])
@@ -8599,7 +8665,7 @@ mod visual_op_tests {
             ],
         );
         assert_eq!(text(&st), "ijkl");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
         assert_eq!(st.mode(), Mode::Normal);
         assert!(st.register().is_linewise());
         assert_eq!(st.register().text(), b"abcd\nefgh\n");
@@ -8619,7 +8685,7 @@ mod visual_op_tests {
             ],
         );
         assert_eq!(text(&st), "abcd");
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
         assert_eq!(st.register().text(), b"efgh\nijkl\n");
     }
 
@@ -8657,7 +8723,7 @@ mod visual_op_tests {
             ],
         );
         assert_eq!(text(&st), "        a\n        b\nc");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         assert_eq!(st.mode(), Mode::Normal);
         let st = run(
             "            a\nb",
@@ -8684,7 +8750,7 @@ mod visual_op_tests {
             ],
         );
         assert_eq!(text(&st), "a b c\nd");
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
         let st = run(
             "a\n  b\nc",
             &[
@@ -8708,7 +8774,7 @@ mod visual_op_tests {
                 Command::VisualOp(VisualOp::OtherCorner),
             ],
         );
-        assert_eq!(st.cursor(), 6);
+        assert_eq!(st.cursor().0, 6);
         assert_eq!(st.view.anchor, Some(2));
     }
 
@@ -8813,19 +8879,21 @@ mod final_newline_slot_tests {
     #[test]
     fn motions_running_off_the_end_land_on_the_last_char() {
         // `ww` / `}` / `5g_` / `99go` / `)))` on terminated buffers (nvim).
-        assert_eq!(run("foo bar\n", &[mv(2, Motion::WordFwd)]).cursor(), 6);
-        assert_eq!(run("a\nbc\n", &[mv(1, Motion::ParagraphFwd)]).cursor(), 3);
+        assert_eq!(run("foo bar\n", &[mv(2, Motion::WordFwd)]).cursor().0, 6);
+        assert_eq!(run("a\nbc\n", &[mv(1, Motion::ParagraphFwd)]).cursor().0, 3);
         assert_eq!(
-            run("a  \nb  \n", &[mv(5, Motion::LineLastNonBlank)]).cursor(),
+            run("a  \nb  \n", &[mv(5, Motion::LineLastNonBlank)])
+                .cursor()
+                .0,
             4
         );
-        assert_eq!(run("ab\n", &[mv(99, Motion::GotoByte)]).cursor(), 1);
+        assert_eq!(run("ab\n", &[mv(99, Motion::GotoByte)]).cursor().0, 1);
         assert_eq!(
-            run("A b. C d.\n", &[mv(3, Motion::SentenceFwd)]).cursor(),
+            run("A b. C d.\n", &[mv(3, Motion::SentenceFwd)]).cursor().0,
             8
         );
         // An empty last line is a real line: the cursor rests on it.
-        assert_eq!(run("a\n\n", &[mv(3, Motion::WordFwd)]).cursor(), 2);
+        assert_eq!(run("a\n\n", &[mv(3, Motion::WordFwd)]).cursor().0, 2);
     }
 
     #[test]
@@ -8833,7 +8901,7 @@ mod final_newline_slot_tests {
         // `a\nb` + `jx`: the last line is now empty, spelled like a final newline; the cursor stays on it.
         let st = run("a\nb", &[mv(1, Motion::Down), Command::DeleteUnder(1)]);
         assert_eq!(text(&st), "a\n");
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor().0, 2);
     }
 
     #[test]
@@ -8887,12 +8955,12 @@ mod final_newline_slot_tests {
         assert_eq!(text(&st), "a\nb\n");
         let st = run("a\nb\n", &[Command::JoinLines(5)]);
         assert_eq!(text(&st), "a b\n");
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
         let st = run("foo bar baz qux\n", &[Command::JoinLines(2)]);
         assert_eq!(text(&st), "foo bar baz qux\n");
         let st = run("a\nb\nc\n", &[Command::JoinLines(5)]);
         assert_eq!(text(&st), "a b c\n");
-        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.cursor().0, 3);
     }
 
     #[test]
@@ -8918,7 +8986,7 @@ mod final_newline_slot_tests {
         let mut st = EditorState::new(b"a\nb\n".to_vec());
         st.delete_lines(SubRange::Lines(2, 2));
         assert_eq!(text(&st), "a\n");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         let mut st = EditorState::new(b"a\n\nb\n".to_vec());
         let out = st
             .substitute(SubRange::WholeFile, "^$", "x", SubFlags::default())
@@ -8941,7 +9009,7 @@ mod final_newline_slot_tests {
         let mut st = EditorState::new(b"a\nb\nc".to_vec());
         st.delete_lines(SubRange::Lines(2, 3));
         assert_eq!(text(&st), "a");
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
         let st = run(
             "a\nb\nc",
             &[
@@ -8976,13 +9044,17 @@ mod final_newline_slot_tests {
     #[test]
     fn word_motions_on_terminated_and_multibyte_buffers() {
         // #746 `w`/`b`/`ge` stop on an empty line; #741 `e` advances over multibyte words.
-        assert_eq!(run("foo\n\nbar\n", &[mv(1, Motion::WordFwd)]).cursor(), 4);
-        let back = |m| run("foo\n\nbar\n", &[mv(1, Motion::LastLine), mv(1, m)]).cursor();
+        assert_eq!(run("foo\n\nbar\n", &[mv(1, Motion::WordFwd)]).cursor().0, 4);
+        let back = |m| {
+            run("foo\n\nbar\n", &[mv(1, Motion::LastLine), mv(1, m)])
+                .cursor()
+                .0
+        };
         assert_eq!(back(Motion::WordBack), 4);
         assert_eq!(back(Motion::BigWordBack), 4);
         assert_eq!(back(Motion::WordEndBack), 4);
         assert_eq!(
-            run("가나 다라\n", &[mv(2, Motion::WordEnd)]).cursor(),
+            run("가나 다라\n", &[mv(2, Motion::WordEnd)]).cursor().0,
             "가나 다".len()
         );
         // #742: `3dw` crosses the line break; the last word stops at its line end.
@@ -9057,7 +9129,7 @@ mod operator_span_tests {
             "e\u{301}b".as_bytes(),
             &[Command::Move(1, Motion::Right), Command::DeleteUnder(1)],
         );
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -9084,7 +9156,7 @@ mod operator_span_tests {
                 Command::Yank(1, Motion::Line),
             ],
         );
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         let st = run(
             b"abc def\nghi jkl\n",
             &[
@@ -9093,7 +9165,7 @@ mod operator_span_tests {
                 Command::Yank(1, Motion::Up),
             ],
         );
-        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.cursor().0, 4);
         // `ldd` on an indented line keeps column 1 on the line that moves up ('nostartofline').
         let st = run(
             b"  x\n  abc\n",
@@ -9102,7 +9174,7 @@ mod operator_span_tests {
                 Command::Delete(1, Motion::Line),
             ],
         );
-        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.cursor().0, 1);
     }
 
     #[test]
@@ -9325,14 +9397,14 @@ mod cluster_tests {
     fn word_end_lands_on_the_base_of_a_composed_char() {
         // nvim: `e` on "éé x" (decomposed) rests on byte 3, the second base; `ee` goes on to `x`.
         let one = run("e\u{301}e\u{301} x", &[Command::Move(1, Motion::WordEnd)]);
-        assert_eq!(one.cursor(), 3);
+        assert_eq!(one.cursor().0, 3);
         let two = run("e\u{301}e\u{301} x", &[Command::Move(2, Motion::WordEnd)]);
-        assert_eq!(two.cursor(), 7);
+        assert_eq!(two.cursor().0, 7);
         let big = run(
             "e\u{301}e\u{301} x",
             &[Command::Move(1, Motion::BigWordEnd)],
         );
-        assert_eq!(big.cursor(), 3);
+        assert_eq!(big.cursor().0, 3);
     }
 
     #[test]
@@ -9368,7 +9440,7 @@ mod cluster_tests {
                 Command::EnterNormal,
             ],
         );
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     #[test]
@@ -9383,7 +9455,7 @@ mod cluster_tests {
                 Command::Move(1, Motion::Down),
             ],
         );
-        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.cursor().0, 0);
     }
 
     /// #617: `'autoindent'` and the `'smarttab'` `<BS>` are Vim-profile rules; an Emacs `newline` and

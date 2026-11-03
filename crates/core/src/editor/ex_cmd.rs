@@ -303,7 +303,7 @@ impl EditorState {
             ExCmd::Place(at) => {
                 let b = self.doc.bytes();
                 let at = crate::motion::snap(b, (*at).min(b.len()));
-                self.view.set_cursor(at);
+                self.view.set_cursor(BytePos(at));
                 ExOutcome::Done
             }
             ExCmd::UndoSync => {

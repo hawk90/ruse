@@ -27,7 +27,7 @@ fn run(text: &str, keys: &str) -> Headless {
         "{keys:?}: replayed document\n{trace}"
     );
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         h.cursor(),
         "{keys:?}: replayed cursor\n{trace}"
     );

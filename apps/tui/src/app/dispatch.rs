@@ -133,7 +133,7 @@ pub(crate) fn open_file_with(
                 }
                 Err(e) => ws.reload_focused(e.into_bytes()),
             }
-            ws.place_focused_cursor(0);
+            ws.place_focused_cursor(BytePos(0));
             format!("\"{file}\" recovered unsaved changes (:w to save)")
         }
         None => match journal_error {
@@ -214,7 +214,7 @@ pub(crate) fn run_prg_operator(
     let visual_lines = |ws: &Workspace| {
         let pane = ws.focused();
         let b = pane.doc.bytes();
-        let (s, e) = pane.view.selection_span(b)?;
+        let (BytePos(s), BytePos(e)) = pane.view.selection_span(b)?;
         Some((
             ruse_core::pos::line_of(b, s),
             ruse_core::pos::line_of(b, e.saturating_sub(1).max(s)),
@@ -562,7 +562,7 @@ pub(crate) fn resolve_normal_range(ws: &Workspace, range: SubRange) -> (usize, u
     match range {
         SubRange::WholeFile => (1, total),
         SubRange::CurrentLine => {
-            let line = ruse_core::pos::line_of(&snapshot, ws.focused().view.cursor()) + 1;
+            let line = ruse_core::pos::line_of(&snapshot, ws.focused().view.cursor().0) + 1;
             (line, line)
         }
         SubRange::Lines(a, b) => (a.max(1), b.min(total)),
@@ -677,7 +677,7 @@ pub(crate) fn set_exit_status(code: u8) {
 /// fall off either end, which Vim refuses with E16 rather than clamping.
 pub(crate) fn dest_in_range(ws: &Workspace, dest: ruse_core::LineAddr) -> bool {
     let b = ws.focused().doc.bytes();
-    let cursor = ws.focused().view.cursor().min(b.len());
+    let cursor = ws.focused().view.cursor().0.min(b.len());
     let cursor_line = b[..cursor].iter().filter(|&&c| c == b'\n').count();
     let nlines = b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"));
     // An absolute line past the end is E16 too (`:t99`, #801), not the end of the buffer.
@@ -1006,7 +1006,7 @@ mod dispatch_tests {
     #[test]
     fn move_and_copy_refuse_absolute_lines_past_the_end_and_keep_the_column() {
         let mut ws = Workspace::new(b"abcd\n  defgh\nghi\n  jkl\n".to_vec());
-        ws.place_focused_cursor(2);
+        ws.place_focused_cursor(BytePos(2));
         ws.apply(&Command::MoveRight); // a horizontal move sets the wanted column
         ws.apply(&Command::MoveLeft);
         assert_eq!(ex_run(&mut ws, "t99").0, "E16: Invalid range");
@@ -1016,16 +1016,16 @@ mod dispatch_tests {
             ws.focused().doc.bytes(),
             b"  defgh\nghi\nabcd\n  defgh\nghi\n  jkl\n"
         );
-        assert_eq!(ws.focused().view.cursor(), 8 + 2);
+        assert_eq!(ws.focused().view.cursor().0, 8 + 2);
         // `:d` lands on the first non-blank of the line that took the range's place.
         let mut ws = Workspace::new(b"abc\n  defgh\nghi\n  jkl\n".to_vec());
         ex_run(&mut ws, "2,3d");
         assert_eq!(ws.focused().doc.bytes(), b"abc\n  jkl\n");
-        assert_eq!(ws.focused().view.cursor(), 4 + 2);
+        assert_eq!(ws.focused().view.cursor().0, 4 + 2);
         ex_run(&mut ws, "2d");
         assert_eq!(ws.focused().doc.bytes(), b"abc\n");
         assert_eq!(
-            ws.focused().view.cursor(),
+            ws.focused().view.cursor().0,
             0,
             "through the end: the new last line"
         );
@@ -1037,7 +1037,7 @@ mod dispatch_tests {
     fn move_and_copy_take_relative_addresses() {
         let run = |cursor_line: usize, line: &str| {
             let mut ws = Workspace::new(b"1\n2\n3\n4\n".to_vec());
-            ws.place_focused_cursor(cursor_line * 2);
+            ws.place_focused_cursor(BytePos(cursor_line * 2));
             let (status, _) = ex_run(&mut ws, line);
             (
                 String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap(),
@@ -1105,7 +1105,7 @@ mod dispatch_tests {
         keys: &str,
     ) -> (String, usize) {
         let mut ws = Workspace::new(buf.as_bytes().to_vec());
-        ws.place_focused_cursor(cursor0);
+        ws.place_focused_cursor(BytePos(cursor0));
         let range = match range {
             None => String::new(),
             Some(SubRange::WholeFile) => "%".into(),
@@ -1114,7 +1114,7 @@ mod dispatch_tests {
         };
         ex_run(&mut ws, &format!("{range}normal {keys}"));
         let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
-        (bytes, ws.focused().view.cursor())
+        (bytes, ws.focused().view.cursor().0)
     }
 
     #[test]
@@ -1262,10 +1262,10 @@ mod dispatch_tests {
     /// expectation is the buffer nvim v0.12.4 produces for the SAME line (`nvim -u NONE`, confirmed by hand).
     fn run_ex_oracle(buf: &str, cursor0: usize, line: &str) -> (String, usize) {
         let mut ws = Workspace::new(buf.as_bytes().to_vec());
-        ws.place_focused_cursor(cursor0);
+        ws.place_focused_cursor(BytePos(cursor0));
         ex_run(&mut ws, line);
         let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
-        (bytes, ws.focused().view.cursor())
+        (bytes, ws.focused().view.cursor().0)
     }
 
     #[test]
@@ -1307,7 +1307,7 @@ mod dispatch_tests {
     fn ex_substitute_count_only_reports_without_mutating() {
         let src = "foo bar foo\nfoo baz\nno match here\nfoo foo foo\n";
         let mut ws = Workspace::new(src.as_bytes().to_vec());
-        ws.place_focused_cursor(5); // must not move
+        ws.place_focused_cursor(BytePos(5)); // must not move
         let s = crate::app::session::Session::ex_on(&mut ws, "%s/foo//gn");
         assert_eq!(s.status, "6 matches on 3 lines", "nvim wording");
         assert!(
@@ -1315,7 +1315,7 @@ mod dispatch_tests {
             "`n` overrides `c` — no confirm loop opens"
         );
         assert_eq!(ws.focused().doc.bytes(), src.as_bytes(), "buffer unchanged");
-        assert_eq!(ws.focused().view.cursor(), 5, "cursor did not move");
+        assert_eq!(ws.focused().view.cursor().0, 5, "cursor did not move");
         assert!(!ws.focused().doc.is_modified(), "buffer not dirtied");
         // No undo entry was created: an undo is a genuine no-op.
         ws.apply(&Command::Undo);
@@ -1363,7 +1363,7 @@ mod dispatch_tests {
         let key = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
         let mut engine = InputEngine::new();
         let mut ws = Workspace::new(buf.as_bytes().to_vec());
-        ws.place_focused_cursor(cursor0);
+        ws.place_focused_cursor(BytePos(cursor0));
 
         // 1. Operator keys → the engine hands back the linewise motion + folded count.
         let mut feed = Feed::Ignored;
@@ -1401,7 +1401,7 @@ mod dispatch_tests {
         ws.filter_lines(range, out.text.as_bytes());
 
         let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
-        (bytes, ws.focused().view.cursor())
+        (bytes, ws.focused().view.cursor().0)
     }
 
     #[test]

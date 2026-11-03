@@ -172,10 +172,10 @@ proptest! {
             let s = std::str::from_utf8(st.bytes());
             prop_assert!(s.is_ok(), "buffer became invalid UTF-8 after {c:?}");
             let s = s.unwrap();
-            prop_assert!(st.cursor() <= s.len(), "cursor {} past end {} after {c:?}", st.cursor(), s.len());
+            prop_assert!(st.cursor().0 <= s.len(), "cursor {} past end {} after {c:?}", st.cursor().0, s.len());
             prop_assert!(
-                s.is_char_boundary(st.cursor()),
-                "cursor {} off a char boundary after {c:?}", st.cursor()
+                s.is_char_boundary(st.cursor().0),
+                "cursor {} off a char boundary after {c:?}", st.cursor().0
             );
         }
     }
@@ -226,7 +226,7 @@ proptest! {
         let trace = Trace::record(&init, cmds);
         let replayed = trace.replay(&init).expect("replay on the recorded initial doc succeeds");
         prop_assert_eq!(replayed.bytes(), direct.bytes(), "replay reproduces the buffer");
-        prop_assert_eq!(replayed.cursor(), direct.cursor(), "replay reproduces the cursor");
+        prop_assert_eq!(replayed.cursor().0, direct.cursor().0, "replay reproduces the cursor");
 
         let reparsed = Trace::from_text(&trace.to_text()).expect("trace text round-trips");
         let replayed2 = reparsed.replay(&init).expect("replay of the reparsed trace succeeds");
@@ -545,9 +545,9 @@ fn rests_on_clusters(init: Vec<u8>, cmds: &[Command]) -> Result<(), TestCaseErro
         let s = std::str::from_utf8(st.bytes()).expect("valid UTF-8");
         let b = cluster_boundaries(s);
         prop_assert!(
-            b.binary_search(&st.cursor()).is_ok(),
+            b.binary_search(&st.cursor().0).is_ok(),
             "cursor {} inside a cluster of {:?} after {:?}",
-            st.cursor(),
+            st.cursor().0,
             s,
             c
         );

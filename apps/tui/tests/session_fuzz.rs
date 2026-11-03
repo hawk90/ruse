@@ -128,7 +128,7 @@ fn run_session(init: &[u8], keys: &[KeyEvent]) -> Result<Headless, TestCaseError
     for key in keys {
         h.key(*key);
         let ws = h.workspace();
-        let (bytes, cursor) = (ws.focused().doc.bytes(), ws.focused().view.cursor());
+        let (bytes, cursor) = (ws.focused().doc.bytes(), ws.focused().view.cursor().0);
 
         let s = std::str::from_utf8(bytes);
         prop_assert!(s.is_ok(), "buffer became invalid UTF-8 after {key:?}");

@@ -9,7 +9,7 @@ use crossterm::style::Print;
 use crossterm::terminal::{self, ClearType};
 use crossterm::{cursor, queue};
 
-use ruse_core::Workspace;
+use ruse_core::{BytePos, Workspace};
 
 /// The user's answer at the open-time recovery prompt (F-008 #3).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -183,8 +183,8 @@ pub(crate) fn confirm_key(
         }
         // Run it from where the loop began (the jump it records is that position), then leave the
         // cursor on the last match shown when nothing was replaced, as the loop did live.
-        let shown = ws.focused().view.cursor();
-        ws.place_focused_cursor(from);
+        let shown = ws.focused().view.cursor().0;
+        ws.place_focused_cursor(BytePos(from));
         let out = crate::app::dispatch::sub_outcome(crate::app::dispatch::run_ex(ex, ws, recorded))
             .unwrap_or(ruse_core::SubOutcome {
                 replacements: 0,

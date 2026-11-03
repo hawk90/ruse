@@ -118,7 +118,7 @@ impl Headless {
     /// R4, R6). For checking the start of a trace that begins with registers already filled.
     pub fn restart_trace(&mut self) {
         self.stale = true;
-        self.s.ws.place_focused_cursor(0);
+        self.s.ws.place_focused_cursor(ruse_core::BytePos(0));
         self.s.initial = self.s.ws.focused().doc.bytes().to_vec();
         self.s.recorded.clear();
         self.s.start_options = self.s.ws.focused().view.editing_options();
@@ -207,7 +207,7 @@ impl Headless {
     /// The focused view's cursor, a byte offset.
     #[must_use]
     pub fn cursor(&self) -> usize {
-        self.s.ws.focused().view.cursor()
+        self.s.ws.focused().view.cursor().0
     }
 
     /// The focused view's cursor as Neovim reports it: 1-based row, 0-based byte column.
@@ -267,7 +267,7 @@ impl Headless {
     /// The focused view's Emacs mark, a byte offset.
     #[must_use]
     pub fn mark(&self) -> Option<usize> {
-        self.s.ws.focused().view.mark()
+        self.s.ws.focused().view.mark().map(|p| p.0)
     }
 
     /// The focused view's mode.
@@ -332,7 +332,7 @@ impl Headless {
     /// Place the cursor at byte offset `pos` (clamped, snapped, sticky column seeded) — for homing a
     /// fixture's start point. The next key sees a fresh frame.
     pub fn set_cursor(&mut self, pos: usize) {
-        self.s.ws.set_focused_cursor(pos);
+        self.s.ws.set_focused_cursor(ruse_core::BytePos(pos));
         self.stale = true;
     }
 

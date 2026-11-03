@@ -354,36 +354,36 @@ impl Document {
     /// root. Re-applies each node's inverse (a whole insert session / operator undoes in one step) and moves
     /// `current` to the node below the group — the revision advances (INV-TXN §2) but no new node is created.
     pub fn undo(&mut self) -> Option<Revision> {
-        self.undo_from(0).map(|_| self.revision)
+        self.undo_from(BytePos(0)).map(|_| self.revision)
     }
 
     /// Redo the next change **group** along the newest branch, or `None` if there is nothing to redo.
     pub fn redo(&mut self) -> Option<Revision> {
-        self.redo_from(0).map(|_| self.revision)
+        self.redo_from(BytePos(0)).map(|_| self.revision)
     }
 
     /// [`Document::undo_from`] carrying `tracked` (see [`Document::apply_tracked`]): the restorable ones go
     /// back to where they were when the undone change began.
-    pub fn undo_tracked(&mut self, cursor: usize, tracked: &mut [Tracked]) -> Option<UndoCursor> {
+    pub fn undo_tracked(&mut self, cursor: BytePos, tracked: &mut [Tracked]) -> Option<UndoCursor> {
         let step = self.undo.undo()?;
-        Some(self.replay(step, cursor, tracked))
+        Some(self.replay(step, cursor.0, tracked))
     }
 
     /// [`Document::redo_from`] carrying `tracked`.
-    pub fn redo_tracked(&mut self, cursor: usize, tracked: &mut [Tracked]) -> Option<UndoCursor> {
+    pub fn redo_tracked(&mut self, cursor: BytePos, tracked: &mut [Tracked]) -> Option<UndoCursor> {
         let step = self.undo.redo()?;
-        Some(self.replay(step, cursor, tracked))
+        Some(self.replay(step, cursor.0, tracked))
     }
 
     /// [`Document::chronological_from`] carrying `tracked`.
     pub fn chronological_tracked(
         &mut self,
         older: bool,
-        cursor: usize,
+        cursor: BytePos,
         tracked: &mut [Tracked],
     ) -> Option<UndoCursor> {
         let step = self.undo.to_chronological(older)?;
-        Some(self.replay(step, cursor, tracked))
+        Some(self.replay(step, cursor.0, tracked))
     }
 
     /// Move one logical change along CHRONOLOGICAL creation order — `g-` (`older = true`) to the
@@ -391,21 +391,22 @@ impl Document {
     /// abandoned by a new edit is still reachable (Vim `g-`/`g+`). Returns the new revision, or
     /// `None` at either end. Re-applies the transforming edits; no new node is created.
     pub fn undo_chronological(&mut self, older: bool) -> Option<Revision> {
-        self.chronological_from(older, 0).map(|_| self.revision)
+        self.chronological_from(older, BytePos(0))
+            .map(|_| self.revision)
     }
 
     /// [`Document::undo`] that also says where Vim leaves the cursor; `cursor` is the caret before it.
-    pub fn undo_from(&mut self, cursor: usize) -> Option<UndoCursor> {
+    pub fn undo_from(&mut self, cursor: BytePos) -> Option<UndoCursor> {
         self.undo_tracked(cursor, &mut [])
     }
 
     /// [`Document::redo`] that also says where Vim leaves the cursor; `cursor` is the caret before it.
-    pub fn redo_from(&mut self, cursor: usize) -> Option<UndoCursor> {
+    pub fn redo_from(&mut self, cursor: BytePos) -> Option<UndoCursor> {
         self.redo_tracked(cursor, &mut [])
     }
 
     /// [`Document::undo_chronological`] that also says where Vim leaves the cursor.
-    pub fn chronological_from(&mut self, older: bool, cursor: usize) -> Option<UndoCursor> {
+    pub fn chronological_from(&mut self, older: bool, cursor: BytePos) -> Option<UndoCursor> {
         self.chronological_tracked(older, cursor, &mut [])
     }
 
@@ -492,17 +493,18 @@ impl Document {
     /// Vim `U`: put back the latest changed line as it was before its run of changes, as one undoable
     /// change (so `u` undoes it), keeping the current text so the next `U` redoes. Returns the caret
     /// (the column the line was saved with), or `None` when there is nothing to restore.
-    pub fn line_undo(&mut self, cursor: usize) -> Option<usize> {
+    pub fn line_undo(&mut self, cursor: BytePos) -> Option<BytePos> {
         self.line_undo_tracked(cursor, TransactionOrigin::UserInput, &mut [])
     }
 
     /// [`Document::line_undo`] made by `origin`, carrying `tracked` through the change.
     pub fn line_undo_tracked(
         &mut self,
-        cursor: usize,
+        cursor: BytePos,
         origin: TransactionOrigin,
         tracked: &mut [Tracked],
-    ) -> Option<usize> {
+    ) -> Option<BytePos> {
+        let cursor = cursor.0;
         let (s, e, text, col) = self.line_undo.swap(&self.text, cursor)?;
         let len = text.len();
         let list =
@@ -512,7 +514,7 @@ impl Document {
             .with_cursor(cursor);
         self.apply_inner(txn, false, tracked)
             .expect("the saved line's span is in range");
-        Some(s + col.min(len))
+        Some(BytePos(s + col.min(len)))
     }
 
     /// Whether undo/redo can move.

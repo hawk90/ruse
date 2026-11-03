@@ -99,15 +99,15 @@ fn l_and_h_step_one_cluster_at_a_time() {
         let starts = &c.bounds[..c.bounds.len() - 1];
         let last = *starts.last().expect("a case has a cluster");
         let mut st = EditorState::new(c.text.clone().into_bytes());
-        let mut seen = vec![st.cursor()];
+        let mut seen = vec![st.cursor().0];
         for _ in 1..starts.len() {
             apply_command(&mut st, &Command::Move(1, Motion::Right));
-            seen.push(st.cursor());
+            seen.push(st.cursor().0);
         }
         assert_eq!(seen, starts, "`l` over line {}: {:?}", c.line, c.text);
         apply_command(&mut st, &Command::Move(1, Motion::Right));
         assert_eq!(
-            st.cursor(),
+            st.cursor().0,
             last,
             "`l` stops on the last cluster, line {}",
             c.line
@@ -115,11 +115,11 @@ fn l_and_h_step_one_cluster_at_a_time() {
 
         let mut st = EditorState::new(c.text.clone().into_bytes());
         apply_command(&mut st, &Command::Move(1, Motion::LineEnd));
-        assert_eq!(st.cursor(), last, "`$` on line {}: {:?}", c.line, c.text);
-        let mut back = vec![st.cursor()];
+        assert_eq!(st.cursor().0, last, "`$` on line {}: {:?}", c.line, c.text);
+        let mut back = vec![st.cursor().0];
         for _ in 1..starts.len() {
             apply_command(&mut st, &Command::Move(1, Motion::Left));
-            back.push(st.cursor());
+            back.push(st.cursor().0);
         }
         back.reverse();
         assert_eq!(back, starts, "`h` over line {}: {:?}", c.line, c.text);
@@ -143,7 +143,7 @@ fn x_deletes_one_cluster() {
                 c.line,
                 c.text
             );
-            assert_eq!(st.cursor(), 0, "line {}", c.line);
+            assert_eq!(st.cursor().0, 0, "line {}", c.line);
         }
         st.assert_invariants();
     }
@@ -184,11 +184,11 @@ fn horizontal_motions_land_on_cluster_starts() {
                 }
                 apply_command(&mut st, &Command::Move(1, m));
                 assert!(
-                    starts.contains(&st.cursor()),
+                    starts.contains(&st.cursor().0),
                     "{m:?} from cluster {i} of line {} ({:?}) rests at byte {}",
                     c.line,
                     c.text,
-                    st.cursor()
+                    st.cursor().0
                 );
             }
         }

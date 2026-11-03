@@ -49,7 +49,7 @@ fn assert_replays(text: &str, keys: &str, h: &Headless, trace: &str) {
         "{keys:?}: replayed document\n{trace}"
     );
     assert_eq!(
-        st.cursor(),
+        st.cursor().0,
         h.cursor(),
         "{keys:?}: replayed cursor\n{trace}"
     );
@@ -428,7 +428,7 @@ proptest! {
             keys,
             trace.to_text()
         );
-        prop_assert_eq!(st.cursor(), h.cursor(), "keys {:?}\n{}", keys, trace.to_text());
+        prop_assert_eq!(st.cursor().0, h.cursor(), "keys {:?}\n{}", keys, trace.to_text());
     }
 
     /// Any Emacs-profile session, replayed from its trace, ends in the live document and point.
@@ -452,6 +452,6 @@ proptest! {
             keys,
             trace.to_text()
         );
-        prop_assert_eq!(st.cursor(), h.cursor(), "keys {:?}\n{}", keys, trace.to_text());
+        prop_assert_eq!(st.cursor().0, h.cursor(), "keys {:?}\n{}", keys, trace.to_text());
     }
 }

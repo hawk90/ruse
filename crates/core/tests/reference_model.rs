@@ -605,7 +605,7 @@ proptest! {
                 }
                 LineOp::Undo => {
                     let mut t: Vec<Tracked> = tracked.iter().map(|(_, t)| *t).collect();
-                    let moved = doc.undo_tracked(0, &mut t).is_some();
+                    let moved = doc.undo_tracked(BytePos(0), &mut t).is_some();
                     for (slot, v) in tracked.iter_mut().zip(t) {
                         slot.1 = v;
                     }
@@ -618,7 +618,7 @@ proptest! {
                 }
                 LineOp::Redo => {
                     let mut t: Vec<Tracked> = tracked.iter().map(|(_, t)| *t).collect();
-                    let moved = doc.redo_tracked(0, &mut t).is_some();
+                    let moved = doc.redo_tracked(BytePos(0), &mut t).is_some();
                     for (slot, v) in tracked.iter_mut().zip(t) {
                         slot.1 = v;
                     }

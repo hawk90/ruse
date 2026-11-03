@@ -72,7 +72,7 @@ pub(crate) fn resolve(
     if !normal && !matches!(mode, Mode::Visual { .. } | Mode::Select { .. }) {
         return FoldStep::Run(cmd);
     }
-    let cur = line_idx.line_of(ws.focused().view.cursor());
+    let cur = line_idx.line_of(ws.focused().view.cursor().0);
     let last = line_idx.line_of(ruse_core::motion::off_phantom(snapshot, snapshot.len()));
     let start_of = |l: usize| folds::closed_range(folds, l).map_or(l, |r| r.0);
     let end_of = |l: usize| folds::closed_range(folds, l).map_or(l, |r| r.1);
@@ -217,7 +217,7 @@ pub(crate) fn resolve(
                 return FoldStep::Run(cmd);
             };
             let col_ok = {
-                let c = ws.focused().view.cursor();
+                let c = ws.focused().view.cursor().0;
                 let ls = line_idx.nth_line_start(cur);
                 snapshot[ls..c.min(snapshot.len())]
                     .iter()
