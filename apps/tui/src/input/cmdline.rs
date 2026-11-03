@@ -40,6 +40,34 @@ pub(crate) struct CmdLine {
     pub(crate) literal: Option<Literal>,
     /// `c_CTRL-K` digraph entry in flight: `Some(None)` awaits the first char, `Some(Some(c1))` the second.
     pub(crate) digraph: Option<Option<char>>,
+    /// The wildmenu (`:help wildmenu`, #613): `Some` while `<Tab>` cycles through several matches.
+    pub(crate) wild: Option<Wild>,
+    /// The matches `c_CTRL-D` listed, shown above the line until it closes or completes again.
+    pub(crate) listing: Option<Vec<super::complete::Item>>,
+}
+
+/// An active wildmenu: the line as it was before completion, the completed word's span in it, and the
+/// matches with the one selected (`None` = the original text, reached by cycling past either end).
+pub(crate) struct Wild {
+    orig: String,
+    orig_cursor: usize,
+    /// Byte span of the completed word in `orig` (it ends at the caret).
+    start: usize,
+    end: usize,
+    pub(crate) items: Vec<super::complete::Item>,
+    pub(crate) selected: Option<usize>,
+    /// Byte offset into the word where the popup menu's text column starts.
+    pub(crate) pum_at: usize,
+    /// The matches are file names (`<Up>`/`<Down>` walk directories).
+    pub(crate) files: bool,
+}
+
+impl Wild {
+    /// The char column of the popup menu's text in the line (the completed word's start plus the
+    /// directory typed before a file's tail).
+    pub(crate) fn pum_char_col(&self) -> usize {
+        self.orig[..self.start + self.pum_at].chars().count()
+    }
 }
 
 /// What a completed expression-register prompt does with the evaluated result (`:help quote=`).
@@ -95,7 +123,85 @@ impl CmdLine {
             overstrike: false,
             literal: None,
             digraph: None,
+            wild: None,
+            listing: None,
         }
+    }
+
+    /// Replace the text from byte `start` to the caret with `text`, the caret after it (a completion).
+    pub(crate) fn replace_word(&mut self, start: usize, text: &str) {
+        let end = self.byte(self.cursor);
+        self.buffer.replace_range(start..end, text);
+        self.cursor = self.buffer[..start + text.len()].chars().count();
+        self.edited();
+    }
+
+    /// Open the wildmenu over `items` for the word at byte `start`, selecting `first`.
+    pub(crate) fn start_wild(
+        &mut self,
+        start: usize,
+        items: Vec<super::complete::Item>,
+        pum_at: usize,
+        files: bool,
+        first: usize,
+    ) {
+        self.wild = Some(Wild {
+            orig: self.buffer.clone(),
+            orig_cursor: self.cursor,
+            start,
+            end: self.byte(self.cursor),
+            items,
+            selected: None,
+            pum_at,
+            files,
+        });
+        self.wild_select(Some(first));
+    }
+
+    /// Show match `sel` (or the original word for `None`) in the line.
+    fn wild_select(&mut self, sel: Option<usize>) {
+        let Some(w) = self.wild.as_mut() else {
+            return;
+        };
+        w.selected = sel;
+        let word = sel.map_or(&w.orig[w.start..w.end], |i| w.items[i].text.as_str());
+        let mut line = String::with_capacity(w.orig.len() + word.len());
+        line.push_str(&w.orig[..w.start]);
+        line.push_str(word);
+        let cursor = line.chars().count();
+        line.push_str(&w.orig[w.end..]);
+        let restore = sel.is_none().then_some(w.orig_cursor);
+        self.buffer = line;
+        self.cursor = restore.unwrap_or(cursor);
+    }
+
+    /// `<Tab>`/`CTRL-N` (`forward`) or `<S-Tab>`/`CTRL-P`: the next or previous match, passing through
+    /// the original text between the last match and the first (nvim `wildmode=full`).
+    pub(crate) fn wild_step(&mut self, forward: bool) {
+        let Some(w) = self.wild.as_ref() else {
+            return;
+        };
+        let n = w.items.len();
+        let sel = match (w.selected, forward) {
+            (None, true) => Some(0),
+            (None, false) => Some(n - 1),
+            (Some(i), true) => (i + 1 < n).then_some(i + 1),
+            (Some(i), false) => i.checked_sub(1),
+        };
+        self.wild_select(sel);
+    }
+
+    /// `c_CTRL-E` in the wildmenu: back to the text before completion.
+    pub(crate) fn wild_cancel(&mut self) {
+        self.wild_select(None);
+        self.wild = None;
+    }
+
+    /// The completed word in the line: from where completion started to the caret.
+    pub(crate) fn wild_word(&self) -> Option<(usize, &str)> {
+        let w = self.wild.as_ref()?;
+        let end = self.byte(self.cursor);
+        Some((w.start, self.buffer.get(w.start..end)?))
     }
 
     fn len(&self) -> usize {

@@ -354,6 +354,11 @@ features:
     # input/cmdline.rs; <BS>/<Del> on an empty line abandon it. #609: Ex command words resolve through one
     # abbreviation table (input/ex_cmd.rs, nvim's fullcommand() minima) and :silent[!]/:unsilent/:verbose/
     # :noautocmd modifiers precede a command. Census rows stay unclassified (whole-surface lock).
+    # #613: `:` completion at nvim's defaults (wildmode=full, wildoptions=pum): <Tab>/<S-Tab> complete
+    # (input/complete.rs: Ex command names, file/directory names with %/# and escaping, buffer names,
+    # :set option names and values), the wildmenu cycles with <Tab>/CTRL-N/<Right> and back, CTRL-E/CTRL-Y
+    # cancel/accept, <Up>/<Down> walk directories, CTRL-D lists, CTRL-L/CTRL-A insert; a popup menu above
+    # the line. Sources are pluggable (Completer::register). The `/` line completes nothing (as nvim).
     status: done
     depends_on: [C-INPUT, C-COMMAND]
     summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.
@@ -365,7 +370,7 @@ features:
     acceptance:
       - "':' / '/' enter the namespace, <CR> executes and <Esc> aborts; it is engine-routed with a single mode owner, not an ad-hoc text buffer (anti-patterns command-line P2)."
       - "An unmatched printable key is typed at the caret (open/append); the namespace owns line buffer, cursor and history index, and edits mid-line (#612)."
-      - "Ex mode is entered by `gQ` only — `Q` is not an Ex-mode key at the pinned Neovim revision (see vim-style.yaml census_corrections). Command-line & search history shipped (#452: separate `:`/`/` rings, prefix-filtered <Up> vs raw <C-p> recall). The command-line window `q:`/`q/`/`q?` (`:help cmdwin`) shipped as a REDUCED list-overlay slice (#455): a navigable read-only list of the ex/search history with Vim's trailing empty line, `<CR>` runs the selected line through the same ex/search dispatch the `:`/`/` prompt uses, `<Esc>`/`<C-c>` close; full in-window EDITING (a real editable scratch buffer) is deferred pending a hostable secondary editable buffer (the same multi-buffer arena the buffer/file pickers wait on). wildmenu / incsearch-UX remain deferred."
+      - "Ex mode is entered by `gQ` only — `Q` is not an Ex-mode key at the pinned Neovim revision (see vim-style.yaml census_corrections). Command-line & search history shipped (#452: separate `:`/`/` rings, prefix-filtered <Up> vs raw <C-p> recall). The command-line window `q:`/`q/`/`q?` (`:help cmdwin`) shipped as a REDUCED list-overlay slice (#455): a navigable read-only list of the ex/search history with Vim's trailing empty line, `<CR>` runs the selected line through the same ex/search dispatch the `:`/`/` prompt uses, `<Esc>`/`<C-c>` close; full in-window EDITING (a real editable scratch buffer) is deferred pending a hostable secondary editable buffer (the same multi-buffer arena the buffer/file pickers wait on). Command-line completion shipped (#613): `<Tab>`/`<S-Tab>` and the wildmenu at nvim's `wildmode=full` + `wildoptions=pum` defaults, `CTRL-D`/`CTRL-L`/`CTRL-A`, from pluggable sources. The `wildmode`/`wildoptions`/`wildignore` options and the incsearch `CTRL-G`/`CTRL-T` steps remain deferred."
 
   F-027:
     title: Lang-Arg namespace

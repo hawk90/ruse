@@ -364,7 +364,18 @@ restores the typed draft. The ring + recall walk live in a pure, unit-tested `Cm
 in [buffer-arena-and-global-state.md](buffer-arena-and-global-state.md) slice 4, #947), and incsearch highlights
 through `apps/tui/src/highlight.rs` (it ignores `ignorecase`/`smartcase`, #824).
 
-**Deferred:** `wildmenu`/`wildmode` completion (#613), `c_CTRL-R_CTRL-F`/`_CTRL-P` and `C-r =` on the `:` line,
+**Shipped:** command-line **completion** (`:help cmdline-completion`, #613) at nvim v0.12.6's defaults
+(`wildmode=full`, `wildoptions=pum`). `apps/tui/src/input/complete.rs` reads the `:` line before the caret into
+an `Expand` context (modifiers, range, command word, then the argument after the last command-separating `|`)
+and asks an ordered list of `CompletionSource`s — Ex command names, file/directory names (`%`/`#`, escaping,
+`'suffixes'` last), buffer names, `:set` option names and values; more register with `Completer::register`.
+The engine has no buffers or options, so `<Tab>`/`<S-Tab>`/`CTRL-D`/`CTRL-L`/`CTRL-A` surface as
+`Feed::CmdlineComplete` and the session answers with a `CompletionContext`; the wildmenu itself (cycling,
+`CTRL-E`/`CTRL-Y`, `<Up>`/`<Down>` over directories) is `CmdLine` state. Where nothing completes, `<Tab>` is typed
+literally (`:s/a/<Tab>`); the `/` line completes nothing.
+
+**Deferred:** the `'wildmode'`/`'wildoptions'`/`'wildignore'`/`'wildchar'` options (the defaults are fixed),
+incsearch `c_CTRL-G`/`c_CTRL-T`, `M-x` completion, `c_CTRL-R_CTRL-F`/`_CTRL-P` and `C-r =` on the `:` line,
 `c_CTRL-^`, the `'digraph'` `{char1} <BS> {char2}` form, and the full INPUT-RESOLVE timeout/priority machinery
 above.
 

@@ -202,6 +202,11 @@ fn cmdline_chord_table() {
             'h' => (Feed::Pending, Some("ab c")),
             'u' => (Feed::Pending, Some("")),
             'w' => (Feed::Pending, Some("ab ")),
+            // The completion keys ask the frontend for the matches (#613); `CTRL-I` is `<Tab>`.
+            'a' => (Feed::CmdlineComplete(WildKey::All), Some("ab cd")),
+            'd' => (Feed::CmdlineComplete(WildKey::List), Some("ab cd")),
+            'l' => (Feed::CmdlineComplete(WildKey::Longest), Some("ab cd")),
+            'i' => (Feed::CmdlineComplete(WildKey::Next), Some("ab cd")),
             // `CTRL-R` arms its prefix; `CTRL-N`/`CTRL-P` walk an empty history. Neither edits the line.
             _ => (Feed::Pending, Some("ab cd")),
         };

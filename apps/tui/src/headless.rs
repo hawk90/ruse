@@ -377,7 +377,10 @@ fn named_key(name: &str) -> Option<KeyEvent> {
         rest = &rest[2..];
     }
     let base = base_key(rest, ctrl || meta)?;
-    let base = if shift {
+    let base = if shift && base.code == KeyCode::Tab {
+        // A terminal sends `<S-Tab>` as `CSI Z`, which crossterm reports as BackTab.
+        KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)
+    } else if shift {
         KeyEvent::new(base.code, base.modifiers | KeyModifiers::SHIFT)
     } else {
         base
