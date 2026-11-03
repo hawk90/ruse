@@ -60,6 +60,8 @@ pub(crate) struct Layout<'a> {
     pub breakindent: Option<BriOpt>,
     /// `'listchars'` when `'list'` is on.
     pub list: Option<&'a ListChars>,
+    /// `'display'` `uhex`: a control char shows as `<xx>`, not `^X` (#1181).
+    pub uhex: bool,
 }
 
 /// What a painted cell shows, for its highlight.
@@ -157,14 +159,17 @@ pub(crate) fn str_width(s: &str) -> usize {
 }
 
 /// The size nvim gives a char at virtual column `at` without wrapping (`win_chartabsize`): a tab to the
-/// next stop (`^I`, two cells, under `'list'` without `tab:`), else the glyph's width.
-fn plain_size(g: &str, at: usize, ts: usize, list_tab: bool) -> usize {
+/// next stop (`^I`, two cells, under `'list'` without `tab:`), an unprintable char its transcription's
+/// cells (`^A`, `<85>`, `<200b>`, #1181), else the glyph's width.
+fn plain_size(g: &str, at: usize, ts: usize, list_tab: bool, uhex: bool) -> usize {
     if g == "\t" {
         if list_tab {
             ts - at % ts
         } else {
             2
         }
+    } else if let Some(t) = crate::screen::transcribe(g, uhex) {
+        str_width(&t)
     } else {
         usize::from(cluster_width(g))
     }
@@ -197,7 +202,7 @@ impl<'t> Walk<'t, '_> {
         let (b, g) = self.graphemes[gi];
         let width = self.width;
         let is_tab = g == "\t";
-        let mut size = plain_size(g, vcol, self.ts, self.list_tab);
+        let mut size = plain_size(g, vcol, self.ts, self.list_tab, self.lay.uhex);
         let mut mb_added = 0;
         if self.lay.wrap && size == 2 && !is_tab && g.len() > 1 && vcol % width == width - 1 {
             // A wide glyph that does not fit in the row's last cell: a `>` there, the glyph below.
@@ -256,7 +261,7 @@ impl<'t> Walk<'t, '_> {
                 break;
             }
             let at = usize::try_from(vcol2).unwrap_or(0);
-            vcol2 += as_i(plain_size(ng, at, self.ts, self.list_tab));
+            vcol2 += as_i(plain_size(ng, at, self.ts, self.list_tab, self.lay.uhex));
             if vcol2 >= colmax {
                 // The padding only ever grows the char: a tab in the last cell keeps its width
                 // (nvim draws it whole there).
@@ -447,7 +452,7 @@ pub(crate) fn layout_upto<'t>(
         if is_tab {
             // The tab's own cells take the `'listchars'` fill; a `'linebreak'` padding after them stays
             // blank, except after a one-cell tab, whose fill runs on through it (nvim's `win_line`).
-            let plain = plain_size(g, vcol, ts, w.list_tab);
+            let plain = plain_size(g, vcol, ts, w.list_tab, false);
             let content = if plain == 1 {
                 size - head
             } else {
@@ -464,6 +469,16 @@ pub(crate) fn layout_upto<'t>(
                 } else {
                     (CellText::Blank, 1, CellKind::Text)
                 }
+            });
+        } else if let Some(shown) = crate::screen::transcribe(g, lay.uhex) {
+            // An unprintable char shows transcribed, one cell per char (`^[`, `<85>`), as nvim's
+            // SpecialKey: never the raw control byte (#1181).
+            let cells: Vec<char> = shown.chars().collect();
+            out.push_span(&w, vcol, size, b, |k| match cells.get(k) {
+                Some(&c) if crate::screen::cluster_width(c.encode_utf8(&mut [0; 4])) == 1 => {
+                    (CellText::Char(c), 1, CellKind::Whitespace)
+                }
+                _ => (CellText::Blank, 1, CellKind::Text),
             });
         } else {
             let (text, kind) = w.glyph(b, g);

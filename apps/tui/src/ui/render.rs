@@ -1304,6 +1304,9 @@ pub(crate) fn cursor_cell(
 }
 
 #[cfg(test)]
+mod display_tests;
+
+#[cfg(test)]
 mod render_tests {
     use super::*;
     use crate::ui::layout::window_rects;

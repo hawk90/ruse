@@ -529,8 +529,7 @@ fn text_supported(opt: Opt, t: &str) -> bool {
     match opt {
         Opt::CpOptions => t == crate::input::set_cmd::CPO_DEFAULT,
         Opt::VerboseFile => t.is_empty(),
-        // `'display'` `uhex` and `'breakindentopt'` `list:` are not drawn (#615).
-        Opt::Display => !t.split(',').any(|f| f == "uhex"),
+        // `'breakindentopt'` `list:` is not drawn (#615).
         Opt::BreakIndentOptions => {
             crate::ui::line_layout::parse_briopt(t).is_ok_and(|o| o.list == 0)
         }

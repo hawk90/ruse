@@ -83,6 +83,70 @@ pub fn cluster_width(g: &str) -> u16 {
     }
 }
 
+/// The characters nvim v0.12.6's `utf_printable` refuses above U+00FF (`mbyte.c` `nonprint`): format,
+/// bidi-control and other invisible characters, shown as `<xxxx>`.
+const NONPRINT: &[(u32, u32)] = &[
+    (0x070f, 0x070f),
+    (0x180b, 0x180e),
+    (0x200b, 0x200f),
+    (0x202a, 0x202e),
+    (0x2060, 0x206f),
+    (0xd800, 0xdfff),
+    (0xfeff, 0xfeff),
+    (0xfff9, 0xfffb),
+    (0xfffe, 0xffff),
+];
+
+/// Whether `c` is a C0 control, DEL or a C1 control: a byte the terminal would act on (#1181).
+#[must_use]
+pub fn is_control(c: char) -> bool {
+    let n = u32::from(c);
+    n < 0x20 || (0x7f..0xa0).contains(&n)
+}
+
+/// How nvim v0.12.6 shows a char it does not print (`transchar`, #1181): `^X` for a C0 control and
+/// `^?` for DEL (`<xx>` under `'display'` `uhex`), `<xx>` for a C1 control, `<xxxx>` for the format
+/// characters [`NONPRINT`] lists. `None` for a printable char; a tab is the layout's.
+#[must_use]
+pub fn unprintable(c: char, uhex: bool) -> Option<String> {
+    let n = u32::from(c);
+    if n < 0x20 || n == 0x7f {
+        return Some(if uhex {
+            format!("<{n:02x}>")
+        } else {
+            format!("^{}", char::from_u32(n ^ 0x40).unwrap_or('?'))
+        });
+    }
+    if (0x80..0xa0).contains(&n) {
+        return Some(format!("<{n:02x}>"));
+    }
+    NONPRINT
+        .iter()
+        .any(|&(a, b)| (a..=b).contains(&n))
+        .then(|| format!("<{n:04x}>"))
+}
+
+/// The cells grapheme cluster `g` paints as when nvim would not print it raw: its unprintable chars
+/// transcribed ([`unprintable`]), printable ones kept. `None` when `g` paints as itself. Only a cluster
+/// that starts with an unprintable char, or holds a control anywhere, is transcribed: a zero-width joiner
+/// inside an emoji sequence stays.
+#[must_use]
+pub fn transcribe(g: &str, uhex: bool) -> Option<String> {
+    let first = g.chars().next()?;
+    let head = unprintable(first, uhex);
+    if head.is_none() && !g.chars().any(is_control) {
+        return None;
+    }
+    let mut out = String::new();
+    for (i, c) in g.chars().enumerate() {
+        match unprintable(c, uhex) {
+            Some(r) if i == 0 || is_control(c) => out.push_str(&r),
+            _ => out.push(c),
+        }
+    }
+    Some(out)
+}
+
 /// A `cols × rows` grid of cells, row-major. Repainted each frame, then diffed against the prior one.
 pub struct Screen {
     cols: u16,
@@ -124,7 +188,23 @@ impl Screen {
     /// column AFTER it. A width-2 cluster also marks the next cell as a continuation; a width-1 cluster fills
     /// one cell. A wide cluster with no room for its second half is drawn as a blank so nothing is clipped
     /// mid-glyph.
+    ///
+    /// No control byte ever reaches a cell (#1181): a cluster holding one paints its transcription
+    /// ([`transcribe`], `^[` for ESC) across as many cells, so text from a buffer, a file name or a
+    /// message can never move the terminal's cursor or change its state.
     pub fn put_styled(&mut self, row: u16, col: u16, g: &str, style: &CellStyle) -> u16 {
+        if let Some(shown) = transcribe(g, false) {
+            let mut c = col;
+            for sg in shown.graphemes(true) {
+                c = self.put_clean(row, c, sg, style);
+            }
+            return c;
+        }
+        self.put_clean(row, col, g, style)
+    }
+
+    /// [`Screen::put_styled`] of a cluster known to hold no control char.
+    fn put_clean(&mut self, row: u16, col: u16, g: &str, style: &CellStyle) -> u16 {
         let w = cluster_width(g);
         if w == 0 {
             return col;

@@ -34,3 +34,38 @@ fn a_long_line_wraps_and_number_shows_the_gutter() {
         format!("{}{}TAILMARK\nsecond\n", "a".repeat(76), "a".repeat(23))
     );
 }
+
+/// #1181: control characters in the buffer are painted as `^X` / `<xx>`, never as the raw byte the
+/// terminal would act on (an OSC title change, a bell, a C1 CSI).
+#[test]
+fn control_chars_never_reach_the_terminal_raw() {
+    let dir = Scratch::new();
+    dir.file(
+        "c.txt",
+        "a\u{1b}]0;PWNED\u{7}b\u{1b}[2Jc\u{9b}31md\n".as_bytes(),
+    );
+    let mut ed = Editor::start(&dir, &[Path::new("c.txt")]);
+    let shown = ed.screen_bytes();
+    // The printed text, without the SGR runs that colour the transcriptions.
+    let mut text = String::new();
+    let mut it = shown.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\u{1b}' && it.peek() == Some(&'[') {
+            for d in it.by_ref() {
+                if ('\u{40}'..='\u{7e}').contains(&d) && d != '[' {
+                    break;
+                }
+            }
+        } else {
+            text.push(c);
+        }
+    }
+    assert!(text.contains("a^[]0;PWNED^Gb^[[2Jc<9b>31md"), "{text:?}");
+    assert!(!shown.contains("\u{1b}]0;PWNED"), "the OSC went out raw");
+    assert!(
+        !shown.contains('\u{7}') && !shown.contains('\u{9b}'),
+        "{shown:?}"
+    );
+    ed.keys(":q!\r");
+    assert_eq!(ed.exit_status(), 0);
+}

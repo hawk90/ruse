@@ -41,6 +41,7 @@ fn options(set: &str) -> (Layout<'static>, ListChars) {
         showbreak: "",
         breakindent: None,
         list: None,
+        uhex: false,
     };
     let mut list = false;
     let mut lcs = parse_listchars(LISTCHARS_DEFAULT).unwrap();

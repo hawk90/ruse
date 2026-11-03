@@ -62,6 +62,8 @@ pub(crate) struct WinView {
     pub showbreak: String,
     pub breakindent: Option<BriOpt>,
     pub list: Option<ListChars>,
+    /// `'display'` `uhex` (#1181).
+    pub uhex: bool,
     pub tabstop: usize,
     pub lastline: LastLine,
     pub number: bool,
@@ -144,6 +146,7 @@ impl WinView {
                     .or_else(|_| line_layout::parse_listchars(line_layout::LISTCHARS_DEFAULT))
                     .unwrap_or_default()
             }),
+            uhex: has("uhex"),
             tabstop: view.tab_width().max(1),
             lastline: if has("truncate") {
                 LastLine::Truncate
@@ -182,6 +185,7 @@ impl WinView {
             showbreak: String::new(),
             breakindent: None,
             list: None,
+            uhex: false,
             tabstop,
             lastline: LastLine::Lastline,
             number: false,
@@ -214,6 +218,7 @@ impl WinView {
             showbreak: &self.showbreak,
             breakindent: self.breakindent,
             list: self.list.as_ref(),
+            uhex: self.uhex,
         }
     }
 
