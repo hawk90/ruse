@@ -34,6 +34,19 @@ fn wq_creates_a_missing_file() {
 }
 
 #[test]
+fn keys_typed_during_the_startup_probe_are_not_lost() {
+    // #1013: typed before the editor is up, so the startup capability probe reads them. This harness
+    // answers no query, so the probe reads the keys, waits out its liveness net and gives up.
+    let dir = Scratch::new();
+    dir.file("f.txt", b"orig\n");
+    let file = std::path::Path::new("f.txt");
+    let mut ed = Editor::start_typed(&dir, &[file], format!("ihey {ESC}").as_bytes());
+    ed.keys(":wq\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(dir.path("f.txt")).unwrap(), b"hey orig\n");
+}
+
+#[test]
 fn q_refuses_a_dirty_buffer_and_q_bang_discards_it() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"orig\n");

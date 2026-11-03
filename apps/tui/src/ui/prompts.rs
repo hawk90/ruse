@@ -76,7 +76,12 @@ pub(crate) fn prompt_recovery(
         if crate::signals::pending().is_some() {
             return Ok(RecoveryChoice::Quit);
         }
-        if let Event::Key(k) = event::read()? {
+        // Keys typed ahead (during the startup probe, or while a command ran) answer it first.
+        let ev = match crate::breakcheck::pop() {
+            Some(ev) => ev,
+            None => event::read()?,
+        };
+        if let Event::Key(k) = ev {
             if k.kind == KeyEventKind::Release {
                 continue; // act on the press, not its release (kitty/Windows send both)
             }

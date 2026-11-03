@@ -13,6 +13,7 @@
 pub mod ledger;
 pub mod probe;
 pub mod sequences;
+pub mod typeahead;
 
 use ledger::{
     CapValue, Capability, Confidence, Entry, GraphicsProtocol, KeyEncoding, Ledger, Source,

@@ -5200,24 +5200,58 @@ mod nohighlight_parse_tests {
 mod binding_label_tests {
     use crate::input::*;
 
-    /// F-004 #2: a command with a STATIC layer binding reports it; a grammar/ex command (no layer
-    /// binding) reports None — the deliberate MVP scope (static layer bindings only).
+    /// The palette label of every registered command available in `mode`, under `e`'s profile.
+    fn labels(e: &InputEngine, mode: Mode) -> Vec<(&'static str, Option<String>)> {
+        let specs = ruse_core::available(&ruse_core::Context {
+            mode,
+            has_selection: false,
+        });
+        let cmds: Vec<Command> = specs.iter().map(|s| s.command.clone()).collect();
+        let out = e.binding_labels(&cmds, mode);
+        specs.iter().map(|s| s.id).zip(out).collect()
+    }
+
+    fn label<'a>(all: &'a [(&'static str, Option<String>)], id: &str) -> Option<&'a str> {
+        all.iter()
+            .find(|(i, _)| *i == id)
+            .unwrap_or_else(|| panic!("{id} not offered"))
+            .1
+            .as_deref()
+    }
+
+    /// F-004 #2 (#956): the palette shows the key that runs each command in the current mode under the
+    /// active profile — grammar keys included, not only the static layer tables.
     #[test]
-    fn binding_label_reports_static_layer_bindings_only() {
-        let e = InputEngine::new();
-        // The Insert layer binds Esc -> EnterNormal, Enter -> InsertNewline, Backspace -> DeleteBack.
-        assert_eq!(
-            e.binding_label(&Command::EnterNormal).as_deref(),
-            Some("Esc")
-        );
-        assert_eq!(
-            e.binding_label(&Command::InsertNewline).as_deref(),
-            Some("CR")
-        );
-        assert_eq!(e.binding_label(&Command::DeleteBack).as_deref(), Some("BS"));
-        // Undo (`u`) is Normal grammar, not a layer binding, so it has no static binding here.
-        assert_eq!(e.binding_label(&Command::Undo), None);
-        assert_eq!(e.binding_label(&Command::Save), None);
+    fn binding_labels_follow_the_grammar_and_the_profile() {
+        let vim = InputEngine::new();
+        let normal = labels(&vim, Mode::Normal);
+        for (id, key) in [
+            ("editor.insert", "i"),
+            ("editor.insert_after", "a"),
+            ("editor.undo", "u"),
+            ("editor.redo", "C-r"),
+            ("editor.undo_older", "g-"),
+            ("editor.undo_newer", "g+"),
+            ("editor.join_lines", "J"),
+            ("editor.line_start", "0"),
+            ("editor.line_end", "$"),
+            ("editor.reselect", "gv"),
+        ] {
+            assert_eq!(label(&normal, id), Some(key), "{id}");
+        }
+        // Vim has no key for `:w` or `:q` (`ZZ` is `:x`, `ZQ` is `:q!`).
+        assert_eq!(label(&normal, "file.save"), None);
+        assert_eq!(label(&normal, "file.quit"), None);
+        let insert = labels(&vim, Mode::Insert);
+        assert_eq!(label(&insert, "editor.normal_mode"), Some("Esc"));
+        assert_eq!(label(&insert, "editor.newline"), Some("CR"));
+        assert_eq!(label(&insert, "editor.delete_back"), Some("BS"));
+        assert_eq!(label(&insert, "editor.break_undo"), Some("C-g u"));
+        // The Emacs profile's own keys, not Vim's.
+        let emacs = labels(&InputEngine::emacs(), Mode::Insert);
+        assert_eq!(label(&emacs, "file.save"), Some("C-x C-s"));
+        assert_eq!(label(&emacs, "file.quit"), Some("C-x C-c"));
+        assert_eq!(label(&emacs, "editor.break_undo"), None);
     }
 
     /// Arm an operator prefix, then resolve a viewport screen-motion (`H`/`M`/`L`) to the ABSOLUTE `line`

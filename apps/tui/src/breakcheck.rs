@@ -62,8 +62,18 @@ fn poll() -> bool {
     interrupted
 }
 
-/// The next event [`poll`] read ahead while a command ran, if any. The event loop takes these before it
-/// reads the terminal again.
+/// Queue `ev` as read-ahead input: the keys typed while the startup probe read the terminal (#1013).
+pub(crate) fn push(ev: Event) {
+    TYPEAHEAD.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.len() < MAX_TYPEAHEAD {
+            t.push_back(ev);
+        }
+    });
+}
+
+/// The next event [`poll`] (or [`push`]) read ahead, if any. The event loop and the recovery prompt take
+/// these before they read the terminal again.
 pub(crate) fn pop() -> Option<Event> {
     TYPEAHEAD.with(|t| t.borrow_mut().pop_front())
 }

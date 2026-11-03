@@ -86,6 +86,16 @@ impl Editor {
     /// Start `ruse <args>` in `scratch` with `env` (`NAME=value`) ahead of the defaults, so it can override
     /// them, and wait until its first frame has been drawn.
     pub fn start_env(scratch: &Scratch, args: &[&Path], env: &[&str]) -> Self {
+        Self::spawn(scratch, args, env, b"")
+    }
+
+    /// Start `ruse <args>` with `early` already typed: written to the terminal right after the fork, so
+    /// it is waiting in the input queue when the editor starts and its startup probe reads the terminal.
+    pub fn start_typed(scratch: &Scratch, args: &[&Path], early: &[u8]) -> Self {
+        Self::spawn(scratch, args, &[], early)
+    }
+
+    fn spawn(scratch: &Scratch, args: &[&Path], env: &[&str], early: &[u8]) -> Self {
         // Build everything in the PARENT: nothing may allocate between fork and exec.
         let exe = cstring(env!("CARGO_BIN_EXE_ruse").as_bytes());
         let mut arg_store = vec![exe.clone()];
@@ -129,7 +139,12 @@ impl Editor {
             }
         }
         // SAFETY: forkpty returned a fresh master fd that nothing else owns.
-        let master = unsafe { File::from_raw_fd(fd) };
+        let mut master = unsafe { File::from_raw_fd(fd) };
+        if !early.is_empty() {
+            // Small enough to fit the input queue at once, so this cannot block.
+            let _ = master.write_all(early);
+            let _ = master.flush();
+        }
         let output = Arc::new(Mutex::new(Vec::new()));
         let mut reader = master.try_clone().expect("clone master fd");
         let sink = Arc::clone(&output);
@@ -163,13 +178,27 @@ impl Editor {
             reader_stop,
             reader: Some(reader),
         };
-        editor.wait_for_first_frame();
+        // The terminal echoes keys typed before raw mode, so with `early` input the first output is that
+        // echo: wait for the editor's own screen instead.
+        let drawn: &[u8] = if early.is_empty() {
+            b""
+        } else {
+            b"\x1b[?1049h"
+        };
+        editor.wait_for_first_frame(drawn);
         editor
     }
 
-    fn wait_for_first_frame(&mut self) {
+    fn wait_for_first_frame(&mut self, drawn: &[u8]) {
         let start = Instant::now();
-        while self.output_len() == 0 {
+        while self.output_len() == 0
+            || !self
+                .output
+                .lock()
+                .unwrap()
+                .windows(drawn.len().max(1))
+                .any(|w| drawn.is_empty() || w == drawn)
+        {
             assert!(start.elapsed() < MAX_WAIT, "ruse drew nothing");
             std::thread::sleep(Duration::from_millis(10));
         }

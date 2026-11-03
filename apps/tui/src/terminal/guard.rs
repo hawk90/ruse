@@ -45,7 +45,11 @@ impl TermGuard {
         io::stdout().flush()?;
         // Probe AFTER raw mode (so replies arrive as raw bytes) and inside the alt screen (so query
         // echoes, if any, never touch the parent scrollback).
-        let ledger = detect_capabilities();
+        let (ledger, typed) = detect_capabilities();
+        // Keys typed while the probe read the terminal are read first, before any new input (#1013).
+        for key in caps::typeahead::decode(&typed) {
+            crate::breakcheck::push(crossterm::event::Event::Key(key));
+        }
         let mut out = io::stdout();
         out.write_all(&caps::sequences::enter(&ledger))?;
         out.flush()?;

@@ -47,12 +47,30 @@ pub enum ProbeState {
     Fenced,
 }
 
+/// What one complete CSI sequence read during the probe was.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reply {
+    /// The DA1 reply: the fence.
+    Fence,
+    /// Another reply to a query of the batch.
+    Answer,
+    /// No reply of ours: a key the user typed (an arrow key is `CSI A`).
+    NotOurs,
+}
+
+/// At most this many typed bytes are kept across the probe; more typeahead than this is dropped.
+const MAX_TYPED: usize = 4096;
+
 /// Incrementally folds terminal replies into a [`Ledger`]. Handles CSI sequences split across reads.
+/// Every byte that is not part of a reply is kept, in order, as input the user typed meanwhile
+/// ([`ProbeParser::take_typed`], #1013).
 #[derive(Default)]
 pub struct ProbeParser {
     /// Bytes of an in-progress escape sequence, or leftover partial input between `feed` calls.
     pending: Vec<u8>,
     fenced: bool,
+    /// The bytes that were not a reply: keys typed before or during the probe, or after its fence.
+    typed: Vec<u8>,
 }
 
 impl ProbeParser {
@@ -65,18 +83,34 @@ impl ProbeParser {
         self.fenced
     }
 
-    /// Fold a chunk of terminal output into `ledger`. Recognises three CSI replies and ignores
-    /// everything else (a well-behaved terminal sends nothing else before the fence; stray user
-    /// input is simply not a known reply and is skipped):
+    /// The input the user typed while the probe read the terminal, in order, with the replies taken
+    /// out — for the event loop to read as keys. Call once the probe is over: an escape sequence still
+    /// incomplete then is input too (a lone `Esc`).
+    pub fn take_typed(&mut self) -> Vec<u8> {
+        let rest = std::mem::take(&mut self.pending);
+        self.keep_typed(&rest);
+        std::mem::take(&mut self.typed)
+    }
+
+    fn keep_typed(&mut self, bytes: &[u8]) {
+        let room = MAX_TYPED.saturating_sub(self.typed.len());
+        self.typed
+            .extend_from_slice(&bytes[..bytes.len().min(room)]);
+    }
+
+    /// Fold a chunk of terminal output into `ledger`. Recognises three CSI replies; everything else
+    /// is input the user typed and is kept for [`ProbeParser::take_typed`]:
     ///   * DECRQM report `CSI ? <mode> ; <state> $ y` — state != 0 means the mode is recognised.
     ///   * kitty report  `CSI ? <flags> u`            — the kitty keyboard protocol is present.
     ///   * DA1 report    `CSI ? <params> c`           — the fence; probing is done.
     pub fn feed(&mut self, bytes: &[u8], ledger: &mut Ledger) -> ProbeState {
         self.pending.extend_from_slice(bytes);
+        let mut typed = Vec::new();
         let mut i = 0;
         while i < self.pending.len() {
-            // Seek the next CSI introducer (ESC '[').
+            // Seek the next CSI introducer (ESC '['); anything else is typed input.
             if self.pending[i] != 0x1b {
+                typed.push(self.pending[i]);
                 i += 1;
                 continue;
             }
@@ -84,6 +118,7 @@ impl ProbeParser {
                 None => break, // ESC at the tail — wait for more bytes.
                 Some(&b'[') => {}
                 Some(_) => {
+                    typed.push(0x1b); // `Esc` or an Alt chord, not a reply
                     i += 1;
                     continue;
                 }
@@ -97,11 +132,14 @@ impl ProbeParser {
                 break; // Incomplete sequence — keep it in `pending` for the next feed.
             }
             let seq = &self.pending[i + 2..=j]; // params.. + final byte
-            if Self::classify(seq, ledger) {
-                self.fenced = true;
+            match Self::classify(seq, ledger) {
+                Reply::Fence => self.fenced = true,
+                Reply::Answer => {}
+                Reply::NotOurs => typed.extend_from_slice(&self.pending[i..=j]),
             }
             i = j + 1;
         }
+        self.keep_typed(&typed);
         // Drop everything we have consumed or skipped; keep only a trailing partial sequence.
         self.pending.drain(..i);
         if self.fenced {
@@ -111,13 +149,12 @@ impl ProbeParser {
         }
     }
 
-    /// Classify one complete CSI body (`<params><final>`), update the ledger, and return whether
-    /// this reply was the DA1 fence. Static (no `&mut self`) so the caller can hold an immutable
-    /// slice of `pending` while calling it.
-    fn classify(seq: &[u8], ledger: &mut Ledger) -> bool {
+    /// Classify one complete CSI body (`<params><final>`), update the ledger, and say what it was.
+    /// Static (no `&mut self`) so the caller can hold an immutable slice of `pending` while calling it.
+    fn classify(seq: &[u8], ledger: &mut Ledger) -> Reply {
         let (&final_byte, params) = match seq.split_last() {
             Some(x) => x,
-            None => return false,
+            None => return Reply::NotOurs,
         };
         match final_byte {
             b'c' if params.first() == Some(&b'?') => {
@@ -134,7 +171,7 @@ impl ProbeParser {
                         },
                     );
                 }
-                return true;
+                Reply::Fence
             }
             b'u' if params.first() == Some(&b'?') => {
                 // Kitty keyboard reply (`CSI ? <flags> u`). Its mere arrival proves support.
@@ -146,11 +183,12 @@ impl ProbeParser {
                         confidence: Confidence::Confirmed,
                     },
                 );
+                Reply::Answer
             }
             b'y' => {
                 // DECRQM report `CSI ? <mode> ; <state> $ y`. `$` is the byte before `y`.
                 if params.last() != Some(&b'$') || params.first() != Some(&b'?') {
-                    return false;
+                    return Reply::NotOurs;
                 }
                 let inner = &params[1..params.len() - 1]; // between '?' and '$'
                 let mut halves = inner.split(|&b| b == b';');
@@ -171,10 +209,10 @@ impl ProbeParser {
                         );
                     }
                 }
+                Reply::Answer
             }
-            _ => {}
+            _ => Reply::NotOurs,
         }
-        false
     }
 }
 

@@ -429,8 +429,10 @@ features:
     # namespaced commands invocable by STABLE id independent of any key (#1); metadata (typed ArgSchema,
     # category, when) is introspectable (#3); the frontend palette (C-P) lists context-appropriate
     # commands filtered by the minimal C-CONTEXT (When over Context{mode,has_selection}) and shows each
-    # command's static keymap-layer binding via LayerStack::key_for/InputEngine::binding_label (#2). All
-    # three acceptance criteria met + tested (registry 5, keymap key_for 1, binding_label 1, palette 2).
+    # command's current binding in the active profile and mode, found by feeding one- and two-key
+    # sequences to a fresh engine (InputEngine::binding_labels, #956; the static-layer lookup it replaced
+    # left u/CTRL-R/J/0/$ blank and always read Vim) (#2). All three acceptance criteria met + tested
+    # (registry 5, keymap key_for 1, binding_labels 1, palette 2).
     # MVP-minimal per ruse-mvp-minimal-slice: the full CommandSpec ecosystem fields (capabilities/trust/
     # declared side-effects/undoable/exec/repeatable/api_since), the when-expression DSL + full Context
     # Key registry, typed-argument commands, macros, and grammar-command binding reverse-lookup are the

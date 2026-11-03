@@ -267,8 +267,8 @@ impl VimProfile {
     }
 
     /// Every namespace the profile declares, for the addressability / depth-1-sealed assertions
-    /// (VS-OBL-4 / KL-OBL-3) and the palette's binding reverse-lookup (F-004 #2). The eight Vim
-    /// map-mode namespaces.
+    /// (VS-OBL-4 / KL-OBL-3). The eight Vim map-mode namespaces.
+    #[cfg(test)]
     pub(crate) fn all() -> [Ns; 8] {
         [
             Ns::Normal,

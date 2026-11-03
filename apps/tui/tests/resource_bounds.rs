@@ -77,6 +77,41 @@ fn a_huge_charwise_put_is_e1240_at_once() {
 }
 
 #[test]
+fn a_large_count_insert_is_fast_and_one_undo_step() {
+    // #1123: one edit per inserted character copied the whole buffer each time; 40000ix took ~30 s in a
+    // debug build, 1000000ix now ~0.4 s. The repeats are spliced in growing chunks.
+    let n = 1_000_000;
+    let mut h = timed("a\n", &format!("{n}ix<Esc>"));
+    assert_eq!(h.text(), format!("{}a\n", "x".repeat(n)));
+    assert_eq!(h.cursor_row_col(), (1, n - 1));
+    assert_eq!(h.mode(), Mode::Normal);
+    h.keys("u");
+    assert_eq!(h.text(), "a\n", "one undo step");
+    // A multi-char body: nvim v0.12.6 `5ixy<Esc>` on `a` is `xyxyxyxyxya`, cursor col 10 (1-based); `.`
+    // inserts the same five again before the cursor.
+    let mut h = timed("a\n", "5ixy<Esc>");
+    assert_eq!(h.text(), "xyxyxyxyxya\n");
+    assert_eq!(h.cursor_row_col(), (1, 9));
+    h.keys(".");
+    assert_eq!(h.text(), "xyxyxyxyxxyxyxyxyxyya\n");
+    assert_eq!(h.cursor_row_col(), (1, 18));
+    // The batched edits replay from the trace to the same document.
+    let st = h.trace().replay(b"a\n").expect("replay");
+    assert_eq!(st.doc.bytes(), h.text().as_bytes());
+    // An Emacs `C-u` count of a self-insert takes the same path. (The leading `a` puts the session in
+    // Insert first: before any text is typed it is in Normal, where a session chord takes `C-u`.)
+    let mut h = Headless::emacs("\n");
+    let t0 = Instant::now();
+    h.keys("a<C-u>200000x");
+    assert!(
+        t0.elapsed() < BOUNDED,
+        "C-u 200000 x took {:?}",
+        t0.elapsed()
+    );
+    assert_eq!(h.text(), format!("a{}\n", "x".repeat(200_000)));
+}
+
+#[test]
 fn virtual_replace_past_the_line_end_appends_the_surplus() {
     let h = timed("abc\n", "10grx");
     assert_eq!(h.text(), "xxxxxxxxxx\n");

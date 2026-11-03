@@ -8,19 +8,21 @@ use crate::input::InputEngine;
 use crate::ui::picker::{PickItem, Picker};
 
 /// Open the command palette for `ctx`: a [`Picker`] over the commands available in that context, each row
-/// searchable by title+id and displayed with its static keymap binding (resolved once here via `engine`,
-/// since bindings don't change while the overlay is open) and category. Enter's payload is the [`Command`]
-/// the caller dispatches.
+/// searchable by title+id and displayed with the key that runs it in `ctx`'s mode under the active profile
+/// (resolved once here via `engine`, since bindings don't change while the overlay is open) and category.
+/// Enter's payload is the [`Command`] the caller dispatches.
 pub(crate) fn open(ctx: &ruse_core::Context, engine: &InputEngine) -> Picker<ruse_core::Command> {
-    let items = ruse_core::available(ctx)
+    let specs = ruse_core::available(ctx);
+    let commands: Vec<_> = specs.iter().map(|s| s.command.clone()).collect();
+    let labels = engine.binding_labels(&commands, ctx.mode);
+    let items = specs
         .into_iter()
-        .map(|s| {
-            let binding = engine
-                .binding_label(&s.command)
-                .unwrap_or_else(|| "—".into());
+        .zip(labels)
+        .map(|(s, binding)| {
+            let binding = binding.unwrap_or_else(|| "—".into());
             PickItem {
                 search: format!("{} {}", s.title, s.id),
-                display: format!("{:<28} {:>5}   {:?}", s.title, binding, s.category),
+                display: format!("{:<28} {:>7}   {:?}", s.title, binding, s.category),
                 payload: s.command,
             }
         })

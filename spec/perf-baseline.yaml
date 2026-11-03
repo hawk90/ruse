@@ -58,6 +58,13 @@ benches:
     search_hl/full_buffer/100000: "3.35 ms"
     search_hl/cached_hit/1000: "4.3 ns"
     search_hl/cached_miss/100000: "2.3 us"
+  count_insert:                     # #1123 `{N}ix<Esc>` on the headless key path. DEV-PROFILE (2026-11-03, no
+                                    # release build). Before (one edit per repeated char), same profile:
+                                    # 10000 1.9 s, 20000 7.4 s, 40000 30 s (quadratic).
+                                    # Repeats spliced in doubling chunks capped at 64 KiB.
+    count_insert/10000: "1.48 ms"
+    count_insert/100000: "11.8 ms"
+    count_insert/1000000: "367 ms"
   input_dispatch:                   # keystroke dispatch (feed) — human-rate, never per frame
     input_feed_sequence: "1.34 us"
   line_index:                       # D-042 win D — cached line lookups vs the O(n) line_math scan

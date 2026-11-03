@@ -8,21 +8,25 @@ use crate::caps;
 /// Build the capability ledger (F-010): safe-fallback defaults, then a low-confidence env seed,
 /// then — on a real Unix tty — a DA1-fenced active probe that upgrades what the terminal confirms.
 /// Every step is non-fatal: a probe that fails or is skipped leaves the honest env/default belief.
-pub(crate) fn detect_capabilities() -> caps::ledger::Ledger {
-    build_ledger(
+/// Also returns the bytes the user typed while the probe read the terminal (#1013), for the event loop.
+pub(crate) fn detect_capabilities() -> (caps::ledger::Ledger, Vec<u8>) {
+    let mut typed = Vec::new();
+    let ledger = build_ledger(
         |name| std::env::var(name).unwrap_or_default(),
         |ledger| {
             #[cfg(unix)]
             {
                 use std::io::IsTerminal;
                 if io::stdin().is_terminal() {
-                    let _ = live_probe(ledger); // best-effort; env/default belief stands on failure
+                    // Best-effort; env/default belief stands on failure.
+                    let _ = live_probe(ledger, &mut typed);
                 }
             }
             #[cfg(not(unix))]
             let _ = ledger;
         },
-    )
+    );
+    (ledger, typed)
 }
 
 /// The detection order, pure in its inputs so the TERM/COLORTERM matrix unit-tests without a process
@@ -53,9 +57,21 @@ fn build_ledger(
 
 /// Emit the probe batch and drain the terminal's replies until the DA1 fence (F-010 acceptance #1).
 /// The `poll` deadline is a LIVENESS net for a terminal that never answers DA1 — NOT a
-/// per-capability timeout; the fence, not the clock, decides support (see `caps::probe`).
+/// per-capability timeout; the fence, not the clock, decides support (see `caps::probe`). What the user
+/// typed meanwhile goes to `typed`, even when a read fails.
 #[cfg(unix)]
-fn live_probe(ledger: &mut caps::ledger::Ledger) -> io::Result<()> {
+fn live_probe(ledger: &mut caps::ledger::Ledger, typed: &mut Vec<u8>) -> io::Result<()> {
+    let mut parser = caps::probe::ProbeParser::new();
+    let res = drain_probe(ledger, &mut parser);
+    *typed = parser.take_typed();
+    res
+}
+
+#[cfg(unix)]
+fn drain_probe(
+    ledger: &mut caps::ledger::Ledger,
+    parser: &mut caps::probe::ProbeParser,
+) -> io::Result<()> {
     use std::io::Read;
     use std::os::unix::io::AsRawFd;
 
@@ -64,7 +80,6 @@ fn live_probe(ledger: &mut caps::ledger::Ledger) -> io::Result<()> {
     out.flush()?;
 
     let fd = io::stdin().as_raw_fd();
-    let mut parser = caps::probe::ProbeParser::new();
     let mut buf = [0u8; 512];
     // Up to ~20 × 50 ms only if the terminal keeps sending nothing; a real terminal answers in the
     // first poll and the fence breaks the loop immediately.

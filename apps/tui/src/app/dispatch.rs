@@ -250,17 +250,62 @@ pub(crate) fn run_repeat(
     for cmd in r.head {
         run_cmd(cmd, ws, files, recorded, status, quit);
     }
-    for _ in 0..r.times {
+    let literal = literal_text(&r.unit);
+    let mut done: u32 = 0;
+    while done < r.times {
         if *quit || ruse_core::interrupt::breakcheck() {
             break;
         }
-        for cmd in &r.unit {
-            run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+        match &literal {
+            // After one repetition run as typed, the rest of a plain-text unit go in as growing literal
+            // splices (#1123): each edit copies the buffer, so one edit per character made
+            // `1000000ix<Esc>` quadratic. Doubling the chunk keeps the total copy linear in the result up
+            // to the cap, which bounds the memory of one chunk and the time between interrupt checks.
+            Some(text) if done > 0 => {
+                let per = (REPEAT_CHUNK_BYTES / text.len()).max(1);
+                let reps = (done as usize).min(per).min((r.times - done) as usize);
+                run_cmd(
+                    Command::InsertPaste(text.repeat(reps)),
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    quit,
+                );
+                done += u32::try_from(reps).unwrap_or(u32::MAX);
+            }
+            _ => {
+                for cmd in &r.unit {
+                    run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+                }
+                done += 1;
+            }
         }
     }
     for cmd in r.tail {
         run_cmd(cmd, ws, files, recorded, status, quit);
     }
+}
+
+/// The largest literal splice one step of a batched count-insert makes ([`run_repeat`]). Every step still
+/// copies the whole buffer, so past the cap the cost is quadratic again, by a factor of the cap smaller.
+/// A larger cap is faster for big counts, but lets `999999999ix` grow one long line so fast that by the
+/// time CTRL-C stops it each later key is slow on that line (`pty_interrupt.rs`): 64 KiB gives a 1 MB
+/// line 300 ms in (1 MiB gave 4 MB), and a million-char insert in about 30 steps.
+const REPEAT_CHUNK_BYTES: usize = 64 << 10;
+
+/// The text a repeat unit inserts when it is nothing but typed characters (`ix`, `ihello`, an Emacs
+/// `C-u 8 x`), so its repetitions can be spliced as one literal paste. `None` for any other command: a
+/// newline (autoindent), `<Tab>` (`'expandtab'`), `<BS>`, a line-opening `o`, a register.
+fn literal_text(unit: &[Command]) -> Option<String> {
+    let mut text = String::new();
+    for cmd in unit {
+        match cmd {
+            Command::InsertChar(c) => text.push(*c),
+            _ => return None,
+        }
+    }
+    (!text.is_empty()).then_some(text)
 }
 
 /// `E20` for a jump to, or an operator over, an unset named mark (`'a`, `` `a ``, `d'a`): nothing runs.
