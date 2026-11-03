@@ -131,6 +131,8 @@ pub enum Ex {
     /// `:set (no)fixeol` / `(no)fixendofline` — opt-in: on save, ADD a final `\n` when the buffer lacks one
     /// (frontend write preference; OFF by default — byte-preserve is the honest default). Vim's fixendofline.
     SetFixEol(bool),
+    /// `:set (no)tildeop` / `:set (no)top` — `~` as an operator (an input-engine option).
+    SetTildeOp(bool),
     /// `:set foldmethod=indent|manual` (`fdm`) — select how folds are formed for the focused buffer (folds
     /// are a frontend concern; slice 3). `manual` keeps the hand-made `zf` model; `indent` derives nested
     /// folds from indentation. Handled in the run loop.
@@ -309,6 +311,8 @@ fn parse_set(line: &str) -> Option<Ex> {
         "noincsearch" | "nois" => return Some(Ex::SetIncSearch(false)),
         "fixeol" | "fixendofline" => return Some(Ex::SetFixEol(true)),
         "nofixeol" | "nofixendofline" => return Some(Ex::SetFixEol(false)),
+        "tildeop" | "top" => return Some(Ex::SetTildeOp(true)),
+        "notildeop" | "notop" => return Some(Ex::SetTildeOp(false)),
         // Fold options (frontend; slice 3). `foldenable`/`fen` bool + `no` prefix.
         "foldenable" | "fen" => return Some(Ex::SetFoldEnable(true)),
         "nofoldenable" | "nofen" => return Some(Ex::SetFoldEnable(false)),

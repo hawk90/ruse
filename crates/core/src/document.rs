@@ -10,10 +10,11 @@
 use std::sync::Arc;
 
 use crate::anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
-use crate::edit::{EditError, EditList};
+use crate::edit::{Edit, EditError, EditList};
+use crate::line_undo::LineUndo;
 use crate::pos::Revision;
 use crate::snapshot::{AnchorIndex, DocumentSnapshot};
-use crate::transaction::Transaction;
+use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 use crate::undo::{MonotonicSeq, UndoHistory};
 
 /// A typed, generation-free document handle (INV-HANDLE). Process-unique id per open document.
@@ -41,6 +42,8 @@ pub struct Document {
     undo: UndoHistory,
     anchor_index: Arc<AnchorIndex>,
     saved_node: Option<MonotonicSeq>,
+    /// The line Vim's `U` restores ([`Document::line_undo`]).
+    line_undo: LineUndo,
 }
 
 impl Document {
@@ -57,6 +60,7 @@ impl Document {
             undo: UndoHistory::new(Revision::ZERO),
             anchor_index: Arc::new(AnchorIndex::default()),
             saved_node: None,
+            line_undo: LineUndo::default(),
         };
         d.rebuild_index();
         d
@@ -140,6 +144,10 @@ impl Document {
     /// edit is out of range; on success the revision strictly increases and the change is recorded as a
     /// new undo node (INV-TXN, INV-UNDO, F-001).
     pub fn apply(&mut self, txn: Transaction) -> Result<Revision, TxnError> {
+        self.apply_inner(txn, true)
+    }
+
+    fn apply_inner(&mut self, txn: Transaction, track: bool) -> Result<Revision, TxnError> {
         if txn.base_revision != self.revision {
             return Err(TxnError::StaleBaseRevision {
                 base: txn.base_revision,
@@ -158,6 +166,10 @@ impl Document {
         // Committed path — nothing above mutated state, so failure above is atomic-no-op.
         let inverse = txn.edits.inverse(&self.text);
         let new_text = txn.edits.apply_to(&self.text);
+        if track {
+            let fresh = txn.group_hint == GroupHint::BreakBefore;
+            self.line_undo.on_edit(&self.text, &txn.edits, fresh);
+        }
         self.text = Arc::new(new_text);
         let prev = self.revision;
         self.revision = self.revision.next();
@@ -217,6 +229,39 @@ impl Document {
         Some(self.revision)
     }
 
+    /// Before a change: the caret it starts from (the column `U` returns to) and whether it begins a new
+    /// command, which lets it save its line for `U`. See [`crate::line_undo`].
+    pub(crate) fn prime_line_undo(&mut self, cursor: usize, new_command: bool) {
+        self.line_undo.prime(cursor, new_command);
+    }
+
+    /// Drop the line `U` would restore (`o`, `O`, `<CR>`); `disarm` keeps the rest of the command from
+    /// saving another.
+    pub(crate) fn clear_line_undo(&mut self, disarm: bool) {
+        self.line_undo.clear(disarm);
+    }
+
+    /// Whether `U` has a line to restore.
+    #[must_use]
+    pub fn can_line_undo(&self) -> bool {
+        self.line_undo.available(&self.text)
+    }
+
+    /// Vim `U`: put back the latest changed line as it was before its run of changes, as one undoable
+    /// change (so `u` undoes it), keeping the current text so the next `U` redoes. Returns the caret
+    /// (the column the line was saved with), or `None` when there is nothing to restore.
+    pub fn line_undo(&mut self, cursor: usize) -> Option<usize> {
+        let (s, e, text, col) = self.line_undo.swap(&self.text, cursor)?;
+        let len = text.len();
+        let list =
+            EditList::new(vec![Edit::replace(s, e - s, text)]).expect("one edit is disjoint");
+        let txn = Transaction::new(self.revision, list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.apply_inner(txn, false)
+            .expect("the saved line's span is in range");
+        Some(s + col.min(len))
+    }
+
     /// Whether undo/redo can move.
     #[must_use]
     pub fn can_undo(&self) -> bool {
@@ -263,6 +308,7 @@ impl Document {
     /// but records no new undo node.
     fn reapply(&mut self, edits: &EditList) {
         let new_text = edits.apply_to(&self.text);
+        self.line_undo.on_reapply(&self.text, edits);
         self.text = Arc::from(new_text);
         self.revision = self.revision.next();
         self.anchors.apply_edits(edits);

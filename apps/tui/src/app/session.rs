@@ -1249,22 +1249,34 @@ impl Session {
         }
         if let Prefix::Z(count) = *prefix {
             *prefix = Prefix::None;
-            // Scroll-align verbs (zz/zt/zb/z./z-/z<CR>). `{count}` first moves the cursor to line `count`
-            // (clamped to the last line): `zz`/`zt`/`zb` keep its column, `z.`/`z<CR>`/`z-` put it on the
+            // Scroll-align verbs (zz/zt/zb/z./z-/z<CR>/z+/z^). `{count}` first moves the cursor to line
+            // `count` (clamped to the last line): `zz`/`zt`/`zb` keep its column, the others put it on the
             // first non-blank, with or without a count (`:help z<CR>`). Neither is a jump.
             let to = match key.code {
                 KeyCode::Char('z' | '.') => Some(viewport::RecenterTo::Center),
-                KeyCode::Char('t') | KeyCode::Enter => Some(viewport::RecenterTo::Top),
-                KeyCode::Char('b' | '-') => Some(viewport::RecenterTo::Bottom),
+                KeyCode::Char('t' | '+') | KeyCode::Enter => Some(viewport::RecenterTo::Top),
+                KeyCode::Char('b' | '-' | '^') => Some(viewport::RecenterTo::Bottom),
                 _ => None,
             };
             if let Some(to) = to {
                 let cur = line_idx.line_of(ws.focused().view.cursor());
                 let last = line_idx.line_of(snapshot.len().saturating_sub(1));
-                let row = if count > 0 {
-                    (count as usize - 1).min(last)
-                } else {
-                    cur
+                let top = ws.focused().view.top();
+                let row = match (key.code, count) {
+                    // `z+`: the line just below the window goes to the top (nvim's `nv_zet`).
+                    (KeyCode::Char('+'), 0) => (top + focused_h).min(last),
+                    // `z^`: the line just above the window goes to the bottom.
+                    (KeyCode::Char('^'), 0) => top.saturating_sub(1),
+                    // `{count}z^`: put line `count` at the bottom (keeping 'scrolloff'), then the line now at
+                    // the top goes to the bottom.
+                    (KeyCode::Char('^'), n) => {
+                        let so = SCROLLOFF.min(focused_h.saturating_sub(1) / 2);
+                        (n as usize - 1)
+                            .min(last)
+                            .saturating_sub(focused_h.saturating_sub(1 + so))
+                    }
+                    (_, 0) => cur,
+                    (_, n) => (n as usize - 1).min(last),
                 };
                 if matches!(key.code, KeyCode::Char('z' | 't' | 'b')) {
                     if row != cur {
@@ -1299,6 +1311,40 @@ impl Session {
                 }
                 ws.set_top(ws.focus(), viewport::recenter(row, focused_h, to));
                 return;
+            }
+            // `zp` / `zP` (Normal) paste like `p` / `P` without a block's trailing spaces; `zy` yanks like
+            // `y` without a block's trailing white space: over the selection in Visual, and in Normal as the
+            // `y` operator (its motions are never blockwise, so it is `y` there), with the count kept.
+            if (key.modifiers - KeyModifiers::SHIFT).is_empty() {
+                let visual = matches!(ws.focused().view.mode(), Mode::Visual { .. });
+                match key.code {
+                    KeyCode::Char(c @ ('p' | 'P')) if !visual => {
+                        let cmd = Command::PasteBlockInner {
+                            after: c == 'p',
+                            count: count.max(1),
+                        };
+                        run_cmd(cmd, ws, files, recorded, status, quit);
+                        return;
+                    }
+                    KeyCode::Char('y') if visual => {
+                        let cmd = Command::VisualOp(ruse_core::VisualOp::YankTrim);
+                        run_cmd(cmd, ws, files, recorded, status, quit);
+                        return;
+                    }
+                    KeyCode::Char('y') => {
+                        let mode = ws.focused().view.mode();
+                        let digits = if count > 0 {
+                            count.to_string()
+                        } else {
+                            String::new()
+                        };
+                        for d in digits.chars().chain(['y']) {
+                            engine.feed(KeyEvent::new(KeyCode::Char(d), KeyModifiers::NONE), mode);
+                        }
+                        return;
+                    }
+                    _ => {}
+                }
             }
             // Fold verbs (manual folds; F-007 carve-out). `zf` folds the Visual selection; the rest act on the fold at the cursor.
             let buf = ws.focused_buffer();
@@ -1772,6 +1818,20 @@ impl Session {
                     engine.open_filter_cmdline(&format!("{},{}!", first + 1, last + 1));
                 }
             }
+            // `{count}:` — the line opens on the cursor's line and the `count - 1` below it, numbered here.
+            // nvim seeds `:.,.+{count-1}` (`:.` for 1); the lines are the same, and a range past the last line
+            // is E16 when it runs, as there.
+            Feed::CountCmdline { count } => {
+                let first =
+                    ruse_core::pos::line_of(ws.focused().doc.bytes(), ws.focused().view.cursor())
+                        + 1;
+                let last = first + count as usize - 1;
+                engine.open_filter_cmdline(&if count == 1 {
+                    format!("{first}")
+                } else {
+                    format!("{first},{last}")
+                });
+            }
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => {
                 // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
@@ -2043,6 +2103,11 @@ impl Session {
             Ex::SetFixEol(on) => {
                 *fixeol_on = on;
                 *status = format!("fixeol {}", if on { "on" } else { "off" });
+            }
+            // `:set (no)tildeop` — `~` becomes the `g~` operator (an input-engine grammar option).
+            Ex::SetTildeOp(on) => {
+                engine.set_tildeop(on);
+                *status = format!("tildeop {}", if on { "on" } else { "off" });
             }
             // `:set foldmethod=indent|manual` (frontend fold state, slice 3). Switching just flips the
             // method + forces a recompute next frame; existing folds are kept (Vim keeps them).
@@ -2789,6 +2854,10 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
         Command::AsciiInfo => {
             let pane = ws.focused();
             Some(ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor()))
+        }
+        Command::Utf8Info => {
+            let pane = ws.focused();
+            Some(ruse_core::utf8_info(pane.doc.bytes(), pane.view.cursor()))
         }
         Command::FileInfo => {
             let id = ws.focused_buffer();

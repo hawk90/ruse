@@ -68,6 +68,8 @@ fn normal_chord_table() {
             'v' | 'q' => Feed::Cmd(Command::EnterVisual {
                 kind: SelectKind::Blockwise,
             }),
+            // `<C-\>` (legacy `Ctrl-4`) waits for `<C-n>`/`<C-g>`.
+            '\\' | '4' => Feed::Pending,
             _ => Feed::Ignored,
         };
         let mut e = InputEngine::new();
@@ -97,6 +99,7 @@ fn visual_chord_table() {
                 kind: SelectKind::Blockwise,
             }),
             'c' | '[' => Feed::Cmd(Command::EnterNormal),
+            '\\' | '4' => Feed::Pending,
             // nvim scrolls on `<C-d>`/`<C-e>`/`<C-f>`/`<C-b>`/`<C-u>`/`<C-y>` in Visual; ruse has no Visual
             // scroll yet, so they are inert (they used to delete, yank, undo-case, …).
             _ => Feed::Ignored,
@@ -119,6 +122,7 @@ fn operator_pending_chord_table() {
             'p' => fresh(&[d, key('k')], Mode::Normal),
             'm' => fresh(&[d, special(KeyCode::Enter)], Mode::Normal),
             'v' | 'q' => Feed::Pending, // `o_CTRL-V`: force the motion blockwise
+            '\\' | '4' => Feed::Pending, // `<C-\><C-n>` cancels the operator
             _ => Feed::Ignored,         // aborts the operator, as `d<C-a>` / `d<C-c>` do in nvim
         };
         let mut e = InputEngine::new();
@@ -126,6 +130,20 @@ fn operator_pending_chord_table() {
         assert_eq!(e.feed(ctrl(c), Mode::Normal), want, "d<C-{c}>");
         if want == Feed::Ignored {
             assert_clean(&mut e, Mode::Normal, &format!("d<C-{c}>"));
+        }
+    }
+    // `<C-\><C-n>` / `<C-\><C-g>` end in Normal with nothing pending; in Visual they leave it.
+    for second in ['n', 'g'] {
+        for bs in ['\\', '4'] {
+            let mut e = InputEngine::new();
+            e.feed(d, Mode::Normal);
+            e.feed(ctrl(bs), Mode::Normal);
+            assert_eq!(e.feed(ctrl(second), Mode::Normal), Feed::Ignored);
+            assert_clean(&mut e, Mode::Normal, "d<C-\\><C-n>");
+            assert_eq!(
+                fresh(&[ctrl(bs), ctrl(second)], VISUAL),
+                Feed::Cmd(Command::EnterNormal)
+            );
         }
     }
     // `d<C-q>j` is `d<C-v>j`.

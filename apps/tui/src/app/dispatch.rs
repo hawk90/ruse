@@ -343,6 +343,7 @@ fn drive_feed(
         | Feed::CmdlineInsertUnder { .. }
         | Feed::FilterMotion { .. }
         | Feed::FilterSpan(_)
+        | Feed::CountCmdline { .. }
         | Feed::Pending
         | Feed::Ignored => {}
     }
@@ -611,6 +612,8 @@ pub(crate) fn run_ex(
         Ex::SetHlSearch(_) | Ex::SetIncSearch(_) => {}
         // `:set (no)fixeol` is handled in the run loop (a frontend write flag threaded into `save`); never here.
         Ex::SetFixEol(_) => {}
+        // `:set (no)tildeop` is handled in the run loop (an input-engine option); never here.
+        Ex::SetTildeOp(_) => {}
         // `:set foldmethod/foldlevel/foldenable` are handled in the run loop (frontend fold state); never here.
         Ex::SetFoldMethod(_) | Ex::SetFoldLevel(_) | Ex::SetFoldEnable(_) => {}
         // `:registers` is handled in the run loop (it opens the frontend-owned register-viewer picker).

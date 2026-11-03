@@ -29864,6 +29864,3789 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "U_restores_line",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_twice_redoes",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxUU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_cursor_column",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "wxx0U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_twice_cursor_column",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "wxx0UU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc f",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_moving_away",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_last_changed_line_only",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjxU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_back_to_line",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjxkUU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "hi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_nothing_to_undo",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_count_ignored",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "xx3U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_not_repeated_by_dot",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxU.",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "bc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_dd_elsewhere",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjddU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi jkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_2cc",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxj2ccfoo<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi jkl\nmno pqr\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_S",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjS<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi jkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_dw",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjdwU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_new_line_from_o",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "oxyz<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_o_without_typing",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjo<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "ghi jkl",
+          "",
+          "mno pqr"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_O_above",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "jxxkO<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "",
+          "abc def",
+          "i jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "h",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_insert_then_cr",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "Aab<CR>cd<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc defab",
+          "cd",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_o_then_cr",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "oab<CR>cd<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ab",
+          "cd",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_append",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "Axyz<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_insert_after_left",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "Aab<Left>cd<Esc>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_linewise_put_below",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxyyjpU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "c def",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c def\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "c def\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "U_gJ_below",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjgJU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jklmno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_shift_keeps_copy",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "jxxk>jU",
+      "setup": "set shiftwidth=4 expandtab | call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "    abc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "h",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_substitute",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xx:s/c/Q/<CR>U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_cancels_operator",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "xxjdU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "c def",
+          "ghi jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_r",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jrQlrRkU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_after_tilde",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "~~~jU",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "U_multibyte_column",
+      "lines": [
+        "héllo wörld",
+        "x"
+      ],
+      "keys": "wxx0U",
+      "setup": "call append('$', '') | $d _ | call cursor(1, 1)",
+      "expect": {
+        "text": [
+          "héllo wörld",
+          "x"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "ö",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_entered",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "Aab<C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc def",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_twice",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "Aab<C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_nothing_entered",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "A<C-u><Esc>",
+      "expect": {
+        "text": [
+          "",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_mid_line",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "wiab<C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc def",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_mid_line_twice",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "wiab<C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "def",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_keeps_indent",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "jAab<C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc def",
+          "    ",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_indent_then_all",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "jA<C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc def",
+          "",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_at_indent",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "jI<C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_typed_at_indent",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "jIx<C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_joins_at_line_start",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "ji<C-u>X<Esc>",
+      "expect": {
+        "text": [
+          "abc defX    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_first_line_start",
+      "lines": [
+        "abc def",
+        "mno"
+      ],
+      "keys": "i<C-u>X<Esc>",
+      "expect": {
+        "text": [
+          "Xabc def",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_back_across_lines",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "Aab<CR>cd<C-u><C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc def",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_after_left",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "Aab<Left><C-u><Esc>",
+      "expect": {
+        "text": [
+          "abc defb",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "i_ctrl_u_dot",
+      "lines": [
+        "abc def",
+        "    ghi jkl",
+        "mno"
+      ],
+      "keys": "Aab<C-u>cd<Esc>j.",
+      "expect": {
+        "text": [
+          "abc defcd",
+          "    ghi jklcd",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_plus",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "z+",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          24,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_plus_twice",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "z+z+",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          44,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_plus_count",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "50z+",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          50,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_plus_at_end",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "Gz+",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          100,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_plus_first_non_blank",
+      "lines": [
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a",
+        "  a"
+      ],
+      "keys": "z+",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a",
+          "  a"
+        ],
+        "cursor": [
+          24,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_caret_at_top",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "z^",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_caret",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "Gz^",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          77,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_caret_count",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "50z^",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          31,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "z_caret_count_near_top",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "10z^",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_colon_range",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "j2:s/$/!/<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b!",
+          "c!",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_colon_one",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "j1:d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_bslash_ctrl_n_normal",
+      "lines": [
+        "abcdefgh",
+        "x"
+      ],
+      "keys": "<C-\\><C-n>x",
+      "expect": {
+        "text": [
+          "bcdefgh",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_bslash_ctrl_n_drops_count",
+      "lines": [
+        "abcdefgh",
+        "x"
+      ],
+      "keys": "3<C-\\><C-n>x",
+      "expect": {
+        "text": [
+          "bcdefgh",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_bslash_ctrl_n_drops_operator",
+      "lines": [
+        "abcdefgh",
+        "x"
+      ],
+      "keys": "d<C-\\><C-n>x",
+      "expect": {
+        "text": [
+          "bcdefgh",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_bslash_ctrl_n_visual",
+      "lines": [
+        "abcdefgh",
+        "x"
+      ],
+      "keys": "vl<C-\\><C-n>x",
+      "expect": {
+        "text": [
+          "acdefgh",
+          "x"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_bslash_ctrl_g_visual",
+      "lines": [
+        "abcdefgh",
+        "x"
+      ],
+      "keys": "vl<C-\\><C-g>x",
+      "expect": {
+        "text": [
+          "acdefgh",
+          "x"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_p_pads_short_row",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjly3j0p",
+      "expect": {
+        "text": [
+          "abcd",
+          "a",
+          "abcd",
+          "xbcyz",
+          "x  yz",
+          "xbcyz"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_P_pads_short_row",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjly3j0P",
+      "expect": {
+        "text": [
+          "abcd",
+          "a",
+          "abcd",
+          "bcxyz",
+          "  xyz",
+          "bcxyz"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_p_count_pads_between",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjly3j02p",
+      "expect": {
+        "text": [
+          "abcd",
+          "a",
+          "abcd",
+          "xbcbcyz",
+          "x    yz",
+          "xbcbcyz"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_p_at_line_end_no_pad",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd"
+      ],
+      "keys": "l<C-v>jjly$p",
+      "expect": {
+        "text": [
+          "abcdbc",
+          "a   ",
+          "abcdbc"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_zp",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjly3j0zp",
+      "expect": {
+        "text": [
+          "abcd",
+          "a",
+          "abcd",
+          "xbcyz",
+          "xyz",
+          "xbcyz"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_zP",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjly3j0zP",
+      "expect": {
+        "text": [
+          "abcd",
+          "a",
+          "abcd",
+          "bcxyz",
+          "xyz",
+          "bcxyz"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_zp_count",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjly3j03zp",
+      "expect": {
+        "text": [
+          "abcd",
+          "a",
+          "abcd",
+          "xbcbcbcyz",
+          "xyz",
+          "xbcbcbcyz"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "zp_charwise",
+      "lines": [
+        "abcd"
+      ],
+      "keys": "ylzp",
+      "expect": {
+        "text": [
+          "aabcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "zp_linewise",
+      "lines": [
+        "abcd",
+        "x"
+      ],
+      "keys": "yyjzP",
+      "expect": {
+        "text": [
+          "abcd",
+          "abcd",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abcd\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "block_zy_trims",
+      "lines": [
+        "a b  x",
+        "c d  x",
+        "e    x"
+      ],
+      "keys": "l<C-v>jjlllzy",
+      "expect": {
+        "text": [
+          "a b  x",
+          "c d  x",
+          "e    x"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": " b\n d\n",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": " b\n d\n",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_zy_then_P_keeps_width",
+      "lines": [
+        "a b  x",
+        "c d  x",
+        "e    x",
+        "1234",
+        "1234",
+        "1234"
+      ],
+      "keys": "l<C-v>jjlllzy3j0P",
+      "expect": {
+        "text": [
+          "a b  x",
+          "c d  x",
+          "e    x",
+          " b  1234",
+          " d  1234",
+          "    1234"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": " b\n d\n",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": " b\n d\n",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_zy_then_zP",
+      "lines": [
+        "a b  x",
+        "c d  x",
+        "e    x",
+        "1234",
+        "1234",
+        "1234"
+      ],
+      "keys": "l<C-v>jjlllzy3j0zP",
+      "expect": {
+        "text": [
+          "a b  x",
+          "c d  x",
+          "e    x",
+          " b1234",
+          " d1234",
+          "1234"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": " b\n d\n",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": " b\n d\n",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_dollar_P_pads",
+      "lines": [
+        "ab",
+        "abcd",
+        "x",
+        "1234",
+        "1234",
+        "1234"
+      ],
+      "keys": "<C-v>jj$y3j0P",
+      "expect": {
+        "text": [
+          "ab",
+          "abcd",
+          "x",
+          "ab  1234",
+          "abcd1234",
+          "x   1234"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nabcd\nx",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab\nabcd\nx",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "charwise_zy",
+      "lines": [
+        "a b  x"
+      ],
+      "keys": "vllzy",
+      "expect": {
+        "text": [
+          "a b  x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a b",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "normal_zy_motion",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "zyw$p",
+      "expect": {
+        "text": [
+          "abc defabc "
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "abc ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "normal_zy_count",
+      "lines": [
+        "abc def ghi"
+      ],
+      "keys": "2zyw$p",
+      "expect": {
+        "text": [
+          "abc def ghiabc def "
+        ],
+        "cursor": [
+          1,
+          18
+        ],
+        "reg_unnamed": {
+          "text": "abc def ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc def ",
+          "type": "charwise"
+        }
+      }
     }
   ]
 }

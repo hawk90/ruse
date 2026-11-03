@@ -294,6 +294,10 @@ pub struct View {
     /// the caret at Insert entry, or where an edit next happened after a caret jump inside Insert
     /// (`insert_jumped`). Maintained in [`apply_command`].
     insert_col: usize,
+    /// Vim's `Insstart_orig` as a byte offset, for `i_CTRL-U`: where the Insert session began (a caret key
+    /// inside it does not move it), lowered when a delete reaches before it. Maintained with
+    /// [`View::insert_col`].
+    insstart: Option<usize>,
     /// A caret jump (a cursor key, `CTRL-G j`, …) happened in Insert since the last edit, so the next edit
     /// restarts `insert_col` there.
     insert_jumped: bool,
@@ -350,6 +354,7 @@ impl View {
             &mut self.change_start,
             &mut self.change_end,
             &mut self.insert_start,
+            &mut self.insstart,
         ]
         .into_iter()
         .flatten()
@@ -404,6 +409,7 @@ impl View {
             change_end: None,
             insert_start: None,
             insert_col: 0,
+            insstart: None,
             insert_jumped: false,
             jumps: Vec::new(),
             jump_idx: 0,
@@ -666,6 +672,8 @@ enum Action {
     },
     Undo,
     Redo,
+    /// `U`: restore the latest changed line ([`Document::line_undo`]); the cursor comes from the swap.
+    LineUndo,
     /// `g-`/`g+`: step along chronological creation order (`older` = `g-`), across branches.
     UndoChrono {
         older: bool,
@@ -2169,6 +2177,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let entry_cursor = st.view.cursor;
     let entry_anchor = st.view.anchor;
     let entry_mode = st.view.mode;
+    // Every command outside a text-entry session is a new change for `U`; inside one only the first change
+    // is (and the first after an undo break, which the transaction's `BreakBefore` hint carries).
+    let new_command = !is_text_entry(entry_mode);
     // The `[`/`]` change-mark span for a Normal-mode edit — read off the plan's edits (post-edit coords)
     // before they are moved into a Transaction. A yank has no edits; its span rides in `RegWrite::Yank`.
     let mut edit_span: Option<(usize, usize)> = None;
@@ -2177,6 +2188,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     match plan.action {
         Action::Txn { edits, hint } => {
             edit_span = edit_bracket(&edits);
+            st.doc.prime_line_undo(entry_cursor, new_command);
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                 .with_hint(hint);
             // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
@@ -2191,6 +2203,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             pop,
         } => {
             edit_span = edit_bracket(&edits);
+            st.doc.prime_line_undo(entry_cursor, new_command);
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                 .with_hint(hint);
             st.doc
@@ -2212,6 +2225,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         Action::UndoChrono { older } => {
             st.doc.undo_chronological(older);
         }
+        Action::LineUndo => {
+            nav_target = st.doc.line_undo(entry_cursor);
+        }
         Action::JumpChange { older } => {
             nav_target = st.view.nav_change(older);
         }
@@ -2228,6 +2244,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         } => {
             if !edits.is_empty() {
                 edit_span = edit_bracket(&edits);
+                st.doc.prime_line_undo(entry_cursor, new_command);
                 let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                     .with_hint(hint);
                 st.doc
@@ -2458,6 +2475,22 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     let p = plan(st, cmd);
     let effects = commit(st, p);
     track_insert_start(st, cmd, entry_mode, entry_cursor, entry_rev, entry_col);
+    // Opening a line drops the line `U` would restore (nvim's `open_line`). After `o`/`O` the first typed
+    // change still saves the new line; after an Insert `<CR>` the rest of the insert saves nothing.
+    match cmd {
+        Command::OpenBelow
+        | Command::OpenAbove
+        | Command::OpenLineIndent {
+            kind: OpenKind::Below | OpenKind::Above,
+            ..
+        } => st.doc.clear_line_undo(false),
+        Command::InsertNewline
+        | Command::OpenLineIndent {
+            kind: OpenKind::Split,
+            ..
+        } if st.doc.revision() != entry_rev => st.doc.clear_line_undo(true),
+        _ => {}
+    }
     // `CTRL-G U` + `<Left>`/`<Right>` moves without starting a new undo group.
     if matches!(cmd, Command::InsertCaretStep { .. }) {
         st.view.last_was_edit = entry_was_edit;
@@ -2498,16 +2531,21 @@ fn track_insert_start(
 ) {
     if !is_text_entry(st.view.mode) {
         st.view.insert_jumped = false;
+        st.view.insstart = None;
         return;
     }
     if !is_text_entry(entry_mode) {
         let b = st.doc.bytes();
         st.view.insert_col = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
+        st.view.insstart = Some(st.view.cursor);
         st.view.insert_jumped = false;
     } else if st.doc.revision() != entry_rev {
         if std::mem::take(&mut st.view.insert_jumped) {
             st.view.insert_col = entry_col;
         }
+        // A delete back past the start (`<BS>`, `CTRL-W`, `CTRL-U` with 'backspace' "start") lowers it.
+        let cur = st.view.cursor;
+        st.view.insstart = Some(st.view.insstart.map_or(cur, |s| s.min(cur)));
     } else if st.view.cursor != entry_cursor && !matches!(cmd, Command::InsertCaretStep { .. }) {
         st.view.insert_jumped = true;
     }

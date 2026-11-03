@@ -1059,7 +1059,8 @@ items:
   attestation:
   - D
   tag: CTRL-\_CTRL-N
-  status: unsupported
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.c_x5cx20c_G
   surface: mode_key.normal
   key: CTRL-\ CTRL-G
@@ -1067,7 +1068,8 @@ items:
   attestation:
   - D
   tag: CTRL-\_CTRL-G
-  status: unsupported
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.c_x5cx20ax20-x20z
   surface: mode_key.normal
   key: CTRL-\ a - z
@@ -1487,7 +1489,8 @@ items:
   attestation:
   - D
   tag: 'N:'
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x3b
   surface: mode_key.normal
   key: ;
@@ -1772,7 +1775,8 @@ items:
   - D
   tag: U
   undoable: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.V
   surface: mode_key.normal
   key: V
@@ -2335,7 +2339,8 @@ items:
   attestation:
   - D
   tag: '~'
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.C-End
   surface: mode_key.normal
   key: <C-End>

@@ -198,6 +198,9 @@ def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
 # (an 80x24 terminal with no status line under the text) and ruse's scrolloff.
 HUNDRED = [f"line {i}" for i in range(1, 101)]
 PAGE_SETUP = "set laststatus=0 scrolloff=3"
+# `nvim_buf_set_lines` saves the buffer's first line for `U`; appending a line and deleting it again as a
+# whole line drops that, as `dd` does, so a `U` fixture starts with nothing to restore.
+U_SETUP = "call append('$', '') | $d _ | call cursor(1, 1)"
 
 FIXTURES: list[dict] = [
     {"name": "x_delete_char", "lines": ["hello"], "keys": "x"},
@@ -1419,6 +1422,92 @@ FIXTURES: list[dict] = [
     {"name": "n_under_format", "lines": ["aa bb", "cc", "end"], "keys": "/end<CR>gggqn"},
     {"name": "mark_under_format_charwise_col0", "lines": ["aa bb", "cc", "end", "zz"], "keys": "jjmagggq`a"},
     {"name": "paragraph_under_format", "lines": ["aa bb", "cc", "", "zz"], "keys": "gq}"},
+    # --- #605 `U`: undo all the latest changes on the last changed line; a second `U` redoes, `.` does not
+    #     repeat it. The setup drops the line the oracle's own `nvim_buf_set_lines` saved for `U` (a whole-line
+    #     delete clears it, as `dd` does), so each case starts with nothing to restore. -----------------------
+    {"name": "U_restores_line", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxU", "setup": U_SETUP},
+    {"name": "U_twice_redoes", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxUU", "setup": U_SETUP},
+    {"name": "U_cursor_column", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "wxx0U", "setup": U_SETUP},
+    {"name": "U_twice_cursor_column", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "wxx0UU", "setup": U_SETUP},
+    {"name": "U_after_moving_away", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjU", "setup": U_SETUP},
+    {"name": "U_last_changed_line_only", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjxU", "setup": U_SETUP},
+    {"name": "U_back_to_line", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjxkUU", "setup": U_SETUP},
+    {"name": "U_nothing_to_undo", "lines": ["abc def", "ghi jkl"], "keys": "U", "setup": U_SETUP},
+    {"name": "U_count_ignored", "lines": ["abc def", "ghi jkl"], "keys": "xx3U", "setup": U_SETUP},
+    {"name": "U_not_repeated_by_dot", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxU.", "setup": U_SETUP},
+    {"name": "U_after_dd_elsewhere", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjddU", "setup": U_SETUP},
+    {"name": "U_after_2cc", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxj2ccfoo<Esc>U", "setup": U_SETUP},
+    {"name": "U_after_S", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjS<Esc>U", "setup": U_SETUP},
+    {"name": "U_after_dw", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjdwU", "setup": U_SETUP},
+    {"name": "U_new_line_from_o", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "oxyz<Esc>U", "setup": U_SETUP},
+    {"name": "U_o_without_typing", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjo<Esc>U", "setup": U_SETUP},
+    {"name": "U_O_above", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "jxxkO<Esc>U", "setup": U_SETUP},
+    {"name": "U_insert_then_cr", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "Aab<CR>cd<Esc>U", "setup": U_SETUP},
+    {"name": "U_o_then_cr", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "oab<CR>cd<Esc>U", "setup": U_SETUP},
+    {"name": "U_append", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "Axyz<Esc>U", "setup": U_SETUP},
+    {"name": "U_insert_after_left", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "Aab<Left>cd<Esc>U", "setup": U_SETUP},
+    {"name": "U_linewise_put_below", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxyyjpU", "setup": U_SETUP},
+    {"name": "U_gJ_below", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjgJU", "setup": U_SETUP},
+    {"name": "U_shift_keeps_copy", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "jxxk>jU",
+     "setup": "set shiftwidth=4 expandtab | " + U_SETUP},
+    {"name": "U_after_substitute", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xx:s/c/Q/<CR>U", "setup": U_SETUP},
+    {"name": "U_cancels_operator", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": "xxjdU", "setup": U_SETUP},
+    {"name": "U_after_r", "lines": ["abc def", "ghi jkl"], "keys": "jrQlrRkU", "setup": U_SETUP},
+    {"name": "U_after_tilde", "lines": ["abc def", "ghi jkl"], "keys": "~~~jU", "setup": U_SETUP},
+    {"name": "U_multibyte_column", "lines": ["héllo wörld", "x"], "keys": "wxx0U", "setup": U_SETUP},
+    # --- #607 i_CTRL-U: delete the text entered before the caret on this line; with none, back to the first
+    #     non-blank, then the indent; at the line start join with the line above ('backspace' "eol"). -----
+    {"name": "i_ctrl_u_entered", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<C-u><Esc>"},
+    {"name": "i_ctrl_u_twice", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<C-u><C-u><Esc>"},
+    {"name": "i_ctrl_u_nothing_entered", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "A<C-u><Esc>"},
+    {"name": "i_ctrl_u_mid_line", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "wiab<C-u><Esc>"},
+    {"name": "i_ctrl_u_mid_line_twice", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "wiab<C-u><C-u><Esc>"},
+    {"name": "i_ctrl_u_keeps_indent", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "jAab<C-u><C-u><Esc>"},
+    {"name": "i_ctrl_u_indent_then_all", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "jA<C-u><C-u><Esc>"},
+    {"name": "i_ctrl_u_at_indent", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "jI<C-u><Esc>"},
+    {"name": "i_ctrl_u_typed_at_indent", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "jIx<C-u><C-u><Esc>"},
+    {"name": "i_ctrl_u_joins_at_line_start", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "ji<C-u>X<Esc>"},
+    {"name": "i_ctrl_u_first_line_start", "lines": ["abc def", "mno"], "keys": "i<C-u>X<Esc>"},
+    {"name": "i_ctrl_u_back_across_lines", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<CR>cd<C-u><C-u><C-u><Esc>"},
+    {"name": "i_ctrl_u_after_left", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<Left><C-u><Esc>"},
+    {"name": "i_ctrl_u_dot", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<C-u>cd<Esc>j."},
+    # --- #605 small keys: `z+` / `z^` (the lines below / above the window), `{count}:`, `CTRL-\\ CTRL-N`.
+    #     (`q{0-9"}` is unit-tested: the oracle's feedkeys are not typed, so nvim records none of them.) ----
+    {"name": "z_plus", "lines": HUNDRED, "keys": "z+", "setup": PAGE_SETUP},
+    {"name": "z_plus_twice", "lines": HUNDRED, "keys": "z+z+", "setup": PAGE_SETUP},
+    {"name": "z_plus_count", "lines": HUNDRED, "keys": "50z+", "setup": PAGE_SETUP},
+    {"name": "z_plus_at_end", "lines": HUNDRED, "keys": "Gz+", "setup": PAGE_SETUP},
+    {"name": "z_plus_first_non_blank", "lines": ["  a"] * 40, "keys": "z+", "setup": PAGE_SETUP},
+    {"name": "z_caret_at_top", "lines": HUNDRED, "keys": "z^", "setup": PAGE_SETUP},
+    {"name": "z_caret", "lines": HUNDRED, "keys": "Gz^", "setup": PAGE_SETUP},
+    {"name": "z_caret_count", "lines": HUNDRED, "keys": "50z^", "setup": PAGE_SETUP},
+    {"name": "z_caret_count_near_top", "lines": HUNDRED, "keys": "10z^", "setup": PAGE_SETUP},
+    {"name": "count_colon_range", "lines": ["a", "b", "c", "d"], "keys": "j2:s/$/!/<CR>"},
+    {"name": "count_colon_one", "lines": ["a", "b", "c"], "keys": "j1:d<CR>"},
+    {"name": "ctrl_bslash_ctrl_n_normal", "lines": ["abcdefgh", "x"], "keys": "<C-\\><C-n>x"},
+    {"name": "ctrl_bslash_ctrl_n_drops_count", "lines": ["abcdefgh", "x"], "keys": "3<C-\\><C-n>x"},
+    {"name": "ctrl_bslash_ctrl_n_drops_operator", "lines": ["abcdefgh", "x"], "keys": "d<C-\\><C-n>x"},
+    {"name": "ctrl_bslash_ctrl_n_visual", "lines": ["abcdefgh", "x"], "keys": "vl<C-\\><C-n>x"},
+    {"name": "ctrl_bslash_ctrl_g_visual", "lines": ["abcdefgh", "x"], "keys": "vl<C-\\><C-g>x"},
+    # --- #605 `zp`/`zP`/`zy`: a block's short rows are padded to the block width when text follows them
+    #     (`p`/`P`, also between `{count}` copies); `zp`/`zP` add no trailing spaces and `zy` yanks a block
+    #     without its trailing white space. -------------------------------------------------------------------
+    {"name": "block_p_pads_short_row", "lines": ["abcd", "a", "abcd", "xyz", "xyz", "xyz"], "keys": "l<C-v>jjly3j0p"},
+    {"name": "block_P_pads_short_row", "lines": ["abcd", "a", "abcd", "xyz", "xyz", "xyz"], "keys": "l<C-v>jjly3j0P"},
+    {"name": "block_p_count_pads_between", "lines": ["abcd", "a", "abcd", "xyz", "xyz", "xyz"], "keys": "l<C-v>jjly3j02p"},
+    {"name": "block_p_at_line_end_no_pad", "lines": ["abcd", "a", "abcd"], "keys": "l<C-v>jjly$p"},
+    {"name": "block_zp", "lines": ["abcd", "a", "abcd", "xyz", "xyz", "xyz"], "keys": "l<C-v>jjly3j0zp"},
+    {"name": "block_zP", "lines": ["abcd", "a", "abcd", "xyz", "xyz", "xyz"], "keys": "l<C-v>jjly3j0zP"},
+    {"name": "block_zp_count", "lines": ["abcd", "a", "abcd", "xyz", "xyz", "xyz"], "keys": "l<C-v>jjly3j03zp"},
+    {"name": "zp_charwise", "lines": ["abcd"], "keys": "ylzp"},
+    {"name": "zp_linewise", "lines": ["abcd", "x"], "keys": "yyjzP"},
+    {"name": "block_zy_trims", "lines": ["a b  x", "c d  x", "e    x"], "keys": "l<C-v>jjlllzy"},
+    {"name": "block_zy_then_P_keeps_width", "lines": ["a b  x", "c d  x", "e    x", "1234", "1234", "1234"], "keys": "l<C-v>jjlllzy3j0P"},
+    {"name": "block_zy_then_zP", "lines": ["a b  x", "c d  x", "e    x", "1234", "1234", "1234"], "keys": "l<C-v>jjlllzy3j0zP"},
+    {"name": "block_dollar_P_pads", "lines": ["ab", "abcd", "x", "1234", "1234", "1234"], "keys": "<C-v>jj$y3j0P"},
+    {"name": "charwise_zy", "lines": ["a b  x"], "keys": "vllzy"},
+    {"name": "normal_zy_motion", "lines": ["abc def"], "keys": "zyw$p"},
+    {"name": "normal_zy_count", "lines": ["abc def ghi"], "keys": "2zyw$p"},
 ]
 
 

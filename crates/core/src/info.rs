@@ -10,7 +10,7 @@
 //! buffer stored WITHOUT a trailing newline (`noeol`) still counts a phantom EOL (`+1` byte and `+1` char),
 //! exactly as Vim's `g CTRL-G` reports.
 
-use crate::motion::{next_boundary, vcol_of};
+use crate::motion::{next_boundary, next_grapheme, vcol_of};
 use crate::pos::{line_end, line_of, line_start};
 
 /// Reverse digraph table (codepoint → Vim digraph name) for the `Digr` field of `ga`/`:ascii`, covering
@@ -122,6 +122,30 @@ pub fn ascii_info(bytes: &[u8], cursor: usize) -> String {
             None => format!("<{c}> {cp}, Hex {hex}, Octal {cp:o}"),
         }
     }
+}
+
+/// `g8` — the UTF-8 bytes of the character under the cursor in hex, each composing character after a `+`,
+/// as nvim v0.12.6 prints them: `61 `, `e2 82 ac `, `65 + cc 81 `; `NUL` on an empty line. A byte that is
+/// not valid UTF-8 prints alone.
+#[must_use]
+pub fn utf8_info(bytes: &[u8], cursor: usize) -> String {
+    if cursor >= bytes.len() || bytes[cursor] == b'\n' {
+        return "NUL".to_string();
+    }
+    let end = next_grapheme(bytes, cursor).max(next_boundary(bytes, cursor));
+    let mut out = String::new();
+    let mut i = cursor;
+    while i < end {
+        let j = next_boundary(bytes, i).min(end);
+        if i > cursor {
+            out.push_str("+ ");
+        }
+        for b in &bytes[i..j] {
+            out.push_str(&format!("{b:02x} "));
+        }
+        i = j;
+    }
+    out
 }
 
 /// The number of lines in `bytes`, Vim-style: one line per `\n`, plus a trailing line when the buffer does

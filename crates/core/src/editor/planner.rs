@@ -205,6 +205,36 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
             false,
             hint,
         )),
+        // `zy`: a block yank drops each row's trailing white space; any other shape yanks as `y` does.
+        VisualOp::YankTrim if kind == SelectKind::Blockwise => {
+            let mut p = block_op(
+                b,
+                anchor,
+                cur,
+                OpKind::Yank,
+                hint,
+                st.view.curswant == crate::editor::range::MAXCOL,
+            );
+            if let Some(RegWrite::Yank(reg, span)) = p.set_register.take() {
+                let rows: Vec<&[u8]> = reg
+                    .text()
+                    .split(|&c| c == b'\n')
+                    .map(|row| row.trim_ascii_end())
+                    .collect();
+                let reg = Register::blockwise_width(rows.join(&b'\n'), reg.block_width());
+                p.set_register = Some(RegWrite::Yank(reg, span));
+            }
+            p
+        }
+        VisualOp::YankTrim => plan_selection_span(
+            st,
+            b,
+            anchor,
+            cur,
+            OpKind::Yank,
+            kind == SelectKind::Linewise,
+            hint,
+        ),
         // Block `O`: the cursor takes the anchor's column on its own row, the anchor the cursor's column on
         // its row — the other corner of the same rectangle, horizontally. Charwise/linewise `O` is `o`.
         VisualOp::OtherCorner if kind == SelectKind::Blockwise => {
@@ -1759,17 +1789,29 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 hint,
             )
         }
-        // `i_CTRL-U` — delete to the line's first non-blank; if already at/before it, delete the indent too.
+        // `i_CTRL-U` (nvim v0.12.6, default 'backspace' "indent,eol,start" and 'autoindent'): delete the text
+        // entered before the caret on this line; with none, delete back to the first non-blank, and from
+        // there the indent too. At the line start it joins the line to the one above, as `<BS>` does.
         Command::InsertDeleteToLineStart => {
             let ls = line_start(b, cur);
             if cur <= ls {
-                return nop(cur, Mode::Insert);
+                if ls == 0 {
+                    return nop(cur, Mode::Insert);
+                }
+                return edit(one(Edit::delete(ls - 1, 1)), ls - 1, Mode::Insert, hint);
             }
             let mut fnb = ls;
             while fnb < cur && matches!(b[fnb], b' ' | b'\t') {
                 fnb += 1;
             }
-            let start = if cur > fnb { fnb } else { ls };
+            let floor = if cur > fnb { fnb } else { ls };
+            // Where this Insert began (Vim's `Insstart_orig`): a caret key inside it does not move it.
+            let insstart = st.view.insstart.unwrap_or(cur);
+            let start = if (ls..cur).contains(&insstart) {
+                insstart.max(floor)
+            } else {
+                floor
+            };
             edit(
                 one(Edit::delete(start, cur - start)),
                 start,
@@ -2519,6 +2561,19 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             *count,
             st.view.caret,
             *move_after,
+            true,
+        ),
+        // `zp` / `zP` — `p` / `P`, but a block's short rows get no trailing spaces (nvim `PUT_BLOCK_INNER`).
+        Command::PasteBlockInner { after, count } => paste(
+            b,
+            cur,
+            st.view.mode,
+            st.view.registers.get(st.view.pending_register),
+            *after,
+            *count,
+            st.view.caret,
+            false,
+            false,
         ),
         // `]p`/`[p` — indent-adjusting paste. For a linewise register, reindent its lines to the current
         // line's indent before pasting; a charwise/blockwise register pastes unchanged (Vim `]p` = `p`).
@@ -2545,6 +2600,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     *count,
                     st.view.caret,
                     false,
+                    true,
                 )
             } else {
                 paste(
@@ -2556,6 +2612,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     *count,
                     st.view.caret,
                     false,
+                    true,
                 )
             }
         }
@@ -2793,7 +2850,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         // `ga`/`:ascii`, `CTRL-G`, `g CTRL-G` — INFO commands resolved by the frontend (it reads the buffer
         // bytes + cursor and sets the status line); the pure core never mutates for them.
-        Command::AsciiInfo | Command::FileInfo | Command::CursorInfo => nop(cur, st.view.mode),
+        Command::AsciiInfo | Command::Utf8Info | Command::FileInfo | Command::CursorInfo => {
+            nop(cur, st.view.mode)
+        }
         // `g&` — resolved in the frontend against its last-substitute state; a no-op in the pure core.
         Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
         // `&` — resolved in the frontend (current-line, flagless repeat); a no-op in the pure core.
@@ -2828,6 +2887,18 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_anchor: None,
             set_mark: None,
         },
+        // `U` — a change in its own right (`u` undoes it), so it is an edit; nothing to restore is a no-op.
+        Command::LineUndo if st.doc.can_line_undo() => Plan {
+            action: Action::LineUndo,
+            cursor: cur,
+            mode: Mode::Normal,
+            is_edit: true,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: None,
+        },
+        Command::LineUndo => nop(cur, st.view.mode),
         Command::UndoNewer => Plan {
             action: Action::UndoChrono { older: false },
             cursor: cur,
@@ -2947,6 +3018,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 *count,
                 st.view.caret,
                 false, // Emacs yank is not `gp` — normal cursor placement
+                true,
             );
             if !matches!(p.action, Action::Nop) {
                 p.set_mark = Some(MarkWrite::Set(cur));
@@ -3777,13 +3849,29 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
 /// lands at the target column on the line `i` rows below the cursor's line; the target column is the
 /// cursor's column for `P` and one past it for `p` (Vim). Lines shorter than the target column are padded
 /// with spaces; rows past the last line are appended as new lines. The cursor ends at the block's
-/// top-left. `{count}p` repeats each row `count` times horizontally.
-fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) -> Plan {
-    let rows: Vec<Vec<u8>> = reg
-        .text()
-        .split(|&c| c == b'\n')
-        .map(|row| row.repeat(count))
-        .collect();
+/// top-left. `{count}p` repeats each row `count` times horizontally. With `pad`, a row shorter than the
+/// block is filled with spaces to the block's width between copies and before any text that follows it,
+/// so that text stays in one column (nvim `do_put`); `zp`/`zP` paste without (`pad` false).
+fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize, pad: bool) -> Plan {
+    let units: Vec<&[u8]> = reg.text().split(|&c| c == b'\n').collect();
+    let width = |row: &[u8]| col_of(row, 0, row.len());
+    let block_width = reg.block_width();
+    // Row `i` repeated `count` times; `follows` = text stays after it on its line.
+    let build = |row: &[u8], follows: bool| {
+        let fill = if pad {
+            block_width.saturating_sub(width(row))
+        } else {
+            0
+        };
+        let mut out = Vec::new();
+        for j in 0..count {
+            out.extend_from_slice(row);
+            if j + 1 < count || follows {
+                out.extend(std::iter::repeat_n(b' ', fill));
+            }
+        }
+        out
+    };
     let cls = line_start(b, cur);
     let ccol = col_of(b, cls, cur);
     let has_char = cur < line_end(b, cls);
@@ -3795,7 +3883,7 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
     let mut cursor_set = false;
     let mut rs = cls;
     let mut past_eof = false;
-    for (i, row) in rows.iter().enumerate() {
+    for (i, unit) in units.iter().enumerate() {
         if !past_eof && rs < b.len() {
             let le = line_end(b, rs);
             let linelen = col_of(b, rs, le);
@@ -3804,13 +3892,14 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
             } else {
                 (le, target_col - linelen)
             };
+            let row = build(unit, at < le);
             if i == 0 {
                 cursor = at + pad; // the start of the pasted text on the cursor's line
                 cursor_set = true;
             }
             if pad > 0 || !row.is_empty() {
                 let mut ins = vec![b' '; pad];
-                ins.extend_from_slice(row);
+                ins.extend_from_slice(&row);
                 edits.push(Edit::insert(at, ins));
             }
             if le < b.len() {
@@ -3823,7 +3912,7 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
             past_eof = true;
             trailing.push(b'\n');
             trailing.extend(std::iter::repeat_n(b' ', target_col));
-            trailing.extend_from_slice(row);
+            trailing.extend_from_slice(&build(unit, false));
         }
     }
     if !trailing.is_empty() {
@@ -3947,6 +4036,7 @@ fn paste(
     count: u32,
     gravity: CaretGravity,
     move_after: bool,
+    pad_block: bool,
 ) -> Plan {
     let nop = Plan {
         action: Action::Nop,
@@ -3968,7 +4058,7 @@ fn paste(
     let unit_len = reg.text().len().max(1);
     let count = (count.max(1) as usize).min((MAX_PASTE_BYTES / unit_len).max(1));
     if reg.is_blockwise() {
-        return paste_block(b, cur, reg, after, count);
+        return paste_block(b, cur, reg, after, count, pad_block);
     }
     // `{count}p` pastes the register `count` times (Vim); the register itself is unchanged. The repeated
     // bytes are one contiguous insert, so the cursor math below (last pasted byte) still holds.

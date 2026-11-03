@@ -104,6 +104,10 @@ pub enum Feed {
     /// opens the same pre-seeded `{first},{last}!` command line as [`Feed::FilterMotion`]. The command is
     /// never applied; its operator is a non-mutating `Yank` placeholder.
     FilterSpan(Command),
+    /// `{count}:` — open the `:` line on the `count` lines from the cursor's (Vim seeds `:.,.+{count-1}`).
+    /// The engine has no document, so the frontend numbers the lines and seeds the absolute range with
+    /// [`InputEngine::open_filter_cmdline`], as for [`Feed::FilterMotion`].
+    CountCmdline { count: u32 },
     /// The key was consumed but the command is not complete yet (a count digit, a pending operator, or a
     /// keystroke absorbed into the open command-line buffer).
     Pending,
@@ -280,6 +284,8 @@ enum Awaiting {
     BracketPrefix { open_bracket: bool },
     /// After `Z`: `ZZ` (`:x`, write when modified and close the window) or `ZQ` (`:q!`). Any other key aborts.
     ZSecond,
+    /// `CTRL-\` waits for `CTRL-N` / `CTRL-G` (go to Normal mode).
+    CtrlBackslash,
 }
 
 /// The Normal-grammar layer's OWNED state (KL-OBL-4): the three orthogonal transient axes of the
@@ -565,6 +571,8 @@ pub struct InputEngine {
     /// One boolean for MVP (RFC-0013); the per-context iminsert/imsearch model is a follow-up. `false`
     /// by default so a configured map never silently rewrites the command line you type to define it.
     lang_active: bool,
+    /// Vim 'tildeop' (`:set top`): `~` is an operator (`~w`, `~~`) instead of switching `count` chars.
+    tildeop: bool,
     /// The Emacs prefix argument being read (F-012 / D-049): `Some` while `C-u`/digits accumulate an
     /// argument that the NEXT command consumes. `None` in steady state and always `None` under the Vim
     /// profile (that profile folds the count into its own grammar). The value is held OPAQUE — each
@@ -645,6 +653,7 @@ impl InputEngine {
             search_history: CmdHistory::new(history::DEFAULT_CAP),
             lang_map: HashMap::new(),
             lang_active: false,
+            tildeop: false,
             emacs_arg: None,
             emacs_prefix: None,
             emacs_meta: false,
@@ -1749,6 +1758,11 @@ impl InputEngine {
     /// Feed one key given the current mode. Resolves the key into an outcome, then folds that outcome into
     /// the dot-repeat record (so `.` can later replay the last change). The two steps are split so the
     /// resolution grammar stays untouched by the recording concern.
+    /// `:set (no)tildeop` — whether `~` is an operator ([`InputEngine::tildeop`]).
+    pub fn set_tildeop(&mut self, on: bool) {
+        self.tildeop = on;
+    }
+
     /// Install/replace one Lang-Arg mapping (`:lmap {lhs} {rhs}`, F-027). MVP is single-char → single-char.
     pub fn set_lang_mapping(&mut self, lhs: char, rhs: char) {
         self.lang_map.insert(lhs, rhs);
@@ -2725,6 +2739,11 @@ impl InputEngine {
             },
             // `<C-[>` is `<Esc>`, `<C-m>` is `<CR>` (the kitty protocol sends them as chords).
             '[' => self.feed_base(plain(KeyCode::Esc), mode),
+            // `CTRL-\` (a legacy terminal sends it as `Ctrl-4`) arms `CTRL-\ CTRL-N` / `CTRL-\ CTRL-G`.
+            '\\' | '4' => {
+                self.normal.awaiting = Awaiting::CtrlBackslash;
+                Feed::Pending
+            }
             'm' => self.feed_base(plain(KeyCode::Enter), mode),
             // Motions (`:help CTRL-H`, `CTRL-J`, `CTRL-N`, `CTRL-P`): `<C-h>` = `h`, `<C-j>`/`<C-n>` = `j`,
             // `<C-p>` = `k`, with a count and under an operator (`d<C-j>` = `dj`). In Select, `CTRL-H` deletes
@@ -3222,12 +3241,16 @@ impl InputEngine {
             // passes the operator-pending guard, so an armed operator here IS `gq` / `gw`.
             KeyCode::Char('q' | 'w') if self.normal.op.is_some() => self.op_linewise(),
             KeyCode::Char('u') => self.action(Command::Undo),
+            // `U` — undo the latest changes on the last changed line (a count does nothing).
+            KeyCode::Char('U') => self.action(Command::LineUndo),
             KeyCode::Tab => self.action(Command::GotoNewerJump),
             KeyCode::Char('r') => {
                 self.normal.awaiting = Awaiting::ReplaceChar;
                 Feed::Pending
             }
             KeyCode::Char('R') => self.action(Command::EnterReplace),
+            // With 'tildeop' `~` is the `g~` operator (`~w`; `~~` is its line form, above).
+            KeyCode::Char('~') if self.tildeop => self.arm_op(Op::CaseToggle),
             KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
             KeyCode::Char('J') => self.action(Command::JoinLines(self.mcount())),
             // Bare `&` — repeat the last `:s` on the CURRENT LINE, dropping its flags (Vim: only the first
@@ -3264,8 +3287,13 @@ impl InputEngine {
             // (the guarded `g??` arm above wins that case); an armed d/c/y operator is captured so `d?pat`
             // works, exactly like `d/pat`.
             KeyCode::Char('?') => self.enter_search(true),
+            // `{count}:` opens the line on the count's lines (`Feed::CountCmdline`).
             KeyCode::Char(':') => {
+                let count = self.normal.typed();
                 self.reset();
+                if count > 0 {
+                    return Feed::CountCmdline { count };
+                }
                 self.open_cmdline(':', false);
                 Feed::Pending
             }
@@ -3347,10 +3375,13 @@ impl InputEngine {
             };
         }
         // A chord is never the char an awaited key names (`f<C-a>` is not `fa`, `"<C-a>` is not register
-        // `a`): it aborts the pending construct, as in nvim. Only the `g` prefix binds chords of its own.
+        // `a`): it aborts the pending construct, as in nvim. Only the `g` and `CTRL-\` prefixes bind chords.
         if is_chord(key)
             && matches!(key.code, KeyCode::Char(_))
-            && !matches!(self.normal.awaiting, Awaiting::Nothing | Awaiting::GSecond)
+            && !matches!(
+                self.normal.awaiting,
+                Awaiting::Nothing | Awaiting::GSecond | Awaiting::CtrlBackslash
+            )
         {
             self.normal.awaiting = Awaiting::Nothing;
             return self.unmatched(Ns::OperatorPending, key);
@@ -3453,6 +3484,8 @@ impl InputEngine {
                     // `ga` — the numeric value of the character under the cursor (`:ascii`/`:as` synonym).
                     // `!ctrl` keeps it distinct from the Visual `g CTRL-A` sequence-increment arm below.
                     KeyCode::Char('a') if !ctrl => self.action(Command::AsciiInfo),
+                    // `g8` — the UTF-8 bytes of the character under the cursor.
+                    KeyCode::Char('8') if !ctrl => self.action(Command::Utf8Info),
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
                     // `gh` / `gH` / `g CTRL-H` — start Select charwise / linewise / blockwise (`:help gh`).
                     KeyCode::Char(c @ ('h' | 'H'))
@@ -3660,6 +3693,23 @@ impl InputEngine {
             }
             // `ZZ` / `ZQ` are exactly `:x` / `:q!` (`:help ZZ`), so they run the same Ex quit policy: one
             // place decides window-close versus editor exit and the unsaved-changes refusals (E37/E162).
+            // `CTRL-\ CTRL-N` / `CTRL-\ CTRL-G` go to Normal mode: they leave a selection and drop a count or
+            // operator, and do nothing in Normal (nvim v0.12.6). Any other key aborts.
+            Awaiting::CtrlBackslash => {
+                self.normal.awaiting = Awaiting::Nothing;
+                let only_ctrl = key.modifiers - KeyModifiers::SHIFT == KeyModifiers::CONTROL;
+                return match key.code {
+                    KeyCode::Char('n' | 'g') if only_ctrl => {
+                        if mode == Mode::Normal {
+                            self.reset();
+                            Feed::Ignored
+                        } else {
+                            self.action(Command::EnterNormal)
+                        }
+                    }
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
             Awaiting::ZSecond => {
                 self.normal.awaiting = Awaiting::Nothing;
                 let line = match key.code {

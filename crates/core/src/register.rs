@@ -27,6 +27,8 @@ pub enum RegKind {
 pub struct Register {
     text: Vec<u8>,
     kind: RegKind,
+    /// A block's width in columns (Vim's `y_width + 1`): a paste pads short rows to it. 0 otherwise.
+    width: usize,
 }
 
 impl Register {
@@ -36,6 +38,7 @@ impl Register {
         Register {
             text,
             kind: RegKind::Charwise,
+            width: 0,
         }
     }
 
@@ -49,6 +52,7 @@ impl Register {
         Register {
             text,
             kind: RegKind::Linewise,
+            width: 0,
         }
     }
 
@@ -56,10 +60,29 @@ impl Register {
     /// verbatim (ragged rows, no trailing newline); the paste path pads short target lines.
     #[must_use]
     pub fn blockwise(text: Vec<u8>) -> Register {
+        let width = text
+            .split(|&c| c == b'\n')
+            .map(|row| String::from_utf8_lossy(row).chars().count())
+            .max()
+            .unwrap_or(0);
+        Register::blockwise_width(text, width)
+    }
+
+    /// A blockwise register whose block is `width` columns wide, wider than its rows when their trailing
+    /// white space was dropped (`zy`).
+    #[must_use]
+    pub fn blockwise_width(text: Vec<u8>, width: usize) -> Register {
         Register {
             text,
             kind: RegKind::Blockwise,
+            width,
         }
+    }
+
+    /// A block's width in columns (0 for a charwise or linewise register).
+    #[must_use]
+    pub fn block_width(&self) -> usize {
+        self.width
     }
 
     /// The stored bytes.
@@ -363,9 +386,26 @@ impl RegisterStore {
 
     /// Store a MACRO into a named register (D-055): a lowercase name OVERWRITES its slot, an uppercase name
     /// APPENDS to it (`qA` extends macro `a`). Unlike [`RegisterStore::write`], this does NOT mirror into the
-    /// unnamed slot — recording a macro must not clobber the paste register (Vim behaviour). A non-letter
-    /// name is ignored (a macro must name `a`-`z`/`A`-`Z`).
+    /// unnamed slot — recording a macro must not clobber the paste register (Vim behaviour). A digit names a
+    /// numbered register and `"` the unnamed one (`q{0-9a-zA-Z"}`); any other name is ignored.
     pub fn set_macro(&mut self, name: Option<char>, reg: Register) {
+        match name {
+            // `q"` records into `"0`, which the unnamed register then names (nvim v0.12.6: `q"lqP` puts `l`).
+            Some('"') => {
+                self.yank0 = reg.clone();
+                self.unnamed = reg;
+                return;
+            }
+            Some('0') => {
+                self.yank0 = reg;
+                return;
+            }
+            Some(c @ '1'..='9') => {
+                self.numbered[c as usize - '1' as usize] = reg;
+                return;
+            }
+            _ => {}
+        }
         if let Some(c) = name {
             if let Some(i) = Self::index(c) {
                 self.named[i] = if c.is_ascii_uppercase() {

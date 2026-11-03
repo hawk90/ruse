@@ -417,9 +417,10 @@ group.
 - `group_hint = JoinPrev` — merge this transaction into the previous group even across the normal boundary.
   Backs **`:undojoin`** (the next change joins the prior undo block; if the prior block was already undone,
   `:undojoin` is an error, matching Vim).
-- Line-level **`U`** (VIM-UNDO-1) is modeled as a synthesized inverse over "all changes to the current line
-  since the cursor last landed on it" — a derived group, not a tree node type; re-doable because it is itself an
-  undoable transaction.
+- Line-level **`U`** (VIM-UNDO-1, #605) keeps, per Document, a copy of the last changed line as it was
+  before its run of changes (nvim's `u_saveline`; `crates/core/src/line_undo.rs`). `U` swaps that copy in as
+  an ordinary transaction in its own group, so `u` undoes it and a second `U` redoes it. It is not a tree
+  node type, and undo/redo leave the copy alone; its line number follows lines added or deleted above it.
 
 Grouping lives in the in-memory undo history; the journal stores every transaction individually with its
 `group_hint`, so recovery reconstructs the same groups (grouping is metadata, replay is per-transaction).

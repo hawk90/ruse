@@ -217,6 +217,8 @@ pub enum VisualOp {
     Format,
     /// Blockwise `O`: move to the other corner on the SAME row (the anchor takes the cursor's column).
     OtherCorner,
+    /// `zy`: yank the selection like `y`, but without a block's trailing white space (`:help zy`).
+    YankTrim,
 }
 
 /// A motion's forced wise-ness (Vim `o_v` / `o_V` / `o_CTRL-V`): the operator applies the motion but
@@ -501,6 +503,9 @@ pub enum Command {
     /// line (no buffer mutation). Frontend-resolved (the engine has no buffer): the frontend reads the
     /// focused buffer's bytes + cursor and formats via [`crate::info::ascii_info`].
     AsciiInfo,
+    /// `g8` — print the UTF-8 bytes of the character under the cursor in hex, composing characters after a
+    /// `+` ([`crate::info::utf8_info`]). Frontend-resolved like [`Command::AsciiInfo`].
+    Utf8Info,
     /// `CTRL-G` (Normal) — print file info (name, modified flag, line count, cursor percentage) to the
     /// status line. Frontend-resolved via [`crate::info::file_info`]; no buffer mutation.
     FileInfo,
@@ -600,6 +605,12 @@ pub enum Command {
     /// current line: the first pasted line takes the current line's indent, the rest shift by the same
     /// column delta (Vim `:help ]p`). A charwise/blockwise register pastes unchanged (Vim `]p` = `p` there).
     PasteIndent {
+        after: bool,
+        count: u32,
+    },
+    /// `zp` / `zP` — paste like `p`/`P`, but a blockwise register's short rows get no trailing spaces
+    /// (Vim `:help zp`). Any other register pastes exactly as `p`/`P` does.
+    PasteBlockInner {
         after: bool,
         count: u32,
     },
@@ -738,6 +749,8 @@ pub enum Command {
     UndoOlder,
     /// `g+` — step to the chronologically newer text state, across branches.
     UndoNewer,
+    /// `U` — undo all the latest changes on the last changed line; itself undoable, and a second `U` redoes.
+    LineUndo,
     Save,
     Quit,
     // Emacs region (D-027 depth-1: a single per-buffer mark, the degenerate one-caret `Ring<Selection>`).
@@ -1095,6 +1108,7 @@ fn visual_op_token(op: VisualOp) -> String {
         VisualOp::Reindent => "reindent".into(),
         VisualOp::Format => "format".into(),
         VisualOp::OtherCorner => "other_corner".into(),
+        VisualOp::YankTrim => "yank_trim".into(),
     }
 }
 
@@ -1119,6 +1133,7 @@ fn visual_op_from_token(s: &str) -> Option<VisualOp> {
         "reindent" => VisualOp::Reindent,
         "format" => VisualOp::Format,
         "other_corner" => VisualOp::OtherCorner,
+        "yank_trim" => VisualOp::YankTrim,
         _ => return None,
     };
     it.next().is_none().then_some(op)
@@ -1352,6 +1367,7 @@ impl Command {
             Command::GotoNewerJump => "goto_newer_jump".into(),
             Command::InsertAtLastInsert => "insert_at_last_insert".into(),
             Command::AsciiInfo => "ascii_info".into(),
+            Command::Utf8Info => "utf8_info".into(),
             Command::FileInfo => "file_info".into(),
             Command::CursorInfo => "cursor_info".into(),
             Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
@@ -1439,6 +1455,13 @@ impl Command {
                     format!("paste_after_indent {count}")
                 } else {
                     format!("paste_before_indent {count}")
+                }
+            }
+            Command::PasteBlockInner { after, count } => {
+                if *after {
+                    format!("paste_after_inner {count}")
+                } else {
+                    format!("paste_before_inner {count}")
                 }
             }
             Command::PasteSelection { swap } => {
@@ -1539,6 +1562,7 @@ impl Command {
             Command::Redo => "redo".into(),
             Command::UndoOlder => "undo_older".into(),
             Command::UndoNewer => "undo_newer".into(),
+            Command::LineUndo => "line_undo".into(),
             Command::Save => "save".into(),
             Command::Quit => "quit".into(),
             Command::SetMark => "set_mark".into(),
@@ -1776,6 +1800,7 @@ impl Command {
             "goto_newer_jump" => Command::GotoNewerJump,
             "insert_at_last_insert" => Command::InsertAtLastInsert,
             "ascii_info" => Command::AsciiInfo,
+            "utf8_info" => Command::Utf8Info,
             "file_info" => Command::FileInfo,
             "cursor_info" => Command::CursorInfo,
             "set_named_mark" => {
@@ -1972,6 +1997,14 @@ impl Command {
                 after: false,
                 count: arg_u32(arg, line)?,
             },
+            "paste_after_inner" => Command::PasteBlockInner {
+                after: true,
+                count: arg_u32(arg, line)?,
+            },
+            "paste_before_inner" => Command::PasteBlockInner {
+                after: false,
+                count: arg_u32(arg, line)?,
+            },
             "paste_selection" => Command::PasteSelection {
                 swap: !matches!(arg.map(str::trim), Some("keep")),
             },
@@ -2116,6 +2149,7 @@ impl Command {
             "redo" => Command::Redo,
             "undo_older" => Command::UndoOlder,
             "undo_newer" => Command::UndoNewer,
+            "line_undo" => Command::LineUndo,
             "save" => Command::Save,
             "quit" => Command::Quit,
             "set_mark" => Command::SetMark,
@@ -2285,6 +2319,7 @@ mod tests {
             },
             Command::InsertAtLastInsert,
             Command::AsciiInfo,
+            Command::Utf8Info,
             Command::FileInfo,
             Command::CursorInfo,
             Command::SetNamedMark('a'),
@@ -2592,6 +2627,10 @@ mod tests {
                 after: false,
                 count: 3,
             },
+            Command::PasteBlockInner {
+                after: true,
+                count: 2,
+            },
             Command::PasteSelection { swap: true },
             Command::PasteSelection { swap: false },
             Command::SetRegister(None),
@@ -2648,6 +2687,7 @@ mod tests {
             Command::VisualOp(VisualOp::Reindent),
             Command::VisualOp(VisualOp::Format),
             Command::VisualOp(VisualOp::OtherCorner),
+            Command::VisualOp(VisualOp::YankTrim),
             Command::BlockInsert(BlockInsertKind::Insert),
             Command::BlockInsert(BlockInsertKind::Append),
             Command::BlockInsert(BlockInsertKind::Change),
@@ -2817,6 +2857,7 @@ mod tests {
             },
             Command::Undo,
             Command::Redo,
+            Command::LineUndo,
             Command::Save,
             Command::Quit,
             Command::EmacsYank { count: 1 },

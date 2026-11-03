@@ -161,7 +161,8 @@ impl MacroState {
             self.pending_q = false;
             // A chord is not a register name (`q<C-a>` records nothing, as in nvim).
             if let (KeyCode::Char(c), false) = (key.code, crate::input::is_chord(key)) {
-                if c.is_ascii_alphabetic() {
+                // `q{0-9a-zA-Z"}` (`:help q`): a digit names a numbered register, `"` the unnamed one.
+                if c.is_ascii_alphanumeric() || c == '"' {
                     self.recording = Some((c, Vec::new()));
                     return Step::Consumed;
                 }
@@ -180,6 +181,8 @@ impl MacroState {
             let target = match key.code {
                 _ if crate::input::is_chord(key) => None, // `@<C-a>` replays nothing
                 KeyCode::Char(c) if c.is_ascii_alphabetic() => Some(c.to_ascii_lowercase()),
+                // `@0`-`@9` and `@"` replay the numbered and unnamed registers.
+                KeyCode::Char(c @ ('0'..='9' | '"')) => Some(c),
                 // `@:` — repeat the last-executed Ex command-line (`:help @:`). Carried as the pseudo
                 // register `:` so a following `@@` (which re-plays `last_played`) repeats it too.
                 KeyCode::Char(':') => Some(':'),

@@ -192,14 +192,20 @@ features:
     # <S-Down>/<S-Up>, <S-CR> (counted pages, Normal + Visual) and CTRL-D/CTRL-U with the window 'scroll' a
     # count sets; under the Native profile CTRL-F/CTRL-B stay the file / buffer pickers. Modified cursor keys:
     # <S-Left>/<C-Left> = b, <S-Right>/<C-Right> = w, <C-Home> = gg, <C-End>, g<Down>/g<Up>/g<Home>/g<End>.
-    # Still open in #605: `U` line-undo and the small g/z keys.
+    # `U` (#605) undoes the latest changes on the last changed line as one undoable change (a second `U`
+    # redoes, `.` does not repeat it); see crates/core/src/line_undo.rs for the save/drop rules and the one
+    # deliberate divergence (the saved line follows lines added or deleted above it). Also #605: `{count}:`
+    # opens the line on the count's lines, CTRL-\ CTRL-N / CTRL-\ CTRL-G go to Normal, 'tildeop' (`:set
+    # top`) makes `~` an operator, `z+`/`z^` scroll past the window's ends, `g8` prints the UTF-8 bytes,
+    # `q`/`@` take the numbered and unnamed registers, and `zp`/`zP`/`zy` paste and yank a block without
+    # trailing spaces (a block `p`/`P` now pads short rows to the block width when text follows, as nvim).
     status: done
     depends_on: [C-INPUT, C-EDITLANG, C-POSHIST]
     summary: Operator x count x motion composition and dot-repeat (census surface mode_key.normal + operator_pending).
     trace:
       # repointed off legacy VIM-OP-*/VIM-MOT-*/VIM-REPEAT-DOT onto the mode_key.normal + operator_pending
       # census (D-043); only implemented+accepted grammar cited (see status carve-outs). vim.md rows retired.
-      parity: [nvim.key.normal.x5bx22xx5ddx7bmotionx7d, nvim.key.normal.x5bx22xx5ddd, nvim.key.normal.x5bx22xx5dcx7bmotionx7d, nvim.key.normal.x5bx22xx5dcc, nvim.key.normal.x5bx22xx5dyx7bmotionx7d, nvim.key.normal.x5bx22xx5dyy, nvim.key.normal.x5bx22xx5dx, nvim.key.normal.x5bx22xx5dD, nvim.key.normal.x5bx22xx5dC, nvim.key.normal.x5bx22xx5dY, nvim.key.normal.x5bx22xx5dS, nvim.key.normal.empty, nvim.key.normal.h, nvim.key.normal.l, nvim.key.normal.0, nvim.key.normal.x24, nvim.key.normal.w, nvim.key.normal.W, nvim.key.normal.b, nvim.key.normal.B, nvim.key.normal.e, nvim.key.normal.E, nvim.key.normal.fx7bcharx7d, nvim.key.normal.Fx7bcharx7d, nvim.key.normal.tx7bcharx7d, nvim.key.normal.Tx7bcharx7d, nvim.key.normal.x3b, nvim.key.normal.x2c, nvim.key.normal.G, nvim.key.normal.x25, nvim.key.normal.x7b, nvim.key.normal.x7d, nvim.key.normal.j, nvim.key.normal.k, nvim.key.normal.1, nvim.key.normal.2, nvim.key.normal.3, nvim.key.normal.4, nvim.key.normal.5, nvim.key.normal.6, nvim.key.normal.7, nvim.key.normal.8, nvim.key.normal.9, nvim.key.normal.., nvim.key.normal.x5bx22xx5dX, nvim.key.normal.x5bx22xx5dDel, nvim.key.normal.x7bcountx7dDel, nvim.key.normal.Space, nvim.key.normal.BS, nvim.key.normal.Home, nvim.key.normal.End, nvim.key.normal.Insert, nvim.key.normal.ZZ, nvim.key.normal.ZQ, nvim.key.operator_pending.v, nvim.key.operator_pending.V, nvim.key.operator_pending.c_V]
+      parity: [nvim.key.normal.x5bx22xx5ddx7bmotionx7d, nvim.key.normal.x5bx22xx5ddd, nvim.key.normal.x5bx22xx5dcx7bmotionx7d, nvim.key.normal.x5bx22xx5dcc, nvim.key.normal.x5bx22xx5dyx7bmotionx7d, nvim.key.normal.x5bx22xx5dyy, nvim.key.normal.x5bx22xx5dx, nvim.key.normal.x5bx22xx5dD, nvim.key.normal.x5bx22xx5dC, nvim.key.normal.x5bx22xx5dY, nvim.key.normal.x5bx22xx5dS, nvim.key.normal.empty, nvim.key.normal.h, nvim.key.normal.l, nvim.key.normal.0, nvim.key.normal.x24, nvim.key.normal.w, nvim.key.normal.W, nvim.key.normal.b, nvim.key.normal.B, nvim.key.normal.e, nvim.key.normal.E, nvim.key.normal.fx7bcharx7d, nvim.key.normal.Fx7bcharx7d, nvim.key.normal.tx7bcharx7d, nvim.key.normal.Tx7bcharx7d, nvim.key.normal.x3b, nvim.key.normal.x2c, nvim.key.normal.G, nvim.key.normal.x25, nvim.key.normal.x7b, nvim.key.normal.x7d, nvim.key.normal.j, nvim.key.normal.k, nvim.key.normal.1, nvim.key.normal.2, nvim.key.normal.3, nvim.key.normal.4, nvim.key.normal.5, nvim.key.normal.6, nvim.key.normal.7, nvim.key.normal.8, nvim.key.normal.9, nvim.key.normal.., nvim.key.normal.x5bx22xx5dX, nvim.key.normal.x5bx22xx5dDel, nvim.key.normal.x7bcountx7dDel, nvim.key.normal.Space, nvim.key.normal.BS, nvim.key.normal.Home, nvim.key.normal.End, nvim.key.normal.Insert, nvim.key.normal.ZZ, nvim.key.normal.ZQ, nvim.key.normal.U, nvim.key.normal.x7bcountx7dx3a, nvim.key.normal.x7ex7bmotionx7d, nvim.key.normal.c_x5cx20c_N, nvim.key.normal.c_x5cx20c_G, nvim.key.operator_pending.v, nvim.key.operator_pending.V, nvim.key.operator_pending.c_V]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/editing-language.md, ../docs/design/positions-history.md]
       verify: [../tests/parity/vim/operator-motion.yaml]
@@ -278,7 +284,9 @@ features:
     # and <S-Right>/<C-Right> move a word (across lines), <C-Home>/<C-End> jump to the file ends, CTRL-G j/k
     # (and <Down>/<Up>, CTRL-J/CTRL-K after CTRL-G) go to the insert-start column, CTRL-G U keeps the next
     # <Left>/<Right> in the undo group and `.` record, `0 CTRL-D`/`^ CTRL-D` delete all indent, and `.`
-    # replays an insert that <Insert> toggled into Replace.
+    # replays an insert that <Insert> toggled into Replace. CTRL-U deletes the text entered before the caret
+    # on the line, then back to the first non-blank, then the indent, and joins lines at the line start
+    # (nvim's default 'backspace' indent,eol,start).
     status: done
     depends_on: [C-INPUT, C-UNDO]
     summary: The open/insert namespace — a printable key is text — with one-shot return and undo-group ownership.

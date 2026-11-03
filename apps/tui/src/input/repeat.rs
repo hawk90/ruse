@@ -223,6 +223,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::Format { .. }
         | C::Paste { .. }
         | C::PasteIndent { .. }
+        | C::PasteBlockInner { .. }
         | C::EmacsYank { .. }
         | C::EmacsKillLine
         | C::EmacsKillWord { .. }
@@ -298,7 +299,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::VisualOp(
             VisualOp::Lines(OpKind::Yank)
             | VisualOp::BlockToEol(OpKind::Yank)
-            | VisualOp::OtherCorner,
+            | VisualOp::OtherCorner
+            | VisualOp::YankTrim,
         )
         | C::OpForced {
             op: OpKind::Yank, ..
@@ -373,6 +375,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::GotoOlderJump
         | C::GotoNewerJump
         | C::AsciiInfo
+        | C::Utf8Info
         | C::FileInfo
         | C::CursorInfo
         | C::SetNamedMark(_)
@@ -391,6 +394,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::Redo
         | C::UndoOlder
         | C::UndoNewer
+        | C::LineUndo
         | C::Save
         | C::Quit
         | C::SetMark
@@ -454,6 +458,10 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
             C::IncrementNumber(if *d < 0 { -i64::from(n) } else { i64::from(n) })
         }
         C::PasteIndent { after, .. } => C::PasteIndent {
+            after: *after,
+            count: n,
+        },
+        C::PasteBlockInner { after, .. } => C::PasteBlockInner {
             after: *after,
             count: n,
         },
@@ -565,6 +573,7 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::GotoNewerJump
         | C::InsertAtLastInsert
         | C::AsciiInfo
+        | C::Utf8Info
         | C::FileInfo
         | C::CursorInfo
         | C::SetNamedMark(..)
@@ -597,6 +606,7 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::Redo
         | C::UndoOlder
         | C::UndoNewer
+        | C::LineUndo
         | C::Save
         | C::Quit
         | C::SetMark
