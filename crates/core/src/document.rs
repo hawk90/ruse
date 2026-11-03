@@ -9,7 +9,11 @@
 
 use std::sync::Arc;
 
-use crate::anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
+use std::collections::HashMap;
+
+use crate::anchor::{
+    AnchorId, AnchorPolicy, AnchorStore, Bias, LineGravity, LineMap, Resolved, Tracked,
+};
 use crate::edit::{Edit, EditError, EditList};
 use crate::line_undo::LineUndo;
 use crate::pos::Revision;
@@ -41,13 +45,19 @@ pub struct Document {
     revision: Revision,
     anchors: AnchorStore,
     undo: UndoHistory,
-    anchor_index: Arc<AnchorIndex>,
+    anchor_index: std::sync::OnceLock<Arc<AnchorIndex>>,
     saved_node: Option<MonotonicSeq>,
     /// The line Vim's `U` restores ([`Document::line_undo`]).
     line_undo: LineUndo,
     /// An open undo block ([`Document::begin_undo_block`]): `Some(joining)`, where `joining` turns true once
     /// the block's first change is recorded and every later change then joins its undo group.
     undo_block: Option<bool>,
+    /// Per undo group, the restorable [`Tracked`] positions as they were when the group began (Vim's
+    /// `uh_namedm`/`uh_visual`): undoing the group puts them back, and keeps the ones it replaced for the
+    /// redo (#686).
+    mark_undo: HashMap<u64, Vec<Option<usize>>>,
+    /// Positions carried for Views at rest ([`Document::pin_tracked`]).
+    pinned: Vec<Tracked>,
 }
 
 impl Document {
@@ -55,17 +65,30 @@ impl Document {
     /// ([`Document::is_modified`] is true until [`Document::mark_saved`]); a document loaded from disk
     /// marks itself saved at open.
     pub fn new(id: DocumentId, initial: impl Into<Vec<u8>>) -> Document {
+        Document::starting_at(id, initial, Revision::ZERO)
+    }
+
+    /// A document that REPLACES one whose revision was `last` under the same id (a reload from disk,
+    /// `:e!`): its revisions continue past `last`, so one id never shows a revision twice (F-001 monotonic;
+    /// a cache keyed on `(id, revision)` cannot mistake the new text for the old, #687).
+    pub fn replacing(id: DocumentId, initial: impl Into<Vec<u8>>, last: Revision) -> Document {
+        Document::starting_at(id, initial, last.next())
+    }
+
+    fn starting_at(id: DocumentId, initial: impl Into<Vec<u8>>, revision: Revision) -> Document {
         let text: Arc<Vec<u8>> = Arc::new(initial.into());
         let mut d = Document {
             id,
             text,
-            revision: Revision::ZERO,
+            revision,
             anchors: AnchorStore::new(),
-            undo: UndoHistory::new(Revision::ZERO),
-            anchor_index: Arc::new(AnchorIndex::default()),
+            undo: UndoHistory::new(revision),
+            anchor_index: std::sync::OnceLock::new(),
             saved_node: None,
             line_undo: LineUndo::default(),
             undo_block: None,
+            mark_undo: HashMap::new(),
+            pinned: Vec::new(),
         };
         d.rebuild_index();
         d
@@ -115,6 +138,14 @@ impl Document {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.text.is_empty()
+    }
+
+    /// Create a LINE anchor at `offset` that follows line inserts and deletes as a Vim mark does
+    /// (anchor-store §3.1).
+    pub fn create_line_anchor(&mut self, offset: usize, gravity: LineGravity) -> AnchorId {
+        let id = self.anchors.insert_line(offset, gravity);
+        self.rebuild_index();
+        id
     }
 
     /// Create a long-lived anchor at `offset` with the given [`Bias`] and span-delete [`AnchorPolicy`].
@@ -175,10 +206,56 @@ impl Document {
     /// edit is out of range; on success the revision strictly increases and the change is recorded as a
     /// new undo node (INV-TXN, INV-UNDO, F-001).
     pub fn apply(&mut self, txn: Transaction) -> Result<Revision, TxnError> {
-        self.apply_inner(txn, true)
+        self.apply_inner(txn, true, &mut [])
     }
 
-    fn apply_inner(&mut self, txn: Transaction, track: bool) -> Result<Revision, TxnError> {
+    /// [`Document::apply`] that also carries `tracked` — positions the caller keeps outside the store —
+    /// through the change by the anchor rules (#686). When the change begins a new undo group, the
+    /// restorable ones are saved for its undo.
+    pub fn apply_tracked(
+        &mut self,
+        txn: Transaction,
+        tracked: &mut [Tracked],
+    ) -> Result<Revision, TxnError> {
+        self.apply_inner(txn, true, tracked)
+    }
+
+    /// Carry `tracked` with every change from now until [`Document::take_pinned`] — the marks and cursor
+    /// of a View at rest while another View edits this document (#686). Returns where they start in
+    /// the pinned list. Undo does not restore pinned positions. They stay out of the anchor store, so
+    /// pinning costs nothing until an edit, which moves each by the same rules in `O(log E)`.
+    pub fn pin_tracked(&mut self, tracked: &[Tracked]) -> usize {
+        let at = self.pinned.len();
+        self.pinned.extend(tracked.iter().map(|t| Tracked {
+            restore: false,
+            ..*t
+        }));
+        at
+    }
+
+    /// Take back every position [`Document::pin_tracked`] holds, as the changes since left them.
+    pub fn take_pinned(&mut self) -> Vec<Tracked> {
+        std::mem::take(&mut self.pinned)
+    }
+
+    /// Carry the caller's `tracked` and the pinned positions through one change from `old` to the
+    /// current text.
+    fn track_change(&mut self, old: &[u8], edits: &EditList, tracked: &mut [Tracked]) {
+        if tracked.is_empty() && self.pinned.is_empty() {
+            return;
+        }
+        let map = LineMap::new(old, &self.text, edits);
+        for t in tracked.iter_mut().chain(self.pinned.iter_mut()) {
+            t.apply(edits, &map);
+        }
+    }
+
+    fn apply_inner(
+        &mut self,
+        txn: Transaction,
+        track: bool,
+        tracked: &mut [Tracked],
+    ) -> Result<Revision, TxnError> {
         if txn.base_revision != self.revision {
             return Err(TxnError::StaleBaseRevision {
                 base: txn.base_revision,
@@ -207,7 +284,13 @@ impl Document {
             let fresh = txn.group_hint == GroupHint::BreakBefore;
             self.line_undo.on_edit(&self.text, &txn.edits, fresh);
         }
-        self.text = Arc::new(new_text);
+        let saved: Vec<Option<usize>> = tracked
+            .iter()
+            .filter(|t| t.restore)
+            .map(|t| t.pos)
+            .collect();
+        let old = std::mem::replace(&mut self.text, Arc::new(new_text));
+        self.track_change(&old, &txn.edits, tracked);
         let prev = self.revision;
         self.revision = self.revision.next();
         // Internal invariant (INV-TXN §1): a successful apply strictly advances the revision. A debug_assert,
@@ -217,7 +300,7 @@ impl Document {
             "apply must strictly advance revision ({prev:?} -> {:?})",
             self.revision
         );
-        self.anchors.apply_edits(&txn.edits);
+        self.anchors.apply_change(&old, &self.text, &txn.edits);
         let (origin, mut hint) = (txn.origin, txn.group_hint);
         match self.undo_block {
             Some(true) => hint = GroupHint::JoinPrev,
@@ -231,8 +314,14 @@ impl Document {
                 .first()
                 .map_or(0, |e| crate::pos::line_start(&self.text, e.pos.0))
         });
+        let group_before = self.undo.current_group();
         self.undo
             .record(txn.edits, inverse, origin, hint, self.revision, cursor);
+        let group = self.undo.current_group();
+        if group != group_before && !saved.is_empty() {
+            // A new undo step: remember the marks as they were before it (Vim's `u_savecommon`).
+            self.mark_undo.insert(group, saved);
+        }
         self.rebuild_index();
         Ok(self.revision)
     }
@@ -268,6 +357,30 @@ impl Document {
         self.redo_from(0).map(|_| self.revision)
     }
 
+    /// [`Document::undo_from`] carrying `tracked` (see [`Document::apply_tracked`]): the restorable ones go
+    /// back to where they were when the undone change began.
+    pub fn undo_tracked(&mut self, cursor: usize, tracked: &mut [Tracked]) -> Option<UndoCursor> {
+        let step = self.undo.undo()?;
+        Some(self.replay(step, cursor, tracked))
+    }
+
+    /// [`Document::redo_from`] carrying `tracked`.
+    pub fn redo_tracked(&mut self, cursor: usize, tracked: &mut [Tracked]) -> Option<UndoCursor> {
+        let step = self.undo.redo()?;
+        Some(self.replay(step, cursor, tracked))
+    }
+
+    /// [`Document::chronological_from`] carrying `tracked`.
+    pub fn chronological_tracked(
+        &mut self,
+        older: bool,
+        cursor: usize,
+        tracked: &mut [Tracked],
+    ) -> Option<UndoCursor> {
+        let step = self.undo.to_chronological(older)?;
+        Some(self.replay(step, cursor, tracked))
+    }
+
     /// Move one logical change along CHRONOLOGICAL creation order — `g-` (`older = true`) to the
     /// previously-created state, `g+` (`older = false`) to the next — crossing branches so a state
     /// abandoned by a new edit is still reachable (Vim `g-`/`g+`). Returns the new revision, or
@@ -278,36 +391,49 @@ impl Document {
 
     /// [`Document::undo`] that also says where Vim leaves the cursor; `cursor` is the caret before it.
     pub fn undo_from(&mut self, cursor: usize) -> Option<UndoCursor> {
-        let step = self.undo.undo()?;
-        Some(self.replay(step, cursor))
+        self.undo_tracked(cursor, &mut [])
     }
 
     /// [`Document::redo`] that also says where Vim leaves the cursor; `cursor` is the caret before it.
     pub fn redo_from(&mut self, cursor: usize) -> Option<UndoCursor> {
-        let step = self.undo.redo()?;
-        Some(self.replay(step, cursor))
+        self.redo_tracked(cursor, &mut [])
     }
 
     /// [`Document::undo_chronological`] that also says where Vim leaves the cursor.
     pub fn chronological_from(&mut self, older: bool, cursor: usize) -> Option<UndoCursor> {
-        let step = self.undo.to_chronological(older)?;
-        Some(self.replay(step, cursor))
+        self.chronological_tracked(older, cursor, &mut [])
     }
 
     /// Apply an undo step and place the cursor from its last group, as Vim's `u_undoredo` does (#1063).
-    fn replay(&mut self, step: UndoStep, cursor: usize) -> UndoCursor {
+    /// After each group's last list, the restorable `tracked` positions take the values that group saved,
+    /// and the group keeps the ones they replace for the way back (Vim swaps `uh_namedm`, #686).
+    fn replay(&mut self, step: UndoStep, cursor: usize, tracked: &mut [Tracked]) -> UndoCursor {
         let cur_line = crate::pos::line_of(&self.text, cursor);
         let mut entries = Vec::new();
         let mut uh = (0, 0);
+        let mut before: Vec<Option<usize>> = Vec::new();
         for (i, edits) in step.edits.iter().enumerate() {
+            let group = step.groups.get(i).copied();
+            if i == 0 || step.groups.get(i - 1).copied() != group {
+                before = tracked
+                    .iter()
+                    .filter(|t| t.restore)
+                    .map(|t| t.pos)
+                    .collect();
+            }
             if i == step.tail && step.forward {
                 // A redo's `uh_cursor` is in the text before the change, which is the text right now.
                 uh = undo_cursor::line_col(&self.text, step.cursor);
             }
             let old = Arc::clone(&self.text);
-            self.reapply(edits);
+            self.reapply(edits, tracked);
             if i >= step.tail {
                 undo_cursor::entries(&old, &self.text, edits, &mut entries);
+            }
+            if let Some(g) = group {
+                if step.groups.get(i + 1).copied() != Some(g) {
+                    self.restore_marks(g, std::mem::take(&mut before), tracked);
+                }
             }
         }
         if !step.forward {
@@ -315,6 +441,22 @@ impl Document {
             uh = undo_cursor::line_col(&self.text, step.cursor);
         }
         undo_cursor::place(&entries, uh, cur_line, undo_cursor::line_count(&self.text))
+    }
+
+    /// Put the restorable `tracked` positions back as undo group `group` saved them, keeping `before` (the
+    /// values they had before this undo/redo) for the way back. A position the group saw unset is left
+    /// as it is, and one that is unset now is saved unset (Vim's `u_undoredo`).
+    fn restore_marks(&mut self, group: u64, before: Vec<Option<usize>>, tracked: &mut [Tracked]) {
+        let Some(saved) = self.mark_undo.get_mut(&group) else {
+            return;
+        };
+        let len = self.text.len();
+        for (t, s) in tracked.iter_mut().filter(|t| t.restore).zip(saved.iter()) {
+            if let Some(p) = *s {
+                t.pos = Some(crate::motion::snap(&self.text, p.min(len)));
+            }
+        }
+        *saved = before;
     }
 
     /// Before a change: the caret it starts from (the column `U` returns to) and whether it begins a new
@@ -339,6 +481,11 @@ impl Document {
     /// change (so `u` undoes it), keeping the current text so the next `U` redoes. Returns the caret
     /// (the column the line was saved with), or `None` when there is nothing to restore.
     pub fn line_undo(&mut self, cursor: usize) -> Option<usize> {
+        self.line_undo_tracked(cursor, &mut [])
+    }
+
+    /// [`Document::line_undo`] carrying `tracked` through the change.
+    pub fn line_undo_tracked(&mut self, cursor: usize, tracked: &mut [Tracked]) -> Option<usize> {
         let (s, e, text, col) = self.line_undo.swap(&self.text, cursor)?;
         let len = text.len();
         let list =
@@ -346,7 +493,7 @@ impl Document {
         let txn = Transaction::new(self.revision, list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore)
             .with_cursor(cursor);
-        self.apply_inner(txn, false)
+        self.apply_inner(txn, false, tracked)
             .expect("the saved line's span is in range");
         Some(s + col.min(len))
     }
@@ -393,30 +540,35 @@ impl Document {
     }
 
     /// Take an immutable, revision-stamped snapshot. O(1): clones the text `Arc` and the frozen anchor
-    /// index `Arc` (INV-QUERY-SNAPSHOT, query-and-snapshot §2).
+    /// index `Arc` (INV-QUERY-SNAPSHOT, query-and-snapshot §2). The index is frozen on the first snapshot
+    /// after a change, not on every change, so a run of edits with no reader between pays for none.
     #[must_use]
     pub fn snapshot(&self) -> DocumentSnapshot {
         DocumentSnapshot::new(
             self.revision,
             Arc::clone(&self.text),
-            Arc::clone(&self.anchor_index),
+            Arc::clone(
+                self.anchor_index
+                    .get_or_init(|| Arc::new(AnchorIndex::from_entries(self.anchors.resolved()))),
+            ),
         )
     }
 
     /// Re-apply an edit list as a navigation step (undo/redo): advances the revision and moves anchors,
     /// but records no new undo node.
-    fn reapply(&mut self, edits: &EditList) {
+    fn reapply(&mut self, edits: &EditList, tracked: &mut [Tracked]) {
         let new_text = edits.apply_to(&self.text);
         self.line_undo.on_reapply(&self.text, edits);
-        self.text = Arc::from(new_text);
+        let old = std::mem::replace(&mut self.text, Arc::new(new_text));
         self.revision = self.revision.next();
-        self.anchors.apply_edits(edits);
+        self.anchors.apply_change(&old, &self.text, edits);
+        self.track_change(&old, edits, tracked);
         self.rebuild_index();
     }
 
-    /// Refresh the frozen anchor index after any change (rebuild-on-commit, query-and-snapshot §2).
+    /// Drop the frozen anchor index after any change; the next snapshot freezes a fresh one.
     fn rebuild_index(&mut self) {
-        self.anchor_index = Arc::new(AnchorIndex::from_entries(self.anchors.resolved()));
+        self.anchor_index = std::sync::OnceLock::new();
     }
 }
 

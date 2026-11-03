@@ -8,8 +8,9 @@
 
 use proptest::prelude::*;
 use ruse_core::{
-    apply_command, AnchorPolicy, Bias, Command, Document, DocumentId, Edit, EditList, EditorState,
-    Motion, Revision, SelectKind, Trace, Transaction, TransactionOrigin,
+    anchor::map_byte, apply_command, AnchorId, AnchorPolicy, Bias, Command, Document, DocumentId,
+    Edit, EditList, EditorState, LineGravity, LineMap, Motion, Revision, SelectKind, Trace, Track,
+    Transaction, TransactionOrigin,
 };
 
 /// An arbitrary buffer: any sequence of Unicode scalars (incl. newlines / control chars) as UTF-8 bytes.
@@ -322,6 +323,132 @@ proptest! {
                     "anchor resolved to {} past end {}", r.offset.0, len
                 );
             }
+        }
+    }
+}
+
+/// A buffer of short lines over a tiny alphabet, so the line rule meets empty lines, joins and splits.
+fn lined() -> impl Strategy<Value = Vec<u8>> {
+    prop::collection::vec(prop_oneof![Just(b'a'), Just(b'b'), Just(b'\n')], 0..40)
+}
+
+/// An edit over a `lined()` buffer, inserting from the same alphabet.
+fn lined_edit() -> impl Strategy<Value = Edit> {
+    let ins = prop::collection::vec(prop_oneof![Just(b'x'), Just(b'\n')], 0..4);
+    (0usize..42, 0usize..6, ins).prop_map(|(p, d, b)| Edit::replace(p, d, b))
+}
+
+/// The five ways an anchor can follow an edit.
+fn track() -> impl Strategy<Value = Track> {
+    prop_oneof![
+        Just(Track::Byte(Bias::Before)),
+        Just(Track::Byte(Bias::After)),
+        Just(Track::Line(LineGravity::Drop)),
+        Just(Track::Line(LineGravity::Keep)),
+        Just(Track::Line(LineGravity::Cursor)),
+    ]
+}
+
+proptest! {
+    /// INV-ANCHOR (#686, #758, #941): the store — offset-ordered, with shifts applied lazily per region —
+    /// puts every anchor, across several transactions, exactly where the one-anchor rules do (`map_byte`
+    /// for a byte anchor, [`LineMap`] for a line anchor), and flags a dropped line anchor.
+    #[test]
+    fn the_store_moves_each_anchor_by_the_one_anchor_rule(
+        init in lined(),
+        specs in prop::collection::vec((0usize..45, track()), 0..30),
+        txns in prop::collection::vec(prop::collection::vec(lined_edit(), 0..5), 1..5),
+    ) {
+        let mut doc = Document::new(DocumentId(1), init);
+        let mut want: Vec<(AnchorId, usize, Track, bool)> = specs
+            .into_iter()
+            .map(|(off, t)| {
+                let off = off.min(doc.len());
+                let id = match t {
+                    Track::Byte(b) => doc.create_anchor(off, b, AnchorPolicy::Clamp),
+                    Track::Line(g) => doc.create_line_anchor(off, g),
+                };
+                (id, off, t, false)
+            })
+            .collect();
+        for raw in txns {
+            let Ok(list) = EditList::new(raw) else { continue };
+            if list.check_bounds(doc.len()).is_err() {
+                continue;
+            }
+            let old = doc.bytes().to_vec();
+            doc.apply(Transaction::new(doc.revision(), list.clone(), TransactionOrigin::UserInput))
+                .expect("in range");
+            let map = LineMap::new(&old, doc.bytes(), &list);
+            for w in &mut want {
+                match w.2 {
+                    Track::Byte(b) => w.1 = map_byte(&list, w.1, b),
+                    Track::Line(g) => match map.map(w.1, g) {
+                        Some(p) => w.1 = p,
+                        None => {
+                            w.1 = map.map(w.1, LineGravity::Keep).expect("Keep never drops");
+                            w.3 = true;
+                        }
+                    },
+                }
+            }
+            for &(id, off, t, gone) in &want {
+                let r = doc.resolve_anchor(id).expect("live");
+                prop_assert_eq!(r.offset.0, off, "{:?} after {:?}", t, list.edits());
+                if matches!(t, Track::Line(_)) {
+                    prop_assert_eq!(r.invalidated, gone);
+                }
+            }
+        }
+    }
+
+    /// The byte rule keeps the order of anchors of one bias, and at one offset `Before` never lands
+    /// past `After` (anchor-store §3, #941): a same-bias range never inverts.
+    #[test]
+    fn the_byte_rule_is_monotonic_per_bias(
+        raw in prop::collection::vec(lined_edit(), 0..6),
+        a in 0usize..45,
+        b in 0usize..45,
+    ) {
+        let Ok(list) = EditList::new(raw) else { return Ok(()); };
+        let (a, b) = (a.min(b), a.max(b));
+        for bias in [Bias::Before, Bias::After] {
+            prop_assert!(map_byte(&list, a, bias) <= map_byte(&list, b, bias));
+        }
+        prop_assert!(map_byte(&list, a, Bias::Before) <= map_byte(&list, a, Bias::After));
+    }
+
+    /// The line rule lands in the new text, on a char boundary, and a position on a line no edit
+    /// touches keeps its column (nvim's `mark_adjust` moves only line numbers).
+    #[test]
+    fn the_line_rule_stays_in_bounds_and_keeps_untouched_columns(
+        init in text(),
+        raw in prop::collection::vec(edit(), 0..4),
+        o in 0usize..40,
+    ) {
+        let Ok(list) = EditList::new(raw) else { return Ok(()); };
+        prop_assume!(list.check_bounds(init.len()).is_ok());
+        let new = list.apply_to(&init);
+        let map = LineMap::new(&init, &new, &list);
+        let mut o = o.min(init.len());
+        while o < init.len() && o > 0 && (init[o] & 0xC0) == 0x80 {
+            o -= 1; // positions rest on char boundaries
+        }
+        let utf8 = std::str::from_utf8(&new).is_ok();
+        for g in [LineGravity::Drop, LineGravity::Keep, LineGravity::Cursor] {
+            if let Some(p) = map.map(o, g) {
+                prop_assert!(p <= new.len());
+                // Edits of raw bytes can break UTF-8; on valid text the result is a char boundary.
+                prop_assert!(!utf8 || new.is_empty() || p == new.len() || (new[p] & 0xC0) != 0x80);
+            }
+        }
+        // A line strictly between edits (no edit within a line of it) keeps its column.
+        let ls = ruse_core::pos::line_start(&init, o);
+        let le = ruse_core::pos::line_end(&init, o);
+        let near = list.edits().iter().any(|e| e.pos.0 <= le + 1 && e.end() + 1 >= ls);
+        if !near && std::str::from_utf8(&init).is_ok() && std::str::from_utf8(&new).is_ok() {
+            let p = map.map(o, LineGravity::Drop).expect("an untouched line is not deleted");
+            prop_assert_eq!(p - ruse_core::pos::line_start(&new, p), o - ls);
         }
     }
 }

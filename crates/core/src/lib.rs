@@ -50,7 +50,9 @@ pub mod undo;
 mod undo_cursor;
 pub mod workspace;
 
-pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
+pub use anchor::{
+    AnchorId, AnchorPolicy, AnchorStore, Bias, LineGravity, LineMap, Resolved, Track, Tracked,
+};
 pub use clipboard::{Clipboard, MemClipboard, NoClipboard};
 pub use command::{
     BlockInsertKind, Command, CommandParseError, ForcedWise, MarkOp, OpKind, OpenKind,

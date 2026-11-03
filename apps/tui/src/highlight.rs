@@ -7,7 +7,7 @@
 //! which is D-042's stated trigger for incremental parsing.
 
 use crossterm::style::Color;
-use ruse_core::{Regex, RegexOptions, Revision};
+use ruse_core::{DocumentId, Regex, RegexOptions, Revision};
 
 use crate::screen::CellStyle;
 use streaming_iterator::StreamingIterator;
@@ -475,19 +475,32 @@ fn point_at(src: &[u8], byte: usize) -> Point {
 /// [`CachedHighlight`]: keyed on `(revision, viewport, pattern)`, so an unchanged frame — cursor motion,
 /// a mode switch — does no work, and a scroll or a new revision recomputes only the VISIBLE byte range
 /// rather than re-running a full-buffer regex every frame. The Vim regex is compiled only when the
-/// pattern changes (incsearch re-types the pattern each keystroke; hlsearch holds it fixed).
+/// pattern changes (incsearch re-types the pattern each keystroke; hlsearch holds it fixed). The key
+/// includes the buffer: revisions count per document, so two buffers share revision numbers (#687).
 #[derive(Default)]
 pub struct CachedSearch {
-    key: Option<(Revision, std::ops::Range<usize>, String)>,
+    key: Option<(DocumentId, Revision, std::ops::Range<usize>, String)>,
     compiled: Option<(String, Regex)>,
     spans: Vec<(usize, usize)>,
 }
 
 impl CachedSearch {
-    /// Match spans of `pattern` within the `visible` byte range of `bytes` at `rev`. Empty on an
-    /// unmatchable pattern (highlighting is best-effort). Spans are in absolute buffer byte offsets.
+    /// [`CachedSearch::spans_in`] for a single-buffer caller (benches, tests).
     pub fn spans(
         &mut self,
+        rev: Revision,
+        bytes: &[u8],
+        visible: std::ops::Range<usize>,
+        pattern: &str,
+    ) -> &[(usize, usize)] {
+        self.spans_in(DocumentId(0), rev, bytes, visible, pattern)
+    }
+
+    /// Match spans of `pattern` within the `visible` byte range of buffer `doc`'s `bytes` at `rev`. Empty
+    /// on an unmatchable pattern (highlighting is best-effort). Spans are in absolute buffer byte offsets.
+    pub fn spans_in(
+        &mut self,
+        doc: DocumentId,
         rev: Revision,
         bytes: &[u8],
         visible: std::ops::Range<usize>,
@@ -496,7 +509,7 @@ impl CachedSearch {
         if self
             .key
             .as_ref()
-            .is_some_and(|(r, v, p)| *r == rev && *v == visible && p == pattern)
+            .is_some_and(|(d, r, v, p)| *d == doc && *r == rev && *v == visible && p == pattern)
         {
             return &self.spans;
         }
@@ -517,7 +530,7 @@ impl CachedSearch {
                 }
             }
         }
-        self.key = Some((rev, visible, pattern.to_string()));
+        self.key = Some((doc, rev, visible, pattern.to_string()));
         &self.spans
     }
 }

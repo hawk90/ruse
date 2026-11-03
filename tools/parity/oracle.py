@@ -2384,6 +2384,16 @@ FIXTURES: list[dict] = [
     {"name": "sc_mark_d_to_visual_end", "lines": ["abc def ghi"], "keys": "wviw<Esc>0d`>"},
     {"name": "sc_mark_multibyte_column", "lines": ["가나다라"], "keys": "llma0`ax"},
     {"name": "sc_mark_survives_undo", "lines": ["a", "b", "c"], "keys": "jjmaggddu'ax", "setup": UNDO_SETUP},
+    # #686: marks follow edits as nvim's mark_adjust moves them.
+    {"name": "sc_mark_keeps_col_after_x_before", "lines": ["abcdefgh"], "keys": "5|ma0x`ax"},
+    {"name": "sc_mark_follows_join", "lines": ["aa", "  bbbb"], "keys": "j3|makJ`ax"},
+    {"name": "sc_mark_deleted_line_restored_by_undo", "lines": ["a", "b", "c"], "keys": "jmaddu`ax",
+     "setup": UNDO_SETUP},
+    {"name": "sc_mark_redo_drops_it_again", "lines": ["a", "b", "c"], "keys": "jmaddu<C-r>gg'ax",
+     "setup": UNDO_SETUP},
+    {"name": "sc_visual_marks_follow_dd_above", "lines": ["a", "bcd", "e"], "keys": "jlvl<Esc>ggddgvd"},
+    {"name": "sc_err_context_mark_empty_jumplist", "lines": ["a", "b"], "keys": "j''x"},
+    {"name": "sc_jumplist_follows_dd_above", "lines": ["a", "b", "c", "d"], "keys": "Gggjdd<C-o>x"},
     {"name": "sc_mark_c_quote", "lines": ["a", "b", "c"], "keys": "jmajc'aX<Esc>"},
     #     macros ----------------------------------------------------------------------------------------
     {"name": "sc_mac_record_replay", "lines": ["abcdef"], "keys": "qaxq@a"},

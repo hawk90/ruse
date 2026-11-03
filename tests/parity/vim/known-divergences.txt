@@ -3,9 +3,6 @@
 # fixture that now verifies (delete its line). One fixture name per line, then `# reason`.
 # Add a line only for a new fixture ruse does not match yet, never to silence a regression.
 
-sc_mark_survives_undo # marks do not follow line edits, so undo cannot restore one (#686)
-sc_err_mark_on_deleted_line # a mark on a deleted line survives (#686)
-sc_mark_moves_with_line_above # a mark does not follow a line opened above (#686)
 sc_mark_last_change_exact # `. past a shortened line rests on the newline (#728)
 sc_edge_empty_dd # empty buffer captures no line (#768)
 sc_edge_empty_yy_p # yyp on an empty buffer (#768)

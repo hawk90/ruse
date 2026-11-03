@@ -58632,6 +58632,208 @@
       }
     },
     {
+      "name": "sc_mark_keeps_col_after_x_before",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": "5|ma0x`ax",
+      "expect": {
+        "text": [
+          "bcdegh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_mark_follows_join",
+      "lines": [
+        "aa",
+        "  bbbb"
+      ],
+      "keys": "j3|makJ`ax",
+      "expect": {
+        "text": [
+          "aa bbb"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_mark_deleted_line_restored_by_undo",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jmaddu`ax",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_mark_redo_drops_it_again",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jmaddu<C-r>gg'ax",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_visual_marks_follow_dd_above",
+      "lines": [
+        "a",
+        "bcd",
+        "e"
+      ],
+      "keys": "jlvl<Esc>ggddgvd",
+      "expect": {
+        "text": [
+          "b",
+          "e"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_err_context_mark_empty_jumplist",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "j''x",
+      "expect": {
+        "text": [
+          "a",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_jumplist_follows_dd_above",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "Gggjdd<C-o>x",
+      "expect": {
+        "text": [
+          "a",
+          "c",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "sc_mark_c_quote",
       "lines": [
         "a",

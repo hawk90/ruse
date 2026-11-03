@@ -24,6 +24,7 @@
 //! (focus next), `C-w c` (close focused). The full recursive layout tree, tab pages, resize
 //! constraints, and the rest of the `C-w` family are deferred (docs/design/view-window-workspace.md).
 
+use crate::anchor::{LineGravity, Tracked};
 use crate::clipboard::{Clipboard, NoClipboard};
 use crate::command::Command;
 use crate::document::{Document, DocumentId};
@@ -128,6 +129,9 @@ pub struct Workspace {
     /// The editor-global register store (Vim registers are shared by every buffer and window; D-057
     /// slice 2, #944). Lent into the focused View for one command by [`Workspace::lend`].
     registers: RegisterStore,
+    /// The positions the views at rest pinned in the lent document ([`Workspace::lend`]), read back and
+    /// removed by [`Workspace::reclaim`]. Empty between the two.
+    pins: Vec<(ViewId, std::ops::Range<usize>)>,
 }
 
 impl Workspace {
@@ -152,12 +156,25 @@ impl Workspace {
             clipboard: Box::new(NoClipboard),
             beeped: false,
             registers: RegisterStore::new(),
+            pins: Vec::new(),
         }
     }
 
     /// The swap-trick's first half: an [`EditorState`] over `doc`/`view` holding the workspace register
     /// store. Every `lend` is paired with a [`Workspace::reclaim`], or the store is lost.
-    fn lend(&mut self, doc: Document, view: View) -> EditorState {
+    fn lend(&mut self, mut doc: Document, view: View) -> EditorState {
+        // Every OTHER view of this document (the lent one is out of the arena) pins its marks and its
+        // cursor, so an edit made through the lent view moves them too (#686), as nvim's `mark_adjust`
+        // moves other windows' cursors and jumplists.
+        for (i, v) in self.views.iter().enumerate() {
+            let Some(v) = v.as_ref().filter(|v| v.doc() == doc.id()) else {
+                continue;
+            };
+            let mut t = v.tracked();
+            t.push(Tracked::line(Some(v.cursor()), LineGravity::Cursor));
+            let at = doc.pin_tracked(&t);
+            self.pins.push((ViewId(i), at..at + t.len()));
+        }
         let mut st = EditorState::from_parts(doc, view);
         st.swap_registers(&mut self.registers);
         st
@@ -166,7 +183,20 @@ impl Workspace {
     /// The swap-trick's second half: take the register store back from `st` and split it into parts.
     fn reclaim(&mut self, mut st: EditorState) -> (Document, View) {
         st.swap_registers(&mut self.registers);
-        st.into_parts()
+        let (mut doc, view) = st.into_parts();
+        let pinned = doc.take_pinned();
+        for (vid, range) in std::mem::take(&mut self.pins) {
+            let Some(v) = self.views[vid.0].as_mut() else {
+                continue;
+            };
+            let (cursor, marks) = pinned[range]
+                .split_last()
+                .expect("the cursor is pinned last");
+            v.untrack(marks);
+            let cursor = cursor.pos.unwrap_or(0).min(doc.len());
+            v.set_cursor(crate::motion::snap(doc.bytes(), cursor));
+        }
+        (doc, view)
     }
 
     /// The editor-global register store (read-only).
@@ -715,19 +745,24 @@ impl Workspace {
     /// Apply a disjoint `(start, end, text)` batch edit to the FOCUSED window (the swap-trick, like
     /// [`Workspace::apply`]) as one undo group, tagged with the caller-supplied `origin` — a
     /// provenance-agnostic primitive (the LSP frontend passes [`TransactionOrigin::Lsp`]). See
-    /// [`EditorState::apply_edits`].
-    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)], origin: TransactionOrigin) {
+    /// [`EditorState::apply_edits`]: all or nothing, `false` when refused.
+    pub fn apply_edits(
+        &mut self,
+        edits: &[(usize, usize, String)],
+        origin: TransactionOrigin,
+    ) -> bool {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
         let mut st = self.lend(doc, view);
-        st.apply_edits(edits, origin);
+        let applied = st.apply_edits(edits, origin);
         let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
+        applied
     }
 
     /// Run `:[range]y` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): yank the
@@ -1117,8 +1152,17 @@ impl Workspace {
     pub fn reload_focused(&mut self, bytes: impl Into<Vec<u8>>) {
         let id = self.focused_buffer();
         let slot = Self::doc_slot(id);
-        let mut doc = Document::new(id, bytes);
+        let last = self.docs[slot]
+            .as_ref()
+            .map_or(crate::pos::Revision::ZERO, Document::revision);
+        let mut doc = Document::replacing(id, bytes, last);
         doc.mark_saved();
+        // Every other view of the buffer keeps its place, clamped into the new text (#686, #687).
+        for v in self.views.iter_mut().flatten().filter(|v| v.doc() == id) {
+            let c = crate::motion::snap(doc.bytes(), v.cursor());
+            v.set_cursor(c);
+            v.snap_offsets(doc.bytes());
+        }
         self.docs[slot] = Some(doc);
         self.place_focused_cursor(0);
     }
@@ -2317,6 +2361,51 @@ mod tests {
             !w.focused().doc.is_modified(),
             "the reloaded buffer is clean"
         );
+    }
+
+    /// #687: a reload continues the buffer's revisions (never `Revision(0)` again under one id), and the
+    /// other views of the buffer are clamped into the new text.
+    #[test]
+    fn reload_continues_the_revision_and_clamps_other_views() {
+        let mut w = Workspace::new("a한글 x\n".as_bytes().to_vec());
+        w.split(SplitDir::Horizontal);
+        w.apply(&Command::Move(1, Motion::LineEnd));
+        let before = w.focused().doc.revision();
+        w.apply(&Command::EnterInsert);
+        w.apply(&Command::InsertChar('y'));
+        let edited = w.focused().doc.revision();
+        assert!(edited > before);
+        w.focus_next();
+        w.reload_focused(b"ab".to_vec());
+        assert!(w.focused().doc.revision() > edited, "revisions continue");
+        for i in 0..2 {
+            assert!(w.pane(i).view.cursor() <= 2, "pane {i} clamped");
+        }
+    }
+
+    /// #686: an edit through one window moves the other window's cursor and marks with their lines, as
+    /// nvim's `mark_adjust` does. nvim: `:split`, `jj`, `CTRL-W w`, `O999<Esc>`, `CTRL-W w`, `x` leaves
+    /// `999 11 22 3`.
+    #[test]
+    fn an_edit_in_one_window_moves_the_other_windows_cursor_and_marks() {
+        let mut w = Workspace::new(b"11\n22\n33\n".to_vec());
+        w.split(SplitDir::Horizontal);
+        w.apply(&Command::Move(2, Motion::Down));
+        w.apply(&Command::SetNamedMark('a'));
+        w.focus_next();
+        w.apply(&Command::OpenAbove);
+        for c in "999".chars() {
+            w.apply(&Command::InsertChar(c));
+        }
+        w.apply(&Command::EnterNormal);
+        w.focus_next();
+        assert_eq!(
+            w.focused().view.named_mark('a'),
+            Some(10),
+            "the mark followed its line"
+        );
+        w.apply(&Command::DeleteUnder(1));
+        assert_eq!(w.focused().doc.bytes(), b"999\n11\n22\n3\n");
     }
 
     /// `:set ignorecase` flips the focused view's search case, observable through `:s` matching.

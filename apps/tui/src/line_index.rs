@@ -8,11 +8,13 @@
 //! and every lookup is a binary search over the cached starts. Idle frames (cursor motion, scroll) reuse
 //! the cache and pay only the O(log n) lookup.
 
-use ruse_core::Revision;
+use ruse_core::{DocumentId, Revision};
 
+/// Keyed on `(buffer, revision)`: a revision is counted per document, so two buffers (and, before #687,
+/// a reloaded one) share revision numbers; the buffer id tells them apart.
 #[derive(Default)]
 pub struct LineIndex {
-    rev: Option<Revision>,
+    rev: Option<(DocumentId, Revision)>,
     /// Byte offset of every line start; `starts[0]` is always 0. Length = line count.
     starts: Vec<usize>,
     /// The buffer length, so `nth_line_start` past the last line clamps to the end (as the viewport math
@@ -21,8 +23,15 @@ pub struct LineIndex {
 }
 
 impl LineIndex {
-    /// Rebuild the index for `bytes` at `rev` if the revision changed; a no-op on an unchanged revision.
+    /// [`LineIndex::refresh_for`] for a single-buffer caller (benches, tests).
     pub fn refresh(&mut self, rev: Revision, bytes: &[u8]) {
+        self.refresh_for(DocumentId(0), rev, bytes);
+    }
+
+    /// Rebuild the index for buffer `doc`'s `bytes` at `rev` unless it already holds that buffer at
+    /// that revision.
+    pub fn refresh_for(&mut self, doc: DocumentId, rev: Revision, bytes: &[u8]) {
+        let rev = (doc, rev);
         if self.rev == Some(rev) {
             return;
         }

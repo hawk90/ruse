@@ -112,7 +112,14 @@ mode needs, built on the model's load-bearing invariant (**G4**): a selection is
 - **Operators over the selection:** `d`/`x` delete, `y` yank, `c` change — each captures the span into the
   unnamed register ([register-model.md](register-model.md) v0) and returns to Normal (Insert for `c`).
 
-Vim marks, the jumplist and the changelist ship on raw byte offsets on `View`, not on anchors (#686, #636).
+Vim marks (`a`–`z`, `A`–`Z`, `` `^ ``, `[`/`]`, `<`/`>`), the jumplist and the changelist are kept on the
+`View` as byte offsets that the Document carries through every change by the LINE-anchor rule
+([anchor-store §3.1](anchor-store.md#anchor-line)), as nvim's `mark_adjust` does (#686): a whole line
+inserted or deleted above moves them, an edit inside their line leaves their column, a lowercase mark or
+`` `^ `` on a deleted line is removed (`E20` after), and undo restores the lowercase and Visual marks. The
+View hands them to the Document per transaction (`EditorState::apply_txn`); a View at rest while another
+View edits its document pins them, with its cursor (`Workspace::lend`). The Emacs mark stays a snapped
+offset: Emacs keeps markers through an in-place replacement (casing), which the byte rule does not. Per-buffer (rather than per-View) marks and the `Selection` model stay deferred (#636).
 
 **Deferred, and additive over this** (no rework of the `(anchor, active)` shape): the anchor-store-backed
 `Selection` type, N-caret multi-selection (a `Vec<Selection>` — v0's one range is `N = 1`), and the
@@ -162,7 +169,10 @@ This doc depends on and is governed by:
   *arguments*, not distinct commands.
 - **INV-TXN / INV-UNDO** — setting a mark / pushing the jumplist is **session state, not Document text**,
   so it is *not* an undoable Document transaction (undo does not un-set a mark, matching Vim/Emacs). A
-  *motion to* a recorded place moves the caret but emits no Transaction; only edits do.
+  *motion to* a recorded place moves the caret but emits no Transaction; only edits do. One exception,
+  Vim's: undoing a change puts the lowercase marks and the last Visual area back where they were when
+  that change began (`u_undoredo` restores `uh_namedm`/`uh_visual`), so a mark a `dd` removed returns
+  with `u` (#686).
 - **INV-ORIGIN** — every recorded entry carries its origin (UserInput | Macro | Plugin | Lsp | AiAgent |
   RemotePeer); a macro replaying `G` pushes the jumplist identically to interactive `G`.
 - **INV-ASYNC-ORDER** — LSP "go-to-definition" is a jump: its async result carries a request id + revision;

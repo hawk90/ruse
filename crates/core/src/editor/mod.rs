@@ -5,11 +5,12 @@
 //! the same commands on the same initial document is deterministic (see [`crate::trace`]). This is the split
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
+use crate::anchor::Tracked;
 use crate::command::{
     BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOffset, SearchOp,
     SelectKind, VisualOp, WordCase,
 };
-use crate::document::{Document, DocumentId};
+use crate::document::{Document, DocumentId, TxnError};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;
 use crate::motion::{
@@ -336,6 +337,9 @@ fn mark_slot(c: char) -> Option<usize> {
 /// Maximum entries kept in a View's change list (Vim's default `:changes` history is ~100).
 const MAX_CHANGES: usize = 100;
 
+/// The fixed-position entries of [`View::tracked`], before the change list and the jumplist.
+const TRACKED_FIXED: usize = 57;
+
 /// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
 /// tests drive. F-007's Workspace will own many `(Document, View)` pairs referenced by handle; today
 /// there is exactly one of each, composed here so the public API (`apply_command`, `cursor()`, …) is
@@ -387,6 +391,62 @@ impl View {
         // Jumplist entries snap into range too (a buffer-resizing edit under a jump keeps it valid).
         for j in self.jumps.iter_mut() {
             *j = snap(bytes, (*j).min(len));
+        }
+    }
+
+    /// Every long-lived position this View keeps, for its Document to carry through a change as nvim's
+    /// `mark_adjust` does (#686), in the order [`View::untrack`] reads back: `a`–`z` (dropped with their
+    /// line, restored by undo), the last Visual area (restored by undo), `A`–`Z`, `` `^ `` (dropped), `[`
+    /// and `]`, then the change list and the jumplist. The cursor is the command's to place, so it is not
+    /// here; the Emacs mark stays a snapped offset (a byte anchor moved it off Emacs's in-place casing).
+    pub(crate) fn tracked(&self) -> Vec<Tracked> {
+        use crate::anchor::{LineGravity::Drop, LineGravity::Keep};
+        let mut t = Vec::with_capacity(TRACKED_FIXED + self.changes.len() + self.jumps.len());
+        t.extend(
+            self.named_marks[..26]
+                .iter()
+                .map(|&m| Tracked::line(m, Drop).restored()),
+        );
+        let (va, ve) = self
+            .last_visual
+            .map_or((None, None), |(a, e, _)| (Some(a), Some(e)));
+        t.push(Tracked::line(va, Keep).restored());
+        t.push(Tracked::line(ve, Keep).restored());
+        t.extend(
+            self.named_marks[26..]
+                .iter()
+                .map(|&m| Tracked::line(m, Keep)),
+        );
+        t.push(Tracked::line(self.last_insert, Drop));
+        t.push(Tracked::line(self.change_start, Keep));
+        t.push(Tracked::line(self.change_end, Keep));
+        debug_assert_eq!(t.len(), TRACKED_FIXED);
+        t.extend(self.changes.iter().map(|&p| Tracked::line(Some(p), Keep)));
+        t.extend(self.jumps.iter().map(|&p| Tracked::line(Some(p), Keep)));
+        t
+    }
+
+    /// Take back the positions [`View::tracked`] gave out, as the Document left them.
+    pub(crate) fn untrack(&mut self, t: &[Tracked]) {
+        let pos = |i: usize| t.get(i).and_then(|t| t.pos);
+        for i in 0..26 {
+            self.named_marks[i] = pos(i);
+        }
+        if let (Some((_, _, kind)), Some(a), Some(e)) = (self.last_visual, pos(26), pos(27)) {
+            self.last_visual = Some((a, e, kind));
+        }
+        for i in 26..52 {
+            self.named_marks[i] = pos(i + 2);
+        }
+        self.last_insert = pos(54);
+        self.change_start = pos(55);
+        self.change_end = pos(56);
+        let n = self.changes.len();
+        for (i, c) in self.changes.iter_mut().enumerate() {
+            *c = pos(TRACKED_FIXED + i).unwrap_or(0);
+        }
+        for (i, j) in self.jumps.iter_mut().enumerate() {
+            *j = pos(TRACKED_FIXED + n + i).unwrap_or(0);
         }
     }
 
@@ -1033,6 +1093,23 @@ impl EditorState {
         st
     }
 
+    /// Apply `txn`, carrying this view's marks, change list and jumplist through it (#686). Every edit
+    /// the editor makes goes through here or [`EditorState::with_tracked`].
+    pub(crate) fn apply_txn(&mut self, txn: Transaction) -> Result<crate::pos::Revision, TxnError> {
+        self.with_tracked(|doc, t| doc.apply_tracked(txn, t))
+    }
+
+    /// Run `f` on the document with this view's long-lived positions handed to it, then take them back.
+    pub(crate) fn with_tracked<R>(
+        &mut self,
+        f: impl FnOnce(&mut Document, &mut [Tracked]) -> R,
+    ) -> R {
+        let mut t = self.view.tracked();
+        let r = f(&mut self.doc, &mut t);
+        self.view.untrack(&t);
+        r
+    }
+
     /// Reconstitute an editing context from a Document and a View taken out of a Workspace arena — the
     /// inverse of [`EditorState::into_parts`]. The [`crate::workspace::Workspace`] swaps the focused
     /// `(Document, View)` into an `EditorState` to run the UNCHANGED `plan`/`commit` pipeline, then
@@ -1146,8 +1223,7 @@ impl EditorState {
         let list = EditList::new(edits).expect("line breaks are disjoint and ordered");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc
-            .apply(txn)
+        self.apply_txn(txn)
             .expect("join substitute applies cleanly");
         self.view.last_was_edit = true;
         self.view.cursor = cursor.min(self.doc.bytes().len());
@@ -1267,8 +1343,7 @@ impl EditorState {
         let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc
-            .apply(txn)
+        self.apply_txn(txn)
             .expect("substitute transaction applies cleanly");
         self.view.last_was_edit = true;
         if let Some(end) = last_end {
@@ -1436,7 +1511,7 @@ impl EditorState {
                     EditList::new(edits).expect("whole-line deletes are disjoint and ordered");
                 let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
                     .with_hint(GroupHint::BreakBefore);
-                self.doc.apply(txn).expect("global-delete applies cleanly");
+                self.apply_txn(txn).expect("global-delete applies cleanly");
                 self.view.last_was_edit = true;
                 // Like Vim, the cursor lands on the line that followed the last deleted one (the last line if
                 // that was the end), at its first non-blank.
@@ -1533,8 +1608,7 @@ impl EditorState {
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore)
             .with_cursor(undo_at);
-        self.doc
-            .apply(txn)
+        self.apply_txn(txn)
             .expect("line-range delete applies cleanly");
         self.view.last_was_edit = true;
         // On the line that took their place, or the new last line (never the slot after a final newline,
@@ -1753,7 +1827,7 @@ impl EditorState {
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc.apply(txn).expect("line relocate applies cleanly");
+        self.apply_txn(txn).expect("line relocate applies cleanly");
         self.view.last_was_edit = true;
         self.view.cursor = cursor.min(self.doc.bytes().len());
         self.settle_offsets();
@@ -1835,7 +1909,7 @@ impl EditorState {
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc.apply(txn).expect("line put applies cleanly");
+        self.apply_txn(txn).expect("line put applies cleanly");
         self.view.last_was_edit = true;
         // Vim leaves the cursor on the first non-blank of the last inserted line.
         let nb = self.doc.bytes();
@@ -1914,7 +1988,7 @@ impl EditorState {
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc.apply(txn).expect("line read applies cleanly");
+        self.apply_txn(txn).expect("line read applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
@@ -2004,7 +2078,7 @@ impl EditorState {
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc.apply(txn).expect("line filter applies cleanly");
+        self.apply_txn(txn).expect("line filter applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
@@ -2062,7 +2136,7 @@ impl EditorState {
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc.apply(txn).expect("retab applies cleanly");
+        self.apply_txn(txn).expect("retab applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         let ls = nb
@@ -2184,7 +2258,7 @@ impl EditorState {
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
-        self.doc.apply(txn).expect("sort applies cleanly");
+        self.apply_txn(txn).expect("sort applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
@@ -2197,34 +2271,41 @@ impl EditorState {
     /// `origin` — a separate undo unit from user edits (F-005). This is a PROVENANCE-AGNOSTIC batch-edit
     /// primitive: the CORE provides the mechanism, the CALLER states the policy (the LSP frontend passes
     /// [`TransactionOrigin::Lsp`]; a snippet/macro/AI batch would pass its own origin). Each edit is
-    /// `(start, end, replacement)`; out-of-range or overlapping sets are skipped (formatter output is disjoint).
-    /// The cursor is clamped into the new buffer. No-op on an empty/invalid set.
-    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)], origin: TransactionOrigin) {
-        let len = self.doc.bytes().len();
-        let mut valid: Vec<(usize, usize, String)> = edits
-            .iter()
-            .filter(|(s, e, _)| s <= e && *e <= len)
-            .cloned()
-            .collect();
-        if valid.is_empty() {
-            return;
+    /// `(start, end, replacement)`. The batch is atomic (#716): if any edit is reversed, out of range, splits
+    /// a UTF-8 character or overlaps another, NOTHING is applied and this returns `false`. The cursor is
+    /// carried through the edits as a byte anchor that follows the text after it, so an edit above it
+    /// moves it with its text.
+    pub fn apply_edits(
+        &mut self,
+        edits: &[(usize, usize, String)],
+        origin: TransactionOrigin,
+    ) -> bool {
+        let b = self.doc.bytes();
+        let boundary = |p: usize| p == b.len() || (p < b.len() && (b[p] & 0xC0) != 0x80);
+        if edits.is_empty()
+            || !edits
+                .iter()
+                .all(|(s, e, _)| s <= e && *e <= b.len() && boundary(*s) && boundary(*e))
+        {
+            return false;
         }
-        valid.sort_by_key(|(s, _, _)| *s); // EditList requires ascending, disjoint edits
-        let es: Vec<Edit> = valid
-            .into_iter()
-            .map(|(s, e, t)| Edit::replace(s, e - s, t.into_bytes()))
+        let es: Vec<Edit> = edits
+            .iter()
+            .map(|(s, e, t)| Edit::replace(*s, e - s, t.clone().into_bytes()))
             .collect();
         let Ok(list) = EditList::new(es) else {
-            return; // overlapping edits — refuse rather than corrupt the buffer
+            return false; // overlapping edits — refuse rather than corrupt the buffer
         };
+        let cursor = crate::anchor::map_byte(&list, self.view.cursor, crate::anchor::Bias::After);
         let txn =
             Transaction::new(self.doc.revision(), list, origin).with_hint(GroupHint::BreakBefore);
-        if self.doc.apply(txn).is_ok() {
-            self.view.last_was_edit = true;
-            let clamped = self.view.cursor.min(self.doc.bytes().len());
-            self.set_cursor(clamped);
-            self.settle_offsets();
+        if self.apply_txn(txn).is_err() {
+            return false;
         }
+        self.view.last_was_edit = true;
+        self.set_cursor(cursor.min(self.doc.bytes().len()));
+        self.settle_offsets();
+        true
     }
 
     /// After an edit applied outside [`commit`]: snap the cursor and every stored offset into the new
@@ -2903,6 +2984,14 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let mut extra: Vec<Effect> = Vec::new();
     // The undo group before the command: an edit that leaves a different one began a new undo step.
     let entry_group = st.doc.history().current_group();
+    // Leaving a selection remembers it (anchor, active end, kind) for `gv` and `'<`/`'>` — the depth-1
+    // slice of D-027's selection history — BEFORE the operator's edit, so the edit carries it as nvim's
+    // `mark_adjust` carries `b_visual` (#686).
+    if plan.mode.selection().is_none() {
+        if let (Some(kind), Some(a)) = (entry_selection, entry_anchor) {
+            st.view.last_visual = Some((a, entry_cursor, kind));
+        }
+    }
     match plan.action {
         Action::Txn { edits, hint } => {
             edit_span = edit_bracket(&edits);
@@ -2918,8 +3007,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 .with_hint(hint)
                 .with_cursor(start);
             // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
-            st.doc
-                .apply(txn)
+            st.apply_txn(txn)
                 .expect("planned transaction applies cleanly");
         }
         Action::ReplaceTxn {
@@ -2940,8 +3028,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                 .with_hint(hint)
                 .with_cursor(start);
-            st.doc
-                .apply(txn)
+            st.apply_txn(txn)
                 .expect("planned transaction applies cleanly");
             if pop {
                 st.view.replace_stack.pop();
@@ -2951,19 +3038,19 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             }
         }
         Action::Undo => {
-            let placed = st.doc.undo_from(entry_cursor);
+            let placed = st.with_tracked(|d, t| d.undo_tracked(entry_cursor, t));
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
         }
         Action::Redo => {
-            let placed = st.doc.redo_from(entry_cursor);
+            let placed = st.with_tracked(|d, t| d.redo_tracked(entry_cursor, t));
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
         }
         Action::UndoChrono { older } => {
-            let placed = st.doc.chronological_from(older, entry_cursor);
+            let placed = st.with_tracked(|d, t| d.chronological_tracked(older, entry_cursor, t));
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
         }
         Action::LineUndo => {
-            nav_target = st.doc.line_undo(entry_cursor);
+            nav_target = st.with_tracked(|d, t| d.line_undo_tracked(entry_cursor, t));
         }
         Action::JumpChange { older } => {
             nav_target = st.view.nav_change(older);
@@ -3007,8 +3094,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                     .with_hint(hint)
                     .with_cursor(start);
-                st.doc
-                    .apply(txn)
+                st.apply_txn(txn)
                     .expect("planned transaction applies cleanly");
             }
             // Retain this block's geometry so a later `.` (dot-repeat) can rebuild an equivalent block at
@@ -3164,15 +3250,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // toggle, since both are selection modes — and clear it on any exit to Normal/Insert.
     match (was_selection, st.view.mode.selection().is_some()) {
         (false, true) => st.view.anchor = Some(entry_cursor),
-        (_, false) => {
-            // Leaving a selection: remember it (anchor, active end, kind) for `gv` BEFORE dropping the
-            // anchor — the depth-1 slice of D-027's `` `< ``/`` `> `` history. Only fires on an actual exit
-            // (entry_selection is None when we were already in Normal), so a plain Normal command is inert.
-            if let (Some(kind), Some(a)) = (entry_selection, entry_anchor) {
-                st.view.last_visual = Some((a, entry_cursor, kind));
-            }
-            st.view.anchor = None;
-        }
+        // Leaving a selection (remembered for `gv` above, before the edit) drops the anchor.
+        (_, false) => st.view.anchor = None,
         (true, true) => {}
     }
     // A text object in a selection mode overrides the anchor to span the object (both ends move at once).

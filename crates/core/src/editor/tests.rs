@@ -2865,6 +2865,27 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn apply_edits_is_atomic_and_carries_the_cursor() {
+        // #716: one bad edit refuses the whole batch, a split UTF-8 character is refused, and the cursor
+        // moves with the text an edit above it shifts.
+        let lsp = crate::TransactionOrigin::Lsp;
+        let mut st = EditorState::new(b"abcdef".to_vec());
+        assert!(!st.apply_edits(
+            &[(0, 1, "X".to_string()), (1000, 1001, "Y".to_string())],
+            lsp
+        ));
+        assert_eq!(text(&st), "abcdef");
+        let mut st = EditorState::new("한글".as_bytes().to_vec());
+        assert!(!st.apply_edits(&[(1, 2, "X".to_string())], lsp));
+        assert_eq!(text(&st), "한글");
+        let mut st = EditorState::new(b"one\ntwo\n".to_vec());
+        st.set_cursor(5);
+        assert!(st.apply_edits(&[(0, 0, "AAAAAAA\n".to_string())], lsp));
+        assert_eq!(st.cursor(), 13);
+        assert_eq!(&text(&st)[13..14], "w");
+    }
+
+    #[test]
     fn open_line_indent_seeds_leading_whitespace() {
         // `o` with level 2 opens a new line below of 2×tab_width (=8) spaces, cursor after them.
         let st = run(

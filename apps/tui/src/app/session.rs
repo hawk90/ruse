@@ -648,7 +648,7 @@ impl Session {
         };
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
-        line_idx.refresh(revision, &snapshot);
+        line_idx.refresh_for(ws.focused_buffer(), revision, &snapshot);
         // Fold reconcile (per frame): (a) shift/drop folds when the buffer's line count changed since
         // last frame — approximating the edit point as the cursor line; (b) snap the cursor OUT of any closed
         // fold onto its summary (start) line, so it never rests on a hidden row.
@@ -3570,7 +3570,8 @@ impl Session {
             let f = self.ws.focused();
             (f.doc.revision(), f.doc.text_arc())
         };
-        self.line_idx.refresh(revision, &snapshot);
+        self.line_idx
+            .refresh_for(self.ws.focused_buffer(), revision, &snapshot);
         let rects = window_rects(
             frame.cols,
             frame.text_rows,
@@ -4090,7 +4091,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 active
                     .map(|p| {
                         cached_search
-                            .spans(revision, snapshot, visible.clone(), &p)
+                            .spans_in(
+                                s.ws.focused_buffer(),
+                                revision,
+                                snapshot,
+                                visible.clone(),
+                                &p,
+                            )
                             .to_vec()
                     })
                     .unwrap_or_default()

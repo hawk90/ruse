@@ -21,6 +21,14 @@ benches:
     edit_apply/1000: "8.8 us"       # was 14.4us (Arc<[u8]> double-copy); Arc<Vec<u8>> move -> -42%
     edit_apply/10000: "15.2 us"     # was 26us -> -37%
     edit_apply/100000: "92 us"      # was 1.18ms -> -92% (element-wise Arc<[u8]>::from was the cost)
+  anchor_apply:                     # #686/#1122 per-edit anchor cost. DEV-PROFILE numbers (2026-11-03, no
+                                    # release build on that run): regenerate with `ruse bench`. Store before
+                                    # (sort per edit): 1000 43us, 100000 4.2ms, 400000 16.8ms, same profile.
+    anchor_apply/store/1000: "1.1 us"
+    anchor_apply/store/100000: "2.1 us"
+    anchor_apply/store/400000: "2.5 us"
+    anchor_apply/g_normal/1000: "179 us"
+    anchor_apply/g_normal/100000: "289 us"
   line_math:                        # the O(buffer) pos:: scan the LineIndex replaces on the hot path
     line_of_end/1000: "6.6 us"
     line_of_end/10000: "61 us"

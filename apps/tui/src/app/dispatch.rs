@@ -229,6 +229,10 @@ fn mark_error(cmd: &Command, ws: &Workspace) -> Option<String> {
         Command::GotoChangeMarkEnd | Command::GotoChangeMarkEndLine => {
             Some(view.change_mark_end().is_none())
         }
+        // `''`/`` `` `` with an empty jumplist (nvim v0.12.6, #686).
+        Command::GotoContextMark | Command::GotoContextMarkLine => {
+            Some(view.context_mark().is_none())
+        }
         _ => None,
     };
     if let Some(unset) = unset {
