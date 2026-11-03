@@ -93,6 +93,19 @@ pub enum EditorOption {
     TextWidth(usize),
 }
 
+impl EditorOption {
+    /// Whether the option is GLOBAL in Vim (`'ignorecase'`, `'smartcase'`): one value for every window,
+    /// so `:set`, `:setlocal` and `:setglobal` all write it everywhere. The others are buffer-local, and
+    /// ruse keeps their local value per View with the global copy on the Workspace.
+    #[must_use]
+    pub fn is_global(self) -> bool {
+        matches!(
+            self,
+            EditorOption::IgnoreCase(_) | EditorOption::SmartCase(_)
+        )
+    }
+}
+
 /// The largest value a number option holds (nvim's C `int`).
 pub const MAX_OPTION_INT: usize = i32::MAX as usize;
 
@@ -167,6 +180,19 @@ impl ViewOptions {
             }
             EditorOption::TextWidth(n) => self.text_width = n.min(MAX_OPTION_INT),
         }
+    }
+
+    /// These values as the `:set`s that would install them (`ic`, `scs`, `ts`, `sw`, `et`, `tw`; `sw` is
+    /// the raw value, `0` follows `ts`).
+    pub(crate) fn editing_options(self) -> Vec<EditorOption> {
+        vec![
+            EditorOption::IgnoreCase(self.search_case.ignore),
+            EditorOption::SmartCase(self.search_case.smart),
+            EditorOption::TabStop(self.indent.tab_width),
+            EditorOption::ShiftWidth(self.indent.shift_width),
+            EditorOption::ExpandTab(self.indent.style == IndentStyle::Space),
+            EditorOption::TextWidth(self.text_width),
+        ]
     }
 
     /// Set the tabstop AND the shiftwidth to `tab_width`, and the indent style ([`EditorState::set_indent`]).
@@ -882,14 +908,7 @@ impl View {
     /// the replaying machine's config (RFC-0020 R4). `sw` is the raw value (`0` follows `ts`).
     #[must_use]
     pub fn editing_options(&self) -> Vec<EditorOption> {
-        vec![
-            EditorOption::IgnoreCase(self.search_case.ignore),
-            EditorOption::SmartCase(self.search_case.smart),
-            EditorOption::TabStop(self.indent.tab_width),
-            EditorOption::ShiftWidth(self.indent.shift_width),
-            EditorOption::ExpandTab(self.indent.style == IndentStyle::Space),
-            EditorOption::TextWidth(self.text_width),
-        ]
+        self.options().editing_options()
     }
 
     /// Change this View's option values through `f`.

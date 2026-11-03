@@ -8,8 +8,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Resolved, UnmatchedKey};
 use ruse_core::VisualOp;
 use ruse_core::{
-    BlockInsertKind, Command, EditorOption, ForcedWise, GlobalCmd, LineAddr, MarkOp, Mode, Motion,
-    OpKind, SearchOffset, SearchOp, SelectKind, SubFlags, SubRange, WordCase,
+    BlockInsertKind, Command, ForcedWise, GlobalCmd, LineAddr, MarkOp, Mode, Motion, OpKind,
+    SearchOffset, SearchOp, SelectKind, SubFlags, SubRange, WordCase,
 };
 
 /// Neovim's count ceiling: a typed count, and an operator count times a motion count (`3d2w` = 6), clamp
@@ -2130,6 +2130,12 @@ impl InputEngine {
     /// `:set (no)tildeop` — whether `~` is an operator ([`InputEngine::tildeop`]).
     pub fn set_tildeop(&mut self, on: bool) {
         self.tildeop = on;
+    }
+
+    /// Whether `'tildeop'` is on.
+    #[must_use]
+    pub fn tildeop(&self) -> bool {
+        self.tildeop
     }
 
     /// Install/replace one Lang-Arg mapping (`:lmap {lhs} {rhs}`, F-027). MVP is single-char → single-char.
@@ -4403,6 +4409,7 @@ mod ex;
 mod ex_cmd;
 mod ex_extra;
 mod nvim_options;
+pub(crate) mod set_cmd;
 pub(crate) use ex::reuse_last_search;
 pub(crate) use ex_cmd::full_command_name;
 pub use ex_cmd::{strip_modifiers, ExModifiers};

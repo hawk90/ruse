@@ -370,6 +370,12 @@ features:
     # :set option names and values), the wildmenu cycles with <Tab>/CTRL-N/<Right> and back, CTRL-E/CTRL-Y
     # cancel/accept, <Up>/<Down> walk directories, CTRL-D lists, CTRL-L/CTRL-A insert; a popup menu above
     # the line. Sources are pluggable (Completer::register). The `/` line completes nothing (as nvim).
+    # #614: the full :set grammar (input/set_cmd.rs, app/set_exec.rs) at nvim v0.12.6: many options per
+    # command, opt / noopt / invopt / opt! / opt? / opt& / opt&vim / opt< / opt=v / opt:v / += / -= / ^=,
+    # :set all, all&, bare :set (options that differ from ruse's default), :setlocal / :setglobal (local
+    # per View for ts/sw/et/tw with the Workspace's global copy; ic/scs are global and reach every window),
+    # nvim's messages (E474/E487/E488/E518/E521) and its stop-at-the-first-error order; 'scrolloff' is
+    # settable. `&` restores ruse's default, `&vim` Vim's. The config loader is the follow-up (#614 part 2).
     status: done
     depends_on: [C-INPUT, C-COMMAND]
     summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.

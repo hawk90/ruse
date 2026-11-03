@@ -91,7 +91,10 @@ fn tildeop_makes_tilde_an_operator() {
         text(THREE, ":set top<CR>:set notop<CR>~"),
         "Abc def\nghi jkl\nmno pqr\n"
     );
-    assert_eq!(run(THREE, ":set tildeop<CR>").status(), "tildeop on");
+    assert_eq!(
+        run(THREE, ":set tildeop<CR>:set top?<CR>").status(),
+        "  tildeop"
+    );
 }
 
 #[test]

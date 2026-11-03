@@ -78,6 +78,8 @@ const COMMANDS: &[ExCommand] = &[
     cmd("put", 2, "put"),
     cmd("sort", 3, "sort"),
     cmd("set", 2, "set"),
+    cmd("setlocal", 4, "setlocal"),
+    cmd("setglobal", 4, "setglobal"),
     cmd("earlier", 2, "earlier"),
     cmd("later", 3, "later"),
     cmd("substitute", 1, "s"),

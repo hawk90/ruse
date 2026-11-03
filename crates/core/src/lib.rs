@@ -109,4 +109,4 @@ pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};
 pub use undo::{MonotonicSeq, UndoHistory, UndoStep};
 pub use undo_cursor::UndoCursor;
-pub use workspace::{Pane, SplitDir, ViewId, Window, Workspace};
+pub use workspace::{OptionLevel, Pane, SplitDir, ViewId, Window, Workspace};

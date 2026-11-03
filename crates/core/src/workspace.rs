@@ -1320,12 +1320,50 @@ impl Workspace {
     /// Set one `:set` option on the focused view and as the global value every View created afterward
     /// takes (Vim's `:set` writes both the local and the global value, #754).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
-        self.defaults.set(opt);
-        let vid = self.windows[self.focus].view;
-        if let Some(v) = self.views[vid.0].as_mut() {
-            v.update_options(|o| o.set(opt));
+        self.set_option_in(opt, OptionLevel::Both);
+    }
+
+    /// Set one option at `level` (`:set`, `:setlocal` or `:setglobal`). A local value lives on the
+    /// focused View, the global one on [`Workspace::defaults`], which every View created afterward takes.
+    /// A Vim-global option ([`crate::editor::EditorOption::is_global`]) has one value, so every level
+    /// writes the global value AND every open View.
+    pub fn set_option_in(&mut self, opt: crate::editor::EditorOption, level: OptionLevel) {
+        if opt.is_global() {
+            self.defaults.set(opt);
+            for v in self.views.iter_mut().flatten() {
+                v.update_options(|o| o.set(opt));
+            }
+            return;
+        }
+        if level != OptionLevel::Local {
+            self.defaults.set(opt);
+        }
+        if level != OptionLevel::Global {
+            let vid = self.windows[self.focus].view;
+            if let Some(v) = self.views[vid.0].as_mut() {
+                v.update_options(|o| o.set(opt));
+            }
         }
     }
+
+    /// The GLOBAL values of the options the core reads (the `:setglobal` copy new Views take), in the
+    /// order of [`EditorState::editing_options`]. The focused View's local values are
+    /// `self.focused().view.editing_options()`.
+    #[must_use]
+    pub fn global_editing_options(&self) -> Vec<crate::editor::EditorOption> {
+        self.defaults.editing_options()
+    }
+}
+
+/// Which copy of an option a set writes: Vim's `:set` (both), `:setlocal` or `:setglobal`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OptionLevel {
+    /// `:set` — the focused View's local value and the global value.
+    Both,
+    /// `:setlocal` — the focused View's local value only.
+    Local,
+    /// `:setglobal` — the global value only (what Views created afterward take).
+    Global,
 }
 
 #[cfg(test)]
@@ -2259,6 +2297,40 @@ mod tests {
         );
         w.apply(&Command::DeleteUnder(1));
         assert_eq!(w.focused().doc.bytes(), b"999\n11\n22\n3\n");
+    }
+
+    /// `:setlocal` writes the focused View, `:setglobal` the copy new Views take, `:set` both; a
+    /// Vim-global option reaches every open View at any level (#614).
+    #[test]
+    fn set_option_levels() {
+        use crate::editor::EditorOption;
+        let ts = |opts: Vec<EditorOption>| {
+            opts.into_iter()
+                .find_map(|o| match o {
+                    EditorOption::TabStop(n) => Some(n),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let mut w = ws();
+        w.set_option_in(EditorOption::TabStop(3), OptionLevel::Local);
+        assert_eq!(ts(w.focused().view.editing_options()), 3);
+        assert_eq!(ts(w.global_editing_options()), 4);
+        w.set_option_in(EditorOption::TabStop(6), OptionLevel::Global);
+        assert_eq!(ts(w.focused().view.editing_options()), 3);
+        assert_eq!(ts(w.global_editing_options()), 6);
+        let id = w.add_buffer(b"x".to_vec(), None);
+        w.focus_buffer(id);
+        assert_eq!(ts(w.focused().view.editing_options()), 6);
+        // `ignorecase` is global: a `:setlocal` in one window reaches the other.
+        w.split(SplitDir::Horizontal);
+        w.set_option_in(EditorOption::IgnoreCase(true), OptionLevel::Local);
+        w.focus_next();
+        assert!(w
+            .focused()
+            .view
+            .editing_options()
+            .contains(&EditorOption::IgnoreCase(true)));
     }
 
     /// `:set ignorecase` flips the focused view's search case, observable through `:s` matching.

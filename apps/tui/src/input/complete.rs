@@ -781,7 +781,7 @@ mod tests {
             ["tabstop", "thesaurus", "thesaurusfunc"]
         );
         assert_eq!(texts("set nonu").unwrap(), ["number"]);
-        assert_eq!(texts("se").unwrap(), ["set"]);
+        assert_eq!(texts("se").unwrap(), ["set", "setglobal", "setlocal"]);
         assert_eq!(
             texts("set ").unwrap()[..3],
             ["all", "allowrevins", "ambiwidth"]

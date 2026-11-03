@@ -742,53 +742,63 @@ mod tests {
         assert!(matches!(parse_ex("earlier x"), Ex::Unknown(_)));
     }
 
+    /// The `:set` arguments `line` parses to, and the error that stopped it.
+    fn set_args(line: &str) -> (Vec<crate::input::set_cmd::SetArg>, Option<String>) {
+        match parse_ex(line) {
+            Ex::SetOptions(l) => (l.args.into_iter().map(|(a, _)| a).collect(), l.error),
+            other => panic!("{line}: {other:?}"),
+        }
+    }
+
     #[test]
     fn parse_set_options() {
-        use ruse_core::EditorOption;
-        assert_eq!(parse_ex("set ic"), Ex::Set(EditorOption::IgnoreCase(true)));
+        use crate::input::set_cmd::{AssignOp, Opt, RawVal, SetArg};
+        let one = |line: &str| {
+            let (args, err) = set_args(line);
+            assert_eq!(err, None, "{line}");
+            args.into_iter().next().expect(line)
+        };
+        let num = |opt, n| SetArg::Assign {
+            opt,
+            op: AssignOp::Set,
+            val: RawVal::Num(n),
+        };
+        assert_eq!(one("set ic"), SetArg::Bool(Opt::IgnoreCase, true));
         assert_eq!(
-            parse_ex("set noignorecase"),
-            Ex::Set(EditorOption::IgnoreCase(false))
+            one("set noignorecase"),
+            SetArg::Bool(Opt::IgnoreCase, false)
         );
-        assert_eq!(parse_ex("set scs"), Ex::Set(EditorOption::SmartCase(true)));
-        assert_eq!(
-            parse_ex("set expandtab"),
-            Ex::Set(EditorOption::ExpandTab(true))
-        );
-        assert_eq!(
-            parse_ex("set noet"),
-            Ex::Set(EditorOption::ExpandTab(false))
-        );
-        assert_eq!(parse_ex("set sw=2"), Ex::Set(EditorOption::ShiftWidth(2)));
-        assert_eq!(
-            parse_ex("set shiftwidth=8"),
-            Ex::Set(EditorOption::ShiftWidth(8))
-        );
+        assert_eq!(one("set scs"), SetArg::Bool(Opt::SmartCase, true));
+        assert_eq!(one("set expandtab"), SetArg::Bool(Opt::ExpandTab, true));
+        assert_eq!(one("set noet"), SetArg::Bool(Opt::ExpandTab, false));
+        assert_eq!(one("set sw=2"), num(Opt::ShiftWidth, 2));
+        assert_eq!(one("set shiftwidth=8"), num(Opt::ShiftWidth, 8));
         // `tabstop` is its own option, not an alias of `shiftwidth` (#601).
-        assert_eq!(parse_ex("set ts=8"), Ex::Set(EditorOption::TabStop(8)));
-        assert_eq!(parse_ex("set tabstop=2"), Ex::Set(EditorOption::TabStop(2)));
+        assert_eq!(one("set ts=8"), num(Opt::TabStop, 8));
+        assert_eq!(one("set tabstop=2"), num(Opt::TabStop, 2));
         // An option nvim does not know is E518 (#1087); a misused or mistyped one E474/E521; one nvim
         // knows but ruse does not implement only says so.
-        let fail = |s: &str| Ex::Fail(s.into());
-        assert_eq!(parse_ex("set bogus"), fail("E518: Unknown option: bogus"));
+        let err = |line: &str| set_args(line).1;
         assert_eq!(
-            parse_ex("set nobogus"),
-            fail("E518: Unknown option: nobogus")
-        );
-        assert_eq!(parse_ex("set nosw"), fail("E474: Invalid argument: nosw"));
-        assert_eq!(
-            parse_ex("set sw=x"),
-            fail("E521: Number required after =: sw=x")
+            err("set bogus").as_deref(),
+            Some("E518: Unknown option: bogus")
         );
         assert_eq!(
-            parse_ex("set nonumber"),
-            fail("option not supported: nonumber")
+            err("set nobogus").as_deref(),
+            Some("E518: Unknown option: nobogus")
         );
         assert_eq!(
-            parse_ex("set invwrap"),
-            fail("option not supported: invwrap")
+            err("set nosw").as_deref(),
+            Some("E474: Invalid argument: nosw")
         );
-        assert!(matches!(parse_ex("set"), Ex::Unknown(_)));
+        assert_eq!(
+            err("set sw=x").as_deref(),
+            Some("E521: Number required after =: sw=x")
+        );
+        assert_eq!(one("set nonumber"), SetArg::Unsupported("number".into()));
+        assert_eq!(one("set invwrap"), SetArg::Unsupported("wrap".into()));
+        // A bare `:set` lists the changed options.
+        assert_eq!(set_args("set"), (vec![], None));
     }
 
     #[test]
@@ -1361,12 +1371,14 @@ mod tests {
 
     #[test]
     fn set_textwidth_parses() {
-        use ruse_core::EditorOption;
-        assert_eq!(
-            parse_ex("set textwidth=72"),
-            Ex::Set(EditorOption::TextWidth(72))
-        );
-        assert_eq!(parse_ex("set tw=0"), Ex::Set(EditorOption::TextWidth(0)));
+        use crate::input::set_cmd::{AssignOp, Opt, RawVal, SetArg};
+        let tw = |n| SetArg::Assign {
+            opt: Opt::TextWidth,
+            op: AssignOp::Set,
+            val: RawVal::Num(n),
+        };
+        assert_eq!(set_args("set textwidth=72"), (vec![tw(72)], None));
+        assert_eq!(set_args("set tw=0"), (vec![tw(0)], None));
     }
 
     #[test]

@@ -114,8 +114,9 @@ pub enum Ex {
         /// `:put!` — above the addressed line instead of below it.
         above: bool,
     },
-    /// `:set {option}` — set one editor option on the focused view (F-009 / indent config).
-    Set(EditorOption),
+    /// `:set` / `:setlocal` / `:setglobal` and its arguments (#614, `set_cmd.rs`). The session runs it
+    /// against the option values it and the core hold.
+    SetOptions(super::set_cmd::SetLine),
     /// `:earlier [N]` / `:ea` — go back N changes in chronological (branch-aware) undo time (F-005 #3).
     Earlier(u32),
     /// `:later [N]` / `:lat` — go forward N changes in chronological undo time (F-005 #3).
@@ -141,25 +142,6 @@ pub enum Ex {
     Global(GlobalSpec),
     /// `:noh` / `:nohlsearch` — clear the search highlight (F-009 #1).
     NoHighlight,
-    /// `:set (no)hlsearch` — toggle persistent search-match highlighting (frontend render preference; ON by
-    /// default). Distinct from `:noh`, which is a one-shot clear that leaves the option on.
-    SetHlSearch(bool),
-    /// `:set (no)incsearch` — toggle incremental highlight while typing `/`…`?` (frontend; ON by default).
-    SetIncSearch(bool),
-    /// `:set (no)fixeol` / `(no)fixendofline` — opt-in: on save, ADD a final `\n` when the buffer lacks one
-    /// (frontend write preference; OFF by default — byte-preserve is the honest default). Vim's fixendofline.
-    SetFixEol(bool),
-    /// `:set (no)tildeop` / `:set (no)top` — `~` as an operator (an input-engine option).
-    SetTildeOp(bool),
-    /// `:set foldmethod=indent|manual` (`fdm`) — select how folds are formed for the focused buffer (folds
-    /// are a frontend concern; slice 3). `manual` keeps the hand-made `zf` model; `indent` derives nested
-    /// folds from indentation. Handled in the run loop.
-    SetFoldMethod(FoldMethod),
-    /// `:set foldlevel=N` (`fdl`) — folds deeper than `N` are closed under `foldmethod=indent` (frontend).
-    SetFoldLevel(usize),
-    /// `:set (no)foldenable` (`fen`) — master switch: when off, no fold is closed regardless of foldlevel
-    /// (Vim's `zn`/`zN`; frontend render state). ON by default.
-    SetFoldEnable(bool),
     /// `:lmap {lhs} {rhs}` — install a Lang-Arg (`lmap`) mapping (F-027). Single-char lhs/rhs for MVP.
     Lmap {
         lhs: char,
@@ -417,120 +399,6 @@ fn parse_time_travel(line: &str) -> Option<Ex> {
         "later" | "lat" => Some(Ex::Later(n)),
         _ => None,
     }
-}
-
-/// Parse `:set {option}` for the options this MVP honors: `ignorecase`/`ic`, `smartcase`/`scs`,
-/// `expandtab`/`et` (each with a `no` prefix to turn off), and `shiftwidth`/`sw`, `tabstop`/`ts` and
-/// `textwidth`/`tw` `=N`. `tabstop` and `shiftwidth` are distinct options (#601); `sw=0` follows `ts`.
-/// Any other option is [`Ex::Fail`]: `E518` for a name nvim does not know either, `E521` for a number
-/// option given something else, and a plain notice for an nvim option ruse does not implement. A bare
-/// `:set` (no option) is not handled here.
-fn parse_set(line: &str) -> Option<Ex> {
-    let opt = line
-        .strip_prefix("set ")
-        .or_else(|| line.strip_prefix("se "))?
-        .trim();
-    Some(parse_set_option(opt).unwrap_or_else(|| Ex::Fail(set_error(opt))))
-}
-
-/// Why `:set {opt}` cannot be honoured (see [`parse_set`]).
-fn set_error(opt: &str) -> String {
-    use super::nvim_options::{NVIM_BOOLEAN_OPTIONS, NVIM_OPTIONS};
-    let token = opt.split_whitespace().next().unwrap_or(opt);
-    let name_end = token
-        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-        .unwrap_or(token.len());
-    let name = &token[..name_end];
-    let known = |n: &str| NVIM_OPTIONS.split(' ').any(|o| o == n);
-    let boolean = |n: &str| NVIM_BOOLEAN_OPTIONS.split(' ').any(|o| o == n);
-    let negated = |prefix: &str| name.strip_prefix(prefix).is_some_and(boolean);
-    if name.is_empty() || !(known(name) || negated("no") || negated("inv")) {
-        // `no`/`inv` before an option that is not a boolean is E474 (`:set nosw`).
-        let misused = |prefix: &str| name.strip_prefix(prefix).is_some_and(known);
-        if misused("no") || misused("inv") {
-            return format!("E474: Invalid argument: {token}");
-        }
-        return format!("E518: Unknown option: {token}");
-    }
-    let numeric = matches!(
-        name,
-        "shiftwidth" | "sw" | "tabstop" | "ts" | "textwidth" | "tw" | "foldlevel" | "fdl"
-    );
-    if numeric && token[name_end..].starts_with('=') {
-        return format!("E521: Number required after =: {token}");
-    }
-    format!("option not supported: {opt}")
-}
-
-/// The options [`parse_set`] honours, or `None`.
-fn parse_set_option(opt: &str) -> Option<Ex> {
-    // hlsearch/incsearch are frontend render preferences, not core options — return their own Ex variants.
-    match opt {
-        "hlsearch" | "hls" => return Some(Ex::SetHlSearch(true)),
-        "nohlsearch" | "nohls" => return Some(Ex::SetHlSearch(false)),
-        "incsearch" | "is" => return Some(Ex::SetIncSearch(true)),
-        "noincsearch" | "nois" => return Some(Ex::SetIncSearch(false)),
-        "fixeol" | "fixendofline" => return Some(Ex::SetFixEol(true)),
-        "nofixeol" | "nofixendofline" => return Some(Ex::SetFixEol(false)),
-        "tildeop" | "top" => return Some(Ex::SetTildeOp(true)),
-        "notildeop" | "notop" => return Some(Ex::SetTildeOp(false)),
-        // Fold options (frontend; slice 3). `foldenable`/`fen` bool + `no` prefix.
-        "foldenable" | "fen" => return Some(Ex::SetFoldEnable(true)),
-        "nofoldenable" | "nofen" => return Some(Ex::SetFoldEnable(false)),
-        _ => {}
-    }
-    let ex = match opt {
-        "ignorecase" | "ic" => EditorOption::IgnoreCase(true),
-        "noignorecase" | "noic" => EditorOption::IgnoreCase(false),
-        "smartcase" | "scs" => EditorOption::SmartCase(true),
-        "nosmartcase" | "noscs" => EditorOption::SmartCase(false),
-        "expandtab" | "et" => EditorOption::ExpandTab(true),
-        "noexpandtab" | "noet" => EditorOption::ExpandTab(false),
-        _ => {
-            let (k, v) = opt.split_once('=')?;
-            let k = k.trim();
-            let v = v.trim();
-            // Fold `=`-valued options (frontend; slice 3) are parsed before the numeric core options.
-            match k {
-                "foldmethod" | "fdm" => {
-                    return match v {
-                        "indent" => Some(Ex::SetFoldMethod(FoldMethod::Indent)),
-                        "manual" => Some(Ex::SetFoldMethod(FoldMethod::Manual)),
-                        // expr/syntax/marker/diff are deferred — unknown value → no-op (Unknown).
-                        _ => None,
-                    };
-                }
-                "foldlevel" | "fdl" => return Some(Ex::SetFoldLevel(v.parse().ok()?)),
-                _ => {}
-            }
-            let is = |names: [&str; 2]| names.contains(&k);
-            let numeric =
-                is(["shiftwidth", "sw"]) || is(["tabstop", "ts"]) || is(["textwidth", "tw"]);
-            let n: usize = match v.parse() {
-                Ok(n) => n,
-                // Too many digits for any number option.
-                Err(_) if numeric && !v.is_empty() && v.bytes().all(|c| c.is_ascii_digit()) => {
-                    return Some(Ex::Fail(format!("E474: Invalid argument: {opt}")));
-                }
-                Err(_) => return None,
-            };
-            // nvim's bounds (v0.12.6, #684): a number option holds a C `int`, and `'tabstop'` is 1..=9999
-            // (`TABSTOP_MAX`). An unbounded `'shiftwidth'` let `>>` allocate without limit.
-            if is(["tabstop", "ts"]) && n == 0 {
-                return Some(Ex::Fail(format!("E487: Argument must be positive: {opt}")));
-            }
-            if (is(["tabstop", "ts"]) && n > 9999) || (numeric && n > i32::MAX as usize) {
-                return Some(Ex::Fail(format!("E474: Invalid argument: {opt}")));
-            }
-            match k {
-                "shiftwidth" | "sw" => EditorOption::ShiftWidth(n),
-                "tabstop" | "ts" => EditorOption::TabStop(n),
-                "textwidth" | "tw" => EditorOption::TextWidth(n),
-                _ => return None,
-            }
-        }
-    };
-    Some(Ex::Set(ex))
 }
 
 /// Parse `:[range]sort[!] [b][i][l][n][o][r][u][x] [/pattern/]` (`sort`/`sor`) the way nvim's `ex_sort`
@@ -1362,8 +1230,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::Put { addr, reg, above }
             } else if let Some(ex) = parse_sort(line) {
                 ex
-            } else if let Some(ex) = parse_set(line) {
-                ex
+            } else if let Some(set) = super::set_cmd::parse_set_command(line) {
+                Ex::SetOptions(set)
             } else if let Some(ex) = parse_time_travel(line) {
                 ex
             } else if let Some(spec) = parse_substitute(line, false) {
@@ -2570,54 +2438,28 @@ mod read_filter_parse_tests {
 }
 
 #[cfg(test)]
-mod set_hlsearch_incsearch_tests {
+mod set_command_tests {
+    use super::super::set_cmd::{Opt, SetArg, SetScope};
     use super::*;
 
-    #[test]
-    fn parses_hlsearch_and_incsearch_toggles() {
-        assert_eq!(parse_ex("set hlsearch"), Ex::SetHlSearch(true));
-        assert_eq!(parse_ex("set nohls"), Ex::SetHlSearch(false));
-        assert_eq!(parse_ex("set incsearch"), Ex::SetIncSearch(true));
-        assert_eq!(parse_ex("set nois"), Ex::SetIncSearch(false));
-        // The abbreviations still resolve, and unrelated options are untouched.
-        assert_eq!(parse_ex("set hls"), Ex::SetHlSearch(true));
-        assert_eq!(parse_ex("set ic"), Ex::Set(EditorOption::IgnoreCase(true)));
+    fn set(line: &str) -> super::super::set_cmd::SetLine {
+        match parse_ex(line) {
+            Ex::SetOptions(l) => l,
+            other => panic!("{line}: {other:?}"),
+        }
     }
 
     #[test]
-    fn parses_fixeol_toggles() {
-        assert_eq!(parse_ex("set fixeol"), Ex::SetFixEol(true));
-        assert_eq!(parse_ex("set nofixeol"), Ex::SetFixEol(false));
-        // Vim's long spelling resolves the same way.
-        assert_eq!(parse_ex("set fixendofline"), Ex::SetFixEol(true));
-        assert_eq!(parse_ex("set nofixendofline"), Ex::SetFixEol(false));
-    }
-
-    #[test]
-    fn parses_fold_options() {
-        // foldmethod (fdm): only manual/indent are honored; the deferred methods are Unknown.
+    fn set_words_reach_the_set_grammar() {
+        assert_eq!(set("set hls").args[0].0, SetArg::Bool(Opt::HlSearch, true));
         assert_eq!(
-            parse_ex("set foldmethod=indent"),
-            Ex::SetFoldMethod(FoldMethod::Indent)
+            set("set nofixeol").args[0].0,
+            SetArg::Bool(Opt::FixEol, false)
         );
-        assert_eq!(
-            parse_ex("set fdm=manual"),
-            Ex::SetFoldMethod(FoldMethod::Manual)
-        );
-        // nvim's other fold methods are known options ruse does not implement: a notice, not an error.
-        assert_eq!(
-            parse_ex("set foldmethod=expr"),
-            Ex::Fail("option not supported: foldmethod=expr".into())
-        );
-        assert!(matches!(parse_ex("set fdm=marker"), Ex::Fail(_)));
-        // foldlevel (fdl) = N.
-        assert_eq!(parse_ex("set foldlevel=2"), Ex::SetFoldLevel(2));
-        assert_eq!(parse_ex("set fdl=0"), Ex::SetFoldLevel(0));
-        // foldenable (fen) bool + `no` prefix.
-        assert_eq!(parse_ex("set foldenable"), Ex::SetFoldEnable(true));
-        assert_eq!(parse_ex("set nofoldenable"), Ex::SetFoldEnable(false));
-        assert_eq!(parse_ex("set fen"), Ex::SetFoldEnable(true));
-        assert_eq!(parse_ex("set nofen"), Ex::SetFoldEnable(false));
+        assert_eq!(set("setlocal ts=2").scope, SetScope::Local);
+        assert_eq!(set("setglobal ts?").scope, SetScope::Global);
+        // A bare `:set` lists the changed options.
+        assert!(set("set").args.is_empty() && set("set").error.is_none());
     }
 }
 

@@ -19825,6 +19825,656 @@
       }
     },
     {
+      "name": "set_grammar_many_args_shift",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>>>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "\tx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_add_sub_mul_shift",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=2 et<CR>:set sw+=4 sw-=2 sw^=2<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "        x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_bang_toggles",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 et<CR>:set et!<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "\tx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_inv_toggles",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>:set invet<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "        x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_vim_defaults",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=2 sw=2 et<CR>:set ts&vim sw&vim et&vim<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "\tx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_e518_stops_later_args",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:set sw=2 bogus sw=6<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E518",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_e487_sub_below_zero",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=0 et<CR>:set sw-=1<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "        x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E487",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_e474_bool_value",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>:set et=1<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "    x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_e474_no_number",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:set nosw<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "    x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_e488_trailing",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:set sw=2 et?x<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_e521_not_a_number",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:set sw=2x<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "    x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E521",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_e474_tabstop_too_big",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=0 et<CR>:set ts=10000<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "        x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_e487_tabstop_zero",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=0 et<CR>:set ts=0<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "        x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E487",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_grammar_hex_octal_values",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=0x8 sw=010 et<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "        x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_blank_before_equals",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw =2 et<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_colon_assigns",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts:8 sw:3 et<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "   x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_comment_ends_args",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=2 et \"sw=6<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_unknown_keycode_ignored",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 t_xx=1 sw=2 et<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "setlocal_shift",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:setlocal sw=2<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "setglobal_keeps_local",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:setglobal sw=2<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "    x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "setlocal_takes_global",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:setglobal sw=2<CR>:setlocal sw<<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "setl_abbreviation",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>:setl sw=3<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "   x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_ic_toggle_search",
+      "lines": [
+        "a",
+        "FOO"
+      ],
+      "keys": ":set noic<CR>:set ic!<CR>/foo<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "FOO"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_grammar_ic_vim_default_search",
+      "lines": [
+        "a",
+        "FOO"
+      ],
+      "keys": ":set ic<CR>:set ic&vim<CR>/foo<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "FOO"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
       "name": "ts_sw_apart_shift_motion",
       "lines": [
         "a",

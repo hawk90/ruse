@@ -42,8 +42,9 @@ use crate::{graphics, health, highlight, indent, line_index, persist, recover, s
 #[cfg(unix)]
 use crate::{pty, term_buffer};
 
-/// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
-const SCROLLOFF: usize = 3;
+/// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`): ruse's default
+/// (`editor.scrolloff`), until `:set so` changes [`Session::scrolloff`].
+const SCROLLOFF: i64 = 3;
 
 /// How deep `:normal` may nest (`:normal :normal …`, or a macro that runs `:normal @a` on itself) before it
 /// fails with E192. Vim's limit is 'maxmapdepth' (1000); each level here is a few session frames on the
@@ -502,6 +503,8 @@ pub(crate) struct Session {
     /// `:set (no)fixeol` write preference; OFF by default — byte-preserve (no silent fixeol) is the honest
     /// default. When ON, `:w` ADDS a trailing `\n` if the buffer lacks one (Vim's fixendofline).
     fixeol_on: bool,
+    /// `'scrolloff'` as set (nvim keeps any number; a negative one keeps no context here).
+    scrolloff: i64,
     /// The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
     last_substitute: Option<(String, String, ruse_core::SubFlags)>,
     /// The last executed Ex command-line (WITHOUT the leading `:`) — Vim's `":` register (`:help quote_:`),
@@ -620,6 +623,7 @@ impl Session {
             hlsearch_on: true,
             incsearch_on: true,
             fixeol_on: false,
+            scrolloff: SCROLLOFF,
             last_substitute: None,
             last_ex_line: None,
             last_shell: None,
@@ -664,6 +668,7 @@ impl Session {
     /// the line index, reconcile folds, publish the crash-rescue state, follow a `:s///c` match, and scroll
     /// each pane to its cursor. `cols`×`term_rows` is the terminal size.
     pub(crate) fn pre_frame(&mut self, cols: u16, term_rows: u16) -> FrameCtx {
+        let so = self.scrolloff_rows();
         let Session {
             ws,
             files,
@@ -811,7 +816,7 @@ impl Session {
                     p.view.doc() == ws.focused().view.doc(),
                 )
             };
-            let mut new_top = viewport::scroll_top(cursor_row, rect.h as usize, SCROLLOFF, cur_top);
+            let mut new_top = viewport::scroll_top(cursor_row, rect.h as usize, so, cur_top);
             // 'scrolloff' never scrolls past the buffer end (Vim): a scroll DOWN stops once the last line
             // is on the bottom row. A view already further down (`C-f` on the last page) is left alone.
             // (The line index is the focused buffer's.)
@@ -1063,7 +1068,13 @@ impl Session {
         self.confirm.is_some() || self.swap.is_some() || self.overlay.is_some()
     }
 
+    /// `'scrolloff'` as the rows of context the viewport keeps.
+    fn scrolloff_rows(&self) -> usize {
+        usize::try_from(self.scrolloff).unwrap_or(0)
+    }
+
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
+        let so = self.scrolloff_rows();
         let overlay_open = self.overlay_open();
         let Session {
             ws,
@@ -1414,7 +1425,7 @@ impl Session {
                     // `{count}z^`: put line `count` at the bottom (keeping 'scrolloff'), then the line now at
                     // the top goes to the bottom.
                     (KeyCode::Char('^'), n) => {
-                        let so = SCROLLOFF.min(focused_h.saturating_sub(1) / 2);
+                        let so = so.min(focused_h.saturating_sub(1) / 2);
                         (n as usize - 1)
                             .min(last)
                             .saturating_sub(focused_h.saturating_sub(1 + so))
@@ -1724,7 +1735,7 @@ impl Session {
             let count = engine.take_count();
             let top = ws.focused().view.top();
             if let Some((new_top, row)) =
-                viewport::page_scroll(top, focused_h, SCROLLOFF, count, forward, last_line)
+                viewport::page_scroll(top, focused_h, so, count, forward, last_line)
             {
                 scroll_view(new_top, row, ws, line_idx, files, recorded, status, quit);
             }
@@ -1759,7 +1770,7 @@ impl Session {
                 top,
                 cur,
                 focused_h,
-                SCROLLOFF,
+                so,
                 amount,
                 is_ctrl(key, 'd'),
                 last_line,
@@ -1779,7 +1790,7 @@ impl Session {
                 ws.focused().view.top(),
                 cursor_row,
                 focused_h,
-                SCROLLOFF,
+                so,
                 n,
                 is_ctrl(key, 'e'),
                 last_line,
@@ -1825,7 +1836,7 @@ impl Session {
             if engine.insert_plain_text_ctx() {
                 let top = ws.focused().view.top();
                 if let Some((new_top, row)) =
-                    viewport::page_scroll(top, focused_h, SCROLLOFF, 1, forward, last_line)
+                    viewport::page_scroll(top, focused_h, so, 1, forward, last_line)
                 {
                     run_cmd(engine.insert_page_jump(), ws, files, recorded, status, quit);
                     scroll_view(new_top, row, ws, line_idx, files, recorded, status, quit);
@@ -1906,7 +1917,7 @@ impl Session {
                 line_idx.line_of(ruse_core::motion::off_phantom(snapshot, snapshot.len()));
             // Under an operator Vim IGNORES 'scrolloff' — `dH`/`dL` operate through the TRUE top/bottom visible
             // line (verified against nvim), whereas the bare cursor-motion keeps the scrolloff margin.
-            let scrolloff = if engine.has_op() { 0 } else { SCROLLOFF };
+            let scrolloff = if engine.has_op() { 0 } else { so };
             let row = viewport::screen_line(
                 ws.focused().view.top(),
                 focused_h,
@@ -2401,6 +2412,7 @@ impl Session {
             hlsearch_on,
             incsearch_on,
             fixeol_on,
+            scrolloff,
             last_substitute,
             last_shell,
             overlay,
@@ -2527,66 +2539,29 @@ impl Session {
         let mut then_run = None;
         match ex {
             Ex::NoHighlight => *search_hl = None, // `:noh` clears the search highlight (F-009 #1)
-            // `:set (no)hlsearch/incsearch` — frontend render toggles (behavior stays on by default).
-            Ex::SetHlSearch(on) => {
-                *hlsearch_on = on;
-                if !on {
-                    *search_hl = None; // turning hlsearch off also clears any live highlight (Vim)
-                }
-                *status = format!("hlsearch {}", if on { "on" } else { "off" });
-            }
-            Ex::SetIncSearch(on) => {
-                *incsearch_on = on;
-                *status = format!("incsearch {}", if on { "on" } else { "off" });
-            }
-            // `:set (no)fixeol` — opt-in trailing-newline-on-save (frontend write flag; OFF default).
-            Ex::SetFixEol(on) => {
-                *fixeol_on = on;
-                *status = format!("fixeol {}", if on { "on" } else { "off" });
-            }
-            // `:set (no)tildeop` — `~` becomes the `g~` operator (an input-engine grammar option).
-            Ex::SetTildeOp(on) => {
-                engine.set_tildeop(on);
-                *status = format!("tildeop {}", if on { "on" } else { "off" });
-            }
-            // `:set foldmethod=indent|manual` (frontend fold state, slice 3). Switching just flips the
-            // method + forces a recompute next frame; existing folds are kept (Vim keeps them).
-            Ex::SetFoldMethod(m) => {
-                let buf = ws.focused_buffer();
-                fold_method.insert(buf, m);
-                fold_rev.remove(&buf); // recompute (or leave manual folds) on the next frame
-                *status = match m {
-                    crate::input::FoldMethod::Indent => "foldmethod=indent".into(),
-                    crate::input::FoldMethod::Manual => "foldmethod=manual".into(),
+            // `:set` / `:setlocal` / `:setglobal` (#614): the grammar is `input/set_cmd.rs`, the values it
+            // reads and writes are behind `set_exec::OptionHost`.
+            Ex::SetOptions(line) => {
+                let mut host = crate::app::set_exec::OptionHost {
+                    ws,
+                    recorded,
+                    engine,
+                    hlsearch_on,
+                    search_hl,
+                    incsearch_on,
+                    fixeol_on,
+                    scrolloff,
+                    folds,
+                    fold_method,
+                    foldlevel,
+                    foldenable,
+                    fold_rev,
                 };
-            }
-            // `:set foldlevel=N` — folds deeper than N close under indent method; re-apply now.
-            Ex::SetFoldLevel(n) => {
-                let buf = ws.focused_buffer();
-                foldlevel.insert(buf, n);
-                if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent) {
-                    if let Some(fv) = folds.get_mut(&buf) {
-                        let en = foldenable.get(&buf).copied().unwrap_or(true);
-                        crate::folds::apply_foldlevel(fv, if en { n } else { usize::MAX });
-                    }
+                let out = crate::app::set_exec::run_set(&line, &mut host, cols as usize);
+                crate::app::ex_more::show_rows(out.rows, status, overlay);
+                if let Some(e) = out.error {
+                    *status = e;
                 }
-                *status = format!("foldlevel={n}");
-            }
-            // `:set (no)foldenable` — master switch; off opens everything under the indent method.
-            Ex::SetFoldEnable(on) => {
-                let buf = ws.focused_buffer();
-                foldenable.insert(buf, on);
-                if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent) {
-                    if let Some(fv) = folds.get_mut(&buf) {
-                        let fdl = if on {
-                            foldlevel.get(&buf).copied().unwrap_or(0)
-                        } else {
-                            usize::MAX
-                        };
-                        crate::folds::apply_foldlevel(fv, fdl);
-                    }
-                }
-                *status = format!("foldenable {}", if on { "on" } else { "off" });
             }
             // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
             // the request; the response is dispatched + applied (or opens a picker) on a later frame.
@@ -3294,11 +3269,6 @@ impl Session {
                     // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
                     Err(e) => regex_error_msg(&e),
                 };
-            }
-            // `:set {option}` — set one editor option on the focused view.
-            Ex::Set(opt) => {
-                run_ex(ExCmd::Set(opt), ws, recorded);
-                *status = format!("{opt:?}");
             }
             // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
             // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
