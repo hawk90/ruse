@@ -204,8 +204,8 @@ const LISTPAT: &str = r"^\s*\d\+[\]:.)}\t ]\s*";
 pub const CPO_DEFAULT: &str = "aABceFs_";
 
 /// nvim's default `'breakat'` and `'listchars'`.
-const BREAKAT: &str = crate::ui::line_layout::BREAKAT_DEFAULT;
-const LISTCHARS: &str = crate::ui::line_layout::LISTCHARS_DEFAULT;
+const BREAKAT: &str = super::display_opts::BREAKAT_DEFAULT;
+const LISTCHARS: &str = super::display_opts::LISTCHARS_DEFAULT;
 
 const FOLD_METHODS: &[&str] = &["manual", "expr", "marker", "syntax", "diff", "indent"];
 
@@ -1247,14 +1247,14 @@ pub fn assign_value(
 }
 
 /// The display options' value checks (#615, #616), as nvim's `did_set_*` callbacks make them.
-fn display_check(check: TextCheck, v: &str) -> Result<(), crate::ui::line_layout::DisplayOptError> {
-    use crate::ui::{line_layout, window_view};
+fn display_check(check: TextCheck, v: &str) -> Result<(), super::display_opts::DisplayOptError> {
+    use super::display_opts as d;
     match check {
-        TextCheck::ListChars => line_layout::parse_listchars(v).map(|_| ()),
-        TextCheck::BreakIndentOpt => line_layout::parse_briopt(v).map(|_| ()),
-        TextCheck::ShowBreak => line_layout::check_showbreak(v),
-        TextCheck::Display => window_view::check_display(v),
-        TextCheck::SignColumn => window_view::parse_signcolumn(v).map(|_| ()),
+        TextCheck::ListChars => d::parse_listchars(v).map(|_| ()),
+        TextCheck::BreakIndentOpt => d::parse_briopt(v).map(|_| ()),
+        TextCheck::ShowBreak => d::check_showbreak(v),
+        TextCheck::Display => d::check_display(v),
+        TextCheck::SignColumn => d::parse_signcolumn(v).map(|_| ()),
         _ => Ok(()),
     }
 }

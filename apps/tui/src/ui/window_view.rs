@@ -9,9 +9,10 @@
 use ruse_core::View;
 
 use crate::folds::Fold;
+pub(crate) use crate::input::display_opts::{parse_signcolumn, SignColumn};
 pub(crate) use crate::input::ScreenMotion;
 use crate::line_index::LineIndex;
-use crate::ui::line_layout::{self, BreakAt, BriOpt, DisplayOptError, LineLayout, ListChars};
+use crate::ui::line_layout::{self, BreakAt, BriOpt, LineLayout, ListChars};
 use crate::viewport::Lines;
 
 /// The global copies of the display options that are global or global-local in nvim (#615, #616).
@@ -50,69 +51,6 @@ pub(crate) enum LastLine {
     Lastline,
     /// As much as fits, the last row `@@@` (`truncate`).
     Truncate,
-}
-
-/// `'signcolumn'`, parsed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SignColumn {
-    No,
-    /// Always, `n` signs wide.
-    Yes(usize),
-    /// When the buffer has signs: at least `min`, at most `max` signs wide.
-    Auto {
-        min: usize,
-        max: usize,
-    },
-    /// In the number column (when it shows; else as `auto`).
-    Number,
-}
-
-/// Parse `'signcolumn'` (nvim's `check_signcolumn`).
-pub(crate) fn parse_signcolumn(s: &str) -> Result<SignColumn, DisplayOptError> {
-    let bad = || DisplayOptError::Invalid;
-    let digit = |t: &str| match t.as_bytes() {
-        [d @ b'1'..=b'9'] => Ok(usize::from(d - b'0')),
-        _ => Err(bad()),
-    };
-    Ok(match s {
-        "no" => SignColumn::No,
-        "yes" => SignColumn::Yes(1),
-        "auto" => SignColumn::Auto { min: 0, max: 1 },
-        "number" => SignColumn::Number,
-        _ => {
-            if let Some(n) = s.strip_prefix("yes:") {
-                SignColumn::Yes(digit(n)?)
-            } else if let Some(r) = s.strip_prefix("auto:") {
-                match r.split_once('-') {
-                    Some((a, b)) => {
-                        let (min, max) = (digit(a)?, digit(b)?);
-                        if min >= max {
-                            return Err(bad());
-                        }
-                        SignColumn::Auto { min, max }
-                    }
-                    None => SignColumn::Auto {
-                        min: 0,
-                        max: digit(r)?,
-                    },
-                }
-            } else {
-                return Err(bad());
-            }
-        }
-    })
-}
-
-/// Parse `'display'`: a comma list of `lastline`, `truncate`, `uhex` and `msgsep` (`E474` otherwise).
-pub(crate) fn check_display(s: &str) -> Result<(), DisplayOptError> {
-    if s.split(',')
-        .filter(|f| !f.is_empty())
-        .all(|f| matches!(f, "lastline" | "truncate" | "uhex" | "msgsep"))
-    {
-        Ok(())
-    } else {
-        Err(DisplayOptError::Invalid)
-    }
 }
 
 /// One window's display for a frame: its options resolved and its geometry.

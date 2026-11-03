@@ -4592,6 +4592,7 @@ use emacs::{emacs_repeat, fold_emacs_count, EmacsArg, EmacsBinding, EmacsKey, Em
 mod cmdline;
 mod cmdwin;
 pub mod complete;
+pub(crate) mod display_opts;
 mod history;
 pub use cmdline::display_with_caret;
 use cmdline::{CmdLine, ExprTarget};
