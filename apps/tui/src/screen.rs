@@ -120,6 +120,9 @@ pub fn unprintable(c: char, uhex: bool) -> Option<String> {
     if (0x80..0xa0).contains(&n) {
         return Some(format!("<{n:02x}>"));
     }
+    if n < NONPRINT[0].0 {
+        return None;
+    }
     NONPRINT
         .iter()
         .any(|&(a, b)| (a..=b).contains(&n))
@@ -132,6 +135,12 @@ pub fn unprintable(c: char, uhex: bool) -> Option<String> {
 /// inside an emoji sequence stays.
 #[must_use]
 pub fn transcribe(g: &str, uhex: bool) -> Option<String> {
+    // The common case first: one printable ASCII byte (a layout asks for every grapheme of a line).
+    if let [b] = g.as_bytes() {
+        if (0x20..0x7f).contains(b) {
+            return None;
+        }
+    }
     let first = g.chars().next()?;
     let head = unprintable(first, uhex);
     if head.is_none() && !g.chars().any(is_control) {

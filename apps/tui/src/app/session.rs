@@ -292,6 +292,7 @@ fn run_scroll(
             so,
             sms: win.smoothscroll,
             tab_end: win.tab_end(mode),
+            memo: Default::default(),
         };
         let done = match key {
             ScrollKey::Lines { up, count } => sc.scroll_lines(pos, up, count),
@@ -1116,6 +1117,7 @@ impl Session {
                     so,
                     sms: win.smoothscroll,
                     tab_end: win.tab_end(p.view.mode()),
+                    memo: Default::default(),
                 };
                 // The top line's skipped columns (#615): the cursor moved into them shows them again,
                 // and a new top line starts unskipped.
@@ -1127,7 +1129,7 @@ impl Session {
                     curswant: 0,
                 };
                 pos.skipcol = sc.uncover_cursor(&pos);
-                if !win.smoothscroll {
+                if !win.smoothscroll && pos.skipcol > 0 {
                     // Without 'smoothscroll' a scroll's leftover skipped columns are gone once the
                     // cursor has moved (nvim's `curs_columns` runs before the top line is checked).
                     pos.skipcol = sc.frame_skipcol(&pos);

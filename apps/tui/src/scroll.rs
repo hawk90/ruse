@@ -33,6 +33,9 @@ pub(crate) struct Scroll<'a> {
     pub sms: bool,
     /// The cursor on a tab shows on its last cell (Normal mode without 'list').
     pub tab_end: bool,
+    /// The last `(line, byte, virtual column)` asked for: the frame asks for the cursor's several times,
+    /// and on a huge line each answer is a scan.
+    pub memo: std::cell::Cell<Option<(usize, usize, usize)>>,
 }
 
 /// The result of a scroll command: the new position, whether it failed (nvim beeps), and whether nvim
@@ -141,7 +144,14 @@ impl Scroll<'_> {
 
     /// The cursor's virtual column on line `l` at line byte `byte` (nvim's `w_virtcol`).
     fn vcol(&self, l: usize, byte: usize) -> usize {
-        window_view::cursor_place(self.lines.win, self.lines.text, l, byte, self.tab_end).2
+        if let Some((ml, mb, v)) = self.memo.get() {
+            if (ml, mb) == (l, byte) {
+                return v;
+            }
+        }
+        let v = window_view::cursor_place(self.lines.win, self.lines.text, l, byte, self.tab_end).2;
+        self.memo.set(Some((l, byte, v)));
+        v
     }
 
     /// nvim's `coladvance(wcol)`: the line byte of the char holding virtual column `wcol`.
@@ -746,7 +756,8 @@ impl Scroll<'_> {
         let prev = p.skipcol;
         let wrow = self.wrow(p);
         let cap = vcol / w + so + height.saturating_mul(2) + 2;
-        let plines = || self.rows_capped(p.line, cap);
+        let rows = std::cell::OnceCell::new();
+        let plines = || *rows.get_or_init(|| self.rows_capped(p.line, cap));
         let tall = p.line == p.top
             && height > 0
             && (wrow >= height || ((prev > 0 || wrow + so >= height) && plines() > height));
@@ -870,6 +881,7 @@ mod tests {
             so,
             sms: false,
             tab_end: true,
+            memo: Default::default(),
         };
         let p = ViewPos {
             top,
