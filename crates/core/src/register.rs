@@ -301,13 +301,6 @@ impl RegisterStore {
         };
     }
 
-    /// Whether `name` selects one of the READ-ONLY special registers (`"/ ": ". "%`). Their content is
-    /// synced from the frontend via [`RegisterStore::set_special`]; an operator naming one fails (#1022).
-    #[must_use]
-    pub fn is_readonly_special(name: Option<char>) -> bool {
-        matches!(name, Some('/') | Some(':') | Some('.') | Some('%'))
-    }
-
     /// Sync the four read-only special registers (`:help quote_/`, `quote_:`, `quote_.`, `quote%`) from the
     /// frontend's current state, each as an always-charwise slot. `None` clears a slot (e.g. no search yet,
     /// or an unnamed buffer for `"%`). The [`Workspace`](crate::Workspace) calls this before dispatching a
@@ -929,8 +922,13 @@ mod tests {
         assert_eq!(s.get(Some('0')).text(), b"keep", "nor \"0");
         assert!(s.get(Some('1')).is_empty(), "nor the numbered ring");
         assert!(s.small_delete().is_empty(), "nor the small-delete register");
-        assert!(RegisterStore::is_readonly_special(Some('/')));
-        assert!(!RegisterStore::is_readonly_special(Some('a')));
+        for name in ['/', ':', '.', '%'] {
+            assert!(
+                !RegisterStore::is_writable(Some(name)),
+                "\"{name} is read-only"
+            );
+        }
+        assert!(RegisterStore::is_writable(Some('a')));
     }
 
     #[test]

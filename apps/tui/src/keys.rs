@@ -90,7 +90,9 @@ impl MacroState {
         Self::default()
     }
 
-    /// Whether a recording is currently in progress (`q{reg}` seen, no stopping `q` yet).
+    /// Whether a recording is currently in progress (`q{reg}` seen, no stopping `q` yet). Only the tests
+    /// observe it; the session never needs to ask (#890).
+    #[cfg(test)]
     #[must_use]
     pub fn is_recording(&self) -> bool {
         self.recording.is_some()

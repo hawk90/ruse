@@ -82,10 +82,3 @@ pub use transaction::{GroupHint, Transaction, TransactionOrigin};
 pub use undo::{MonotonicSeq, UndoHistory, UndoStep};
 pub use undo_cursor::UndoCursor;
 pub use workspace::{Pane, SplitDir, ViewId, Window, Workspace};
-
-/// Reject a transaction whose base revision is stale (INV-TXN, ENG-TXN-001). Retained as the kernel's
-/// smallest invariant check; [`Document::apply`] enforces it as part of atomic apply.
-#[must_use]
-pub fn is_stale_revision(base: Revision, current: Revision) -> bool {
-    base < current
-}
