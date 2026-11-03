@@ -102,8 +102,8 @@ to content (see References).
     `$(git rev-parse --git-path ruse/work)/<id>/`, which is inside `.git`, per worktree, and never committed;
   - the upstream-source cache (`ruse parity fetch`) goes to `${XDG_CACHE_HOME:-~/.cache}/ruse-dev/`, shared
     across worktrees.
-- The tooling migration (tools, `.gitignore`) is a separate change, tracked in #1137. Until it lands the
-  tools still write the old paths.
+- The tooling migration (tools, `.gitignore`) is a separate change, #1137; it moves any existing
+  `.ruse/work/` and `.ruse/cache/` to the new locations on first use.
 
 ### R3. Workspace trust is content-bound
 
@@ -148,8 +148,8 @@ by its size and is not on any per-keystroke path.
 ## Compatibility & Migration
 
 No config loader has shipped, so no user config or workspace changes meaning. The ruse repo's contributors
-lose nothing: #1137 moves the tooling paths; existing local `.ruse/work/` contents can be moved by hand or
-discarded (they are per-change scratch).
+lose nothing: #1137 moves the tooling paths, and the first `ruse` command in a checkout moves its existing
+`.ruse/work/` and `.ruse/cache/` contents to the new locations.
 
 ## Observability
 

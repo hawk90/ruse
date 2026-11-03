@@ -64,7 +64,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--base", help="git ref to diff against")
     ap.add_argument("--files", nargs="*", help="explicit file list")
     ap.add_argument("--pr-body", help="CI mode: read the declared contract from a PR body file "
-                                      "(gate of record = diff + re-run verify; local .ruse is untrusted)")
+                                      "(gate of record = diff + re-run verify; local work dir is untrusted)")
     ap.add_argument("--actor", help="CI: PR author login; a TRUSTED_BOTS actor may pass without a gate block")
     args = ap.parse_args(argv)
 
@@ -209,7 +209,7 @@ def main(argv: list[str]) -> int:
     render.field("Declared kind", declared or "—")
     render.field("Effective kind", f"{eff_kind} (risk {eff_risk})")
     render.field("Changed files", f"{len(cs.files)} (source: {cs.source})")
-    render.field("Mode", "CI — diff + PR body (local .ruse untrusted)" if ci else "local preflight")
+    render.field("Mode", "CI — diff + PR body (local work dir untrusted)" if ci else "local preflight")
     print()
     passed = True
     for ok_, msg in checks:

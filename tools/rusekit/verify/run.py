@@ -2,7 +2,7 @@
 
 `--changed` picks steps from the changed-file scope; `--full` runs everything applicable.
 A model's "tests passed" claim is not evidence (ai-assisted-development.md) — so every step
-here records its actual command, exit code and duration into .ruse/work/<id>/evidence.json,
+here records its actual command, exit code and duration into $(git rev-parse --git-path ruse/work)/<id>/evidence.json,
 which `pr check` and `pr render` consume.
 """
 from __future__ import annotations
@@ -163,7 +163,7 @@ def main(argv: list[str]) -> int:
         os.makedirs(os.path.dirname(ep), exist_ok=True)
         with open(ep, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2)
-        render.field("\nEvidence", repo.rel(ep))
+        render.field("\nEvidence", repo.show(ep))
 
     print()
     render.result(passed, "verify: all selected checks passed" if passed

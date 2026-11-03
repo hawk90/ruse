@@ -53,7 +53,7 @@ class TestClassify(unittest.TestCase):
         self.assertFalse(cl.ok)
 
     def test_generated_file_edit_hard_fails(self):
-        rel = ".ruse/test_generated.md"
+        rel = "target/rusekit-test_generated.md"  # gitignored scratch, never .ruse/ (D-062)
         p = repo.path(rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8") as fh:

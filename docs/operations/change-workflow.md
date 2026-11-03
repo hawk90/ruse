@@ -91,9 +91,10 @@ evidence. It is not a prompt — it is the set of permissions and verification c
 > committed project configuration (e.g. `.ruse/config.toml`), and ruse never writes local or per-user state
 > into a repository. So the ruse repo's development tooling keeps per-change state in
 > `$(git rev-parse --git-path ruse/work)/` (inside `.git`, per worktree) and the upstream-source cache in
-> `${XDG_CACHE_HOME:-~/.cache}/ruse-dev/` (shared across worktrees). The tooling migration lands in a
-> follow-up PR, tracked in the follow-up tooling issue #1137; until it merges, `tools/ruse.py` still writes
-> the old `.ruse/work/` and `.ruse/cache/` paths.
+> `${XDG_CACHE_HOME:-~/.cache}/ruse-dev/` (shared across worktrees; `parity fetch` locks per upstream).
+> A checkout that still has the pre-D-062 `.ruse/work/` or `.ruse/cache/` gets it moved to the new
+> location by the first `ruse` command run there (it prints each move); an id present in both places
+> stops the command until you keep one.
 
 ```
 $(git rev-parse --git-path ruse/work)/<id>/

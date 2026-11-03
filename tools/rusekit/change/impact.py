@@ -6,7 +6,7 @@ Two entry points, one graph (rusekit/model.py):
 
 It prints the direct impact (the roots), a grouped reachable set, and an edge tree so a
 human reviewer can see *why* each node is implicated. `--json`/`--out` persist it for
-`.ruse/work/<id>/impact.json` and PR rendering.
+`<work dir>/<id>/impact.json` and PR rendering.
 """
 from __future__ import annotations
 

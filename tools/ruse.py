@@ -5,7 +5,7 @@ Contributors only need to remember this one command; everything else is an imple
 detail behind it (tools/change, tools/verify, tools/ai, tools/rusekit). Policy lives in
 spec/ (change-kinds.yaml, PRD/POLICY/...), never in a Makefile or here.
 
-  change start     scaffold .ruse/work/<issue>/ (Change Contract)
+  change start     scaffold the Change Contract (git-path ruse/work/<id>/)
   change classify  compute the minimum required change-kind from the diff
   impact           what a spec ID or the diff ripples into
   context build    task-scoped context pack for an AI/human (+ staleness lock)
@@ -170,6 +170,9 @@ def main() -> int:
     if not argv or argv[0] in ("-h", "--help", "help"):
         return _usage(0)
     cmd, rest = argv[0], argv[1:]
+    # D-062: move any pre-#1137 `.ruse/work` / `.ruse/cache` out before a command can read or write state
+    # (it would otherwise also show up as untracked files in the change set). Refuses on a conflict.
+    repo.migrate_legacy()
 
     if cmd == "change":
         if not rest:

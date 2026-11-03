@@ -1,8 +1,8 @@
-"""change start — scaffold the local .ruse/work/<issue>/ change workspace.
+"""change start — scaffold the local change workspace, `$(git rev-parse --git-path ruse/work)/<issue>/`.
 
 Creates change.yaml (from spec/templates/change.yaml, pre-filled), plan.md, and empty
-impact.json / evidence.json. Nothing here is committed — .ruse/ is gitignored; only the
-eventual RFC/Decision/PRD/PR is permanent.
+impact.json / evidence.json. Nothing here is committed — the directory is inside `.git` (per
+worktree, D-062); only the eventual RFC/Decision/PRD/PR is permanent.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def main(argv: list[str]) -> int:
     wd = repo.work_dir(args.issue)
     cy = os.path.join(wd, "change.yaml")
     if os.path.exists(cy) and not args.force:
-        render.fail(f"{repo.rel(cy)} already exists (use --force to overwrite)")
+        render.fail(f"{repo.show(cy)} already exists (use --force to overwrite)")
         return 1
 
     bad = [a for a in args.area if a not in repo.CRATES]
@@ -78,14 +78,14 @@ def main(argv: list[str]) -> int:
     branch = repo.current_branch()
 
     render.heading("change start")
-    render.field("Workspace", repo.rel(wd) + "/")
+    render.field("Workspace", repo.show(wd) + "/")
     render.field("Issue", str(args.issue))
     render.field("Kind", args.kind or "(unset — edit change.yaml)")
     render.field("Crates", ", ".join(args.area) or "(none)")
     render.field("Git branch", branch or "(not a git repo)")
     render.ok("workspace scaffolded")
     render.heading("\nNext")
-    render.bullet(f"edit {repo.rel(cy)} (goal, non-goals, affected IDs, allow_paths)")
+    render.bullet(f"edit {repo.show(cy)} (goal, non-goals, affected IDs, allow_paths)")
     render.bullet(f"python3 tools/ruse.py context build --issue {args.issue}")
     render.bullet(f"python3 tools/ruse.py impact --issue {args.issue}")
     render.bullet(f"python3 tools/ruse.py verify --changed")
