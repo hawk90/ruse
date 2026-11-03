@@ -1950,6 +1950,18 @@ impl Session {
                 let text = String::from_utf8_lossy(&b[start..end]).into_owned();
                 engine.cmdline_splice(&text);
             }
+            // `<Tab>`, `<S-Tab>`, `c_CTRL-D`/`CTRL-L`/`CTRL-A` (#613): complete with what the workspace knows
+            // (buffer names, `%`/`#`, option values); the engine owns the line and the wildmenu.
+            Feed::CmdlineComplete(key) => {
+                let buf = ws.focused_buffer();
+                let ctx = ExCompletion {
+                    ws,
+                    files,
+                    fold_method: fold_method.get(&buf).copied(),
+                    foldlevel: foldlevel.get(&buf).copied(),
+                };
+                engine.cmdline_complete(key, &ctx);
+            }
             // `c_CTRL-R {reg}`: the register's text at the caret. The read-only `"/ ": ". "%` registers are
             // refreshed first, as before any dispatch. An unknown or empty register splices nothing.
             Feed::CmdlineInsertRegister(name) => {
@@ -3534,10 +3546,20 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if crate::ui::prompts::take_screen_clobbered() {
             prev_frame = screen::Screen::new(0, 0);
         }
+        // The wildmenu and `c_CTRL-D` listing belong to the engine's own `:` line (#613).
+        let cmd_menu = if cmd_caret.is_some() {
+            crate::ui::render::CmdMenu {
+                pum: s.engine.cmdline_wild(),
+                listing: s.engine.cmdline_listing(),
+            }
+        } else {
+            crate::ui::render::CmdMenu::default()
+        };
         let images = render(
             &mut out,
             &s.ws,
             cmd_line.map(|(pfx, t)| (pfx, t, cmd_caret)),
+            &cmd_menu,
             &s.status,
             spans,
             virt_lines,
@@ -3715,6 +3737,54 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
 /// state (`:help quote_/`), so a `"/p` / `C-r :` / `".p` / `"%p` dispatched next reads the live values:
 /// `"/` from the search ring, `":` from the last executed Ex line, `".` from the last insert session, and
 /// `"%` from the focused buffer's on-disk path (empty for an unnamed buffer). Called before dispatch.
+/// What `:` completion reads from the session (#613): buffer names, the current and alternate file,
+/// and the values of the options ruse keeps. Files come from the real file system (the default).
+struct ExCompletion<'a> {
+    ws: &'a Workspace,
+    files: &'a Files,
+    fold_method: Option<crate::input::FoldMethod>,
+    foldlevel: Option<usize>,
+}
+
+impl ExCompletion<'_> {
+    fn file_name(&self, id: Option<DocumentId>) -> Option<String> {
+        id.and_then(|id| self.files.get(&id))
+            .map(|bf| bf.path.to_string_lossy().into_owned())
+    }
+}
+
+impl crate::input::complete::CompletionContext for ExCompletion<'_> {
+    fn buffer_names(&self) -> Vec<String> {
+        self.ws.buffers().into_iter().map(|b| b.name).collect()
+    }
+    fn current_file(&self) -> Option<String> {
+        self.file_name(Some(self.ws.focused_buffer()))
+    }
+    fn alternate_file(&self) -> Option<String> {
+        self.file_name(self.ws.alternate())
+    }
+    fn buffer_files(&self) -> Vec<(u64, String)> {
+        self.files
+            .iter()
+            .map(|(id, bf)| (id.0, bf.path.to_string_lossy().into_owned()))
+            .collect()
+    }
+    fn option_value(&self, long: &str) -> Option<String> {
+        match long {
+            "tabstop" => Some(self.ws.focused().view.tab_width().to_string()),
+            "foldlevel" => Some(self.foldlevel.unwrap_or(0).to_string()),
+            "foldmethod" => Some(
+                match self.fold_method.unwrap_or(crate::input::FoldMethod::Manual) {
+                    crate::input::FoldMethod::Indent => "indent",
+                    crate::input::FoldMethod::Manual => "manual",
+                }
+                .into(),
+            ),
+            _ => None,
+        }
+    }
+}
+
 fn sync_special_registers(
     ws: &mut Workspace,
     engine: &InputEngine,

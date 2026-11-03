@@ -438,6 +438,87 @@ pub(crate) fn draw_separators(
     }
 }
 
+/// What the open command line shows above itself (#613): the wildmenu's popup menu and the matches
+/// `c_CTRL-D` listed.
+#[derive(Default)]
+pub(crate) struct CmdMenu<'a> {
+    /// The popup menu: its entries, the selected one, and the char column of the line (after the prompt
+    /// glyph) its text aligns with.
+    pub pum: Option<(Vec<&'a str>, Option<usize>, usize)>,
+    /// The `c_CTRL-D` listing.
+    pub listing: Option<&'a [crate::input::complete::Item]>,
+}
+
+/// nvim's `'pumwidth'` default: the popup menu's narrowest text column.
+const PUM_MIN_WIDTH: usize = 15;
+
+/// Paint the command line's wildmenu as nvim v0.12.6 does with `wildoptions=pum` (#613): a menu just
+/// above the command line, as tall as the screen allows, its text column aligned with the completed
+/// word's text (one blank cell before it), at least [`PUM_MIN_WIDTH`] wide, the selected entry in
+/// reverse video, and a scrollbar on its right when the entries do not fit.
+fn paint_cmd_pum(
+    cur: &mut screen::Screen,
+    entries: &[&str],
+    selected: Option<usize>,
+    text_col: u16,
+    cols: u16,
+    text_rows: u16,
+) {
+    use crossterm::style::Color;
+    use unicode_width::UnicodeWidthStr;
+    let height = entries.len().min(usize::from(text_rows));
+    if height == 0 || cols < 2 {
+        return;
+    }
+    let scroll = entries.len() > height;
+    let w = entries
+        .iter()
+        .map(|e| e.width() + 1)
+        .max()
+        .unwrap_or(0)
+        .max(PUM_MIN_WIDTH);
+    let box_w = (w + 1 + usize::from(scroll)).min(usize::from(cols));
+    let left = usize::from(text_col.saturating_sub(1)).min(usize::from(cols) - box_w);
+    // Keep the selected entry in view: the window ends at it once it passes the bottom.
+    let top_item = selected.map_or(0, |s| (s + 1).saturating_sub(height));
+    let first_row = text_rows - height as u16;
+    let menu = screen::CellStyle {
+        bg: Color::DarkGrey,
+        ..screen::CellStyle::default()
+    };
+    let thumb = (
+        top_item * height / entries.len(),
+        (height * height).div_ceil(entries.len()),
+    );
+    for r in 0..height {
+        let i = top_item + r;
+        let style = screen::CellStyle {
+            reverse: Some(i) == selected,
+            ..menu
+        };
+        let row = first_row + r as u16;
+        let mut text = String::from(" ");
+        text.push_str(entries[i]);
+        let pad = (w + 1).saturating_sub(text.width());
+        text.push_str(&" ".repeat(pad));
+        let mut col = left as u16;
+        for g in unicode_segmentation::UnicodeSegmentation::graphemes(text.as_str(), true) {
+            if usize::from(col) >= left + box_w - usize::from(scroll) {
+                break;
+            }
+            col = cur.put_styled(row, col, g, &style).max(col + 1);
+        }
+        if scroll {
+            let on = r >= thumb.0 && r < thumb.0 + thumb.1;
+            let bar = screen::CellStyle {
+                bg: if on { Color::Grey } else { Color::DarkGrey },
+                ..screen::CellStyle::default()
+            };
+            cur.put_styled(row, (left + box_w - 1) as u16, " ", &bar);
+        }
+    }
+}
+
 /// The pattern a search command carries (turns on hlsearch for it), else `None` (F-009 #1).
 pub(crate) fn search_pattern(cmd: &Command) -> Option<String> {
     match cmd {
@@ -457,6 +538,7 @@ pub(crate) fn render(
     out: &mut io::Stdout,
     ws: &Workspace,
     cmd_line: Option<(char, &str, Option<usize>)>,
+    cmd_menu: &CmdMenu<'_>,
     status: &str,
     spans: &[highlight::Span],
     virt_lines: &[highlight::VirtLine],
@@ -674,6 +756,35 @@ pub(crate) fn render(
                 false,
             );
         }
+    }
+
+    // `c_CTRL-D` lists the matches in columns just above the command line (#613).
+    if let Some(items) = cmd_menu.listing {
+        let lines = crate::input::complete::list_columns(items, usize::from(cols));
+        let shown = lines.len().min(usize::from(text_rows));
+        let top = text_rows - shown as u16;
+        for (i, line) in lines.iter().take(shown).enumerate() {
+            let row = top + i as u16;
+            for x in 0..cols {
+                cur.put(row, x, " ", Color::Reset, false);
+            }
+            cur.put_str(row, 0, line, Color::Reset, false);
+        }
+    }
+    if let Some((entries, selected, col)) = &cmd_menu.pum {
+        // The entries align with the completed word's text, one cell right of the prompt glyph.
+        let text_col = cmd_line.map_or(0, |(_, text, _)| {
+            let head: String = text.chars().take(*col).collect();
+            crate::input::display_with_caret(&head, usize::MAX).1 + 1
+        });
+        paint_cmd_pum(
+            &mut cur,
+            entries,
+            *selected,
+            u16::try_from(text_col).unwrap_or(u16::MAX),
+            cols,
+            text_rows,
+        );
     }
 
     // The command line shows control chars as `^X` (a literal `<CR>` typed with `c_CTRL-V` is `^M`) and

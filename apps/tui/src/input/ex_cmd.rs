@@ -34,6 +34,11 @@ const COMMANDS: &[ExCommand] = &[
     cmd("xit", 1, "x"),
     cmd("exit", 3, "exit"),
     cmd("qall", 2, "qa"),
+    cmd("update", 2, "update"),
+    cmd("saveas", 3, "saveas"),
+    cmd("wall", 2, "wall"),
+    cmd("wqall", 3, "wqall"),
+    cmd("xall", 2, "xall"),
     cmd("quitall", 5, "qa"),
     cmd("hide", 3, "hide"),
     cmd("split", 2, "split"),
@@ -129,9 +134,36 @@ pub struct ExModifiers {
     pub silent_errors: bool,
 }
 
+/// Every command name `:` completion offers (`:help cmdline-completion`, #613): the implemented Vim
+/// commands' full names, ruse's own commands and the modifiers, unsorted.
+pub(crate) fn command_names() -> impl Iterator<Item = &'static str> {
+    COMMANDS
+        .iter()
+        .map(|c| c.name)
+        .chain(RUSE_COMMANDS.iter().copied())
+        .chain(MODIFIERS.iter().map(|m| m.0))
+}
+
+/// The full name of the command `word` abbreviates (an implemented Vim command or one of ruse's own),
+/// for completing its argument.
+pub(crate) fn full_command_name(word: &str) -> Option<&'static str> {
+    RUSE_COMMANDS
+        .iter()
+        .copied()
+        .find(|&c| c == word)
+        .or_else(|| lookup(word).map(|c| c.name))
+}
+
+/// Whether `word` is a command modifier (`:sil`, `:verbose`, …).
+pub(crate) fn is_modifier(word: &str) -> bool {
+    MODIFIERS
+        .iter()
+        .any(|(name, min, _)| word.len() >= *min && name.starts_with(word))
+}
+
 /// The length of the leading range (`:help :range`) of an ex line: numbers, `.`, `$`, `%`, `,`, `;`,
 /// `+`/`-` offsets, `'x` marks, `/pat/` and `?pat?` searches, and the blanks between them.
-fn range_len(s: &str) -> usize {
+pub(crate) fn range_len(s: &str) -> usize {
     let b = s.as_bytes();
     let mut i = 0;
     while i < b.len() {

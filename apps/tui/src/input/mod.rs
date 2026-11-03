@@ -99,6 +99,11 @@ pub enum Feed {
     /// the open command line at the caret. The engine has no registers, so the frontend reads it and calls
     /// [`InputEngine::cmdline_splice_register`]. The command line stays open.
     CmdlineInsertRegister(char),
+    /// A command-line completion key with no wildmenu open (`:help cmdline-completion`): `<Tab>`,
+    /// `<S-Tab>`, `c_CTRL-D`, `c_CTRL-L` or `c_CTRL-A`. Completion needs buffer names, the current file and
+    /// option values the engine does not have, so the frontend answers with
+    /// [`InputEngine::cmdline_complete`] and a [`complete::CompletionContext`]. The line stays open.
+    CmdlineComplete(WildKey),
     /// `!{motion}` / `!!` (the Normal-mode filter operator): the motion resolved to a LINE range, but the
     /// engine has no document to number it and no shell to run. The frontend resolves the motion's first/last
     /// line (via `Workspace::reindent_range`), then opens the `:` command-line pre-seeded with
@@ -120,6 +125,21 @@ pub enum Feed {
     Pending,
     /// Nothing bound.
     Ignored,
+}
+
+/// The command-line completion keys (`:help cmdline-completion`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WildKey {
+    /// `<Tab>` (`'wildchar'`): complete, opening the wildmenu on the first of several matches.
+    Next,
+    /// `<S-Tab>`: the same, starting from the last match.
+    Prev,
+    /// `c_CTRL-D`: list the matches above the line.
+    List,
+    /// `c_CTRL-L`: insert the longest common part of the matches.
+    Longest,
+    /// `c_CTRL-A`: insert every match.
+    All,
 }
 
 /// What the engine holds between two keys, as the session's frontend intercepts see it (#679, #850, #851).
@@ -608,6 +628,8 @@ pub struct InputEngine {
     /// `false` in steady state and ALWAYS `false` under the Vim/Emacs profiles (only the Native+Normal path
     /// ever sets it). The depth-1 case of the discovery tier; nested groups (`<leader>g …`) layer on by tag.
     leader: bool,
+    /// The command-line completion sources (#613): built-ins first, more via [`Self::completer_mut`].
+    completer: complete::Completer,
 }
 
 /// A short human label for a key, for the palette's binding column (F-004 #2).
@@ -673,6 +695,7 @@ impl InputEngine {
             emacs_meta: false,
             emacs: EmacsProfile::new(),
             leader: false,
+            completer: complete::Completer::default(),
         }
     }
 
@@ -733,6 +756,121 @@ impl InputEngine {
             text
         };
         self.cmdline_splice(&text.replace('\n', "\r"));
+    }
+
+    /// The completion sources, to register another ([`complete::Completer::register`]).
+    pub fn completer_mut(&mut self) -> &mut complete::Completer {
+        &mut self.completer
+    }
+
+    /// Run completion key `key` on the open `:` line — the frontend's answer to [`Feed::CmdlineComplete`],
+    /// with `ctx` for what lies outside the line. nvim v0.12.6 defaults (`wildmode=full`,
+    /// `wildoptions=pum`): one match is inserted; several open the wildmenu on the first (`<S-Tab>`: the
+    /// last); none leaves the line as it is. Where nothing completes (`:s/a/`), `<Tab>` types a literal
+    /// `^I`.
+    pub fn cmdline_complete(&mut self, key: WildKey, ctx: &dyn complete::CompletionContext) {
+        let Some(cl) = self.cmdline.as_mut() else {
+            return;
+        };
+        let before = cl.before_cursor().to_string();
+        let Some(c) = self.completer.complete(&before, ctx) else {
+            if key == WildKey::Next {
+                cl.insert("\t");
+            }
+            return;
+        };
+        let mut items = c.matches.items;
+        let word = &before[c.start..];
+        match key {
+            WildKey::List => cl.listing = (!items.is_empty()).then_some(items),
+            WildKey::Longest => {
+                let longest = complete::longest_common(&items, c.files);
+                if longest.len() > word.len() {
+                    cl.replace_word(c.start, &longest);
+                }
+            }
+            WildKey::All if !items.is_empty() => {
+                let all: Vec<&str> = items.iter().map(|i| i.text.as_str()).collect();
+                cl.replace_word(c.start, &all.join(" "));
+            }
+            WildKey::All => {}
+            WildKey::Next | WildKey::Prev => {
+                cl.listing = None;
+                match items.len() {
+                    0 => {}
+                    1 => cl.replace_word(c.start, &items.remove(0).text),
+                    n => {
+                        let first = if key == WildKey::Next { 0 } else { n - 1 };
+                        cl.start_wild(c.start, items, c.matches.pum_at, c.files, first);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The open wildmenu for the popup menu: its entries, the selected one, and the char column of the
+    /// line where the entries' text aligns. `None` when no wildmenu is open.
+    #[must_use]
+    pub fn cmdline_wild(&self) -> Option<(Vec<&str>, Option<usize>, usize)> {
+        let w = self.cmdline.as_ref()?.wild.as_ref()?;
+        Some((
+            w.items.iter().map(|i| i.pum.as_str()).collect(),
+            w.selected,
+            w.pum_char_col(),
+        ))
+    }
+
+    /// The matches `c_CTRL-D` listed on the open line, for the frontend to lay out in columns
+    /// ([`complete::list_columns`]).
+    #[must_use]
+    pub fn cmdline_listing(&self) -> Option<&[complete::Item]> {
+        self.cmdline.as_ref()?.listing.as_deref()
+    }
+
+    /// Keys on an open wildmenu (`:help wildmenu`): `<Tab>`/`CTRL-N`/`<Right>` and `<S-Tab>`/`CTRL-P`/
+    /// `<Left>` cycle, `CTRL-E` restores the typed text, `CTRL-Y` keeps the match. `<Up>`/`<Down>` keep it
+    /// too; on file names `<Down>` descends into a selected directory and `<Up>` completes the parent
+    /// directory (nvim v0.12.6). `<Esc>` abandons the line as ever; any other key keeps the match and then
+    /// acts. `None` when the key is not the wildmenu's to take.
+    fn feed_wild(&mut self, key: KeyEvent) -> Option<Feed> {
+        let cl = self.cmdline.as_mut()?;
+        cl.wild.as_ref()?;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        match key.code {
+            KeyCode::BackTab => cl.wild_step(false),
+            KeyCode::Tab => cl.wild_step(!shift),
+            KeyCode::Right => cl.wild_step(true),
+            KeyCode::Left => cl.wild_step(false),
+            KeyCode::Char('n') if ctrl => cl.wild_step(true),
+            KeyCode::Char('p') if ctrl => cl.wild_step(false),
+            KeyCode::Char('e') if ctrl => cl.wild_cancel(),
+            KeyCode::Char('y') if ctrl => cl.wild = None,
+            KeyCode::PageUp | KeyCode::PageDown => cl.wild = None,
+            KeyCode::Up | KeyCode::Down => {
+                let files = cl.wild.as_ref().is_some_and(|w| w.files);
+                let word = cl.wild_word().map(|(s, w)| (s, w.to_string()));
+                cl.wild = None;
+                let (Some((start, word)), true) = (word, files) else {
+                    return Some(Feed::Pending);
+                };
+                if key.code == KeyCode::Down {
+                    return Some(if word.ends_with('/') {
+                        Feed::CmdlineComplete(WildKey::Next)
+                    } else {
+                        Feed::Pending
+                    });
+                }
+                cl.replace_word(start, &complete::parent_word(&word));
+                return Some(Feed::CmdlineComplete(WildKey::Next));
+            }
+            KeyCode::Esc => return None,
+            _ => {
+                cl.wild = None;
+                return None;
+            }
+        }
+        Some(Feed::Pending)
     }
 
     /// The Native leader (which-key) discovery hint (F-013 NAT-2) as a one-line `"w:write  q:quit  …"`
@@ -931,6 +1069,32 @@ impl InputEngine {
                 KeyCode::Char(c) if !is_chord(key) => Feed::CmdlineInsertRegister(c),
                 _ => Feed::Pending,
             };
+        }
+        // The wildmenu takes its keys first (`CTRL-N`/`CTRL-P` cycle there instead of recalling history).
+        if cl.wild.is_some() {
+            if let Some(feed) = self.feed_wild(key) {
+                return feed;
+            }
+        }
+        let Some(cl) = self.cmdline.as_mut() else {
+            return Feed::Ignored;
+        };
+        // Completion keys on the `:` line (`:help cmdline-completion`); the `/` line completes nothing
+        // (nvim v0.12.6 neither inserts nor completes a `<Tab>` there).
+        if cl.prefix == ':' && !cl.mx && cl.expr.is_none() {
+            let wild_key = match key.code {
+                KeyCode::BackTab => Some(WildKey::Prev),
+                KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => Some(WildKey::Prev),
+                KeyCode::Tab => Some(WildKey::Next),
+                KeyCode::Char('i') if ctrl => Some(WildKey::Next),
+                KeyCode::Char('d') if ctrl => Some(WildKey::List),
+                KeyCode::Char('l') if ctrl => Some(WildKey::Longest),
+                KeyCode::Char('a') if ctrl => Some(WildKey::All),
+                _ => None,
+            };
+            if let Some(k) = wild_key {
+                return Feed::CmdlineComplete(k);
+            }
         }
         if ctrl && key.code == KeyCode::Char('r') && !cl.mx {
             cl.ctrl_r = true;
@@ -4053,6 +4217,7 @@ use emacs::{emacs_repeat, fold_emacs_count, EmacsArg, EmacsBinding, EmacsKey, Em
 
 mod cmdline;
 mod cmdwin;
+pub mod complete;
 mod history;
 pub use cmdline::display_with_caret;
 use cmdline::{CmdLine, ExprTarget};

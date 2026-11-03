@@ -2596,6 +2596,38 @@ FIXTURES: list[dict] = [
     {"name": "exw_unsilent", "lines": ["a", "b"], "keys": ":sil uns d<CR>"},
     {"name": "exw_s_flags_after_bar", "lines": ["aa"], "keys": ":s/a/b/ | s/b/c/<CR>"},
     {"name": "exw_s_n_flag_before_bar", "lines": ["aa"], "keys": ":s/a/n/|normal x<CR>"},
+    #     COMMAND-LINE COMPLETION (#613): nvim's defaults (`wildmode=full`, `wildoptions=pum`). The completed
+    #     line is made observable by turning it into a substitution: `<Home>s/^/` + `<End>/<CR>` inserts it
+    #     at the start of line 1 (the `<Home>` also keeps the selected match).
+    {"name": "wild_command_single", "lines": ["abc"], "keys": ":wri<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_command_after_range", "lines": ["abc"], "keys": ":%wri<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_command_after_bar", "lines": ["abc"], "keys": ":e x | wri<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_first", "lines": ["abc"], "keys": ":set nu<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_next", "lines": ["abc"], "keys": ":set nu<Tab><Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_wraps_to_typed", "lines": ["abc"], "keys": ":set nu<Tab><Tab><Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_wraps_around", "lines": ["abc"], "keys": ":set nu<Tab><Tab><Tab><Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_s_tab_last", "lines": ["abc"], "keys": ":set nu<S-Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_ctrl_n_ctrl_p", "lines": ["abc"], "keys": ":set nu<Tab><C-n><C-p><C-n><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_right_left", "lines": ["abc"], "keys": ":set nu<Tab><Right><Left><Right><Home>s/^/<End>/<CR>"},
+    {"name": "wild_ctrl_e_restores", "lines": ["abc"], "keys": ":set nu<Tab><Tab><C-e><Home>s/^/<End>/<CR>"},
+    {"name": "wild_ctrl_y_keeps", "lines": ["abc"], "keys": ":set nu<Tab><Tab><C-y><Home>s/^/<End>/<CR>"},
+    {"name": "wild_typing_keeps_match", "lines": ["abc"], "keys": ":set nu<Tab>X<Home>s/^/<End>/<CR>"},
+    {"name": "wild_bs_keeps_match", "lines": ["abc"], "keys": ":set nu<Tab><BS><Home>s/^/<End>/<CR>"},
+    {"name": "wild_esc_abandons", "lines": ["abc"], "keys": ":s/^/X<Tab><Esc>"},
+    {"name": "wild_option_short_name", "lines": ["abc"], "keys": ":set ts<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_no_prefix", "lines": ["abc"], "keys": ":set nonu<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_second_arg", "lines": ["abc"], "keys": ":set nu ts<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_value_current", "lines": ["abc"], "keys": ":set ts=3<CR>:set ts=<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_value_list", "lines": ["abc"], "keys": ":set fdm=<Tab><Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_option_value_prefix", "lines": ["abc"], "keys": ":set fdm=i<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_ctrl_l_longest", "lines": ["abc"], "keys": ":set numb<C-l><Home>s/^/<End>/<CR>"},
+    {"name": "wild_ctrl_a_all", "lines": ["abc"], "keys": ":set nu<C-a><Home>s/^/<End>/<CR>"},
+    {"name": "wild_ctrl_d_keeps_line", "lines": ["abc"], "keys": ":set nonu<C-d><Home>s/^/<End>/<CR>"},
+    {"name": "wild_caret_mid_word", "lines": ["abc"], "keys": ":set numberX<Left><Tab><C-y><Home>s/^/<End>/<CR>"},
+    {"name": "wild_tab_is_literal_in_pattern", "lines": ["abc"], "keys": ":s/^/<Tab>/<CR>"},
+    {"name": "wild_no_match_leaves_line", "lines": ["abc"], "keys": ":zzzq<Tab><Home>s/^/<End>/<CR>"},
+    {"name": "wild_search_tab_inserts_nothing", "lines": ["abc", "a\tb"], "keys": "/a<Tab>b<CR>"},
+    {"name": "wild_ctrl_n_is_history_when_closed", "lines": ["aa"], "keys": ":s/a/b/<CR>:<C-p><CR>"},
 ]
 
 
