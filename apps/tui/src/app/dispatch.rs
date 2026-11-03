@@ -390,6 +390,12 @@ pub(crate) fn match_count_message(matches: usize, lines: usize) -> String {
     format!("{matches} {m} on {lines} {l}")
 }
 
+/// The status line after a substitute replaced text: `N substitutions on M lines` (one wording for `:s`,
+/// `&`, `g&`, `:&&` and the `:s///c` loop).
+pub(crate) fn substituted_message(out: &ruse_core::SubOutcome) -> String {
+    format!("{} substitutions on {} lines", out.replacements, out.lines)
+}
+
 /// Status for a regex compile error (F-009): the pattern reader's own `E…:` message when it has one (nvim's
 /// number and wording, #1087), else a plain note. When nvim gives a second error after the first (the NFA
 /// engine's `E870` after a bad `\{…}`), that one leads, since it is the last error nvim reports.

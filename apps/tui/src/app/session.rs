@@ -57,6 +57,39 @@ struct InsertReturn {
     at_eol: bool,
 }
 
+/// `{count}&`: repeat the last `:s` on the cursor's line and the `count - 1` after it, KEEPING its flags.
+/// nvim's default mapping is `nnoremap & :&&<CR>` (`:help &-default`), so `{count}&` is
+/// `:.,.+{count-1}&&` and `j&` after `:s/a/b/g` replaces every match. A range past the last line is E16,
+/// a line without a match E486, and nothing to repeat E33, as there. This is the only `&` path: the typed
+/// key and the `RepeatSubstituteLine` command both come here.
+fn repeat_substitute_lines(
+    ws: &mut Workspace,
+    last: Option<&(String, String, ruse_core::SubFlags)>,
+    count: usize,
+) -> String {
+    let Some((pat, rep, flags)) = last else {
+        return "E33: No previous substitute regular expression".to_string();
+    };
+    let bytes = ws.focused().doc.bytes();
+    let first = ruse_core::pos::line_of(bytes, ws.focused().view.cursor()) + 1;
+    let lines = bytes.split(|b| *b == b'\n').count() - usize::from(bytes.ends_with(b"\n"));
+    let last = first + count - 1;
+    if last > lines.max(1) {
+        return "E16: Invalid range".to_string();
+    }
+    let from = ws.focused().view.cursor();
+    let result = ws.substitute(ruse_core::SubRange::Lines(first, last), pat, rep, *flags);
+    // A repeat that matched is a jump, as `:s` is (nvim 0.12.6, #1119).
+    if matches!(result, Ok(out) if out.lines > 0) {
+        ws.push_focused_jump(from);
+    }
+    match result {
+        Ok(out) if out.replacements == 0 => format!("E486: pattern not found: {pat}"),
+        Ok(out) => crate::app::dispatch::substituted_message(&out),
+        Err(e) => crate::app::dispatch::regex_error_msg(&e),
+    }
+}
+
 /// The start of the UTF-8 char before byte `at` (`0` at the start).
 fn prev_char_start(b: &[u8], at: usize) -> usize {
     let mut i = at.saturating_sub(1);
@@ -1653,37 +1686,11 @@ impl Session {
             *prefix = Prefix::Z(engine.take_count());
             return;
         }
-        // `&` repeats the last `:s` on the CURRENT line, keeping its flags: nvim's default mapping is
-        // `nnoremap & :&&<CR>`, so `{count}&` is `:.,.+{count-1}&&`. A range past the last line is E16, as
-        // there. No-op before any `:s`.
+        // `&` repeats the last `:s` on the current line, keeping its flags (nvim's `&-default` mapping). The
+        // session owns the key so it can read the count; see [`repeat_substitute_lines`].
         if chord && key.code == KeyCode::Char('&') && key.modifiers.is_empty() {
             let count = engine.take_count().max(1) as usize;
-            let bytes = ws.focused().doc.bytes();
-            let first = ruse_core::pos::line_of(bytes, ws.focused().view.cursor()) + 1;
-            let lines = bytes.split(|b| *b == b'\n').count() - usize::from(bytes.ends_with(b"\n"));
-            let last = first + count - 1;
-            *status = match &last_substitute {
-                Some(_) if last > lines.max(1) => "E16: Invalid range".to_string(),
-                Some((pat, rep, flags)) => {
-                    let from = ws.focused().view.cursor();
-                    let result =
-                        ws.substitute(ruse_core::SubRange::Lines(first, last), pat, rep, *flags);
-                    // A repeat that matched is a jump, as `:s` is (nvim 0.12.6, #1119).
-                    if matches!(result, Ok(out) if out.lines > 0) {
-                        ws.push_focused_jump(from);
-                    }
-                    match result {
-                        Ok(out) if out.replacements == 0 => {
-                            format!("E486: pattern not found: {pat}")
-                        }
-                        Ok(out) => {
-                            format!("{} substitutions on {} lines", out.replacements, out.lines)
-                        }
-                        Err(e) => crate::app::dispatch::regex_error_msg(&e),
-                    }
-                }
-                None => "E33: No previous substitute regular expression".to_string(),
-            };
+            *status = repeat_substitute_lines(ws, last_substitute.as_ref(), count);
             return;
         }
         // `C-d` / `C-u` scroll the view and move the cursor by the window's 'scroll' lines (default half the
@@ -2036,9 +2043,7 @@ impl Session {
                         Ok(out) if out.replacements == 0 => {
                             format!("E486: pattern not found: {pat}")
                         }
-                        Ok(out) => {
-                            format!("{} substitutions on {} lines", out.replacements, out.lines)
-                        }
+                        Ok(out) => crate::app::dispatch::substituted_message(&out),
                         Err(e) => crate::app::dispatch::regex_error_msg(&e),
                     }
                 }
@@ -2046,34 +2051,9 @@ impl Session {
             };
             return;
         }
-        // `&` — repeat the last `:s` on the CURRENT LINE, DROPPING its flags (Vim: no `g`/`i`/`I`,
-        // so only the first match on the cursor's line is replaced). Same frontend resolution as
-        // `g&`, but scoped to the current line and forced to default flags.
+        // `&` picked by its command id (the palette): the typed `&` with no count.
         if matches!(cmd, Command::RepeatSubstituteLine) {
-            *status = match &last_substitute {
-                Some((pat, rep, _flags)) => {
-                    let from = ws.focused().view.cursor();
-                    let result = ws.substitute(
-                        ruse_core::SubRange::CurrentLine,
-                        pat,
-                        rep,
-                        ruse_core::SubFlags::default(),
-                    );
-                    if matches!(result, Ok(out) if out.lines > 0) {
-                        ws.push_focused_jump(from);
-                    }
-                    match result {
-                        Ok(out) if out.replacements == 0 => {
-                            format!("E486: pattern not found: {pat}")
-                        }
-                        Ok(out) => {
-                            format!("{} substitutions on {} lines", out.replacements, out.lines)
-                        }
-                        Err(e) => crate::app::dispatch::regex_error_msg(&e),
-                    }
-                }
-                None => "E33: No previous substitute regular expression".to_string(),
-            };
+            *status = repeat_substitute_lines(ws, last_substitute.as_ref(), 1);
             return;
         }
         // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
@@ -2844,9 +2824,7 @@ impl Session {
                             Ok(out) if out.lines == 0 => format!("E486: pattern not found: {pat}"),
                             // A `:s/\n//` join on the last line: nothing to join, not an error.
                             Ok(out) if out.replacements == 0 => String::new(),
-                            Ok(out) => {
-                                format!("{} substitutions on {} lines", out.replacements, out.lines)
-                            }
+                            Ok(out) => crate::app::dispatch::substituted_message(&out),
                             Err(e) => crate::app::dispatch::regex_error_msg(&e),
                         }
                     }
@@ -2949,9 +2927,7 @@ impl Session {
                                 .pop()
                                 .unwrap_or_default()
                             }
-                            None => {
-                                format!("{} substitutions on {} lines", out.replacements, out.lines)
-                            }
+                            None => crate::app::dispatch::substituted_message(&out),
                         },
                         Err(e) => crate::app::dispatch::invalid_command_msg(&e),
                     };

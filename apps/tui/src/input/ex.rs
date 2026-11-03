@@ -125,8 +125,9 @@ pub enum Ex {
     /// The ex repeat-substitute forms that reuse the LAST `:s` (pattern + replacement), like normal-mode
     /// `&`/`g&` (verified vs nvim v0.12.4):
     /// - bare `:[range]s` and `:[range]&` → repeat DROPPING the previous flags (`flags = Some(default)`),
-    ///   so only the first match per line is replaced — exactly like normal-mode `&`.
-    /// - `:[range]&&` → repeat KEEPING the previous flags (`flags = None`), like `g&` but scoped to the range.
+    ///   so only the first match per line is replaced — Vim's normal-mode `&`.
+    /// - `:[range]&&` → repeat KEEPING the previous flags (`flags = None`), like `g&` but scoped to the range;
+    ///   nvim's normal-mode `&` is `:&&` (`:help &-default`).
     /// - `:[range]s {flags}` (bare `s` followed by ONLY flag chars, e.g. `:s g`, `:sg`) → repeat with the
     ///   GIVEN flags REPLACING the old ones (`flags = Some(parsed)`; empty flag run = default = the bare `:s`).
     ///

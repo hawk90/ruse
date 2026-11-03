@@ -1015,6 +1015,9 @@ FIXTURES: list[dict] = [
     {"name": "icpt_gqgq", "lines": ["aa", "bb", "cc"], "keys": "gqgq"},
     {"name": "icpt_g_amp", "lines": ["a a", "a a"], "keys": ":s/a/b/g<CR>g&"},
     {"name": "icpt_amp_count", "lines": ["a a", "a a", "a a"], "keys": ":s/a/b/<CR>j2&"},
+    # `&` keeps the last `:s` flags in nvim (`&-default` is `:&&<CR>`), so `g` replaces every match (#700).
+    {"name": "icpt_amp_keeps_flags", "lines": ["a a", "a a"], "keys": ":s/a/b/g<CR>j&"},
+    {"name": "icpt_amp_count_keeps_flags", "lines": ["a a", "a a", "a a"], "keys": ":s/a/b/g<CR>j2&"},
     {"name": "icpt_amp_count_past_end", "lines": ["a a", "a a", "a a"], "keys": ":s/a/b/<CR>j5&"},
     {"name": "icpt_count_zz", "lines": ["alpha beta"] * 10, "keys": "5zzx"},
     {"name": "icpt_count_zz_keeps_column", "lines": ["alpha beta"] * 10, "keys": "lll5zzx"},

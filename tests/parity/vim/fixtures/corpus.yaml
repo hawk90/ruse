@@ -15024,6 +15024,64 @@
       }
     },
     {
+      "name": "icpt_amp_keeps_flags",
+      "lines": [
+        "a a",
+        "a a"
+      ],
+      "keys": ":s/a/b/g<CR>j&",
+      "expect": {
+        "text": [
+          "b b",
+          "b b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "icpt_amp_count_keeps_flags",
+      "lines": [
+        "a a",
+        "a a",
+        "a a"
+      ],
+      "keys": ":s/a/b/g<CR>j2&",
+      "expect": {
+        "text": [
+          "b b",
+          "b b",
+          "b b"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "icpt_amp_count_past_end",
       "lines": [
         "a a",

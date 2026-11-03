@@ -155,7 +155,7 @@ pub(crate) fn confirm_key(
     }
     if c.idx >= c.subs.len() {
         let out = ws.apply_substitutions(&c.accepted);
-        *status = format!("{} substitutions on {} lines", out.replacements, out.lines);
+        *status = crate::app::dispatch::substituted_message(&out);
         // `confirm` was taken and stays None — the loop is over.
     } else {
         *confirm = Some(c);

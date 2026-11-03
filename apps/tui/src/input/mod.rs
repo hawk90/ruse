@@ -3298,7 +3298,8 @@ impl InputEngine {
                     });
                 }
             }
-            // Line jumps: `g` arms `gg`; `G` jumps to `{count}` (or the last line when no count).
+            // Line jumps: `g` arms `gg`; `G` jumps to `{count}` (or the last line when no count). In Visual
+            // too (Select returned above), so `gu`/`gU`/`g~` recase the selection and `gg`/`ge`/`g_` extend it.
             KeyCode::Char('g') => {
                 self.normal.awaiting = Awaiting::GSecond;
                 return Feed::Pending;
@@ -3406,13 +3407,6 @@ impl InputEngine {
                 }
                 KeyCode::Char('~') if matches!(mode, Mode::Visual { .. }) => {
                     return self.action(Command::CaseSelection(WordCase::Toggle))
-                }
-                // `g` prefix in Visual: arm `GSecond` so `gu`/`gU`/`g~` recase the selection and the
-                // `g`-motions (`gg`/`ge`/`gE`/`g_`) extend it. Was previously swallowed by the ignore policy.
-                // Select mode is excluded: there a printable key REPLACES the selection (namespace policy).
-                KeyCode::Char('g') if matches!(mode, Mode::Visual { .. }) => {
-                    self.normal.awaiting = Awaiting::GSecond;
-                    return Feed::Pending;
                 }
                 // Visual `r{char}` — replace every selected char with the next key (Vim `v_r`). Arm the
                 // shared ReplaceChar expectation; its resolution sees the selection mode and emits the
@@ -3642,10 +3636,6 @@ impl InputEngine {
             KeyCode::Char('~') if self.tildeop => self.arm_op(Op::CaseToggle),
             KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
             KeyCode::Char('J') => self.action(Command::JoinLines(self.mcount())),
-            // Bare `&` — repeat the last `:s` on the CURRENT LINE, dropping its flags (Vim: only the first
-            // match on the cursor's line is replaced). The whole-file, flag-keeping form is `g&`
-            // (`RepeatSubstituteGlobal`, in the `g` tier). Frontend-resolved against the last-`:s` state.
-            KeyCode::Char('&') => self.action(Command::RepeatSubstituteLine),
             // `n` repeats the last search in the SAME direction it was issued; `N` in the OPPOSITE. So
             // after `?foo`, `n` continues BACKWARD and `N` goes forward; after `/foo` they stay
             // forward-relative. Direction comes from the stored last-search flag. Both REAPPLY the stored

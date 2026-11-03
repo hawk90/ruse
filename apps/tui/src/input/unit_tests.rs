@@ -2867,8 +2867,8 @@ mod tests {
         assert_eq!(feed("3J"), Feed::Cmd(Command::JoinLines(3)));
         assert_eq!(feed("gJ"), Feed::Cmd(Command::JoinLinesNoSpace(1)));
         assert_eq!(feed("g&"), Feed::Cmd(Command::RepeatSubstituteGlobal));
-        // Bare `&` is the current-line, flag-dropping repeat (distinct from `g&`).
-        assert_eq!(feed("&"), Feed::Cmd(Command::RepeatSubstituteLine));
+        // Bare `&` is the session's (it reads the count), never the engine's (#700).
+        assert_ne!(feed("&"), Feed::Cmd(Command::RepeatSubstituteLine));
         assert_eq!(feed("`."), Feed::Cmd(Command::GotoLastChange));
         assert_eq!(feed("g;"), Feed::Cmd(Command::GotoOlderChange));
         assert_eq!(feed("g,"), Feed::Cmd(Command::GotoNewerChange));
