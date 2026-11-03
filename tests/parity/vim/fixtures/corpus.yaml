@@ -82481,6 +82481,66 @@
       }
     },
     {
+      "name": "vb_C_bs_joins_the_top_line_up",
+      "lines": [
+        "",
+        "",
+        "¡"
+      ],
+      "keys": "k0<CR><C-v>jC<BS>é<Esc>",
+      "expect": {
+        "text": [
+          "é",
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n¡",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "vb_C_cr_then_esc",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "<C-v>jCx<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "x",
+          "xy",
+          "",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\ncd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "fold_shift_takes_a_closed_fold_whole",
       "lines": [
         "L1",

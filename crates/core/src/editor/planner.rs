@@ -4406,6 +4406,13 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
         set_mark: None,
     };
     let start = session.insert_start;
+    // Insert left the block's top line (a `<BS>` at its start joined it onto the line above): nothing is
+    // replicated, as Vim's `op_insert` gives up when the cursor's line changed, and the cursor steps left
+    // as a plain `<Esc>` does. `insert_start` and `top_left` no longer point into that line.
+    let cur_ls = line_start(b, cur);
+    if cur_ls != session.top_line_start {
+        return nop(motion::prev_boundary(b, cur).max(cur_ls));
+    }
     // The cursor rests at the block's top-left when the session ends — for `I`/`A`, and for a `c` where the
     // typed run is empty/aborted (nothing to sit after). A non-empty block CHANGE instead rests one char
     // left of the top row's typed text (Vim's normal Insert-exit), computed once `typed` is known below.

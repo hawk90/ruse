@@ -3274,6 +3274,9 @@ FIXTURES: list[dict] = [
     # take the fold whole in ruse yet. Visual `Vj` onto one: nvim deletes two lines.
     {"name": "fold_visual_line_j_onto_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jggVjd", "folds": True},
     {"name": "fold_ex_range_takes_a_closed_fold_whole", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2j:2d<CR>", "folds": True},
+    # A block `C` whose `<BS>` joins the top line onto the one above replicates nothing (session_fuzz).
+    {"name": "vb_C_bs_joins_the_top_line_up", "lines": ["", "", "\u00a1"], "keys": "k0<CR><C-v>jC<BS>\u00e9<Esc>"},
+    {"name": "vb_C_cr_then_esc", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jCx<CR>y<Esc>"},
     {"name": "fold_shift_takes_a_closed_fold_whole", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2j>>", "setup": "set shiftwidth=4 expandtab startofline", "folds": True},
     {"name": "fold_count_shift_counts_a_closed_fold_once", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jk2>>", "setup": "set shiftwidth=4 expandtab startofline", "folds": True},
 ]
