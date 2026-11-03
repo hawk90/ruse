@@ -1014,11 +1014,12 @@ features:
       no external-editor parity). Deterministic replay is the contract and the substrate for the test corpus.
     trace:
       parity: []
-      design: [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md]
-      verify: [../crates/core/tests/editor_spine.rs, ../crates/core/tests/properties.rs]
+      design: [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md, ../docs/rfc/proposed/RFC-0020-ex-edits-in-the-trace.md]
+      verify: [../crates/core/tests/editor_spine.rs, ../crates/core/tests/properties.rs, ../apps/tui/tests/trace_replay_ex.rs]
     acceptance:
       - Same initial document + same command trace → byte-identical final state (determinism is the contract).
       - "`:trace save` writes the session's command list; `ruse --replay <trace> <file>` reproduces the edits."
+      - "Ex edits (`:s` and its repeats `&`/`g&`/`:&&`, `:s///c` with its answers, `:g`, `:normal`, `:sort`, `:m`, `:t`, `:d`, `:r`, `:{range}!`) are recorded as resolved commands (D-061); replay reproduces them without reading a file or running a command."
       - A trace round-trips through its text form (to_text/from_text) without changing what it replays to.
       - The trace records semantic Commands (not keystrokes), so it survives keymap changes.
 

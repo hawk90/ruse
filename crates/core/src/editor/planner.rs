@@ -3398,6 +3398,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
         // `&` — resolved in the frontend (current-line, flagless repeat); a no-op in the pure core.
         Command::RepeatSubstituteLine => nop(cur, st.view.mode),
+        // A resolved Ex edit never reaches the planner: `apply_command` runs it through
+        // `EditorState::apply_ex` (RFC-0020). Planned alone it changes nothing.
+        Command::Ex(_) => nop(cur, st.view.mode),
         // Nothing to undo or redo: Vim's `u_doit` beeps ("Already at oldest change"), which stops a macro
         // replay or a `:normal` (#1111).
         Command::Undo if !st.doc.can_undo() => beep(cur, st.view.mode),

@@ -1267,6 +1267,56 @@ impl Workspace {
         crate::motion::line_completions(b, cur)
     }
 
+    /// Run one resolved Ex edit ([`crate::ExCmd`], RFC-0020) against the FOCUSED window: the swap-trick, the
+    /// `"+`/`"*` pull a `:put +` needs (as [`Workspace::put_lines`]), and a `Set` that also writes the
+    /// global value (as [`Workspace::set_option`]). The frontend records the command and runs it here; a
+    /// trace replays it through `apply_command`, which calls the same [`EditorState::apply_ex`].
+    pub fn apply_ex(&mut self, ex: &crate::ExCmd) -> crate::ExOutcome {
+        if let crate::ExCmd::Set(opt) = ex {
+            self.set_option(*opt);
+            return crate::ExOutcome::Done;
+        }
+        let vid = self.windows[self.focus].view;
+        self.with_view(vid, |st, clipboard| {
+            if let crate::ExCmd::Put { reg, .. } = ex {
+                if crate::register::RegisterStore::is_clipboard(*reg) {
+                    if let Some(text) = clipboard.get() {
+                        st.sync_clipboard_in(text.into_bytes());
+                    }
+                }
+            }
+            st.apply_ex(ex)
+        })
+    }
+
+    /// The 1-based inclusive lines `range` names in the FOCUSED window, resolved exactly as the Ex line
+    /// operations resolve it (no range = the cursor's line; both ends clamped into the buffer), so an
+    /// [`crate::ExCmd`] built from them runs on the same lines.
+    #[must_use]
+    pub fn resolve_range(&self, range: SubRange) -> (usize, usize) {
+        let p = self.focused();
+        let b = p.doc.bytes();
+        let spans = crate::editor::line_spans(b);
+        let cursor_line = crate::pos::line_of(b, p.view.cursor());
+        let (first, last) = crate::editor::resolve_line_range(range, &spans, cursor_line);
+        (first + 1, last + 1)
+    }
+
+    /// The insert index `addr` names in the FOCUSED window ("after line N", `0..=lines`), as `:m`/`:t`/
+    /// `:put`/`:r` resolve it, or `None` for a relative address off the buffer (the command then does
+    /// nothing).
+    #[must_use]
+    pub fn resolve_addr(&self, addr: LineAddr) -> Option<usize> {
+        let p = self.focused();
+        let b = p.doc.bytes();
+        let nlines = if b.is_empty() {
+            0
+        } else {
+            crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'))
+        };
+        addr.insert_index(crate::pos::line_of(b, p.view.cursor()), nlines)
+    }
+
     /// Set one `:set` option on the focused view and as the global value every View created afterward
     /// takes (Vim's `:set` writes both the local and the global value, #754).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {

@@ -944,9 +944,10 @@ related:
   effective flags used, never the address text or "the last pattern"; `:s///c` records the user's answers.
   IO-dependent edits record the bytes the frontend obtained as data (`ReadText { after_line, bytes }` for `:r
   file`/`:r !cmd`, `FilterReplace { range, bytes }` for `:{range}!cmd`), so the core stays IO-free (D-039) and
-  replay never reads a file or spawns a process. `:g` and `:normal` record as a `Begin`/`End` group of their
-  resolved children (for `:normal`, the Commands its keys produced plus its per-line cursor placement), and
-  replay opens one undo block per group as the live command does. Non-edit Ex (`:w`, `:e`, `:cd`, …) is not
+  replay never reads a file or spawns a process. `:g/pat/normal` and `:normal` record as a `Begin`/`End` group
+  of their resolved children (the Commands its keys produced plus its per-line cursor placement), and replay
+  opens one undo block per group as the live command does; `:g` with a core payload (`d`, `s`) records as one
+  command holding the lines it marked, because live it runs as one transaction, not as children (#1105). Non-edit Ex (`:w`, `:e`, `:cd`, …) is not
   recorded, except `:set` of an option the core reads while editing (for example `ts`, `sw`, `et`, `tw`, `ic`,
   `scs`); those options' values are also written at the start of the trace. The format stays `v1` with
   additive verbs; older traces parse and replay unchanged. Full design:

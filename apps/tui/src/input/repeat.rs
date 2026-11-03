@@ -439,6 +439,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::SearchPrev(_)
         | C::RepeatSubstituteGlobal
         | C::RepeatSubstituteLine
+        | C::Ex(_)
         | C::GotoDeclaration { .. }
         | C::GotoFirstMatch(_)
         | C::ShowKeywordLines { .. }
@@ -651,6 +652,7 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::SearchPrev(..)
         | C::RepeatSubstituteGlobal
         | C::RepeatSubstituteLine
+        | C::Ex(_)
         | C::GotoDeclaration { .. }
         | C::GotoFirstMatch(..)
         | C::ShowKeywordLines { .. }

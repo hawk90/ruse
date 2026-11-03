@@ -222,6 +222,37 @@ history- and IO-dependence into replay, which is exactly what the trace exists t
 - If a non-Ex frontend path (search under cursor, an LSP edit, a plugin) is found to mutate outside `run_cmd`,
   it gets the same treatment, and this RFC's rule becomes general rather than Ex-specific.
 
+## Implementation notes (#1105)
+
+Built as specified, with these deviations; each keeps the intent (replay reproduces the live document,
+cursor and undo grouping, with no IO and no re-resolution):
+
+- **`:g` with a core payload (`d`, `s///`) records one `ExCmd::Global { marks, cmd }`**, the 1-based lines
+  the pattern marked plus the command, not a group of per-line children. Live, those payloads are not run
+  as children: `EditorState::global` applies them as one transaction with its own register and cursor rules,
+  so per-line children would replay a different implementation than the one that ran, against R1's "live
+  and replay share one implementation". Replay runs the same pass 2 (`global_run`) on the recorded marks; the
+  marking pattern is still not needed. `:g/pat/normal` records as the R3 group (`ex_begin global`, then per
+  marked line an `ex_place` and the commands its keys produced, then `ex_end`).
+- **Frontend state a replay needs is recorded as `ExCmd` too**, so `Command` still gains one variant:
+  `Place(offset)` for a cursor the frontend places (`:normal`'s per-line column 0, a `:g` landing line,
+  the `:s///c` match left under the cursor when nothing was replaced, `:startinsert`'s placement),
+  `UndoSync` for Vim's `u_sync` before a typed command (recorded only when it closes a group), `Mark` for
+  `:mark`/`:k`, and `Yank` for `:y` (registers are named, R1). A macro replay's undo block records as an
+  `ex_begin macro` group, like `:normal`'s.
+- **`:s///c`** records the resolved `:s` once the loop ends, with one answer per match (`c:ynyn`); matches
+  never answered are "no". The jump `:s///c` pushes before its first prompt is pushed by that record.
+- **The starting options** (R4) are `ex_set` lines for `ignorecase`, `smartcase`, `tabstop`,
+  `shiftwidth`, `expandtab` and `textwidth`, captured when the session starts.
+- **Format.** The verbs are `ex_substitute`, `ex_global`, `ex_delete`, `ex_yank`, `ex_join`, `ex_shift`,
+  `ex_move`, `ex_copy`, `ex_put`, `ex_sort`, `ex_retab`, `ex_read`, `ex_filter`, `ex_mark`, `ex_set`,
+  `ex_place`, `ex_undo_sync`, `ex_begin`, `ex_end` (codec: `crates/core/src/editor/ex_cmd.rs`). An unbalanced
+  group is `TraceError::UnbalancedGroup`. `:>` records at most `MAX_SHIFT_LEVELS` (1000) levels so a hostile
+  trace line stays bounded.
+- **Still outside the trace** (not Ex edits; the re-evaluation condition above applies): LSP edits
+  (`apply_edits`), cursor moves from pickers, the mouse and fold snapping, `:keepjumps`, the special registers
+  `"/ ": ". "%` and the Emacs caret gravity. A session that uses them can still replay to a different cursor.
+
 ## Open questions
 
 1. Whether registers filled *before* the trace starts (and the clipboard registers `"+`/`"*`) should be

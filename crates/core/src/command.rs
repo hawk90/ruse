@@ -847,6 +847,10 @@ pub enum Command {
     /// rests at the join. Distinct from Vim `J` (which joins the NEXT line onto the current one) — D-051.
     /// No kill-ring write.
     EmacsDeleteIndentation,
+    /// A resolved Ex edit, or the frontend state one depends on (RFC-0020, D-061): `:s`, `:g`, `:d`, `:m`,
+    /// `:sort`, `:r` with its bytes, `:normal`'s group, … with every line number and pattern already
+    /// resolved, so a trace replays it without an Ex parser, cursor context or IO.
+    Ex(crate::editor::ExCmd),
 }
 
 /// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
@@ -1622,6 +1626,7 @@ impl Command {
             Command::EmacsCaseWord { case } => {
                 format!("emacs_case_word {}", word_case_token(*case))
             }
+            Command::Ex(ex) => ex.to_line(),
         }
     }
 
@@ -2225,6 +2230,10 @@ impl Command {
                 Some("end") => Command::EmacsBufferEdge { start: false },
                 _ => return Err(CommandParseError::BadArgument(line.to_string())),
             },
+            // Resolved Ex edits (RFC-0020); their verbs are parsed in `editor/ex_cmd.rs`.
+            other if other.starts_with("ex_") => {
+                Command::Ex(crate::editor::ExCmd::from_parts(other, raw, line)?)
+            }
             other => return Err(CommandParseError::UnknownVerb(other.to_string())),
         })
     }
@@ -2949,6 +2958,10 @@ mod tests {
             },
             Command::EmacsDeleteIndentation,
         ];
+        // Every resolved Ex edit (RFC-0020); `editor/ex_cmd.rs` lists one of each.
+        let cases = cases
+            .into_iter()
+            .chain(crate::editor::ex_cmd_samples().into_iter().map(Command::Ex));
         for c in cases {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");
         }

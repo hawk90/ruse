@@ -877,6 +877,21 @@ impl View {
         self.caret = o.caret;
     }
 
+    /// The values of every option the core reads while editing (`ic`, `scs`, `sw`, `ts`, `et`, `tw`), as
+    /// the `:set`s that would install them. A trace writes them at its start, so replay does not depend on
+    /// the replaying machine's config (RFC-0020 R4). `sw` is the raw value (`0` follows `ts`).
+    #[must_use]
+    pub fn editing_options(&self) -> Vec<EditorOption> {
+        vec![
+            EditorOption::IgnoreCase(self.search_case.ignore),
+            EditorOption::SmartCase(self.search_case.smart),
+            EditorOption::TabStop(self.indent.tab_width),
+            EditorOption::ShiftWidth(self.indent.shift_width),
+            EditorOption::ExpandTab(self.indent.style == IndentStyle::Space),
+            EditorOption::TextWidth(self.text_width),
+        ]
+    }
+
     /// Change this View's option values through `f`.
     pub(crate) fn update_options(&mut self, f: impl FnOnce(&mut ViewOptions)) {
         let mut o = self.options();
@@ -1612,9 +1627,23 @@ impl EditorState {
         // PASS 1: mark the matching (or non-matching) lines against the untouched buffer (shared with the
         // frontend's `:g/pat/normal` runner via [`EditorState::global_marks`]).
         let marked = self.global_marks(range, pattern, negate)?;
+        self.global_run(&marked, cmd)
+    }
+
+    /// PASS 2 of `:g` on an already-marked set of 0-based line indices (ascending, distinct, in the buffer):
+    /// what a recorded `:g` replays, so the pattern that marked them is not needed (RFC-0020).
+    ///
+    /// # Errors
+    /// [`RegexError`] if a `:g/pat/s///` sub-pattern is unrepresentable/malformed.
+    pub(crate) fn global_run(
+        &mut self,
+        marked: &[usize],
+        cmd: &GlobalCmd,
+    ) -> Result<usize, RegexError> {
         if marked.is_empty() {
             return Ok(0);
         }
+        let marked = marked.to_vec();
         // Re-derive the untouched buffer's line spans for pass 2 (marking above did not mutate the buffer).
         let bytes = self.doc.bytes();
         let hay = std::str::from_utf8(bytes)
@@ -2986,6 +3015,11 @@ fn strtod_prefix(s: &str) -> f64 {
 pub(crate) use substitute::{find_substitutions, line_spans, resolve_line_range};
 pub use substitute::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substitution};
 
+mod ex_cmd;
+#[cfg(test)]
+pub(crate) use ex_cmd::samples as ex_cmd_samples;
+pub use ex_cmd::{ExCmd, ExOutcome, GroupKind, MAX_SHIFT_LEVELS};
+
 mod planner;
 pub use planner::plan;
 pub(crate) use planner::word_search;
@@ -3483,6 +3517,12 @@ fn is_jump(cmd: &Command) -> bool {
 
 /// Convenience: plan then commit one command, then maintain the sticky desired column (curswant).
 pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
+    // A resolved Ex edit (RFC-0020) runs the same `EditorState` method the live Ex command runs; it has no
+    // plan of its own.
+    if let Command::Ex(ex) = cmd {
+        st.apply_ex(ex);
+        return Vec::new();
+    }
     // A jump records the position it LEAVES onto the jumplist (Vim), so `CTRL-O` can return there.
     let jump_from = is_jump(cmd).then_some(st.view.cursor);
     prepare_selection_op(st, cmd);
@@ -3666,7 +3706,10 @@ fn update_curswant(st: &mut EditorState, cmd: &Command, entry_mode: Mode) {
         | Command::MoveUp
         | Command::MoveDown
         // An undo break moves nothing: `i_<Down><Down>` (a break before each move) keeps the column.
-        | Command::BreakUndo => {} // keep the sticky column
+        | Command::BreakUndo
+        // A `"x` prefix (or the register a failed `p` spends) moves nothing either (nvim 0.12.6:
+        // `/a<CR>:1t$<CR>"add` keeps the search's column).
+        | Command::SetRegister(_) => {} // keep the sticky column
         // `$`/`<End>` and `A` (append) want the line's end.
         Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd | Command::AppendLineEnd => {
             st.view.curswant = MAXCOL

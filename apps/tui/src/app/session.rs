@@ -12,14 +12,14 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use crossterm::terminal as ct_terminal;
 
 use ruse_core::{
-    CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Trace, TransactionOrigin,
-    Workspace,
+    CaretGravity, Command, DocumentId, EditorOption, ExCmd, ExOutcome, GroupKind, Mode, OpenKind,
+    SplitDir, Trace, TransactionOrigin, Workspace,
 };
 
 use crate::app::dispatch::{
-    attach_file, buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl,
-    match_count_message, may_quit, open_file_into_buffer, quit_window, regex_error_msg, run_cmd,
-    run_repeat, Files, Highlighters,
+    attach_file, buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, lines_outcome,
+    match_count_message, may_quit, note_ex, open_file_into_buffer, place_cursor, quit_window,
+    regex_error_msg, run_cmd, run_ex, run_repeat, sub_outcome, substitute_cmd, Files, Highlighters,
 };
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
@@ -64,6 +64,7 @@ struct InsertReturn {
 /// key and the `RepeatSubstituteLine` command both come here.
 fn repeat_substitute_lines(
     ws: &mut Workspace,
+    recorded: &mut Vec<Command>,
     last: Option<&(String, String, ruse_core::SubFlags)>,
     count: usize,
 ) -> String {
@@ -77,17 +78,34 @@ fn repeat_substitute_lines(
     if last > lines.max(1) {
         return "E16: Invalid range".to_string();
     }
-    let from = ws.focused().view.cursor();
-    let result = ws.substitute(ruse_core::SubRange::Lines(first, last), pat, rep, *flags);
-    // A repeat that matched is a jump, as `:s` is (nvim 0.12.6, #1119).
-    if matches!(result, Ok(out) if out.lines > 0) {
-        ws.push_focused_jump(from);
-    }
-    match result {
+    // Recorded as the resolved `:s` it repeats (RFC-0020); a match is a jump, as `:s` is (#1119).
+    let range = ruse_core::SubRange::Lines(first, last);
+    let ex = substitute_cmd(ws, range, pat, rep, *flags, None);
+    match sub_outcome(run_ex(ex, ws, recorded)) {
         Ok(out) if out.replacements == 0 => format!("E486: pattern not found: {pat}"),
         Ok(out) => crate::app::dispatch::substituted_message(&out),
         Err(e) => crate::app::dispatch::regex_error_msg(&e),
     }
+}
+
+/// `:r`: insert `bytes` (what the frontend read from the file or the command) below `addr`, recorded with
+/// the bytes as data so a replay never reads or runs anything (RFC-0020 R2). Returns the lines inserted; an
+/// address off the buffer inserts nothing.
+fn read_text(
+    ws: &mut Workspace,
+    recorded: &mut Vec<Command>,
+    addr: ruse_core::LineAddr,
+    bytes: Vec<u8>,
+    cursor_on_last: bool,
+) -> usize {
+    ws.resolve_addr(addr).map_or(0, |dest| {
+        let ex = ExCmd::ReadText {
+            dest,
+            cursor_on_last,
+            bytes,
+        };
+        lines_outcome(&run_ex(ex, ws, recorded))
+    })
 }
 
 /// The start of the UTF-8 char before byte `at` (`0` at the start).
@@ -427,6 +445,9 @@ pub(crate) struct Session {
     pub(crate) line_idx: line_index::LineIndex,
     pub(crate) initial: Vec<u8>,
     pub(crate) recorded: Vec<Command>,
+    /// The editing options the core reads, as the session began: a saved trace starts by setting them, so
+    /// it replays the same under another config (RFC-0020 R4).
+    pub(crate) start_options: Vec<EditorOption>,
     /// Per-buffer journal throttles (#858): a frame is appended only after the buffer actually changed.
     journal_throttle: HashMap<DocumentId, persist::journal::Throttle>,
     /// Buffers whose last journal append failed, so the E303 warning shows once per failing run (#907).
@@ -562,6 +583,7 @@ impl Session {
         if emacs_profile {
             ws.set_caret_gravity(CaretGravity::BetweenChar);
         }
+        let start_options = ws.focused().view.editing_options();
         Session {
             ws,
             files,
@@ -569,6 +591,7 @@ impl Session {
             line_idx: line_index::LineIndex::default(),
             initial,
             recorded: Vec::new(),
+            start_options,
             journal_throttle: HashMap::new(),
             journal_failed: HashSet::new(),
             unnamed_start: path.is_none().then_some(file_buf),
@@ -840,7 +863,7 @@ impl Session {
             let b = self.ws.focused().doc.bytes();
             let lines = ruse_core::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
             let at = ruse_core::pos::nth_line_start(b, line.min(lines.saturating_sub(1)));
-            self.ws.place_focused_cursor(at);
+            place_cursor(&mut self.ws, &mut self.recorded, at);
         }
         let next = self.macros.next_replay();
         if next.is_none() {
@@ -855,6 +878,7 @@ impl Session {
             if let Some(d) = self.ws.document_mut(doc) {
                 d.end_undo_block();
             }
+            note_ex(ExCmd::End, &mut self.recorded);
         }
     }
 
@@ -870,6 +894,10 @@ impl Session {
         let mode = self.ws.focused().view.mode();
         let entry = matches!(mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace);
         if !entry || self.engine.in_one_shot() || self.engine.insert_resumed() {
+            // Recorded when it closes a group, so a replay's `u` undoes what it undid live (RFC-0020).
+            if !self.ws.focused().doc.history().is_synced() {
+                note_ex(ExCmd::UndoSync, &mut self.recorded);
+            }
             self.ws.focused_doc_mut().sync_undo();
         }
     }
@@ -897,6 +925,7 @@ impl Session {
             if self.macros.replay_pending() && !self.ws.focused().doc.in_undo_block() {
                 self.ws.focused_doc_mut().begin_undo_block();
                 self.macro_undo = Some(self.ws.focused_buffer());
+                note_ex(ExCmd::Begin(GroupKind::Macro), &mut self.recorded);
             }
         }
         if let Some(key) = self.swap_answer.take() {
@@ -1175,7 +1204,7 @@ impl Session {
         }
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
-            confirm_key(confirm, key, ws, status);
+            confirm_key(confirm, key, ws, recorded, status);
             return;
         }
         // A backwards-range prompt owns the next key; [`Session::on_key`] answers it once routing is done.
@@ -1690,7 +1719,7 @@ impl Session {
         // session owns the key so it can read the count; see [`repeat_substitute_lines`].
         if chord && key.code == KeyCode::Char('&') && key.modifiers.is_empty() {
             let count = engine.take_count().max(1) as usize;
-            *status = repeat_substitute_lines(ws, last_substitute.as_ref(), count);
+            *status = repeat_substitute_lines(ws, recorded, last_substitute.as_ref(), count);
             return;
         }
         // `C-d` / `C-u` scroll the view and move the cursor by the window's 'scroll' lines (default half the
@@ -2033,13 +2062,10 @@ impl Session {
         if matches!(cmd, Command::RepeatSubstituteGlobal) {
             *status = match &last_substitute {
                 Some((pat, rep, flags)) => {
-                    let from = ws.focused().view.cursor();
-                    let result = ws.substitute(ruse_core::SubRange::WholeFile, pat, rep, *flags);
-                    // A repeat that matched is a jump, as `:s` is (nvim 0.12.6, #1119).
-                    if matches!(result, Ok(out) if out.lines > 0) {
-                        ws.push_focused_jump(from);
-                    }
-                    match result {
+                    // Recorded as the resolved `:%s` it repeats (RFC-0020); a match is a jump (#1119).
+                    let range = ruse_core::SubRange::WholeFile;
+                    let ex = substitute_cmd(ws, range, pat, rep, *flags, None);
+                    match sub_outcome(run_ex(ex, ws, recorded)) {
                         Ok(out) if out.replacements == 0 => {
                             format!("E486: pattern not found: {pat}")
                         }
@@ -2053,7 +2079,7 @@ impl Session {
         }
         // `&` picked by its command id (the palette): the typed `&` with no count.
         if matches!(cmd, Command::RepeatSubstituteLine) {
-            *status = repeat_substitute_lines(ws, last_substitute.as_ref(), 1);
+            *status = repeat_substitute_lines(ws, recorded, last_substitute.as_ref(), 1);
             return;
         }
         // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
@@ -2182,7 +2208,7 @@ impl Session {
                 run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
                 let b = ws.focused().doc.bytes();
                 if at < ruse_core::pos::line_end(b, at) {
-                    ws.place_focused_cursor(at);
+                    place_cursor(ws, recorded, at);
                 }
             }
             return;
@@ -2203,7 +2229,7 @@ impl Session {
             let pane = ws.focused();
             let b = pane.doc.bytes();
             let end = ruse_core::pos::line_end(b, pane.view.cursor());
-            ws.place_focused_cursor(end);
+            place_cursor(ws, recorded, end);
         }
         run_cmd(enter, ws, files, recorded, status, quit);
     }
@@ -2296,6 +2322,7 @@ impl Session {
             files,
             highlighters,
             initial,
+            start_options,
             recorded,
             profile_name,
             emacs_profile,
@@ -2555,7 +2582,15 @@ impl Session {
                 }
             }
             // `:[range]mark {x}` / `:[range]k{x}` (#1088).
-            Ex::Mark { range, name } => ws.set_mark_on_line(range, name),
+            Ex::Mark { range, name } => {
+                let line = match range {
+                    ruse_core::SubRange::WholeFile => {
+                        crate::app::dispatch::line_count(ws.focused().doc.bytes())
+                    }
+                    range => ws.resolve_range(range).1,
+                };
+                run_ex(ExCmd::Mark { line, name }, ws, recorded);
+            }
             // `:jumps` / `:changes` (F-003): position viewers over the jumplist / change list;
             // Enter jumps. Both use the position-viewer overlay.
             ex @ (Ex::Jumps | Ex::Changes) => {
@@ -2633,7 +2668,15 @@ impl Session {
                             *status = format!("Pattern not found: {}", spec.pattern);
                             return;
                         };
-                        let result = ws.global(spec.range, &spec.pattern, spec.negate, cmd);
+                        // Recorded as the lines the pattern marked and the command (RFC-0020).
+                        let ex = ExCmd::Global {
+                            marks: marked,
+                            cmd: cmd.clone(),
+                        };
+                        let result = match run_ex(ex, ws, recorded) {
+                            ExOutcome::Failed(e) => Err(e),
+                            out => Ok(lines_outcome(&out)),
+                        };
                         // The `:s` that ran on the marked lines set the last search in turn, even when it
                         // changed nothing (#1104).
                         if let ruse_core::GlobalCmd::Substitute { pattern, .. } = cmd {
@@ -2648,7 +2691,7 @@ impl Session {
                                     ws.focused().doc.bytes(),
                                     last_marked,
                                 );
-                                ws.place_focused_cursor(at);
+                                place_cursor(ws, recorded, at);
                                 String::new()
                             }
                             Ok(n) => format!("{n} lines changed"),
@@ -2683,7 +2726,7 @@ impl Session {
                             .flat_map(|&n| crate::app::ex_print::rows(b, n, n, *flags, ts, &*keep))
                             .collect();
                         let at = crate::app::ex_more::line_start(b, last_marked);
-                        ws.place_focused_cursor(at);
+                        place_cursor(ws, recorded, at);
                         crate::app::ex_more::show_rows(rows, status, overlay);
                     }
                     crate::input::GlobalPayload::Normal { keys, .. } => {
@@ -2739,14 +2782,14 @@ impl Session {
                         // Strip the read file's own BOM / CRLF as opening it would; the target
                         // buffer's format is applied on save (#860).
                         let clean = persist::encoding::FileFormat::normalize(&raw);
-                        let n = ws.read_lines(addr, &clean, false);
+                        let n = read_text(ws, recorded, addr, clean.to_vec(), false);
                         *status = format!("\"{path}\" {n}L, {}B", raw.len());
                     }
                     Err(e) => *status = format!("E484: can't open {path}: {e}"),
                 },
                 ReadSource::Command(cmd) => match crate::shell::capture(&cmd) {
                     Ok(out) => {
-                        let n = ws.read_lines(addr, out.text.as_bytes(), true);
+                        let n = read_text(ws, recorded, addr, out.text.clone().into_bytes(), true);
                         let lines = if n == 1 {
                             "1 more line".to_string()
                         } else {
@@ -2764,7 +2807,14 @@ impl Session {
             Ex::Filter { range, cmd } => match ws.range_text(range) {
                 Some(input) => match crate::shell::filter(&cmd, &input) {
                     Ok(out) => {
-                        let n = ws.filter_lines(range, &out.raw);
+                        // Recorded with the filter's output as data: replay never runs the command.
+                        let (first, last) = ws.resolve_range(range);
+                        let ex = ExCmd::FilterReplace {
+                            first,
+                            last,
+                            bytes: out.raw.clone(),
+                        };
+                        let n = lines_outcome(&run_ex(ex, ws, recorded));
                         let lines = if n <= 1 {
                             String::new()
                         } else {
@@ -2815,12 +2865,8 @@ impl Session {
                 *status = match &last_substitute {
                     Some((pat, rep, stored)) => {
                         let use_flags = flags.unwrap_or(*stored);
-                        let from = ws.focused().view.cursor();
-                        let result = ws.substitute(range, pat, rep, use_flags);
-                        if matches!(result, Ok(out) if out.lines > 0) {
-                            ws.push_focused_jump(from);
-                        }
-                        match result {
+                        let ex = substitute_cmd(ws, range, pat, rep, use_flags, None);
+                        match sub_outcome(run_ex(ex, ws, recorded)) {
                             Ok(out) if out.lines == 0 => format!("E486: pattern not found: {pat}"),
                             // A `:s/\n//` join on the last line: nothing to join, not an error.
                             Ok(out) if out.replacements == 0 => String::new(),
@@ -2889,21 +2935,32 @@ impl Session {
                             *status = format!("E486: pattern not found: {}", spec.pattern);
                         }
                         Ok(subs) => {
-                            // A match is a jump before the first prompt (nvim's `do_sub`, #1119).
+                            // The confirm loop records the resolved `:s` with the answers when it ends;
+                            // that pushes the jump from where the cursor is now (nvim's `do_sub`, #1119).
+                            let ex = substitute_cmd(
+                                ws,
+                                spec.range,
+                                &spec.pattern,
+                                &spec.replacement,
+                                flags,
+                                Some(Vec::new()),
+                            );
                             let from = ws.focused().view.cursor();
-                            ws.push_focused_jump(from);
-                            *confirm = Some(Confirm::new(subs));
+                            *confirm = Some(Confirm::new(subs, ex, from));
                         }
                         Err(e) => *status = crate::app::dispatch::invalid_command_msg(&e),
                     }
                 } else {
-                    let from = ws.focused().view.cursor();
-                    let result = ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags);
-                    // A `:s` that matched is a jump (Vim sets the pcmark at the first match, #940).
-                    if matches!(result, Ok(out) if out.lines > 0) {
-                        ws.push_focused_jump(from);
-                    }
-                    *status = match result {
+                    // Recorded resolved (RFC-0020); a `:s` that matched is a jump (#940).
+                    let ex = substitute_cmd(
+                        ws,
+                        spec.range,
+                        &spec.pattern,
+                        &spec.replacement,
+                        flags,
+                        None,
+                    );
+                    *status = match sub_outcome(run_ex(ex, ws, recorded)) {
                         Ok(out) if out.lines == 0 && spec.quiet => String::new(),
                         Ok(out) if out.lines == 0 => {
                             format!("E486: pattern not found: {}", spec.pattern)
@@ -3019,7 +3076,7 @@ impl Session {
                 };
             }
             Ex::SaveTrace(p) => {
-                let trace = Trace::record(initial, recorded.to_vec());
+                let trace = Trace::record_with_options(initial, start_options, recorded.to_vec());
                 match std::fs::write(&p, trace.to_text()) {
                     Ok(()) => *status = format!("trace saved: {p} ({} commands)", recorded.len()),
                     Err(e) => *status = format!("trace save failed: {e}"),
@@ -3028,9 +3085,8 @@ impl Session {
             // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
             // `:d`, `:>` and `:<` are jumps from where the cursor stood (nvim's `ex_operators`, #1119).
             Ex::Delete(range, reg) => {
-                let from = ws.focused().view.cursor();
-                ws.push_focused_jump(from);
-                let n = ws.delete_lines_into(range, reg);
+                let (first, last) = ws.resolve_range(range);
+                let n = lines_outcome(&run_ex(ExCmd::Delete { first, last, reg }, ws, recorded));
                 *status = if n == 1 {
                     "1 line deleted".into()
                 } else {
@@ -3039,7 +3095,8 @@ impl Session {
             }
             // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
             Ex::Yank(range, reg) => {
-                let n = ws.yank_lines_into(range, reg);
+                let (first, last) = ws.resolve_range(range);
+                let n = lines_outcome(&run_ex(ExCmd::Yank { first, last, reg }, ws, recorded));
                 *status = if n == 1 {
                     "1 line yanked".into()
                 } else {
@@ -3049,7 +3106,13 @@ impl Session {
             // `:[range]j[oin][!]` — join the range's lines into one, reusing the core `J`/`gJ` join (no range =
             // the current line, which joins with the next). `bang` is the raw `gJ` form.
             Ex::Join { range, bang } => {
-                let n = ws.join_lines(range, bang);
+                let (first, last) = ws.resolve_range(range);
+                let ex = ExCmd::Join {
+                    first,
+                    last,
+                    no_space: bang,
+                };
+                let n = lines_outcome(&run_ex(ex, ws, recorded));
                 *status = if n <= 1 {
                     String::new()
                 } else {
@@ -3061,7 +3124,14 @@ impl Session {
                 *status = "E16: Invalid range".into();
             }
             Ex::Move(range, dest) => {
-                *status = match ws.move_lines(range, dest) {
+                let ((first, last), dest) = (ws.resolve_range(range), ws.resolve_addr(dest));
+                let moved = dest.and_then(|dest| {
+                    match run_ex(ExCmd::Move { first, last, dest }, ws, recorded) {
+                        ExOutcome::Relocated(n) => n,
+                        _ => None,
+                    }
+                });
+                *status = match moved {
                     Some(0) => String::new(), // moved onto itself (`:2m2`): nothing to report
                     Some(1) => "1 line moved".into(),
                     Some(n) => format!("{n} lines moved"),
@@ -3070,7 +3140,14 @@ impl Session {
             }
             // `:[range]t {addr}` / `:copy` — copy the range's lines to after the destination line.
             Ex::Copy(range, dest) => {
-                *status = match ws.copy_lines(range, dest) {
+                let ((first, last), dest) = (ws.resolve_range(range), ws.resolve_addr(dest));
+                let copied = dest.and_then(|dest| {
+                    match run_ex(ExCmd::Copy { first, last, dest }, ws, recorded) {
+                        ExOutcome::Relocated(n) => n,
+                        _ => None,
+                    }
+                });
+                *status = match copied {
                     Some(1) => "1 line copied".into(),
                     Some(n) => format!("{n} lines copied"),
                     None => "E486: invalid copy".into(),
@@ -3083,9 +3160,14 @@ impl Session {
                 left,
                 levels,
             } => {
-                let from = ws.focused().view.cursor();
-                ws.push_focused_jump(from);
-                let n = ws.shift_lines(range, left, levels);
+                let (first, last) = ws.resolve_range(range);
+                let ex = ExCmd::Shift {
+                    first,
+                    last,
+                    left,
+                    levels: levels.min(ruse_core::MAX_SHIFT_LEVELS),
+                };
+                let n = lines_outcome(&run_ex(ex, ws, recorded));
                 *status = if n == 1 {
                     String::new()
                 } else {
@@ -3108,7 +3190,9 @@ impl Session {
                     let cur = ruse_core::pos::line_of(b, pane.view.cursor());
                     put_addr.insert_index(cur, crate::app::dispatch::line_count(b))
                 };
-                let n = ws.put_lines(addr, reg);
+                let n = ws.resolve_addr(addr).map_or(0, |dest| {
+                    lines_outcome(&run_ex(ExCmd::Put { dest, reg }, ws, recorded))
+                });
                 *status = if n == 1 {
                     "1 more line".into()
                 } else if n > 1 {
@@ -3133,7 +3217,17 @@ impl Session {
                 let Ex::Sort(range, spec) = ex else {
                     unreachable!("bound by the arm's pattern")
                 };
-                *status = match ws.sort_lines(range, &spec) {
+                let (first, last) = ws.resolve_range(range);
+                let ex = ExCmd::Sort {
+                    first,
+                    last,
+                    opts: spec,
+                };
+                let sorted = match run_ex(ex, ws, recorded) {
+                    ExOutcome::Failed(e) => Err(e),
+                    out => Ok(lines_outcome(&out)),
+                };
+                *status = match sorted {
                     Ok(0) => "sorted".into(),
                     Ok(removed) => format!("sorted, {removed} fewer lines"),
                     // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
@@ -3142,7 +3236,7 @@ impl Session {
             }
             // `:set {option}` — set one editor option on the focused view.
             Ex::Set(opt) => {
-                ws.set_option(opt);
+                run_ex(ExCmd::Set(opt), ws, recorded);
                 *status = format!("{opt:?}");
             }
             // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
@@ -3269,7 +3363,7 @@ impl Session {
                 }
                 if curs != cur {
                     let at = crate::app::ex_more::line_start(b, curs);
-                    ws.place_focused_cursor(at);
+                    place_cursor(ws, recorded, at);
                 }
                 crate::app::ex_more::show_rows(rows, status, overlay);
             }
@@ -3287,7 +3381,14 @@ impl Session {
                 bang,
                 tabstop,
             } => {
-                ws.retab(range, bang, tabstop);
+                let (first, last) = ws.resolve_range(range);
+                let ex = ExCmd::Retab {
+                    first,
+                    last,
+                    bang,
+                    tabstop,
+                };
+                run_ex(ex, ws, recorded);
             }
             // `:startinsert` and friends (#609) start Insert once the whole line has run.
             Ex::StartInsert { kind, bang } => *pending_insert = Some(Some((kind, bang))),
@@ -3459,7 +3560,7 @@ impl Session {
                 let lines =
                     ruse_core::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
                 let at = ruse_core::pos::nth_line_start(b, line.min(lines.saturating_sub(1)));
-                self.ws.place_focused_cursor(at);
+                place_cursor(&mut self.ws, &mut self.recorded, at);
             }
             if ruse_core::interrupt::breakcheck() {
                 self.macros.flush_replay();
@@ -3536,7 +3637,7 @@ impl Session {
     /// replay queue and an open `gQ` line (#807) so the keys reach Normal mode and the outer keys resume
     /// after, and record every change as one undo step (#852: Vim does not sync undo between keys that
     /// were not typed).
-    fn as_normal(&mut self, body: impl FnOnce(&mut Session)) {
+    fn as_normal(&mut self, kind: GroupKind, body: impl FnOnce(&mut Session)) {
         if self.normal_depth >= MAX_NORMAL_DEPTH {
             self.status = "E192: Recursive use of :normal too deep".into();
             return;
@@ -3550,7 +3651,10 @@ impl Session {
         if opened {
             self.ws.focused_doc_mut().begin_undo_block();
         }
+        // The group a trace replays as one undo step, as this block makes it live (RFC-0020 R3).
+        note_ex(ExCmd::Begin(kind), &mut self.recorded);
         body(self);
+        note_ex(ExCmd::End, &mut self.recorded);
         if opened {
             if let Some(d) = self.ws.document_mut(doc) {
                 d.end_undo_block();
@@ -3587,7 +3691,7 @@ impl Session {
             ..
         } = self;
         run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
-        ws.place_focused_cursor(place);
+        place_cursor(ws, recorded, place);
         Some(InsertReturn { line, at_eol })
     }
 
@@ -3626,7 +3730,7 @@ impl Session {
     /// none yet.
     fn ex_normal(&mut self, range: Option<ruse_core::SubRange>, keys: &str, frame: &FrameCtx) {
         let events = crate::keys::parse_normal_keys(keys);
-        self.as_normal(|s| match range {
+        self.as_normal(GroupKind::Normal, |s| match range {
             None => s.normal_pass(&events, frame),
             Some(range) => {
                 let (line1, line2) = crate::app::dispatch::resolve_normal_range(&s.ws, range);
@@ -3637,7 +3741,7 @@ impl Session {
                     let b = s.ws.focused().doc.bytes();
                     let last = crate::app::dispatch::line_count(b).max(1);
                     let off = ruse_core::pos::nth_line_start(b, lnum.min(last) - 1);
-                    s.ws.place_focused_cursor(off);
+                    place_cursor(&mut s.ws, &mut s.recorded, off);
                     s.normal_pass(&events, frame);
                 }
             }
@@ -3699,7 +3803,7 @@ impl Session {
                 .collect()
         };
         let events = crate::keys::parse_normal_keys(keys);
-        self.as_normal(|s| {
+        self.as_normal(GroupKind::Global, |s| {
             for &(start, end, empty_buffer) in &anchors {
                 if s.quit || s.ws.focused_buffer() != doc_id || ruse_core::interrupt::interrupted()
                 {
@@ -3716,7 +3820,7 @@ impl Session {
                 if !(a < z || empty_buffer) || !at_line_start {
                     continue; // the line was deleted, or joined into the one before it
                 }
-                s.ws.place_focused_cursor(a);
+                place_cursor(&mut s.ws, &mut s.recorded, a);
                 s.normal_pass(&events, frame);
             }
         });

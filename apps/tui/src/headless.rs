@@ -97,6 +97,10 @@ impl Headless {
     #[must_use]
     pub fn vanilla_search_case(mut self) -> Headless {
         self.s.ws.set_default_search_case(false, false);
+        // Set before any key, so it is part of where a saved trace starts.
+        if self.s.recorded.is_empty() {
+            self.s.start_options = self.s.ws.focused().view.editing_options();
+        }
         self
     }
 
@@ -263,6 +267,17 @@ impl Headless {
     pub fn workspace_mut(&mut self) -> &mut Workspace {
         self.stale = true;
         &mut self.s.ws
+    }
+
+    /// The trace `:trace save` would write now: the starting options, then every recorded command
+    /// (RFC-0020).
+    #[must_use]
+    pub fn trace(&self) -> ruse_core::Trace {
+        ruse_core::Trace::record_with_options(
+            &self.s.initial,
+            &self.s.start_options,
+            self.s.recorded.clone(),
+        )
     }
 
     /// The input engine, for observations the accessors above do not cover.

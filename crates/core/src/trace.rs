@@ -11,9 +11,16 @@
 //! insert_char 104
 //! enter_normal
 //! ```
+//!
+//! Ex edits are recorded too, as resolved [`ExCmd`]s (`ex_*` verbs, RFC-0020): line numbers, patterns and
+//! the bytes `:r`/`:!` read are values, so replay needs no Ex parser and does no IO. A trace the editor
+//! saves starts with `ex_set` lines holding the editing options the core reads, as they were when the
+//! session began, and `ex_begin`/`ex_end` bracket the commands that undo as one step (`:normal`, `:g`'s
+//! `normal`, a macro). These are additive verbs: a `v1` trace written before them parses and replays as
+//! before.
 
 use crate::command::{Command, CommandParseError};
-use crate::editor::{apply_command, EditorState};
+use crate::editor::{apply_command, EditorOption, EditorState, ExCmd};
 
 /// The trace file format version.
 pub const TRACE_FORMAT_VERSION: u32 = 1;
@@ -40,6 +47,11 @@ pub enum TraceError {
         expected: u64,
         actual: u64,
     },
+    /// An `ex_end` with no open `ex_begin` (at `line`), or a group still open at the end of the trace
+    /// (`line` is the last line).
+    UnbalancedGroup {
+        line: usize,
+    },
 }
 
 /// A stable, deterministic 64-bit fingerprint of the initial document (FNV-1a — not the randomized std
@@ -65,6 +77,33 @@ impl Trace {
         }
     }
 
+    /// Record a trace whose replay starts from the editing `options` the session had when it began
+    /// (RFC-0020 R4): they are written as `ex_set` lines before the commands, so a replay on a machine
+    /// with another config gives the same document. A group still open (a `:trace save` run from inside a
+    /// `:normal` or a macro) is closed at the end, so the saved trace parses.
+    #[must_use]
+    pub fn record_with_options(
+        initial: &[u8],
+        options: &[EditorOption],
+        commands: Vec<Command>,
+    ) -> Trace {
+        let mut all: Vec<Command> = options
+            .iter()
+            .map(|&o| Command::Ex(ExCmd::Set(o)))
+            .collect();
+        let mut depth = 0usize;
+        for c in &commands {
+            match c {
+                Command::Ex(ExCmd::Begin(_)) => depth += 1,
+                Command::Ex(ExCmd::End) => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        all.extend(commands);
+        all.extend(std::iter::repeat_n(Command::Ex(ExCmd::End), depth));
+        Trace::record(initial, all)
+    }
+
     /// Serialize to the text format.
     #[must_use]
     pub fn to_text(&self) -> String {
@@ -88,14 +127,29 @@ impl Trace {
             return Err(TraceError::UnsupportedVersion(version));
         }
         let mut commands = Vec::new();
+        let mut depth = 0usize;
+        let mut last = 1;
         for (i, line) in lines.enumerate() {
+            last = i + 2;
             let t = line.trim();
             if t.is_empty() || t.starts_with('#') {
                 continue;
             }
             let cmd =
                 Command::from_line(t).map_err(|err| TraceError::BadCommand { line: i + 2, err })?;
+            match cmd {
+                Command::Ex(ExCmd::Begin(_)) => depth += 1,
+                Command::Ex(ExCmd::End) => {
+                    depth = depth
+                        .checked_sub(1)
+                        .ok_or(TraceError::UnbalancedGroup { line: i + 2 })?;
+                }
+                _ => {}
+            }
             commands.push(cmd);
+        }
+        if depth > 0 {
+            return Err(TraceError::UnbalancedGroup { line: last });
         }
         Ok(Trace {
             format_version: version,
@@ -115,8 +169,27 @@ impl Trace {
             });
         }
         let mut st = EditorState::new(initial.to_vec());
+        // An `ex_begin`/`ex_end` group undoes as one step, as `:normal` and a macro replay do live: the
+        // OUTERMOST group holds one undo block open (an inner one folds into it, as the live block does).
+        let mut depth = 0usize;
         for c in &self.commands {
-            let _effects = apply_command(&mut st, c);
+            match c {
+                Command::Ex(ExCmd::Begin(_)) => {
+                    if depth == 0 {
+                        st.doc.begin_undo_block();
+                    }
+                    depth += 1;
+                }
+                Command::Ex(ExCmd::End) => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        st.doc.end_undo_block();
+                    }
+                }
+                _ => {
+                    let _effects = apply_command(&mut st, c);
+                }
+            }
         }
         Ok(st)
     }
@@ -150,6 +223,7 @@ mod tests {
     fn verbs() -> Vec<String> {
         include_str!("command.rs")
             .lines()
+            .chain(include_str!("editor/ex_cmd.rs").lines())
             .filter_map(|l| {
                 let rest = l.trim_start().strip_prefix('"')?;
                 let (verb, tail) = rest.split_once('"')?;
@@ -222,6 +296,99 @@ mod tests {
         }
         assert!(slow.is_empty(), "slow replays: {slow:#?}");
         assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    }
+
+    /// A `v1` trace written before RFC-0020 (no `ex_*` verbs, no starting options) still parses and
+    /// replays as it did (INV-ADDITIVE).
+    #[test]
+    fn a_trace_from_before_ex_verbs_still_replays() {
+        let initial = b"hello\nworld\n";
+        let old = format!(
+            "# ruse-trace v1 doc_hash={:016x}\nmove_line_end\nenter_insert_after\ninsert_char 33\n\
+             enter_normal\n# a comment\n\nmove 1 down\ndelete 1 line\n",
+            doc_hash(initial)
+        );
+        let trace = Trace::from_text(&old).expect("an old trace parses");
+        assert_eq!(trace.commands.len(), 6);
+        let st = trace.replay(initial).expect("replay");
+        assert_eq!(st.bytes(), b"hello!\n");
+    }
+
+    #[test]
+    fn unbalanced_groups_are_typed_errors() {
+        let head = format!("# ruse-trace v1 doc_hash={:016x}\n", doc_hash(b""));
+        assert_eq!(
+            Trace::from_text(&format!("{head}ex_end\n")),
+            Err(TraceError::UnbalancedGroup { line: 2 })
+        );
+        assert_eq!(
+            Trace::from_text(&format!("{head}ex_begin normal\nex_begin global\nex_end\n")),
+            Err(TraceError::UnbalancedGroup { line: 4 })
+        );
+        assert!(Trace::from_text(&format!("{head}ex_begin macro\nex_end\n")).is_ok());
+        // Saved from inside a group: the open groups are closed, so the file parses.
+        let open = vec![
+            Command::Ex(ExCmd::Begin(crate::editor::GroupKind::Macro)),
+            Command::Ex(ExCmd::Begin(crate::editor::GroupKind::Normal)),
+        ];
+        let t = Trace::record_with_options(b"", &[], open);
+        assert_eq!(
+            Trace::from_text(&t.to_text()).map(|t| t.commands.len()),
+            Ok(4)
+        );
+    }
+
+    /// The commands between `ex_begin` and `ex_end` undo as one step on replay, as `:normal` does live;
+    /// without the group they are separate steps.
+    #[test]
+    fn a_group_replays_as_one_undo_step() {
+        let initial = b"a\nb\n";
+        let body = |grouped: bool| {
+            let mut cmds = Vec::new();
+            if grouped {
+                cmds.push(Command::Ex(ExCmd::Begin(crate::editor::GroupKind::Normal)));
+            }
+            for at in [0, 2] {
+                cmds.push(Command::Ex(ExCmd::Place(at)));
+                cmds.push(Command::AppendLineEnd);
+                cmds.push(Command::InsertChar('x'));
+                cmds.push(Command::EnterNormal);
+                cmds.push(Command::Ex(ExCmd::UndoSync));
+            }
+            if grouped {
+                cmds.push(Command::Ex(ExCmd::End));
+            }
+            cmds.push(Command::Undo);
+            Trace::record(initial, cmds).replay(initial).unwrap()
+        };
+        assert_eq!(body(true).bytes(), b"a\nb\n");
+        assert_eq!(body(false).bytes(), b"ax\nb\n");
+    }
+
+    /// A saved trace starts from the session's options, whatever the replaying defaults are.
+    #[test]
+    fn starting_options_are_replayed_first() {
+        let initial = b"x Foo foo\n";
+        let search = Command::Search {
+            op: crate::command::SearchOp::Move,
+            count: 1,
+            pattern: "foo".into(),
+            backward: false,
+            offset: crate::command::SearchOffset::None,
+        };
+        let opts = [
+            EditorOption::IgnoreCase(true),
+            EditorOption::SmartCase(true),
+        ];
+        let t = Trace::record_with_options(initial, &opts, vec![search.clone()]);
+        let t = Trace::from_text(&t.to_text()).unwrap();
+        assert_eq!(t.replay(initial).unwrap().cursor(), 2);
+        let plain = Trace::record(initial, vec![search]);
+        assert_eq!(plain.replay(initial).unwrap().cursor(), 6);
+        let t = Trace::record_with_options(initial, &opts, vec![]);
+        assert!(t
+            .to_text()
+            .contains("ex_set ignorecase 1\nex_set smartcase 1\n"));
     }
 
     #[test]

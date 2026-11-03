@@ -3067,6 +3067,9 @@ FIXTURES: list[dict] = [
     {"name": "srx_v_slash_esc_keeps_selection", "lines": ["ab cd"], "keys": "lvl/cd<Esc>d"},
     {"name": "srx_v_slash_count", "lines": ["a x b x c x"], "keys": "v2/x<CR>d"},
     {"name": "srx_x_after_dollar", "lines": ["ab", "cd"], "keys": "/$<CR>x"},
+    # A `"x` prefix, or the register a failed `p` spends, keeps the wanted column (#1105).
+    {"name": "curswant_kept_by_register_prefix", "lines": ["a", "ba"], "keys": "/a<CR>:1t$<CR>\"add"},
+    {"name": "curswant_kept_by_failed_put", "lines": ["a", "ba"], "keys": "/a<CR>:1t$<CR>pdd"},
 ]
 
 

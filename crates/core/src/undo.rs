@@ -121,6 +121,13 @@ impl UndoHistory {
         self.synced = true;
     }
 
+    /// Whether the history is synced ([`UndoHistory::sync`]) since its last change, so another sync would
+    /// change nothing. The frontend records a sync in the trace only when it is not (RFC-0020).
+    #[must_use]
+    pub fn is_synced(&self) -> bool {
+        self.synced
+    }
+
     /// Decide the group id for a new change appended to `current`, per persistence §6.
     fn group_for(&mut self, origin: TransactionOrigin, hint: GroupHint) -> u64 {
         let cur = &self.nodes[self.current.0];

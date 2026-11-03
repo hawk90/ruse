@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{BytePos, Command, DocumentId, Effect, SubRange, TransactionOrigin, Workspace};
+use ruse_core::{
+    BytePos, Command, DocumentId, Effect, ExCmd, ExOutcome, SubRange, TransactionOrigin, Workspace,
+};
 
 use crate::highlight;
 use crate::persist;
@@ -201,8 +203,10 @@ pub(crate) fn run_cmd(
     quit: &mut bool,
 ) {
     if let Some(err) = put_error(&cmd, ws).or_else(|| mark_error(&cmd, ws)) {
-        // Nothing runs; a `"x` the command would have read is spent, as in Vim.
+        // Nothing runs; a `"x` the command would have read is spent, as in Vim. Recorded, so a replay does
+        // not hand that register to the next command.
         *status = err;
+        recorded.push(Command::SetRegister(None));
         ws.apply(&Command::SetRegister(None));
         return;
     }
@@ -210,6 +214,26 @@ pub(crate) fn run_cmd(
     for eff in ws.apply(&cmd) {
         apply_effect(eff, ws, files, status, quit);
     }
+}
+
+/// Record a resolved Ex edit and run it on the focused window (RFC-0020, D-061). Every Ex edit goes through
+/// here, so none can reach the document without reaching the trace.
+pub(crate) fn run_ex(ex: ExCmd, ws: &mut Workspace, recorded: &mut Vec<Command>) -> ExOutcome {
+    let out = ws.apply_ex(&ex);
+    recorded.push(Command::Ex(ex));
+    out
+}
+
+/// Place the focused cursor at `at` for an Ex command (`:normal`'s per-line column 0, a `:g` landing line),
+/// recorded so replay puts it in the same place.
+pub(crate) fn place_cursor(ws: &mut Workspace, recorded: &mut Vec<Command>, at: usize) {
+    run_ex(ExCmd::Place(at), ws, recorded);
+}
+
+/// Record a trace marker that changes nothing live by itself (`ex_begin`/`ex_end`, an undo sync the caller
+/// performs).
+pub(crate) fn note_ex(ex: ExCmd, recorded: &mut Vec<Command>) {
+    recorded.push(Command::Ex(ex));
 }
 
 /// Apply a counted [`crate::input::Repeat`] one command at a time, as [`run_cmd`] runs each (#683). CTRL-C
@@ -559,6 +583,47 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
             *status = format!("write failed: {e}");
             false
         }
+    }
+}
+
+/// The `:s` result an [`ExOutcome`] carries.
+pub(crate) fn sub_outcome(out: ExOutcome) -> Result<ruse_core::SubOutcome, ruse_core::RegexError> {
+    match out {
+        ExOutcome::Substituted(o) => Ok(o),
+        ExOutcome::Failed(e) => Err(e),
+        _ => Ok(ruse_core::SubOutcome {
+            replacements: 0,
+            lines: 0,
+        }),
+    }
+}
+
+/// The line count an [`ExOutcome`] carries (`0` for any other outcome).
+pub(crate) fn lines_outcome(out: &ExOutcome) -> usize {
+    match out {
+        ExOutcome::Lines(n) => *n,
+        _ => 0,
+    }
+}
+
+/// A resolved `:s` over `range` of the focused window (RFC-0020): the lines it covers, the literal pattern,
+/// replacement and flags, and the `:s///c` answers when there are any.
+pub(crate) fn substitute_cmd(
+    ws: &Workspace,
+    range: SubRange,
+    pattern: &str,
+    replacement: &str,
+    flags: ruse_core::SubFlags,
+    answers: Option<Vec<bool>>,
+) -> ExCmd {
+    let (first, last) = ws.resolve_range(range);
+    ExCmd::Substitute {
+        first,
+        last,
+        pattern: pattern.to_string(),
+        replacement: replacement.to_string(),
+        flags,
+        answers,
     }
 }
 

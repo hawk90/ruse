@@ -75777,6 +75777,62 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "curswant_kept_by_register_prefix",
+      "lines": [
+        "a",
+        "ba"
+      ],
+      "keys": "/a<CR>:1t$<CR>\"add",
+      "expect": {
+        "text": [
+          "a",
+          "ba"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "curswant_kept_by_failed_put",
+      "lines": [
+        "a",
+        "ba"
+      ],
+      "keys": "/a<CR>:1t$<CR>pdd",
+      "expect": {
+        "text": [
+          "a",
+          "ba"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E353",
+        "failed": true
+      }
     }
   ]
 }
