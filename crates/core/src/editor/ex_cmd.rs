@@ -12,8 +12,8 @@
 use std::fmt::Write as _;
 
 use super::{
-    EditorOption, EditorState, GlobalCmd, LineAddr, SortKind, SortOptions, SubFlags, SubOutcome,
-    SubRange, MAX_OPTION_INT, MAX_TABSTOP,
+    CaretGravity, EditorOption, EditorState, GlobalCmd, LineAddr, SortKind, SortOptions, SubFlags,
+    SubOutcome, SubRange, MAX_OPTION_INT, MAX_TABSTOP,
 };
 use crate::command::CommandParseError;
 use crate::pattern::RegexError;
@@ -374,6 +374,8 @@ fn option_name(opt: EditorOption) -> (&'static str, String) {
         EditorOption::PreserveIndent(v) => ("preserveindent", flag(v)),
         EditorOption::SmartTab(v) => ("smarttab", flag(v)),
         EditorOption::ShiftRound(v) => ("shiftround", flag(v)),
+        // `0` rests on a character (Vim), `1` between characters (Emacs).
+        EditorOption::CaretGravity(g) => ("caretgravity", flag(g == CaretGravity::BetweenChar)),
     }
 }
 
@@ -673,6 +675,13 @@ impl ExCmd {
                         "textwidth" => {
                             (value <= MAX_OPTION_INT).then_some(EditorOption::TextWidth(value))
                         }
+                        "caretgravity" => flag(value).map(|between| {
+                            EditorOption::CaretGravity(if between {
+                                CaretGravity::BetweenChar
+                            } else {
+                                CaretGravity::OnChar
+                            })
+                        }),
                         _ => None,
                     };
                     ExCmd::Set(opt.ok_or_else(|| a.bad())?)
@@ -973,6 +982,8 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::PreserveIndent(true)),
         ExCmd::Set(EditorOption::SmartTab(false)),
         ExCmd::Set(EditorOption::ShiftRound(true)),
+        ExCmd::Set(EditorOption::CaretGravity(CaretGravity::OnChar)),
+        ExCmd::Set(EditorOption::CaretGravity(CaretGravity::BetweenChar)),
         ExCmd::Place(17),
         ExCmd::UndoSync,
         ExCmd::Begin(GroupKind::Normal),
@@ -1003,6 +1014,7 @@ mod tests {
             "ex_set tabstop 0",
             "ex_set shiftwidth 2147483648",
             "ex_set ignorecase 2",
+            "ex_set caretgravity 2",
             "ex_set wrap 1",
             "ex_sort 1 2 z -",
             "ex_sort 1 2 - 61",

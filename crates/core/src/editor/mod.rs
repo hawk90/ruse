@@ -110,6 +110,10 @@ pub enum EditorOption {
     SmartTab(bool),
     /// `'shiftround'` (`sr`, Vim-global) — `>`/`<` round the indent to a multiple of `'shiftwidth'` (#617).
     ShiftRound(bool),
+    /// The caret gravity the input profile installs (D-050; not a Vim option, so `:set` never makes it).
+    /// The core reads it on every edit, so a trace starts with it (RFC-0020 R4, #1134): an Emacs session
+    /// replays with point between characters.
+    CaretGravity(CaretGravity),
 }
 
 impl EditorOption {
@@ -118,12 +122,14 @@ impl EditorOption {
     /// ruse keeps their local value per View with the global copy on the Workspace.
     #[must_use]
     pub fn is_global(self) -> bool {
+        // The caret gravity is the input profile's, one for the whole session (`Workspace::set_caret_gravity`).
         matches!(
             self,
             EditorOption::IgnoreCase(_)
                 | EditorOption::SmartCase(_)
                 | EditorOption::SmartTab(_)
                 | EditorOption::ShiftRound(_)
+                | EditorOption::CaretGravity(_)
         )
     }
 }
@@ -231,11 +237,12 @@ impl ViewOptions {
             EditorOption::PreserveIndent(v) => self.indent.preserveindent = v,
             EditorOption::SmartTab(v) => self.indent.smarttab = v,
             EditorOption::ShiftRound(v) => self.indent.shiftround = v,
+            EditorOption::CaretGravity(g) => self.caret = g,
         }
     }
 
     /// These values as the `:set`s that would install them (`ic`, `scs`, `ts`, `sw`, `et`, `tw`; `sw` is
-    /// the raw value, `0` follows `ts`).
+    /// the raw value, `0` follows `ts`), then the caret gravity.
     pub(crate) fn editing_options(self) -> Vec<EditorOption> {
         vec![
             EditorOption::IgnoreCase(self.search_case.ignore),
@@ -251,6 +258,7 @@ impl ViewOptions {
             EditorOption::PreserveIndent(self.indent.preserveindent),
             EditorOption::SmartTab(self.indent.smarttab),
             EditorOption::ShiftRound(self.indent.shiftround),
+            EditorOption::CaretGravity(self.caret),
         ]
     }
 
@@ -970,8 +978,8 @@ impl View {
         self.caret = o.caret;
     }
 
-    /// The values of every option the core reads while editing (`ic`, `scs`, `sw`, `ts`, `et`, `tw`), as
-    /// the `:set`s that would install them. A trace writes them at its start, so replay does not depend on
+    /// The values of every option the core reads while editing (`ic`, `scs`, `sw`, `ts`, `et`, `tw`, and
+    /// the caret gravity), as the `:set`s that would install them. A trace writes them at its start, so replay does not depend on
     /// the replaying machine's config (RFC-0020 R4). `sw` is the raw value (`0` follows `ts`).
     #[must_use]
     pub fn editing_options(&self) -> Vec<EditorOption> {

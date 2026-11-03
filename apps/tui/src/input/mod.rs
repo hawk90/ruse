@@ -2113,7 +2113,7 @@ impl InputEngine {
         Feed::Replay(cmds)
     }
 
-    /// Dispatch a PURE insert-entry (`i`/`a`/`I`/`A`/`o`/`O`), capturing the leading count for
+    /// Dispatch a PURE insert-entry (`i`/`a`/`I`/`A`/`o`/`O`, `R`/`gR`), capturing the leading count for
     /// count-on-insert repetition (VIM-CNT-INS) BEFORE [`action`](Self::action) resets the axes. The
     /// captured count is stashed in `pending_insert_count`; [`record`](Self::record) folds it into the
     /// [`ChangeIntent`] this entry opens, and the terminating `<Esc>` replays the typed text that many
@@ -3785,7 +3785,7 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::ReplaceChar;
                 Feed::Pending
             }
-            KeyCode::Char('R') => self.action(Command::EnterReplace),
+            KeyCode::Char('R') => self.insert_entry(Command::EnterReplace),
             // With 'tildeop' `~` is the `g~` operator (`~w`; `~~` is its line form, above).
             KeyCode::Char('~') if self.tildeop => self.arm_op(Op::CaseToggle),
             KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
@@ -4186,7 +4186,7 @@ impl InputEngine {
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).
-                    KeyCode::Char('R') => self.action(Command::EnterVirtualReplace),
+                    KeyCode::Char('R') => self.insert_entry(Command::EnterVirtualReplace),
                     // `g-` / `g+` — chronological undo-time travel across branches (F-005 #3).
                     KeyCode::Char('-') => self.action(Command::UndoOlder),
                     KeyCode::Char('+') => self.action(Command::UndoNewer),

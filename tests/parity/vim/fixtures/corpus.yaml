@@ -8659,6 +8659,271 @@
       }
     },
     {
+      "name": "replace_count_single",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "05Rx<Esc>",
+      "expect": {
+        "text": [
+          "xxxxxfghij"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_pair",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "03Rxy<Esc>",
+      "expect": {
+        "text": [
+          "xyxyxyghij"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_single_dot",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "05Rx<Esc>.",
+      "expect": {
+        "text": [
+          "xxxxxxxxxj"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_pair_dot",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "03Rxy<Esc>.",
+      "expect": {
+        "text": [
+          "xyxyxxyxyxy"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_dot_next_line",
+      "lines": [
+        "abcdefghij",
+        "abcdefghij"
+      ],
+      "keys": "03Rxy<Esc>j0.",
+      "expect": {
+        "text": [
+          "xyxyxyghij",
+          "xyxyxyghij"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_dot_new_count",
+      "lines": [
+        "abcdefghij",
+        "abcdefghij"
+      ],
+      "keys": "03Rxy<Esc>j02.",
+      "expect": {
+        "text": [
+          "xyxyxyghij",
+          "xyxyefghij"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_backspace",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "03Rxyz<BS><Esc>",
+      "expect": {
+        "text": [
+          "xyxyxyghij"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_past_eol",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "07l3Rxy<Esc>",
+      "expect": {
+        "text": [
+          "abcdefgxyxyxy"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "replace_count_undo",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "03Rxy<Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcdefghij"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gr_count_pair",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "03gRxy<Esc>",
+      "expect": {
+        "text": [
+          "xyxyxyghij"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "gr_basic_overwrite",
       "lines": [
         "hello"

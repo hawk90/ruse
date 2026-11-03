@@ -853,12 +853,14 @@ impl Session {
     /// mutates `highlighters`, which the frame's highlight spans borrowed until render ended), then open the
     /// references / code-action pickers it collected.
     pub(crate) fn post_render(&mut self, frame: &FrameCtx) {
+        let recorded = &mut self.recorded;
         self.lsp.apply_pending(
             &mut self.ws,
             &mut self.files,
             &mut self.highlighters,
             &frame.snapshot,
             &mut self.status,
+            &mut |ws, at| place_cursor(ws, recorded, at),
         );
         if let Some(locs) = self.lsp.take_refs() {
             self.overlay = Some(Overlay::Refs(ref_picker::open(locs, self.lsp.cwd())));
@@ -1244,7 +1246,9 @@ impl Session {
         let boundary =
             !overlay_open && matches!(prefix, Prefix::None) && engine.pending() == Pending::Base;
         let mode = ws.focused().view.mode();
-        let macro_cmd = boundary && matches!(mode, Mode::Normal | Mode::Visual { .. });
+        // Not under the modeless Emacs profile, whose `q` and `@` self-insert (#1156).
+        let macro_cmd =
+            boundary && !*emacs_profile && matches!(mode, Mode::Normal | Mode::Visual { .. });
         let step = macros.step_gated(raw_key, from_replay, macro_cmd, macro_cmd);
         // A count typed before `q` (record or stop), `Q` with nothing recorded, or an aborted register name
         // is discarded, as in nvim (`3qaxq` deletes one char); only an armed `@` keeps it for its replay.
@@ -1366,7 +1370,7 @@ impl Session {
             match accepted {
                 None => {}
                 // The line, diagnostics, marks and position pickers jump the cursor to a byte offset.
-                Some(Accepted::Jump(offset)) => ws.place_focused_cursor(offset),
+                Some(Accepted::Jump(offset)) => place_cursor(ws, recorded, offset),
                 // The buffer picker switches the focused window to the selected buffer.
                 Some(Accepted::Buffer(id)) => {
                     ws.focus_buffer(id);
@@ -1385,6 +1389,7 @@ impl Session {
                 Some(Accepted::Location(uri, l, c)) => {
                     let path = crate::lsp::uri_to_path(&uri);
                     let target = std::fs::canonicalize(&path).unwrap_or(path);
+                    let before = ws.focused_buffer();
                     let opened = open_file_into_buffer(
                         &target.display().to_string(),
                         ws,
@@ -1392,8 +1397,15 @@ impl Session {
                         highlighters,
                     );
                     if opened.id.is_some() {
-                        let bytes = ws.focused().doc.bytes().to_vec();
-                        ws.place_focused_cursor(crate::lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                        let bytes = ws.focused().doc.bytes();
+                        let at = crate::lsp::model::lsp_pos_to_byte(bytes, l, c);
+                        // A move in the same buffer is recorded (#1134); a trace does not follow a switch
+                        // to another buffer, so a placement there is not.
+                        if ws.focused_buffer() == before {
+                            place_cursor(ws, recorded, at);
+                        } else {
+                            ws.place_focused_cursor(at);
+                        }
                     } else {
                         *status = opened.status;
                     }
@@ -1496,7 +1508,7 @@ impl Session {
                             let buf_id = ws.focused_buffer();
                             let fv = folds.entry(buf_id).or_default();
                             crate::folds::insert_closed_fold(fv, start, end);
-                            ws.place_focused_cursor(line_idx.nth_line_start(start));
+                            place_cursor(ws, recorded, line_idx.nth_line_start(start));
                             *status = format!("folded {} lines", end - start + 1);
                         }
                     }
@@ -1571,7 +1583,7 @@ impl Session {
                     } else {
                         blank
                     };
-                    ws.place_focused_cursor(start + off);
+                    place_cursor(ws, recorded, start + off);
                 }
                 ws.set_top(ws.focus(), viewport::recenter(row, focused_h, to));
                 return;
@@ -1625,7 +1637,7 @@ impl Session {
                         if end > start {
                             crate::folds::insert_closed_fold(fv, start, end);
                             run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
-                            ws.place_focused_cursor(line_idx.nth_line_start(start));
+                            place_cursor(ws, recorded, line_idx.nth_line_start(start));
                             *status = format!("folded {} lines", end - start + 1);
                         }
                     } else {
@@ -1674,7 +1686,7 @@ impl Session {
                         }
                     }
                     if moved {
-                        ws.place_focused_cursor(line_idx.nth_line_start(line));
+                        place_cursor(ws, recorded, line_idx.nth_line_start(line));
                     }
                 }
                 // `zR`/`zM`/`zr`/`zm` — open/close all folds or step the foldlevel. Under
@@ -1747,7 +1759,11 @@ impl Session {
         // The command-line window (`q:`/`q/`/`q?`) owns the keystream while open, like the `:` line: suppress
         // every Normal-mode intercept below so its keys (`j`/`k`/`<CR>`/`<Esc>`/`<C-c>`) reach `engine.feed`
         // → `feed_cmdwin` untouched.
-        let normal = matches!(ws.focused().view.mode(), Mode::Normal)
+        // The Emacs profile is modeless: its view starts in `Mode::Normal` but none of these Vim Normal
+        // intercepts are Emacs keys, so they never fire there (`C-u 3 x`, `C-f`, `C-e` as the first keys of
+        // an Emacs session reach `feed_emacs`, #1156).
+        let normal = !*emacs_profile
+            && matches!(ws.focused().view.mode(), Mode::Normal)
             && engine.cmdline().is_none()
             && engine.cmdwin().is_none();
         // Visual only: in Select a typed `z` replaces the selection (#792).
@@ -1774,7 +1790,7 @@ impl Session {
                 if let Some(fv) = folds.get(&buf) {
                     if let Some((s, e)) = crate::app::fold_cmds::current_open_fold(fv, cur_line) {
                         let target = if open { s } else { e };
-                        ws.place_focused_cursor(line_idx.nth_line_start(target));
+                        place_cursor(ws, recorded, line_idx.nth_line_start(target));
                     }
                 }
                 return;

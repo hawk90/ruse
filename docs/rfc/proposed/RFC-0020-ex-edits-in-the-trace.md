@@ -249,9 +249,17 @@ cursor and undo grouping, with no IO and no re-resolution):
   `ex_place`, `ex_undo_sync`, `ex_begin`, `ex_end` (codec: `crates/core/src/editor/ex_cmd.rs`). An unbalanced
   group is `TraceError::UnbalancedGroup`. `:>` records at most `MAX_SHIFT_LEVELS` (1000) levels so a hostile
   trace line stays bounded.
-- **Still outside the trace** (not Ex edits; the re-evaluation condition above applies): LSP edits
-  (`apply_edits`), cursor moves from pickers, the mouse and fold snapping, `:keepjumps`, the special registers
-  `"/ ": ". "%` and the Emacs caret gravity. A session that uses them can still replay to a different cursor.
+- **Session cursor moves and the caret gravity (#1134).** A cursor the session places outside the core
+  records `ex_place` too: a picker jump (line, diagnostics, marks, a references location in the same
+  buffer), an LSP goto in the same file, `{count}z<CR>`/`z.`/`z-`/`z+`/`z^`, the `zf` landing, `zj`/`zk` and
+  `[z`/`]z`. A placement after a switch to another buffer is not recorded, since a trace follows one
+  document. The caret gravity is one more starting option (`ex_set caretgravity 0|1`, R4), so an Emacs
+  session replays with point between characters. ruse reads no mouse input, so there are no mouse moves.
+- **Still outside the trace**: LSP edits (`apply_edits`: formatting, rename, code actions, completion),
+  `:keepjumps`, and the special registers `"/ ": ". "%`. Each needs a record kind this RFC does not define:
+  an edit list for LSP edits, a jumplist-suppression marker for `:keepjumps` (its inner Ex edit replays and
+  pushes the jump it skipped live), and register contents for the special registers (open question 1). A
+  session that uses them can still replay to a different document, cursor or jumplist.
 
 ## Open questions
 

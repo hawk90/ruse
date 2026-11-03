@@ -36,9 +36,11 @@ fn drive_ruse(text: &str, ops: &[String], point: usize) -> (EditorState, Vec<Str
     st.set_cursor(char_to_byte(text, point));
     let mut unknown = Vec::new();
     for op in ops {
-        match emacs_command_by_name(op) {
-            Some(cmd) => {
-                apply_command(&mut st, &cmd);
+        match by_name(op) {
+            Some((cmd, n)) => {
+                for _ in 0..n {
+                    apply_command(&mut st, &cmd);
+                }
             }
             None => unknown.push(op.clone()),
         }
@@ -214,6 +216,69 @@ fn parity_ruse_vs_emacs_oracle() {
     );
 }
 
+/// A corpus op (`tools/parity/emacs_oracle.py`): `[C-u [N] ]COMMAND`, with ` CHAR` after
+/// `self-insert-command` (#1156). `prefix` is the prefix argument's value (a bare `C-u` is 4).
+struct Op<'a> {
+    prefix: Option<(u32, Option<&'a str>)>,
+    name: &'a str,
+    char: Option<char>,
+}
+
+fn parse_op(op: &str) -> Op<'_> {
+    let mut rest = op;
+    let mut prefix = None;
+    if let Some(after) = rest.strip_prefix("C-u ") {
+        rest = after;
+        prefix = Some((4, None));
+        if let Some((digits, tail)) = after.split_once(' ') {
+            if let Ok(n) = digits.parse::<u32>() {
+                prefix = Some((n, Some(digits)));
+                rest = tail;
+            }
+        }
+    }
+    match rest.strip_prefix("self-insert-command ") {
+        Some(c) => Op {
+            prefix,
+            name: "self-insert-command",
+            char: c.chars().next(),
+        },
+        None => Op {
+            prefix,
+            name: rest,
+            char: None,
+        },
+    }
+}
+
+/// The by-name path's command for an op, and how many times to apply it: it has no prefix argument, so a
+/// prefix of N runs the command N times, which is what it means for the fixtured commands (self-insert and
+/// the character motions).
+fn by_name(op: &str) -> Option<(ruse_core::Command, u32)> {
+    let op = parse_op(op);
+    let cmd = match op.char {
+        Some(c) => ruse_core::Command::InsertChar(c),
+        None => emacs_command_by_name(op.name)?,
+    };
+    Some((cmd, op.prefix.map_or(1, |(n, _)| n)))
+}
+
+/// The keys of an op: the prefix argument (`C-u`, then its digits), then the command's keys, or the char a
+/// `self-insert-command` inserts.
+fn op_keys(op: &str) -> String {
+    let op = parse_op(op);
+    let mut keys = String::new();
+    if let Some((_, digits)) = op.prefix {
+        keys.push_str("<C-u>");
+        keys.push_str(digits.unwrap_or(""));
+    }
+    match op.char {
+        Some(c) => keys.push(c),
+        None => keys.push_str(&emacs_keys(op.name)),
+    }
+    keys
+}
+
 /// The keys that run an Emacs command in Emacs 31.1's default `global-map`, in the headless harness's Vim
 /// notation (`<C-f>`, `<M-f>`, …; `<M-x>` is `ESC x`, as a terminal sends it). A command with no default
 /// binding that a legacy terminal can send (`capitalize-region`; `kill-whole-line` is `C-S-<backspace>`) is
@@ -293,7 +358,7 @@ fn parity_emacs_corpus_through_real_keys() {
         let text = fx["text"].as_str().expect("text");
         let mut h = Headless::emacs(text);
         h.set_cursor(char_to_byte(text, point));
-        let keys: String = ops.iter().map(|op| emacs_keys(op)).collect();
+        let keys: String = ops.iter().map(|op| op_keys(op)).collect();
         h.keys(&keys);
 
         let (kill, _) = h.register('"');

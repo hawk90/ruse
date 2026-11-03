@@ -167,9 +167,11 @@ impl ChangeIntent {
         unit
     }
 
-    /// Whether the lead is a PURE insert-entry (`i`/`a`/`I`/`A`/`o`/`O`) — the only entries whose count
-    /// repeats the typed text. Change-family entries (`c`/`C`/`s`/`cc`/`ciw`, `cgn`) are excluded: their
-    /// count applies to the operator's motion, never to text repetition.
+    /// Whether the lead is a PURE insert-entry (`i`/`a`/`I`/`A`/`o`/`O`, and the Replace entries `R`/`gR`)
+    /// — the only entries whose count repeats the typed text. A Replace repeat re-types the body in
+    /// Replace mode, so it overwrites further on (`3Rxy<Esc>` on `abcdefghij` gives `xyxyxyghij`, nvim;
+    /// #1155). Change-family entries (`c`/`C`/`s`/`cc`/`ciw`, `cgn`) are excluded: their count applies to
+    /// the operator's motion, never to text repetition.
     fn is_plain_insert_entry(&self) -> bool {
         matches!(
             self.lead,
@@ -180,6 +182,8 @@ impl ChangeIntent {
                 | Command::AppendLineEnd
                 | Command::OpenBelow
                 | Command::OpenAbove
+                | Command::EnterReplace
+                | Command::EnterVirtualReplace
         )
     }
 }

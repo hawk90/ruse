@@ -89,10 +89,22 @@ _ELISP = r"""
     ;; `this-command`, so the next kill wrongly ACCUMULATES across it instead of starting a fresh entry;
     ;; without (1), consecutive kills never accumulate at all. Together they make kill-accumulation — and
     ;; any other `last-command`-sensitive behaviour — match an interactive keypress sequence exactly.
+    ;; An op is `[C-u [N] ]COMMAND`, plus ` CHAR` for `self-insert-command` (#1156): the prefix argument
+    ;; is bound as `current-prefix-arg` (a bare `C-u` is `(4)`), which `call-interactively` hands to the
+    ;; command's `(interactive "p")`, and the char is the `last-command-event` the command inserts.
     (dolist (op ops)
-      (setq last-command this-command)
-      (setq this-command (intern op))
-      (call-interactively (intern op)))
+      (let ((name op) (arg nil) (char nil))
+        (when (string-match "\\`C-u\\(?: \\([0-9]+\\)\\)? " name)
+          (setq arg (if (match-beginning 1) (string-to-number (match-string 1 name)) '(4)))
+          (setq name (substring name (match-end 0))))
+        (when (string-match "\\`self-insert-command \\(.\\)\\'" name)
+          (setq char (string-to-char (match-string 1 name)))
+          (setq name "self-insert-command"))
+        (setq last-command this-command)
+        (setq this-command (intern name))
+        (let ((current-prefix-arg arg)
+              (last-command-event (or char last-command-event)))
+          (call-interactively (intern name)))))
     ;; `json-serialize` returns unibyte UTF-8; `princ` would write each byte of it as a raw-byte char, so
     ;; decode it first and let the batch output coding (UTF-8) write the text (multibyte fixtures, #912).
     (princ (decode-coding-string
@@ -511,6 +523,14 @@ FIXTURES: list[dict] = [
         "text": "όσος καλός",
         "ops": ["set-mark-command", "forward-word", "forward-word", "capitalize-region"],
     },
+    # --- the first keys of a session (#1156): a prefix argument and printable keys before any other key.
+    #     `forward_char`, `forward_char_twice` and `move_end_of_line` above are C-f, C-f C-f and C-e first.
+    {"name": "first_cu3_self_insert", "text": "abc\ndef", "ops": ["C-u 3 self-insert-command x"]},
+    {"name": "first_cu_self_insert", "text": "abc\ndef", "ops": ["C-u self-insert-command x"]},
+    {"name": "first_cu2_forward_char", "text": "abc\ndef", "ops": ["C-u 2 forward-char"]},
+    {"name": "first_self_insert_q", "text": "abc", "ops": ["self-insert-command q", "self-insert-command x"]},
+    {"name": "first_self_insert_z", "text": "abc", "ops": ["self-insert-command z", "self-insert-command z"]},
+    {"name": "first_delete_char", "text": "abc\ndef", "ops": ["delete-char"]},
 ]
 
 

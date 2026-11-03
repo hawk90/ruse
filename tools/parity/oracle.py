@@ -709,6 +709,18 @@ FIXTURES: list[dict] = [
     {"name": "replace_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"},
     {"name": "replace_backspace_restores", "lines": ["hello"], "keys": "Rxy<BS><BS><Esc>"},
     {"name": "replace_backspace_deletes_appended", "lines": ["ab"], "keys": "RXYZ<BS><Esc>"},
+    #     A count before `R`/`gR` re-types the replacement that many times, still overwriting (#1155); `.`
+    #     repeats it with the same count, `N.` with N.
+    {"name": "replace_count_single", "lines": ["abcdefghij"], "keys": "05Rx<Esc>"},
+    {"name": "replace_count_pair", "lines": ["abcdefghij"], "keys": "03Rxy<Esc>"},
+    {"name": "replace_count_single_dot", "lines": ["abcdefghij"], "keys": "05Rx<Esc>."},
+    {"name": "replace_count_pair_dot", "lines": ["abcdefghij"], "keys": "03Rxy<Esc>."},
+    {"name": "replace_count_dot_next_line", "lines": ["abcdefghij", "abcdefghij"], "keys": "03Rxy<Esc>j0."},
+    {"name": "replace_count_dot_new_count", "lines": ["abcdefghij", "abcdefghij"], "keys": "03Rxy<Esc>j02."},
+    {"name": "replace_count_backspace", "lines": ["abcdefghij"], "keys": "03Rxyz<BS><Esc>"},
+    {"name": "replace_count_past_eol", "lines": ["abcdefghij"], "keys": "07l3Rxy<Esc>"},
+    {"name": "replace_count_undo", "lines": ["abcdefghij"], "keys": "03Rxy<Esc>u", "setup": UNDO_SETUP},
+    {"name": "gr_count_pair", "lines": ["abcdefghij"], "keys": "03gRxy<Esc>"},
     #     VIRTUAL REPLACE (gR): tab-aware overwrite. Without tabs it is identical to R. Over a <Tab> the
     #     typed char is inserted before the tab (shrinking it) until its last virtual column, then replaces
     #     it — preserving the on-screen layout. `set tabstop=4` matches ruse's editor.tab_width default so

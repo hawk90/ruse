@@ -448,7 +448,9 @@ impl LspCoordinator {
     }
 
     /// Apply the deferred goto jump, format edits, and multi-file rename now render is done (opening a
-    /// buffer mutates `highlighters`, which the frame's `spans` borrow forbids during the poll).
+    /// buffer mutates `highlighters`, which the frame's `spans` borrow forbids during the poll). A goto
+    /// into the SAME file moves the cursor through `place`, which the session records in the trace
+    /// (#1134), so this coordinator still issues no `Command` itself.
     pub(crate) fn apply_pending(
         &mut self,
         ws: &mut Workspace,
@@ -456,6 +458,7 @@ impl LspCoordinator {
         highlighters: &mut Highlighters,
         snapshot: &[u8],
         status: &mut String,
+        place: &mut dyn FnMut(&mut Workspace, usize),
     ) {
         // Goto: same file → move the cursor; another file → open it, then move.
         if let Some((uri, l, c)) = self.goto_jump.take() {
@@ -465,7 +468,7 @@ impl LspCoordinator {
                 .get(&ws.focused_buffer())
                 .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
             if cur_path.as_deref() == Some(target.as_path()) {
-                ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(snapshot, l, c));
+                place(ws, lsp::model::lsp_pos_to_byte(snapshot, l, c));
             } else {
                 let opened =
                     open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);

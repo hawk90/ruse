@@ -98,7 +98,40 @@ const SESSIONS: &[(&str, &str, &str)] = &[
     ("a\nb\n", "Ay<Esc>:%normal Az<CR>u", "ex_end"),
     ("a\nb\nc\n", "qaAq<Esc>jq@au", "ex_begin macro"),
     ("a\nb\nc\n", "xjxu:1d<CR>u", "ex_undo_sync"),
+    // Cursor moves the session makes outside the core are recorded as placements (#1134): the line picker,
+    // `z<CR>`/`z.`/`z-` with a count, the `zf{motion}` landing, `zj`/`zk` and `[z`/`]z`.
+    ("abc\nxyz\nfoo\n", "<C-l>foo<CR>x", "ex_place"),
+    ("  a\n  b\n  c\n", "3z<CR>x", "ex_place"),
+    ("  a\n  b\n  c\n", "2z.x", "ex_place"),
+    ("a\nb\nc\nd\n", "jzfkx", "ex_place"),
+    ("a\nb\nc\nd\ne\n", "jjzfjzoggzjx", "ex_place"),
+    ("a\nb\nc\nd\ne\n", "jzfjzoGzkx", "ex_place"),
+    ("a\nb\nc\nd\ne\n", "jzfjjzo]zx[zx", "ex_place"),
 ];
+
+/// Emacs-profile sessions replay with point between characters (#1134): the trace starts with the caret
+/// gravity, so `C-e` then an edit at the line end lands where it did live.
+const EMACS_SESSIONS: &[(&str, &str)] = &[
+    ("abc\ndef\n", "<C-e>x"),
+    ("abc\ndef\n", "<C-e><C-d>"),
+    ("abc\ndef\n", "<C-n><C-e>yz<C-a><C-d>"),
+    ("abc\n", "<M->>q"),
+    ("abc def\n", "<M-f><M-f><C-b><C-k>"),
+];
+
+#[test]
+fn saved_traces_of_emacs_sessions_replay_to_the_live_state() {
+    for &(text, keys) in EMACS_SESSIONS {
+        let mut h = Headless::emacs(text);
+        h.keys(keys);
+        let trace = h.trace().to_text();
+        assert!(
+            trace.contains("ex_set caretgravity 1"),
+            "{keys:?}: the trace holds the caret gravity\n{trace}"
+        );
+        assert_replays(text, keys, &h, &trace);
+    }
+}
 
 #[test]
 fn saved_traces_of_ex_sessions_replay_to_the_live_state() {
@@ -199,6 +232,41 @@ const PIECES: &[&str] = &[
     ":set sw=1<CR>",
     ":2mark a<CR>'a",
     "qqxjq@q",
+    // Session-side cursor moves (#1134).
+    "<C-l>a<CR>",
+    "2z<CR>",
+    "z.",
+    "zfj",
+    "zo",
+    "zj",
+    "zk",
+    "[z",
+    "]z",
+];
+
+/// Emacs-profile keys for the Emacs replay property (#1134): motions, edits and kills with point between
+/// characters.
+const EMACS_PIECES: &[&str] = &[
+    "x",
+    "ab",
+    "<C-f>",
+    "<C-b>",
+    "<C-n>",
+    "<C-p>",
+    "<C-a>",
+    "<C-e>",
+    "<C-d>",
+    "<C-k>",
+    "<C-y>",
+    "<M-f>",
+    "<M-b>",
+    "<M-d>",
+    "<BS>",
+    "<CR>",
+    "<M-<>",
+    "<M->>",
+    "<C-u>3x",
+    "<C-Space><C-f><C-w>",
 ];
 
 proptest! {
@@ -221,6 +289,30 @@ proptest! {
         let trace = h.trace();
         let again = Trace::from_text(&trace.to_text());
         prop_assert_eq!(again.as_ref(), Ok(&trace), "the trace round-trips");
+        let st = trace.replay(text.as_bytes()).expect("replay");
+        prop_assert_eq!(
+            String::from_utf8_lossy(st.bytes()),
+            h.text(),
+            "keys {:?}\n{}",
+            keys,
+            trace.to_text()
+        );
+        prop_assert_eq!(st.cursor(), h.cursor(), "keys {:?}\n{}", keys, trace.to_text());
+    }
+
+    /// Any Emacs-profile session, replayed from its trace, ends in the live document and point.
+    #[test]
+    fn random_emacs_sessions_replay_to_the_same_state(
+        text in "[abc \n]{0,24}",
+        picks in proptest::collection::vec(any::<proptest::sample::Index>(), 1..12),
+    ) {
+        let keys: String = picks
+            .iter()
+            .map(|i| EMACS_PIECES[i.index(EMACS_PIECES.len())])
+            .collect();
+        let mut h = Headless::emacs(&text);
+        h.keys(&keys);
+        let trace = h.trace();
         let st = trace.replay(text.as_bytes()).expect("replay");
         prop_assert_eq!(
             String::from_utf8_lossy(st.bytes()),
