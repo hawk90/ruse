@@ -51,7 +51,8 @@ fn user_config_sets_options_and_a_bad_key_only_warns() {
     let shown = ed.screen_bytes();
     assert!(shown.contains("Last set from"), "{shown}");
     assert!(
-        shown.contains("~/ruse/config.toml line 2 (user config)"),
+        // `~/ruse/…` or `home/ruse/…`: the scratch HOME lies inside the working directory.
+        shown.contains("ruse/config.toml line 2 (user config)"),
         "{shown}"
     );
     ed.keys(&format!("{ESC}:q\r"));
