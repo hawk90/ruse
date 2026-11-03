@@ -23,7 +23,18 @@
 //!
 //! `:set` writes the local and the global value, `:setlocal` the local one and `:setglobal` the global
 //! one. ruse models a local value per View for the buffer-local options the core reads (`ts`, `sw`, `et`,
-//! `tw`) and per buffer for the fold options; the other options have one value, so every form writes it.
+//! `tw`) and per buffer for the fold options; `'scrolloff'` is global-local, with a value per window
+//! that `:setlocal` sets and `:set` unsets (#1151); the other options have one value, so every form
+//! writes it.
+//!
+//! Options honoured in part (#1151; nvim v0.12.6 is the reference):
+//! - `'cpoptions'` reads `aABceFs_`, nvim's default, which is how ruse behaves; another value is refused
+//!   with "option not supported", since each flag would change a different command.
+//! - `'verbosefile'` reads empty; a file name is refused the same way (ruse writes no message log).
+//! - `'verbose'` above 0 makes `:set opt?` add the `Last set from` line, as nvim does; ruse has no other
+//!   verbose messages.
+//! - `'scrollback'` stays unsupported: a terminal's scrollback cannot be viewed yet, so a limit would
+//!   change nothing a user sees.
 
 use std::borrow::Cow;
 
@@ -62,6 +73,11 @@ pub enum Opt {
     CinWords,
     JoinSpaces,
     WrapMargin,
+    CpOptions,
+    History,
+    ShowMode,
+    Verbose,
+    VerboseFile,
 }
 
 /// An option's value.
@@ -134,6 +150,10 @@ pub enum Locality {
     Local,
     /// A value per buffer and no separate global one (the fold options).
     PerBuffer,
+    /// nvim's global-local window option (`'scrolloff'`): a global value, and a local one per window
+    /// that is unset (`-1`) until `:setlocal` gives it one; `:set` sets the global value and unsets the
+    /// focused window's.
+    GlobalLocal,
 }
 
 /// One option ruse honours.
@@ -152,10 +172,15 @@ pub struct OptDef {
 
 const INT_MAX: i64 = i32::MAX as i64;
 const INT_MIN: i64 = i32::MIN as i64;
+/// nvim's largest `'history'` (`MAX_HIST_LEN`): more is `E474`.
+pub const MAX_HISTORY: i64 = 10_000;
 
 /// nvim's default `'comments'` and `'formatlistpat'`.
 const COMMENTS: &str = "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-,fb:•";
 const LISTPAT: &str = r"^\s*\d\+[\]:.)}\t ]\s*";
+
+/// nvim's default `'cpoptions'`: the only value ruse implements (it behaves as these flags say).
+pub const CPO_DEFAULT: &str = "aABceFs_";
 
 const FOLD_METHODS: &[&str] = &["manual", "expr", "marker", "syntax", "diff", "indent"];
 
@@ -239,6 +264,18 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(false),
         Locality::Local,
+    ),
+    def(
+        Opt::CpOptions,
+        "cpoptions",
+        "cpo",
+        OptKind::Text {
+            list: ListKind::Flags,
+            check: TextCheck::None,
+        },
+        OptVal::text(CPO_DEFAULT),
+        OptVal::text(CPO_DEFAULT),
+        Locality::Global,
     ),
     def(
         Opt::EqualPrg,
@@ -337,6 +374,18 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Global,
     ),
     def(
+        Opt::History,
+        "history",
+        "hi",
+        OptKind::Num {
+            min: 0,
+            max: MAX_HISTORY,
+        },
+        OptVal::Num(MAX_HISTORY),
+        OptVal::Num(MAX_HISTORY),
+        Locality::Global,
+    ),
+    def(
         Opt::HlSearch,
         "hlsearch",
         "hls",
@@ -391,7 +440,7 @@ pub const OPTIONS: &[OptDef] = &[
         },
         OptVal::Num(0),
         OptVal::Num(3),
-        Locality::Global,
+        Locality::GlobalLocal,
     ),
     def(
         Opt::ShiftRound,
@@ -410,6 +459,15 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Num(8),
         OptVal::Num(4),
         Locality::Local,
+    ),
+    def(
+        Opt::ShowMode,
+        "showmode",
+        "smd",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::Global,
     ),
     def(
         Opt::SmartCase,
@@ -478,6 +536,30 @@ pub const OPTIONS: &[OptDef] = &[
         OptKind::Bool,
         OptVal::Bool(false),
         OptVal::Bool(false),
+        Locality::Global,
+    ),
+    def(
+        Opt::Verbose,
+        "verbose",
+        "vbs",
+        OptKind::Num {
+            min: INT_MIN,
+            max: INT_MAX,
+        },
+        OptVal::Num(0),
+        OptVal::Num(0),
+        Locality::Global,
+    ),
+    def(
+        Opt::VerboseFile,
+        "verbosefile",
+        "vfile",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::None,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
         Locality::Global,
     ),
     def(

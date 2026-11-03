@@ -396,6 +396,14 @@ features:
     # per View for ts/sw/et/tw with the Workspace's global copy; ic/scs are global and reach every window),
     # nvim's messages (E474/E487/E488/E518/E521) and its stop-at-the-first-error order; 'scrolloff' is
     # settable. `&` restores ruse's default, `&vim` Vim's. #614 part 2: the config loader (config.rs; machine / user ~/.config/ruse/config.toml / trusted workspace .ruse/config.toml) installs ts sw et tw so ic scs hls is top fixeol and input.profile, `:verbose set opt?` names the file and line, `:inspect config [key]` lists layers, sources and diagnostics, and `:trust` / `:untrust` write and delete the content-bound trust record (D-062).
+    # #1151: 'history' (both rings, 0..10000), 'showmode' (the status line's mode word) and 'verbose' (above 0,
+    # `:set opt?` adds `Last set from`) are options; 'cpoptions' reads nvim's default aABceFs_ and 'verbosefile'
+    # reads empty, and any other value is refused as not supported (documented divergence: ruse behaves as the
+    # default flags and writes no message log); 'scrollback' stays unsupported (a terminal's scrollback cannot
+    # be viewed yet); `:options` lists the options as `:set all` does instead of opening nvim's option window.
+    # 'scrolloff' is global-local: :setlocal gives a window its own value, :set drops it, a split copies it.
+    # The user config's keymap.lang installs into the Lang-Arg map; the other keymap.* namespaces are read
+    # and checked but not installed (no user mappings yet), and the fold options stay per buffer.
     status: done
     depends_on: [C-INPUT, C-COMMAND]
     summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.

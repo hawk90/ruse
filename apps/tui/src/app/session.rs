@@ -43,6 +43,13 @@ use crate::{graphics, health, highlight, indent, line_index, persist, recover, s
 #[cfg(unix)]
 use crate::{pty, term_buffer};
 
+/// The rows of context a window keeps (`'scrolloff'`, #1151): its own value when it has one that is not
+/// negative (nvim's `get_scrolloff_value`), else the global one; a negative global keeps none.
+fn scrolloff_for(view: &ruse_core::View, global: i64) -> usize {
+    let so = view.scrolloff_local().filter(|&n| n >= 0).unwrap_or(global);
+    usize::try_from(so).unwrap_or(0)
+}
+
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`): ruse's default
 /// (`editor.scrolloff`), until `:set so` changes [`Session::scrolloff`].
 const SCROLLOFF: i64 = 3;
@@ -512,8 +519,13 @@ pub(crate) struct Session {
     /// `:set (no)fixeol` write preference; OFF by default — byte-preserve (no silent fixeol) is the honest
     /// default. When ON, `:w` ADDS a trailing `\n` if the buffer lacks one (Vim's fixendofline).
     fixeol_on: bool,
-    /// `'scrolloff'` as set (nvim keeps any number; a negative one keeps no context here).
+    /// The global `'scrolloff'` as set (nvim keeps any number; a negative one keeps no context here). A
+    /// window's own value (`:setlocal so`) is on its View and wins (#1151).
     scrolloff: i64,
+    /// `'showmode'` and `'verbose'` (#1151).
+    pub(crate) ui_opts: crate::app::set_exec::UiOptions,
+    /// The `keymap.lang` pairs the config installed, so a reload can take them back (#1151).
+    config_lmaps: Vec<(char, char)>,
     /// Where each option's value came from, for `:verbose set opt?` (#614).
     opt_sources: HashMap<crate::input::set_cmd::Opt, crate::app::set_exec::OptSource>,
     /// The command being run came after `:verbose`.
@@ -644,6 +656,8 @@ impl Session {
             incsearch_on: true,
             fixeol_on: false,
             scrolloff: SCROLLOFF,
+            ui_opts: crate::app::set_exec::UiOptions::default(),
+            config_lmaps: Vec::new(),
             opt_sources: HashMap::new(),
             ex_verbose: false,
             config: crate::config::Config::default(),
@@ -692,7 +706,7 @@ impl Session {
     /// the line index, reconcile folds, publish the crash-rescue state, follow a `:s///c` match, and scroll
     /// each pane to its cursor. `cols`×`term_rows` is the terminal size.
     pub(crate) fn pre_frame(&mut self, cols: u16, term_rows: u16) -> FrameCtx {
-        let so = self.scrolloff_rows();
+        let global_so = self.scrolloff;
         let Session {
             ws,
             files,
@@ -832,12 +846,13 @@ impl Session {
         let text_rows = term_rows.saturating_sub(1);
         let rects = window_rects(cols, text_rows, ws.window_count(), ws.split_dir());
         for (i, rect) in rects.iter().enumerate() {
-            let (cursor_row, cur_top, focused_doc) = {
+            let (cursor_row, cur_top, focused_doc, so) = {
                 let p = ws.pane(i);
                 (
                     line_idx.line_of(p.view.cursor()),
                     p.view.top(),
                     p.view.doc() == ws.focused().view.doc(),
+                    scrolloff_for(p.view, global_so),
                 )
             };
             let mut new_top = viewport::scroll_top(cursor_row, rect.h as usize, so, cur_top);
@@ -1096,9 +1111,9 @@ impl Session {
         self.confirm.is_some() || self.swap.is_some() || self.overlay.is_some()
     }
 
-    /// `'scrolloff'` as the rows of context the viewport keeps.
+    /// The focused window's `'scrolloff'` as the rows of context the viewport keeps.
     fn scrolloff_rows(&self) -> usize {
-        usize::try_from(self.scrolloff).unwrap_or(0)
+        scrolloff_for(self.ws.focused().view, self.scrolloff)
     }
 
     /// Install the loaded config ([`Session::config`]) into the options, with provenance (#614). At
@@ -1121,6 +1136,7 @@ impl Session {
             foldenable,
             fold_rev,
             opt_sources,
+            ui_opts,
             config,
             ..
         } = self;
@@ -1139,8 +1155,14 @@ impl Session {
             foldenable,
             fold_rev,
             sources: opt_sources,
+            ui: ui_opts,
         };
         crate::app::set_exec::apply_config(config, &mut host);
+        let notes =
+            crate::app::set_exec::install_lang_keymap(config, engine, &mut self.config_lmaps);
+        if !notes.is_empty() {
+            self.status = format!("{} · {}", self.status, notes.join(" · "));
+        }
         if startup {
             self.start_options = self.ws.focused().view.editing_options();
             self.start_registers = self.ws.registers().filled();
@@ -2576,6 +2598,7 @@ impl Session {
             incsearch_on,
             fixeol_on,
             scrolloff,
+            ui_opts,
             opt_sources,
             ex_verbose,
             config,
@@ -2724,6 +2747,7 @@ impl Session {
                     foldenable,
                     fold_rev,
                     sources: opt_sources,
+                    ui: ui_opts,
                 };
                 let out =
                     crate::app::set_exec::run_set(&line, &mut host, cols as usize, *ex_verbose);
@@ -4425,6 +4449,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     .get(&s.ws.focused_buffer())
                     .map_or(&[][..], Vec::as_slice),
                 &s.line_idx,
+                s.ui_opts.showmode,
             )?;
             // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
             // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).

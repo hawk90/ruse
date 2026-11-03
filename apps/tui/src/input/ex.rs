@@ -1241,6 +1241,16 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(set) = super::set_cmd::parse_set_command(line) {
                 Ex::SetOptions(set)
+            } else if let Some(rest) = line.strip_prefix("options") {
+                // `:options` (#1151): nvim opens its option window; ruse lists every option it honours
+                // with its value, as `:set all` does.
+                match rest.trim() {
+                    "" => Ex::SetOptions(super::set_cmd::parse_args(
+                        super::set_cmd::SetScope::Both,
+                        "all",
+                    )),
+                    t => Ex::Fail(format!("E488: Trailing characters: {t}")),
+                }
             } else if let Some(ex) = parse_time_travel(line) {
                 ex
             } else if let Some(spec) = parse_substitute(line, false) {

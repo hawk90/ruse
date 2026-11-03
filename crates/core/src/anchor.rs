@@ -455,12 +455,12 @@ impl AnchorStore {
         // Every region's anchors are found and mapped first, from the order as it stands, so no search
         // probes a rank a write has already moved.
         let n = self.order.len();
-        let plan: Vec<(usize, usize, Vec<(usize, u32, bool)>)> = regions
+        let plan: Vec<(usize, usize, Vec<Moved>)> = regions
             .iter()
             .map(|&(ws, we, _)| {
                 let lo = partition(n, |r| self.at_rank(r) < ws);
                 let hi = lo + partition(n - lo, |r| self.at_rank(lo + r) <= we);
-                let mut moved: Vec<(usize, u32, bool)> = (lo..hi)
+                let mut moved: Vec<Moved> = (lo..hi)
                     .map(|r| {
                         let slot = self.order[r];
                         let a = self.slots[slot as usize].anchor.expect("live");
@@ -516,6 +516,9 @@ fn map_anchor(a: &Anchor, o: usize, es: &[Edit], map: Option<&LineMap<'_>>) -> (
         }
     }
 }
+
+/// One anchor of a touched region after an edit: its new offset, its slot, and whether the edit lost it.
+type Moved = (usize, u32, bool);
 
 /// The count of leading `r` in `0..n` with `pred(r)` (a monotone predicate).
 fn partition(n: usize, pred: impl Fn(usize) -> bool) -> usize {

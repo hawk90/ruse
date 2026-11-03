@@ -40,6 +40,7 @@ capabilities:
   CAP-PROCESS:      { title: Process/task supervisor + scheduler, product_layer: base, architecture_tier: service, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false , prd: [] }  # infra service
   CAP-GIT-PRIMITIVE: { title: Git repository discovery + diff/blame primitive, product_layer: base, architecture_tier: service, implementation: wrapped, runtime: workspace, activation: workspace, trust: core, replaceable: true, dep: [DEP-GIT] , prd: [] }  # infra service; no git feature yet
   CAP-REMOTE-RUNTIME: { title: SSH remote runtime + agent, product_layer: base, architecture_tier: service, implementation: own, runtime: both, activation: on-demand, trust: core, replaceable: false, prd: [F-017], requires: [CAP-FS, CAP-WATCHER, CAP-SEARCH, CAP-PROCESS, CAP-TERMINAL], dep: [DEP-SSH] }
+  CAP-CONFIG:       { title: Config loading (machine/user/workspace layers, merge, provenance, workspace trust), product_layer: base, architecture_tier: kernel, implementation: wrapped, runtime: client, activation: startup, trust: core, replaceable: false, dep: [DEP-TOML] , prd: [] }  # component C-CONFIG; apps/tui/src/config.rs + trust.rs (#614); the workspace layer is content-bound-trust gated (D-062)
   CAP-RECOVERY:     { title: Session/crash recovery + journal, product_layer: base, architecture_tier: service, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-008] }
 
   # ---- Official Pack: official, maintained, activated on demand (per language/workspace/command) ----

@@ -420,6 +420,14 @@ impl Workspace {
         }
     }
 
+    /// Set (or clear) the FOCUSED Window's own `'scrolloff'` (`:setlocal so`, #1151).
+    pub fn set_focused_scrolloff(&mut self, so: Option<i64>) {
+        let vid = self.windows[self.focus].view;
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.set_scrolloff_local(so);
+        }
+    }
+
     /// Set the `i`th Window's 'scroll' amount (`{count}CTRL-D`), valid while its height stays `height`.
     pub fn set_scroll(&mut self, i: usize, lines: usize, height: usize) {
         let vid = self.windows[i].view;

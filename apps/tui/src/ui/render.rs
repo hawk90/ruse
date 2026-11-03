@@ -554,6 +554,7 @@ pub(crate) fn render(
     image_dims: &std::collections::HashMap<String, (u32, u32)>,
     folds: &[crate::folds::Fold],
     line_idx: &crate::line_index::LineIndex,
+    showmode: bool,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -839,7 +840,12 @@ pub(crate) fn render(
                 (0, 0) => String::new(),
                 (e, w) => format!("  [E:{e} W:{w}]"),
             };
-            format!("{mode}  {name}{dirty}{win}{diag}  {status}")
+            // `'noshowmode'` leaves the mode out (#1151).
+            if showmode {
+                format!("{mode}  {name}{dirty}{win}{diag}  {status}")
+            } else {
+                format!("{name}{dirty}{win}{diag}  {status}")
+            }
         }
     };
     // Paint the status / command line into the last row (put_str truncates at the right edge).

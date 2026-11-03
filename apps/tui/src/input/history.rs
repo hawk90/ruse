@@ -9,9 +9,9 @@
 //! the newest restores the saved draft; an immediate repeat is de-duplicated by moving it to the end;
 //! empty lines are not stored; the ring evicts oldest-first at its cap.
 
-/// The default history length. Vim's 'history' default is 10000; v0 uses a smaller cap (the ring is
-/// in-memory only — no shada/viminfo persistence yet), which is ample for a session and cheap to hold.
-pub(crate) const DEFAULT_CAP: usize = 200;
+/// The default history length: nvim's `'history'` default (and its maximum), 10000 entries per ring.
+/// `:set history` changes it (#1151). The rings are in-memory only (no shada persistence yet).
+pub(crate) const DEFAULT_CAP: usize = 10_000;
 
 /// One history ring: accepted command/search lines, oldest first and most-recent LAST. Bounded at `cap`
 /// (oldest evicted first). De-duplicates an immediate repeat the Vim way — a re-entered identical line is
@@ -45,8 +45,21 @@ impl CmdHistory {
     pub(crate) fn new(cap: usize) -> CmdHistory {
         CmdHistory {
             entries: Vec::new(),
-            cap: cap.max(1),
+            cap,
         }
+    }
+
+    /// The ring's length limit (`'history'`).
+    pub(crate) fn cap(&self) -> usize {
+        self.cap
+    }
+
+    /// Change the length limit, dropping the oldest entries past it (nvim's `init_history` keeps the
+    /// newest). `0` stores nothing.
+    pub(crate) fn set_cap(&mut self, cap: usize) {
+        self.cap = cap;
+        let over = self.entries.len().saturating_sub(cap);
+        self.entries.drain(..over);
     }
 
     #[cfg(test)]
@@ -64,7 +77,7 @@ impl CmdHistory {
     /// entry is removed first, so a re-entered line moves to the most-recent slot (Vim de-dup). Evicts the
     /// oldest entry when over `cap`.
     pub(crate) fn push(&mut self, line: &str) {
-        if line.is_empty() {
+        if line.is_empty() || self.cap == 0 {
             return;
         }
         if let Some(i) = self.entries.iter().position(|e| e == line) {

@@ -47,6 +47,25 @@ pub(crate) struct OptionHost<'a> {
     pub foldenable: &'a mut HashMap<DocumentId, bool>,
     pub fold_rev: &'a mut HashMap<DocumentId, Revision>,
     pub sources: &'a mut HashMap<Opt, OptSource>,
+    pub ui: &'a mut UiOptions,
+}
+
+/// The session's own option values that no other owner holds (#1151).
+#[derive(Clone, Debug)]
+pub(crate) struct UiOptions {
+    /// `'showmode'`: the status line names the mode.
+    pub showmode: bool,
+    /// `'verbose'`: above 0, `:set opt?` adds the `Last set from` line.
+    pub verbose: i64,
+}
+
+impl Default for UiOptions {
+    fn default() -> UiOptions {
+        UiOptions {
+            showmode: true,
+            verbose: 0,
+        }
+    }
 }
 
 /// What a `:set` line printed: the rows (`:set ts?`, listings) and the error that stopped it, if any.
@@ -146,7 +165,22 @@ impl OptionHost<'_> {
             Opt::IncSearch => OptVal::Bool(*self.incsearch_on),
             Opt::FixEol => OptVal::Bool(*self.fixeol_on),
             Opt::TildeOp => OptVal::Bool(self.engine.tildeop()),
-            Opt::ScrollOff => OptVal::Num(*self.scrolloff),
+            // The window's own value, else the global one (`:set so?` shows the value in force).
+            Opt::ScrollOff if global => OptVal::Num(*self.scrolloff),
+            Opt::ScrollOff => OptVal::Num(
+                self.ws
+                    .focused()
+                    .view
+                    .scrolloff_local()
+                    .unwrap_or(*self.scrolloff),
+            ),
+            Opt::ShowMode => OptVal::Bool(self.ui.showmode),
+            Opt::Verbose => OptVal::Num(self.ui.verbose),
+            Opt::History => {
+                OptVal::Num(i64::try_from(self.engine.history_len()).unwrap_or(i64::MAX))
+            }
+            Opt::CpOptions => OptVal::Text(crate::input::set_cmd::CPO_DEFAULT.into()),
+            Opt::VerboseFile => OptVal::Text("".into()),
             Opt::FoldEnable => OptVal::Bool(self.foldenable.get(&buf).copied().unwrap_or(true)),
             Opt::FoldLevel => OptVal::Num(
                 i64::try_from(self.foldlevel.get(&buf).copied().unwrap_or(0)).unwrap_or(i64::MAX),
@@ -157,6 +191,15 @@ impl OptionHost<'_> {
             }),
             _ => unreachable!("core options are read above"),
         }
+    }
+
+    /// The value `scope` shows: as [`OptionHost::get`], except that `:setlocal` on a global-local
+    /// option shows the window's own value, `-1` when it has none (nvim).
+    pub(crate) fn read(&self, opt: Opt, scope: SetScope) -> OptVal {
+        if scope == SetScope::Local && opt_def(opt).locality == Locality::GlobalLocal {
+            return OptVal::Num(self.ws.focused().view.scrolloff_local().unwrap_or(-1));
+        }
+        self.get(opt, scope == SetScope::Global)
     }
 
     /// Write `val` into `opt` at `level`.
@@ -183,7 +226,21 @@ impl OptionHost<'_> {
             (Opt::IncSearch, _) => *self.incsearch_on = on,
             (Opt::FixEol, _) => *self.fixeol_on = on,
             (Opt::TildeOp, _) => self.engine.set_tildeop(on),
-            (Opt::ScrollOff, OptVal::Num(n)) => *self.scrolloff = n,
+            // Global-local: `:setlocal` gives the focused window its own value, `:set` sets the global
+            // value and drops the window's (nvim), `:setglobal` leaves the window's alone.
+            (Opt::ScrollOff, OptVal::Num(n)) => match level {
+                OptionLevel::Local => self.ws.set_focused_scrolloff(Some(n)),
+                OptionLevel::Both => {
+                    *self.scrolloff = n;
+                    self.ws.set_focused_scrolloff(None);
+                }
+                OptionLevel::Global => *self.scrolloff = n,
+            },
+            (Opt::ShowMode, _) => self.ui.showmode = on,
+            (Opt::Verbose, OptVal::Num(n)) => self.ui.verbose = n,
+            (Opt::History, OptVal::Num(n)) => {
+                self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
+            }
             // The fold options (frontend state, per buffer). Switching the method keeps the folds and
             // recomputes them next frame (Vim keeps them); a level or enable change re-applies at once.
             (Opt::FoldMethod, OptVal::Str(m)) => {
@@ -254,7 +311,7 @@ pub(crate) fn run_set(
     if line.args.is_empty() && line.error.is_none() {
         let items: Vec<(&OptDef, OptVal)> = OPTIONS
             .iter()
-            .map(|d| (d, host.get(d.opt, global)))
+            .map(|d| (d, host.read(d.opt, line.scope)))
             .filter(|(d, v)| *v != d.default)
             .collect();
         out.rows = listing(title(line.scope), &items, cols);
@@ -269,8 +326,8 @@ pub(crate) fn run_set(
         match arg {
             SetArg::Show(opt) => {
                 out.rows
-                    .push(show_one(opt_def(*opt), host.get(*opt, global)));
-                if verbose {
+                    .push(show_one(opt_def(*opt), host.read(*opt, line.scope)));
+                if verbose || host.ui.verbose > 0 {
                     out.rows.extend(host.last_set(*opt));
                 }
             }
@@ -292,7 +349,10 @@ pub(crate) fn run_set(
                 );
             }
             SetArg::FromGlobal(opt) => {
-                if opt_def(*opt).locality == Locality::Local {
+                if matches!(
+                    opt_def(*opt).locality,
+                    Locality::Local | Locality::GlobalLocal
+                ) {
                     let g = host.get(*opt, true);
                     host.put(*opt, OptionLevel::Local, g);
                     host.sources.insert(*opt, OptSource::Typed);
@@ -300,8 +360,11 @@ pub(crate) fn run_set(
             }
             SetArg::Assign { opt, op, val } => {
                 let def = opt_def(*opt);
-                match assign_value(def, host.get(*opt, global), *op, val) {
+                match assign_value(def, host.read(*opt, line.scope), *op, val) {
                     Ok(OptVal::Str(s)) if !supported(def, s) => {
+                        notice = Some(format!("option not supported: {}", text.trim_end()));
+                    }
+                    Ok(OptVal::Text(t)) if !text_supported(*opt, &t) => {
                         notice = Some(format!("option not supported: {}", text.trim_end()));
                     }
                     Ok(v) => write(host, *opt, v),
@@ -314,7 +377,7 @@ pub(crate) fn run_set(
             SetArg::ShowAll => {
                 let items: Vec<(&OptDef, OptVal)> = OPTIONS
                     .iter()
-                    .map(|d| (d, host.get(d.opt, global)))
+                    .map(|d| (d, host.read(d.opt, line.scope)))
                     .collect();
                 out.rows.extend(listing(title(line.scope), &items, cols));
             }
@@ -339,6 +402,16 @@ pub(crate) fn run_set(
 fn supported(def: &OptDef, value: &str) -> bool {
     match def.kind {
         OptKind::Str { supported, .. } => supported.contains(&value),
+        _ => true,
+    }
+}
+
+/// Whether ruse implements the string value `t` of `opt`: `'cpoptions'` only at nvim's default and
+/// `'verbosefile'` only empty (#1151; see `input/set_cmd.rs`).
+fn text_supported(opt: Opt, t: &str) -> bool {
+    match opt {
+        Opt::CpOptions => t == crate::input::set_cmd::CPO_DEFAULT,
+        Opt::VerboseFile => t.is_empty(),
         _ => true,
     }
 }
@@ -407,6 +480,45 @@ fn option_value(opt: Opt, v: &crate::config::Value) -> Option<OptVal> {
         (_, Value::Int(n)) => Some(OptVal::Num(*n)),
         _ => None,
     }
+}
+
+/// Install the user config's `keymap.lang` table into the Lang-Arg map (#1151, F-027), the persistent
+/// form of `:lmap`: each `lhs = "rhs"` entry maps one character to one character. `installed` holds the
+/// pairs an earlier config installed; a reload first takes back those still in place (a `:lmap` typed
+/// since keeps its own). Returns a note for each entry it skipped. Only the machine and user layers can
+/// set the key (`scope: user`, D-062), so a workspace never binds keys here.
+pub(crate) fn install_lang_keymap(
+    cfg: &crate::config::Config,
+    engine: &mut InputEngine,
+    installed: &mut Vec<(char, char)>,
+) -> Vec<String> {
+    use crate::config::Value;
+    for (lhs, rhs) in installed.drain(..) {
+        if engine.lang_mapping(lhs) == Some(rhs) {
+            engine.clear_lang_mapping(lhs);
+        }
+    }
+    let Some(Value::Map(map)) = cfg.get("keymap.lang").map(|e| &e.value) else {
+        return Vec::new();
+    };
+    let one = |s: &str| {
+        let mut c = s.chars();
+        c.next().filter(|_| c.next().is_none())
+    };
+    let mut notes = Vec::new();
+    for (lhs, rhs) in map {
+        match (one(lhs), rhs) {
+            (Some(l), Value::Str(r)) if one(r).is_some() => {
+                let r = one(r).expect("checked");
+                engine.set_lang_mapping(l, r);
+                installed.push((l, r));
+            }
+            _ => notes.push(format!(
+                "keymap.lang: {lhs:?} skipped (a mapping is one character to one character)"
+            )),
+        }
+    }
+    notes
 }
 
 /// Install `cfg`'s values into the options (`:set` writes both copies), with their provenance. An option

@@ -80,6 +80,7 @@ const COMMANDS: &[ExCommand] = &[
     cmd("set", 2, "set"),
     cmd("setlocal", 4, "setlocal"),
     cmd("setglobal", 4, "setglobal"),
+    cmd("options", 2, "options"),
     cmd("earlier", 2, "earlier"),
     cmd("later", 3, "later"),
     cmd("substitute", 1, "s"),

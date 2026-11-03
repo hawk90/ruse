@@ -2251,6 +2251,18 @@ impl InputEngine {
         self.tildeop = on;
     }
 
+    /// Set `'history'`: the length of both the `:` and the search history (#1151).
+    pub fn set_history_len(&mut self, len: usize) {
+        self.ex_history.set_cap(len);
+        self.search_history.set_cap(len);
+    }
+
+    /// `'history'`.
+    #[must_use]
+    pub fn history_len(&self) -> usize {
+        self.ex_history.cap()
+    }
+
     /// Whether `'tildeop'` is on.
     #[must_use]
     pub fn tildeop(&self) -> bool {
@@ -2260,6 +2272,12 @@ impl InputEngine {
     /// Install/replace one Lang-Arg mapping (`:lmap {lhs} {rhs}`, F-027). MVP is single-char → single-char.
     pub fn set_lang_mapping(&mut self, lhs: char, rhs: char) {
         self.lang_map.insert(lhs, rhs);
+    }
+
+    /// The Lang-Arg mapping of `lhs`, if any.
+    #[must_use]
+    pub fn lang_mapping(&self, lhs: char) -> Option<char> {
+        self.lang_map.get(&lhs).copied()
     }
 
     /// Remove one Lang-Arg mapping (`:lunmap {lhs}`). A no-op if it was not mapped.
