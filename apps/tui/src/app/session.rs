@@ -1938,9 +1938,11 @@ impl Session {
         // engine, which emits (and dot-records) a concrete `InsertChar`. `None` (short/absent adjacent
         // line) is a Vim no-op. Guarded by `insert_plain_text_ctx` so a pending Insert prefix (e.g.
         // `CTRL-R`'s register name) still owns the key. Normal-mode `C-e`/`C-y` scroll is handled above.
-        if matches!(ws.focused().view.mode(), Mode::Insert)
-            && (is_ctrl(key, 'e') || is_ctrl(key, 'y'))
-            && engine.insert_plain_text_ctx()
+        // These Insert-mode intercepts are Vim keys too: an Emacs session is in Insert after its first
+        // printable key, and there `C-e`, `C-y`, `C-n`, `C-p`, `C-l` and the page keys are Emacs commands
+        // (#1156).
+        let vim_insert = !*emacs_profile && matches!(ws.focused().view.mode(), Mode::Insert);
+        if vim_insert && (is_ctrl(key, 'e') || is_ctrl(key, 'y')) && engine.insert_plain_text_ctx()
         {
             // An active completion cycle owns the key first: `CTRL-E` cancels it, `CTRL-Y` accepts (#805).
             if let Some(feed) = engine.complete_end(is_ctrl(key, 'e')) {
@@ -1957,7 +1959,7 @@ impl Session {
         }
         // `i_<PageDown>` / `i_<PageUp>` / `i_<S-Down>` / `i_<S-Up>` — page scroll from Insert, a caret jump
         // that breaks undo and restarts the `.` record like `i_<Down>` (nvim v0.12.6).
-        if let (Mode::Insert, Some(forward)) = (ws.focused().view.mode(), insert_page_key(key)) {
+        if let (true, Some(forward)) = (vim_insert, insert_page_key(key)) {
             if engine.insert_plain_text_ctx() {
                 let top = ws.focused().view.top();
                 if let Some((new_top, row)) =
@@ -1975,9 +1977,7 @@ impl Session {
         // keys just step the cached cycle. The engine emits (and dot-records) a `CompleteWord` swapping the
         // completion region. Guarded by `insert_plain_text_ctx` (a pending Insert prefix still owns its key).
         // Other completion sources / the popup menu are out of scope for this slice (deferred).
-        if matches!(ws.focused().view.mode(), Mode::Insert)
-            && (is_ctrl(key, 'n') || is_ctrl(key, 'p'))
-            && engine.insert_plain_text_ctx()
+        if vim_insert && (is_ctrl(key, 'n') || is_ctrl(key, 'p')) && engine.insert_plain_text_ctx()
         {
             let forward = is_ctrl(key, 'n');
             let feed = if engine.completion_active() {
@@ -1997,7 +1997,7 @@ impl Session {
         // `CTRL-L` while a cycle is already active steps it FORWARD (nvim's whole-line continuation key);
         // `CTRL-N`/`CTRL-P` cycle it too (the block above). Deferred: `CTRL-X CTRL-N/CTRL-P` (local keyword)
         // and `CTRL-X CTRL-F` (filename) sources, and the popup menu — all out of scope for this slice.
-        if matches!(ws.focused().view.mode(), Mode::Insert) && is_ctrl(key, 'l') {
+        if vim_insert && is_ctrl(key, 'l') {
             if engine.insert_ctrl_x_pending() {
                 let (base, cands) = ws.line_completion();
                 if let Feed::Cmd(cmd) = engine.complete_line_start(base, cands) {

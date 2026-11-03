@@ -531,6 +531,31 @@ FIXTURES: list[dict] = [
     {"name": "first_self_insert_q", "text": "abc", "ops": ["self-insert-command q", "self-insert-command x"]},
     {"name": "first_self_insert_z", "text": "abc", "ops": ["self-insert-command z", "self-insert-command z"]},
     {"name": "first_delete_char", "text": "abc\ndef", "ops": ["delete-char"]},
+    #     After a first printable key the view is in Insert, where the session's Vim Insert keys (`i_CTRL-E`,
+    #     `i_CTRL-Y`, `i_CTRL-N`/`i_CTRL-P` completion) must not run either (#1156).
+    {"name": "typed_then_end_of_line", "text": "abc\ndef", "ops": ["self-insert-command a", "move-end-of-line"]},
+    {
+        "name": "typed_then_bol_eol",
+        "text": "abc\ndef",
+        "ops": ["self-insert-command a", "move-beginning-of-line", "move-end-of-line"],
+    },
+    {"name": "typed_then_next_line", "text": "abc\ndef", "ops": ["self-insert-command a", "next-line"]},
+    {
+        "name": "typed_then_previous_line",
+        "text": "abc\ndef",
+        "ops": ["self-insert-command a", "previous-line"],
+        "point": 5,
+    },
+    {
+        "name": "typed_then_yank",
+        "text": "abc def\nghi",
+        "ops": ["kill-word", "self-insert-command x", "yank"],
+    },
+    {
+        "name": "typed_then_yank_below_text",
+        "text": "ab\ncd",
+        "ops": ["kill-line", "self-insert-command x", "next-line", "yank"],
+    },
 ]
 
 
