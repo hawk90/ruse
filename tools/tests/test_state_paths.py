@@ -161,6 +161,59 @@ class TestStatePaths(unittest.TestCase):
         self.assertIn("refusing to use the old .ruse/work/", p.stderr)
         self.assertTrue(os.path.isfile(legacy))          # nothing destroyed
 
+    def _contract(self, issue: str) -> dict:
+        import yaml
+        with open(os.path.join(self.r.git_path(self.r.root), issue, "change.yaml"), encoding="utf-8") as fh:
+            return yaml.safe_load(fh)
+
+    def test_start_flags_fill_the_contract(self):
+        p = self.r.ruse("change", "start", "--issue", "11", "--kind", "implementation", "--area", "core",
+                        "--goal", "g: with colon", "--allow", "docs/x.md", "--allow", "tools/",
+                        "--forbid", "spec/DECISIONS.md", "--spec-ref", "C-TRANSACTION",
+                        "--spec-ref", "INV-TXN", "--spec-ref", "D-062", "--spec-ref", "CAP-EDIT-CORE",
+                        "--non-goal", "no rust", "--rfc", "RFC-0021", "--decision", "D-062")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        c = self._contract("11")
+        self.assertEqual(c["allow_paths"], ["crates/core/", "docs/x.md", "tools/"])
+        self.assertEqual(c["forbid_paths"], ["spec/DECISIONS.md"])
+        self.assertEqual(c["affected"]["requirements"], ["C-TRANSACTION"])
+        self.assertEqual(c["affected"]["invariants"], ["INV-TXN"])
+        self.assertEqual(c["affected"]["decisions"], ["D-062"])
+        self.assertEqual(c["affected"]["capabilities"], ["CAP-EDIT-CORE"])
+        self.assertEqual(c["artifacts"], {"issue": "11", "rfc": "RFC-0021", "decision": "D-062",
+                                          "migration": False})
+        self.assertEqual(c["non_goals"], ["no rust"])
+        self.assertEqual(c["goal"].strip(), "g: with colon")
+        with open(os.path.join(self.r.git_path(self.r.root), "11", "change.yaml"), encoding="utf-8") as fh:
+            self.assertIn("# CAP-*", fh.read())          # template comments survive
+        out = os.path.join(self._tmp, "body.md")
+        p = self.r.ruse("pr", "render", "--issue", "11", "--out", out)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        with open(out, encoding="utf-8") as fh:
+            self.assertIn('"docs/x.md"', fh.read())
+
+    def test_change_set_appends_and_replaces(self):
+        self.assertEqual(self.r.ruse("change", "start", "--issue", "12", "--allow", "a/").returncode, 0)
+        p = self.r.ruse("change", "set", "--issue", "12", "--allow", "b/", "--allow", "a/",
+                        "--spec-ref", "F-001", "--kind", "spec", "--goal", "new goal")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        c = self._contract("12")
+        self.assertEqual(c["allow_paths"], ["a/", "b/"])          # appended, duplicate skipped
+        self.assertEqual(c["affected"]["requirements"], ["F-001"])
+        self.assertEqual((c["kind"], c["goal"].strip()), ("spec", "new goal"))
+        p = self.r.ruse("change", "set", "--issue", "12", "--replace", "--allow", "c/", "--rfc", "RFC-1")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        c = self._contract("12")
+        self.assertEqual(c["allow_paths"], ["c/"])
+        self.assertEqual(c["affected"]["requirements"], ["F-001"])  # untouched list kept
+        self.assertEqual(c["artifacts"]["rfc"], "RFC-1")
+
+    def test_change_set_rejects_unknown_spec_ref_and_missing_contract(self):
+        self.assertEqual(self.r.ruse("change", "start", "--issue", "13").returncode, 0)
+        p = self.r.ruse("change", "set", "--issue", "13", "--spec-ref", "RFC-0021")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertNotEqual(self.r.ruse("change", "set", "--issue", "99", "--allow", "x").returncode, 0)
+
     def test_concurrent_fetches_share_one_cache(self):
         # A local "upstream" pinned at its tip; two worktrees fetch it at once into the shared cache.
         up = os.path.join(self._tmp, "upstream")

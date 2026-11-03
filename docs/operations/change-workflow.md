@@ -96,6 +96,31 @@ evidence. It is not a prompt — it is the set of permissions and verification c
 > location by the first `ruse` command run there (it prints each move); an id present in both places
 > stops the command until you keep one.
 
+**Set the contract with flags, not by hand.** The contract file sits inside `.git`, where some editors and
+sandboxed agents cannot write, so every field an author fills is a command-line flag. You can pass them to
+`change start` and amend later with `change set`:
+
+```bash
+python3 tools/ruse.py change start --issue 42 --kind implementation --area core --goal "..." \
+    --allow crates/core/ --allow docs/design/document-model.md --forbid spec/DECISIONS.md \
+    --spec-ref C-TRANSACTION --spec-ref INV-TXN --non-goal "no UI change" --rfc RFC-0021 --decision D-062
+python3 tools/ruse.py change set --issue 42 --allow tools/              # append to allow_paths
+python3 tools/ruse.py change set --issue 42 --replace --allow tools/    # replace allow_paths
+```
+
+| Flag | Field |
+| --- | --- |
+| `--allow PATH` / `--forbid PATH` | `allow_paths` / `forbid_paths` (repeatable) |
+| `--spec-ref ID` | `affected.*`, chosen by prefix: `CAP-*` → capabilities, `F-*`/`C-*` → requirements, `INV-*` → invariants, `D-*` → decisions (repeatable) |
+| `--non-goal TEXT` | `non_goals` (repeatable) |
+| `--rfc ID` / `--decision ID` | `artifacts.rfc` / `artifacts.decision` (scalars) |
+| `--kind KIND` / `--goal TEXT` | `kind` / `goal` (`change set` only; `change start` has its own `--kind` / `--goal`) |
+
+List flags **append**, and duplicates are skipped. With `change set --replace`, each list flag you pass
+replaces its list, and lists you do not mention are kept. Scalars always replace. `--area` still fills
+`affected.crates` and adds `crates/<c>/` to `allow_paths`. The template's comments are preserved. A
+field that was hand-edited into a different shape is rewritten through YAML, and a warning says so.
+
 ```
 $(git rev-parse --git-path ruse/work)/<id>/
 ├── change.yaml       # the contract

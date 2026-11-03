@@ -3,6 +3,13 @@
 Creates change.yaml (from spec/templates/change.yaml, pre-filled), plan.md, and empty
 impact.json / evidence.json. Nothing here is committed — the directory is inside `.git` (per
 worktree, D-062); only the eventual RFC/Decision/PRD/PR is permanent.
+
+Every contract field an author fills is a flag (see rusekit/change/edit.py), so the contract never
+needs a hand edit; `ruse change set` amends it later:
+
+  ruse change start --issue 42 --kind implementation --area core --goal "..." \\
+      --allow crates/core/ --allow docs/design/x.md --forbid spec/DECISIONS.md \\
+      --spec-ref C-TRANSACTION --spec-ref INV-TXN --rfc RFC-0021 --decision D-062
 """
 from __future__ import annotations
 
@@ -12,6 +19,7 @@ import os
 import sys
 
 from rusekit import repo, render, contract  # noqa: E402
+from rusekit.change import edit  # noqa: E402
 
 
 def _fill_change_yaml(template: str, issue: str, kind: str | None,
@@ -30,7 +38,13 @@ def _fill_change_yaml(template: str, issue: str, kind: str | None,
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(prog="ruse change start")
+    ap = argparse.ArgumentParser(
+        prog="ruse change start",
+        description="Scaffold the Change Contract. List flags (--allow, --forbid, --spec-ref, --non-goal) "
+                    "are repeatable; amend later with `ruse change set` (appends; --replace replaces).",
+        epilog="example: ruse change start --issue 42 --kind implementation --area core "
+               "--goal \"...\" --allow docs/design/x.md --forbid spec/DECISIONS.md "
+               "--spec-ref C-TRANSACTION --rfc RFC-0021 --decision D-062")
     ap.add_argument("--issue", required=True, help="tracking issue id / short slug")
     ap.add_argument("--kind", choices=contract.kind_names() or None,
                     help="declared change kind (see spec/change-kinds.yaml)")
@@ -38,6 +52,7 @@ def main(argv: list[str]) -> int:
                     help="affected crate (repeatable): " + " | ".join(repo.CRATES))
     ap.add_argument("--goal", help="one-line goal (fills change.yaml)")
     ap.add_argument("--force", action="store_true", help="overwrite an existing workspace")
+    edit.add_arguments(ap, with_kind=False)
     args = ap.parse_args(argv)
 
     wd = repo.work_dir(args.issue)
@@ -60,6 +75,11 @@ def main(argv: list[str]) -> int:
         text = text.replace(
             "  <one paragraph: the observable outcome this change delivers>",
             f"  {args.goal}", 1)
+    try:
+        text, _changes = edit.apply(text, args)   # --allow/--forbid/--spec-ref/--non-goal/--rfc/--decision
+    except ValueError as e:
+        render.fail(str(e))
+        return 2
     with open(cy, "w", encoding="utf-8") as fh:
         fh.write(text)
 
@@ -85,7 +105,8 @@ def main(argv: list[str]) -> int:
     render.field("Git branch", branch or "(not a git repo)")
     render.ok("workspace scaffolded")
     render.heading("\nNext")
-    render.bullet(f"edit {repo.show(cy)} (goal, non-goals, affected IDs, allow_paths)")
+    render.bullet(f"python3 tools/ruse.py change set --issue {args.issue} --allow <path> --spec-ref <ID> "
+                  "(amend the contract; no hand edit needed)")
     render.bullet(f"python3 tools/ruse.py context build --issue {args.issue}")
     render.bullet(f"python3 tools/ruse.py impact --issue {args.issue}")
     render.bullet(f"python3 tools/ruse.py verify --changed")
