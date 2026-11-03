@@ -76147,6 +76147,682 @@
         "emsg": "E353",
         "failed": true
       }
+    },
+    {
+      "name": "wcls_w_latin_particle",
+      "lines": [
+        "API를 x"
+      ],
+      "keys": "w",
+      "expect": {
+        "text": [
+          "API를 x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_dw_latin_particle",
+      "lines": [
+        "API를 x"
+      ],
+      "keys": "dw",
+      "expect": {
+        "text": [
+          "를 x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "API",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_b_particle",
+      "lines": [
+        "x API를 y"
+      ],
+      "keys": "$hb",
+      "expect": {
+        "text": [
+          "x API를 y"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_e_latin_particle",
+      "lines": [
+        "x API를 y"
+      ],
+      "keys": "we",
+      "expect": {
+        "text": [
+          "x API를 y"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_ge_particle",
+      "lines": [
+        "x API를 y"
+      ],
+      "keys": "$ge",
+      "expect": {
+        "text": [
+          "x API를 y"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_scripts",
+      "lines": [
+        "abc한글か漢字カナ x"
+      ],
+      "keys": "wwwwd$",
+      "expect": {
+        "text": [
+          "abc한글か漢字"
+        ],
+        "cursor": [
+          1,
+          15
+        ],
+        "reg_unnamed": {
+          "text": "カナ x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_b_scripts",
+      "lines": [
+        "abc한글か漢字 x"
+      ],
+      "keys": "$bbdb",
+      "expect": {
+        "text": [
+          "abcか漢字 x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "한글",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_e_scripts",
+      "lines": [
+        "abc한글か漢字 x"
+      ],
+      "keys": "eex",
+      "expect": {
+        "text": [
+          "abc한か漢字 x"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "글",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_W_ignores_classes",
+      "lines": [
+        "API를 x"
+      ],
+      "keys": "dW",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "API를 ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_cw_latin_particle",
+      "lines": [
+        "API를 x"
+      ],
+      "keys": "cwZ<Esc>",
+      "expect": {
+        "text": [
+          "Z를 x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "API",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_ce_latin_particle",
+      "lines": [
+        "x API를"
+      ],
+      "keys": "wceZ<Esc>",
+      "expect": {
+        "text": [
+          "x Z를"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "API",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_c2w_particle",
+      "lines": [
+        "API를 x y"
+      ],
+      "keys": "c2wZ<Esc>",
+      "expect": {
+        "text": [
+          "Z x y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "API를",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_diw_latin_particle",
+      "lines": [
+        "API를 x"
+      ],
+      "keys": "diw",
+      "expect": {
+        "text": [
+          "를 x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "API",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_diw_on_particle",
+      "lines": [
+        "API를 x"
+      ],
+      "keys": "3ldiw",
+      "expect": {
+        "text": [
+          "API x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "를",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_daw_particle",
+      "lines": [
+        "x API를 y"
+      ],
+      "keys": "wdaw",
+      "expect": {
+        "text": [
+          "x를 y"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": " API",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_v2iw_scripts",
+      "lines": [
+        "한글abc x"
+      ],
+      "keys": "v2iwd",
+      "expect": {
+        "text": [
+          " x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "한글abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_emoji_class",
+      "lines": [
+        "😀😀a b"
+      ],
+      "keys": "w",
+      "expect": {
+        "text": [
+          "😀😀a b"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_nbsp_blank",
+      "lines": [
+        "a b c"
+      ],
+      "keys": "w",
+      "expect": {
+        "text": [
+          "a b c"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_latin1_times",
+      "lines": [
+        "a×b c"
+      ],
+      "keys": "w",
+      "expect": {
+        "text": [
+          "a×b c"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_ideographic_space",
+      "lines": [
+        "漢　字 x"
+      ],
+      "keys": "w",
+      "expect": {
+        "text": [
+          "漢　字 x"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_cjk_punct",
+      "lines": [
+        "漢、字 x"
+      ],
+      "keys": "wD",
+      "expect": {
+        "text": [
+          "漢"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "、字 x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_combining_cluster",
+      "lines": [
+        "가́b c"
+      ],
+      "keys": "w",
+      "expect": {
+        "text": [
+          "가́b c"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_w_combining_after_punct",
+      "lines": [
+        "a.́b c"
+      ],
+      "keys": "ww",
+      "expect": {
+        "text": [
+          "a.́b c"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_b_combining_cluster",
+      "lines": [
+        "x 가́b"
+      ],
+      "keys": "$bb",
+      "expect": {
+        "text": [
+          "x 가́b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_e_combining_cluster",
+      "lines": [
+        "b가́ c"
+      ],
+      "keys": "ex",
+      "expect": {
+        "text": [
+          "b c"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "가́",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_diw_combining_cluster",
+      "lines": [
+        "x 가́b"
+      ],
+      "keys": "$diw",
+      "expect": {
+        "text": [
+          "x 가́"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

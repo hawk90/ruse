@@ -12,8 +12,8 @@
 //! - [`Buf::inc`] / [`Buf::dec`] / [`Buf::incl`] / [`Buf::decl`] are Vim's `inc`/`dec`/`incl`/`decl`,
 //!   with the same return codes (`0` moved within the line, `2` landed on the `NUL`, `1` crossed a line,
 //!   `-1` at a buffer edge).
-//! - Character classes are ruse's word classes (space, word, punctuation; every non-ASCII char is a word
-//!   char), the same table the `w`/`b`/`e` motions use.
+//! - Character classes are Vim's (`cls()` over [`crate::charclass::vim_class`], #1136), the same ones the
+//!   `w`/`b`/`e` motions use, and a step crosses one grapheme cluster, as nvim's `inc()`/`dec()` do.
 //!
 //! An operator result is Vim's `(oap->start, cursor, oap->inclusive)`; [`op_span`] turns it into a byte
 //! range and applies the exclusive-linewise rule. A Visual result is the new `(VIsual, cursor)` pair.
@@ -80,7 +80,7 @@ impl<'a> Buf<'a> {
     /// line, `-1` (no move) on the last line's `NUL`.
     fn inc(&self, p: &mut usize) -> i32 {
         if !self.is_nul(*p) {
-            let q = motion::next_boundary(self.b, *p);
+            let q = motion::next_grapheme(self.b, *p);
             *p = q;
             return if self.is_nul(q) { 2 } else { 0 };
         }
@@ -94,7 +94,7 @@ impl<'a> Buf<'a> {
     /// Vim `dec`: one char back; at column 0 it moves to the previous line's `NUL` (`1`), `-1` at offset 0.
     fn dec(&self, p: &mut usize) -> i32 {
         if !self.col0(*p) {
-            *p = motion::prev_boundary(self.b, *p);
+            *p = motion::prev_grapheme(self.b, *p);
             return 0;
         }
         if *p == 0 {
@@ -127,7 +127,7 @@ impl<'a> Buf<'a> {
         if self.col0(*p) {
             return false;
         }
-        *p = motion::prev_boundary(self.b, *p);
+        *p = motion::prev_grapheme(self.b, *p);
         true
     }
 
@@ -141,16 +141,13 @@ impl<'a> Buf<'a> {
         i - ls >= p - ls + extra
     }
 
-    /// Vim `cls()`: `0` for a blank or `NUL`, else the word class (`1` word, `2` punctuation); for WORD
-    /// objects (`big`) every non-blank is class `1`.
-    fn cls(&self, p: usize, big: bool) -> u8 {
-        let c = self.gchar(p);
-        if c == 0 || is_white(c) {
+    /// Vim `cls()`: `0` for a blank or `NUL`, else the char's Vim class; for WORD objects (`big`) every
+    /// non-blank is class `1`.
+    fn cls(&self, p: usize, big: bool) -> u32 {
+        if self.is_nul(p) {
             0
-        } else if big || c == b'_' || c.is_ascii_alphanumeric() || c >= 0x80 {
-            1
         } else {
-            2
+            motion::char_cls(self.b, p, big)
         }
     }
 }
@@ -274,7 +271,7 @@ fn bckend_word(buf: &Buf, p: &mut usize, big: bool, eol: bool) -> bool {
 }
 
 /// Vim `skip_chars`: step over a run of class `cclass`; `true` when the buffer edge stops it.
-fn skip_chars(buf: &Buf, p: &mut usize, cclass: u8, big: bool, forward: bool) -> bool {
+fn skip_chars(buf: &Buf, p: &mut usize, cclass: u32, big: bool, forward: bool) -> bool {
     while buf.cls(*p, big) == cclass {
         let r = if forward { buf.inc(p) } else { buf.dec(p) };
         if r == -1 {
@@ -1175,7 +1172,7 @@ pub(crate) fn op_range(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize
         return (cur, cur, false);
     };
     let e = if inclusive && !buf.is_nul(end) {
-        motion::next_boundary(b, end)
+        motion::next_grapheme(b, end)
     } else {
         end
     };
@@ -1303,6 +1300,12 @@ mod tests {
         // Multibyte words; the empty buffer.
         assert_eq!(take("한글 abc\ndef", 0, aw, 1), ("한글 ".into(), false));
         assert_eq!(take("abc 한글\ndef", 4, aw, 1), (" 한글".into(), false));
+        // Vim classes split a Latin word from a Hangul particle; a cluster keeps its marks (#1136).
+        assert_eq!(take("API를 x", 0, iw, 1), ("API".into(), false));
+        assert_eq!(take("API를 x", 3, iw, 1), ("를".into(), false));
+        assert_eq!(take("x API를 y", 2, aw, 1), (" API".into(), false));
+        assert_eq!(take("x 가\u{301}b", 7, iw, 1), ("b".into(), false));
+        assert_eq!(take("x 가\u{301}b", 2, iw, 1), ("가\u{301}".into(), false));
         assert_eq!(take("", 0, iw, 1), ("".into(), false));
         assert_eq!(take("", 0, aw, 1), ("".into(), false));
         // A newline-terminated buffer: the final `\n` is the last line's terminator.

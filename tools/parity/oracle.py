@@ -3085,6 +3085,34 @@ FIXTURES: list[dict] = [
     # A `"x` prefix, or the register a failed `p` spends, keeps the wanted column (#1105).
     {"name": "curswant_kept_by_register_prefix", "lines": ["a", "ba"], "keys": "/a<CR>:1t$<CR>\"add"},
     {"name": "curswant_kept_by_failed_put", "lines": ["a", "ba"], "keys": "/a<CR>:1t$<CR>pdd"},
+    # Word motions and objects split where Vim's character class changes (`cls()` over `utf_class`), and
+    # step one grapheme cluster, which takes its first char's class (#1136).
+    {"name": "wcls_w_latin_particle", "lines": ["API를 x"], "keys": "w"},
+    {"name": "wcls_dw_latin_particle", "lines": ["API를 x"], "keys": "dw"},
+    {"name": "wcls_b_particle", "lines": ["x API를 y"], "keys": "$hb"},
+    {"name": "wcls_e_latin_particle", "lines": ["x API를 y"], "keys": "we"},
+    {"name": "wcls_ge_particle", "lines": ["x API를 y"], "keys": "$ge"},
+    {"name": "wcls_w_scripts", "lines": ["abc한글か漢字カナ x"], "keys": "wwwwd$"},
+    {"name": "wcls_b_scripts", "lines": ["abc한글か漢字 x"], "keys": "$bbdb"},
+    {"name": "wcls_e_scripts", "lines": ["abc한글か漢字 x"], "keys": "eex"},
+    {"name": "wcls_W_ignores_classes", "lines": ["API를 x"], "keys": "dW"},
+    {"name": "wcls_cw_latin_particle", "lines": ["API를 x"], "keys": "cwZ<Esc>"},
+    {"name": "wcls_ce_latin_particle", "lines": ["x API를"], "keys": "wceZ<Esc>"},
+    {"name": "wcls_c2w_particle", "lines": ["API를 x y"], "keys": "c2wZ<Esc>"},
+    {"name": "wcls_diw_latin_particle", "lines": ["API를 x"], "keys": "diw"},
+    {"name": "wcls_diw_on_particle", "lines": ["API를 x"], "keys": "3ldiw"},
+    {"name": "wcls_daw_particle", "lines": ["x API를 y"], "keys": "wdaw"},
+    {"name": "wcls_v2iw_scripts", "lines": ["한글abc x"], "keys": "v2iwd"},
+    {"name": "wcls_w_emoji_class", "lines": ["😀😀a b"], "keys": "w"},
+    {"name": "wcls_w_nbsp_blank", "lines": ["a b c"], "keys": "w"},
+    {"name": "wcls_w_latin1_times", "lines": ["a×b c"], "keys": "w"},
+    {"name": "wcls_w_ideographic_space", "lines": ["漢　字 x"], "keys": "w"},
+    {"name": "wcls_w_cjk_punct", "lines": ["漢、字 x"], "keys": "wD"},
+    {"name": "wcls_w_combining_cluster", "lines": ["가́b c"], "keys": "w"},
+    {"name": "wcls_w_combining_after_punct", "lines": ["a.́b c"], "keys": "ww"},
+    {"name": "wcls_b_combining_cluster", "lines": ["x 가́b"], "keys": "$bb"},
+    {"name": "wcls_e_combining_cluster", "lines": ["b가́ c"], "keys": "ex"},
+    {"name": "wcls_diw_combining_cluster", "lines": ["x 가́b"], "keys": "$diw"},
 ]
 
 
