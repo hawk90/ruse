@@ -700,9 +700,11 @@ impl<'a> LineMap<'a> {
                     }
                 } else if e.ins.is_empty() && !self.is_join(e) {
                     // A charwise delete across lines (#1125): nvim's `op_delete` cuts both ends without
-                    // moving marks, then joins with no space, which adds the kept head's length.
-                    let head = e.pos.0 - crate::pos::line_start(self.old, e.pos.0);
-                    Some(self.at_col(base - head, head + col))
+                    // moving marks, then joins with no space, which adds the kept head's length. The
+                    // head is measured in the new text: an earlier edit of this change on the head's
+                    // line (#1148) can have shortened or split it.
+                    let start = crate::pos::line_start(self.new, base);
+                    Some(self.at_col(start, base - start + col))
                 } else if o >= e.end() {
                     Some((o as isize + delta + e.delta()) as usize)
                 } else {
@@ -1161,6 +1163,10 @@ mod tests {
         // Past the joined line's end: clamped onto it.
         let long = vec![Edit::delete(1, 8)];
         assert_eq!(line(text, long, 15, LineGravity::Drop), Some(9));
+        // An earlier edit of the same change shortens the kept head (#1148): the head is the 3 bytes
+        // "bcd" left of the cut in the new text, so `l` lands at col 5 + 3, not past an underflow.
+        let two = vec![Edit::delete(0, 1), Edit::delete(4, 5)];
+        assert_eq!(line(text, two, 12, LineGravity::Drop), Some(8));
     }
 
     #[test]

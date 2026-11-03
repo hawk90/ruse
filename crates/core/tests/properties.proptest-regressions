@@ -11,3 +11,4 @@ cc 7a29ab1d295c2955fd097370c80441e9ff9ac07100f30b64444c33b6452275b5 # shrinks to
 cc 8355f6b5b2492178dc6503da1db7e27283f6f69a6bd9751aacd534d5fc61868e # shrinks to init = [], cmds = [Delete(1, Pair { open: '\0', close: '0', around: false })]
 cc 844f953b0457f9cd1466e62f05c2e140cc2d28aaa3dd4fa170d6889d7ec2bc83 # shrinks to init = [], raw = [Edit { pos: BytePos(0), del: 0, ins: [128] }], o = 0
 cc 1b31732017531f2cf910be8f2f46350b099a3d12fb31a3aaa679b012dc8d7cfa # shrinks to init = [101, 204, 129, 32], cmds = [Move(1, FindChar { ch: ' ', forward: true, till: true, repeat: false })]
+cc 839309b20e2a2a47de599ffd0c2d83d122c7706575b6dd7cf30dfda5385bd52e # shrinks to init = [194, 161, 240, 144, 128, 128, 10, 194, 161, 48, 32, 97], raw = [Edit { pos: BytePos(5), del: 3, ins: [] }, Edit { pos: BytePos(0), del: 1, ins: [] }], o = 7
