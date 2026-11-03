@@ -1667,8 +1667,10 @@ fn unmatched_spec(m: Motion) -> Option<(u8, u8, bool)> {
 ///   operator `w`/`W` and `e`/`E` reach the buffer end instead (`$dw`, `$de`).
 /// - `f`/`t`/`F`/`T`/`;`/`,` without the count-th match, `}`/`{`/`)`/`(` with count left over, `%` without a
 ///   bracket, `[(`/`])`/`[{`/`]}` without an enclosing one, and `{count}$` (count > 1) on the last line.
+/// - `it`/`at` under an operator outside a tag pair (the block, quote and sentence objects fail through
+///   `textobj::object_fails`).
 ///
-/// Every other motion (text objects, line jumps, `0`, `^`, `$`, `|`, sections, …) never fails here.
+/// Every other motion (line jumps, `0`, `^`, `$`, `|`, sections, …) never fails here.
 #[must_use]
 pub(crate) fn fails(
     b: &[u8],
@@ -1737,6 +1739,14 @@ pub(crate) fn fails(
         // `{count}dd`/`yy`/`cc`/`>>` move `count - 1` lines down first (`nv_lineop` → `cursor_down`), so on
         // the last line a count above 1 fails like `j` there (#1176).
         Motion::Line => op && n > 1 && last_line,
+        // `it`/`at` outside a tag pair (or a count past its nesting) cancel the operator (#1179). The `at`
+        // span holds the tags themselves, so it is empty only when there is no pair.
+        Motion::Tag { .. } => {
+            op && {
+                let (s, e) = tag_span(b, cur, true, n);
+                s == e
+            }
+        }
         _ => false,
     }
 }

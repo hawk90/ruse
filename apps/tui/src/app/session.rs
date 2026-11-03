@@ -2476,7 +2476,20 @@ impl Session {
                 }
                 ws.beep();
             }
-            Feed::Cmd(cmd) => self.run_resolved_cmd(cmd, frame),
+            // A change that fails before nvim saves its redo (`d/zzz<CR>`, `dfz`, `d'a` unset) is no change
+            // for `.`: the engine recorded it before the core could tell (#1179). The beep is kept for the
+            // macro and `:normal` abort read after the key.
+            Feed::Cmd(cmd) => {
+                let beeped_before = self.ws.take_beep();
+                self.run_resolved_cmd(cmd.clone(), frame);
+                let beeped = self.ws.take_beep();
+                if beeped {
+                    self.engine.change_failed(&cmd);
+                }
+                if beeped_before || beeped {
+                    self.ws.beep();
+                }
+            }
             // `` g`a `` / `g'a` (#1175): the jump runs under `keepjumps`, switched through the trace (RFC-0020
             // R6) as `:keepjumps` is, so a replay skips the jumplist entry too. Already on (`:keepjumps normal
             // g`a`), it stays on.

@@ -593,6 +593,10 @@ pub struct InputEngine {
     /// An in-flight change being recorded: set when an insert-entering command fires, then extended with the
     /// insert-session commands until the terminating `<Esc>` (`EnterNormal`) closes it into `last_change`.
     recording: Option<ChangeIntent>,
+    /// The `.` record ([`last_change`](Self::last_change), [`recording`](Self::recording)) as it was before
+    /// the Normal-mode change last folded in by [`record`](Self::record), kept until the next command, so
+    /// [`change_failed`](Self::change_failed) can put it back when that change fails (#1179).
+    replaced_change: Option<(Option<ChangeIntent>, Option<ChangeIntent>)>,
     /// The typed body of the MOST RECENT closed insert session (`i_CTRL-A` / `i_CTRL-@`; Vim's `".`
     /// register), excluding the terminating `EnterNormal`. Kept SEPARATE from `last_change` because a
     /// non-insert change (`x`, `dw`) overwrites `last_change` but must NOT touch the last-inserted text
@@ -808,6 +812,7 @@ impl InputEngine {
             last_search: None,
             last_change: None,
             recording: None,
+            replaced_change: None,
             last_inserted: Vec::new(),
             pending_record_register: None,
             pending_record_expr: None,
@@ -2638,6 +2643,7 @@ impl InputEngine {
         let Feed::Cmd(cmd) = out else {
             return;
         };
+        self.replaced_change = None;
         // Replace / Virtual Replace (`R`/`gR`) are insert sessions too: their overwrites are the body.
         if matches!(mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace) {
             // Insert resumed after an `i_CTRL-O` one-shot: the first edit opens a FRESH `i` change (Vim's
@@ -2694,6 +2700,7 @@ impl InputEngine {
             change_kind(cmd)
         } {
             ChangeKind::InsertEntering => {
+                self.replaced_change = Some((self.last_change.clone(), self.recording.take()));
                 self.recording = Some(ChangeIntent {
                     // `gi` repeats as a plain `i` at the NEW cursor (Vim's `nv_edit` turns `gi` into `i`
                     // after jumping to the `'^` mark), not as another jump to the last-insert spot.
@@ -2710,7 +2717,7 @@ impl InputEngine {
                 });
             }
             ChangeKind::Immediate => {
-                self.recording = None;
+                self.replaced_change = Some((self.last_change.take(), self.recording.take()));
                 self.last_change = Some(ChangeIntent {
                     lead: cmd.clone(),
                     insert: Vec::new(),
@@ -2725,6 +2732,34 @@ impl InputEngine {
                 self.pending_record_expr = None;
             }
         }
+    }
+
+    /// The command the engine just produced failed (the core beeped). When nvim cancels that command before
+    /// it saves the redo buffer, the change it replaced comes back, so `.` still repeats the earlier change
+    /// (#1179): a motion that fails under an operator (`d/zzz<CR>`, `dfz`, `d%`, `d'a` on an unset mark,
+    /// `dk` on the first line) is cleared with `clearopbeep` before `do_pending_operator` runs `prep_redo`,
+    /// and `J` on the last line, `r` past the end and `~` on an empty line bail out before theirs. A
+    /// failure nvim reaches only after saving the redo (`CTRL-A` with no number, a put of an empty
+    /// register, an operator refused by its register: `"/dd`) stays the change. Call it only right after
+    /// running the command `cmd` the engine returned, before the next key.
+    pub fn change_failed(&mut self, cmd: &Command) {
+        if !repeat::fails_before_redo(cmd) {
+            return;
+        }
+        let Some((last, recording)) = self.replaced_change.take() else {
+            return;
+        };
+        // The change named a register it cannot write, so the operator ran and was refused (`"/dfz` is left
+        // to that rule: the core reports both failures the same way).
+        let refused = [&self.last_change, &self.recording]
+            .into_iter()
+            .flatten()
+            .any(|c| !ruse_core::RegisterStore::is_writable(c.register));
+        if refused {
+            return;
+        }
+        self.last_change = last;
+        self.recording = recording;
     }
 
     /// `i_CTRL-O` ENDS the in-flight insert change for dot-repeat, exactly as `<Esc>` would (Vim's

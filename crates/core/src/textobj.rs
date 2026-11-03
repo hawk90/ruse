@@ -1146,6 +1146,21 @@ pub(crate) fn word_object_fails(
     current_word_at(&buf, cur, visual, count, include, big).err()
 }
 
+/// Whether a block, quote or sentence object (`i(`, `a"`, `is`) finds nothing to select from `cursor` under
+/// an operator, where Vim beeps and cancels the operator (#1179). Word objects fail through
+/// [`word_object_fails`], which also places the cursor.
+pub(crate) fn object_fails(b: &[u8], cursor: usize, m: Motion, count: u32) -> bool {
+    if !matches!(
+        m,
+        Motion::Pair { .. } | Motion::Quote { .. } | Motion::InnerSentence | Motion::ASentence
+    ) {
+        return false;
+    }
+    let buf = Buf::new(b);
+    let cur = cursor.min(b.len()).min(buf.last);
+    object(&buf, cur, None, m, count).is_none()
+}
+
 /// Whether `m` is one of the objects this module computes.
 pub(crate) fn owns(m: Motion) -> bool {
     matches!(

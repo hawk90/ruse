@@ -1120,7 +1120,8 @@ fn plan_search_object(
     hint: GroupHint,
 ) -> Plan {
     let Some((s, e)) = search_object_match(st, b, cur, count, pattern, backward) else {
-        return nop(cur, st.view.mode);
+        // No match: nvim's `current_search` fails (`clearopbeep`), so `dgn` is no change for `.` (#1179).
+        return beep(cur, st.view.mode);
     };
     match op {
         // Bare `gn`/`gN`: enter charwise Visual with the match selected (anchor at its start, cursor on its
@@ -1336,6 +1337,11 @@ fn failed_motion(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Optio
             };
             return Some(beep(at, st.view.mode));
         }
+    }
+    // A block, quote or sentence object with nothing to select fails under an operator (nvim's `nv_object`
+    // → `clearopbeep`), so `di(` without a `(` is no change for `.` and stops a macro (#1179).
+    if op && crate::textobj::object_fails(b, cur, m, count) {
+        return Some(beep(cur, st.view.mode));
     }
     // A bare `{count}e` that runs out still moves as far as it can (handled in the `Move` arm).
     if !op && matches!(m, Motion::WordEnd | Motion::BigWordEnd) {
@@ -3093,7 +3099,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             let le = line_end(b, cur);
             let (end, _) = advance_graphemes(b, cur, *count, le);
             if end <= cur {
-                nop(cur, st.view.mode)
+                // An empty line: nvim's `n_swapchar` fails (`clearopbeep`), so it is no change for `.` (#1179).
+                beep(cur, st.view.mode)
             } else {
                 // Invalid UTF-8 bytes are kept as they are (#706).
                 let flipped = recase_bytes(&b[cur..end], WordCase::Toggle);

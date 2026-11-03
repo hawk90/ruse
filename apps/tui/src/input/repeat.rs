@@ -470,6 +470,39 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
     }
 }
 
+/// Whether a failure of `cmd` (the core beeped) cancels it before nvim saves the redo buffer, so the
+/// change it was about to replace stays the one `.` repeats (#1179, [`InputEngine::change_failed`]).
+/// Every operator over a motion, search, `gn`, `*` or mark: its motion handler fails with `clearopbeep`
+/// (or `clearop`) and `do_pending_operator`, where `prep_redo` runs, never sees the operator. `J`
+/// (`nv_join`), `r` (`nv_replace`) and `~` (`n_swapchar`) bail out before their own `prep_redo`; a `J`
+/// count past the last line is clamped first and saved (`x3J.` on one line repeats the `3J`, nvim). The
+/// rest is saved before it can fail: `x` (`dl`, which never fails under an operator), `CTRL-A`
+/// (`nv_addsub`), a put (`nv_put`), the Visual operators and the insert entries.
+///
+/// [`InputEngine::change_failed`]: super::InputEngine::change_failed
+pub(crate) fn fails_before_redo(cmd: &Command) -> bool {
+    use Command as C;
+    match cmd {
+        C::JoinLines(n) | C::JoinLinesNoSpace(n) => *n <= 2,
+        C::Delete(..)
+        | C::Change(..)
+        | C::CaseMotion { .. }
+        | C::ShiftMotion { .. }
+        | C::Reindent { .. }
+        | C::Format { .. }
+        | C::Comment { .. }
+        | C::OpForced { .. }
+        | C::Search { .. }
+        | C::SearchObject { .. }
+        | C::SearchWordUnder { .. }
+        | C::OpToMark { .. }
+        | C::ReplaceChar(..)
+        | C::VirtualReplaceChar(..)
+        | C::ToggleCase(_) => true,
+        _ => false,
+    }
+}
+
 /// Rewrite a command's count for `N.` (Vim replaces the change's count with `N`). Commands without a count
 /// are returned unchanged.
 pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {

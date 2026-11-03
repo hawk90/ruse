@@ -9181,6 +9181,54 @@ mod history_list_tests {
         let effects = apply_command(&mut st, &Command::GotoOlderJump);
         assert_eq!(effects, vec![Effect::Beep]);
     }
+
+    /// #1179: an object with nothing to select under an operator, and `~` on an empty line, fail (a beep),
+    /// so the frontend keeps the earlier change for `.`; an object that selects nothing (`di(` on `()`) runs.
+    #[test]
+    fn failed_objects_and_tilde_beep() {
+        let pair = Motion::Pair {
+            open: '(',
+            close: ')',
+            around: false,
+        };
+        for (text, cmd) in [
+            (&b"abc def"[..], Command::Delete(1, pair)),
+            (b"abc def", Command::Change(1, pair)),
+            (
+                b"abc def",
+                Command::Delete(
+                    1,
+                    Motion::Quote {
+                        ch: '"',
+                        around: true,
+                    },
+                ),
+            ),
+            (
+                b"abc def",
+                Command::Delete(1, Motion::Tag { around: false }),
+            ),
+            (
+                b"<a>x</a> def",
+                Command::Delete(2, Motion::Tag { around: true }),
+            ),
+            (b"\nabc", Command::ToggleCase(1)),
+        ] {
+            let mut st = EditorState::new(text.to_vec());
+            let effects = apply_command(&mut st, &cmd);
+            assert_eq!(effects, vec![Effect::Beep], "{cmd:?}");
+            assert_eq!(st.doc.bytes(), text, "{cmd:?}");
+            assert_eq!(st.view.mode, Mode::Normal, "{cmd:?}");
+        }
+        let mut st = EditorState::new(b"a() b".to_vec());
+        st.view.cursor = 2;
+        assert!(!apply_command(&mut st, &Command::Delete(1, pair)).contains(&Effect::Beep));
+        let mut st = EditorState::new(b"<a>x</a>".to_vec());
+        st.view.cursor = 3;
+        let effects = apply_command(&mut st, &Command::Delete(1, Motion::Tag { around: false }));
+        assert!(!effects.contains(&Effect::Beep));
+        assert_eq!(st.doc.bytes(), b"<a></a>");
+    }
 }
 
 /// Resource bounds in the core (#682, #683, #684, #733): hostile inputs return at once and stay bounded.

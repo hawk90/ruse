@@ -1113,7 +1113,7 @@ mod tests {
         assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordFwd)));
     }
 
-    fn ctrl(c: char) -> KeyEvent {
+    pub(super) fn ctrl(c: char) -> KeyEvent {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
     }
 
@@ -3804,7 +3804,7 @@ mod tests {
 /// replays it — the operator/edit at the CURRENT cursor, plus any captured insert text (F-023).
 #[cfg(test)]
 mod dot_repeat_tests {
-    use super::tests::{esc, k};
+    use super::tests::{ctrl, esc, k};
     use crate::input::*;
 
     /// Feed a whole sequence, tracking the mode the way the frontend does (a completed command may change
@@ -3861,6 +3861,56 @@ mod dot_repeat_tests {
         assert_eq!(
             last,
             Feed::Replay(vec![Command::Delete(1, Motion::WordFwd)])
+        );
+    }
+
+    #[test]
+    fn a_failed_change_puts_the_earlier_one_back() {
+        // `x`, then `dfz` fails in the core (no `z`): the engine forgets it, so `.` repeats the `x` (#1179).
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('x'), Mode::Normal),
+            Feed::Cmd(Command::DeleteUnder(1))
+        );
+        for key in [k('d'), k('f')] {
+            e.feed(key, Mode::Normal);
+        }
+        let Feed::Cmd(dfz) = e.feed(k('z'), Mode::Normal) else {
+            panic!("dfz is one command");
+        };
+        e.change_failed(&dfz);
+        assert_eq!(
+            e.feed(k('.'), Mode::Normal),
+            Feed::Replay(vec![Command::DeleteUnder(1)])
+        );
+        // Only the command just recorded is forgotten: a second report changes nothing.
+        e.change_failed(&dfz);
+        assert_eq!(
+            e.feed(k('.'), Mode::Normal),
+            Feed::Replay(vec![Command::DeleteUnder(1)])
+        );
+    }
+
+    #[test]
+    fn a_change_nvim_saves_before_it_fails_stays() {
+        // `CTRL-A` without a number fails after nvim's `prep_redo`, and a refused `"/dw` inside its operator.
+        let mut e = InputEngine::new();
+        e.feed(k('x'), Mode::Normal);
+        let Feed::Cmd(add) = e.feed(ctrl('a'), Mode::Normal) else {
+            panic!("CTRL-A is one command");
+        };
+        e.change_failed(&add);
+        assert_eq!(e.feed(k('.'), Mode::Normal), Feed::Replay(vec![add]));
+        for key in [k('"'), k('/'), k('d')] {
+            e.feed(key, Mode::Normal);
+        }
+        let Feed::Cmd(dw) = e.feed(k('w'), Mode::Normal) else {
+            panic!("dw is one command");
+        };
+        e.change_failed(&dw);
+        assert_eq!(
+            e.feed(k('.'), Mode::Normal),
+            Feed::Replay(vec![Command::SetRegister(Some('/')), dw])
         );
     }
 
