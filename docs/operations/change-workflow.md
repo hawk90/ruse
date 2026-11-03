@@ -7,7 +7,7 @@ summary: >
   its kind and blast radius, and the required documents/verification/approval follow from that kind. A human
   owns Approve and Merge; the AI amplifies Plan and Execute; scripts verify the result independently. This
   documents the single entry point `python3 tools/ruse.py` and its P0 subcommands, the Change Contract
-  (.ruse/work/<id>/change.yaml), and how classification can only raise risk, never lower it.
+  ($(git rev-parse --git-path ruse/work)/<id>/change.yaml, inside .git), and how classification can only raise risk, never lower it.
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
@@ -46,7 +46,7 @@ python3 tools/ruse.py <command>
 
 | Command | What it does |
 | --- | --- |
-| `change start --issue <id> --kind <k> --area <crate>` | Scaffold `.ruse/work/<id>/` (the Change Contract) |
+| `change start --issue <id> --kind <k> --area <crate>` | Scaffold `$(git rev-parse --git-path ruse/work)/<id>/` (the Change Contract) |
 | `change classify [--base <ref>] [--files ...] [--kind <k>]` | Compute the **minimum** required kind from the diff |
 | `impact --from <ID>` / `impact --changed` | What a spec ID or the diff ripples into |
 | `context build --issue <id>` / `context check` | Task-scoped context pack for an AI + staleness lock |
@@ -79,15 +79,24 @@ floor when a path is unambiguously high-risk, and hard-fails a hand-edit of a ge
 
 ## The Change Contract
 
-`change start` scaffolds a small, **local** agreement at `.ruse/work/<id>/change.yaml`
-(template: [spec/templates/change.yaml](../../spec/templates/change.yaml)). `.ruse/` is gitignored — only
-the final RFC / Decision / PRD change / PR is permanent. The contract declares the kind, the affected spec
-IDs (`CAP-*`/`F-*`/`C-*`/`INV-*`/`D-*`), the crates, whether a stability boundary is crossed, the
-`allow_paths` / `forbid_paths` blast radius, and the closing evidence. It is not a prompt — it is the set of
-permissions and verification conditions the implementer (human or agent) works within.
+`change start` scaffolds a small, **local** agreement at `$(git rev-parse --git-path ruse/work)/<id>/change.yaml`
+(template: [spec/templates/change.yaml](../../spec/templates/change.yaml)). That directory is inside `.git`,
+one per worktree, and is never committed — only the final RFC / Decision / PRD change / PR is permanent.
+The contract declares the kind, the affected spec IDs (`CAP-*`/`F-*`/`C-*`/`INV-*`/`D-*`), the crates,
+whether a stability boundary is crossed, the `allow_paths` / `forbid_paths` blast radius, and the closing
+evidence. It is not a prompt — it is the set of permissions and verification conditions the implementer
+(human or agent) works within.
+
+> **Where the tooling writes (D-062).** `.ruse/` at a workspace root belongs to the product: it holds only
+> committed project configuration (e.g. `.ruse/config.toml`), and ruse never writes local or per-user state
+> into a repository. So the ruse repo's development tooling keeps per-change state in
+> `$(git rev-parse --git-path ruse/work)/` (inside `.git`, per worktree) and the upstream-source cache in
+> `${XDG_CACHE_HOME:-~/.cache}/ruse-dev/` (shared across worktrees). The tooling migration lands in a
+> follow-up PR, tracked in the follow-up tooling issue #1137; until it merges, `tools/ruse.py` still writes
+> the old `.ruse/work/` and `.ruse/cache/` paths.
 
 ```
-.ruse/work/<id>/
+$(git rev-parse --git-path ruse/work)/<id>/
 ├── change.yaml       # the contract
 ├── plan.md           # Planner output (plan validate checks completeness)
 ├── context.md        # context build output (what to read)
@@ -98,10 +107,10 @@ permissions and verification conditions the implementer (human or agent) works w
 
 ### The gate: local preflight vs. the CI gate of record
 
-`.ruse/` is gitignored **on purpose**, and CI never trusts it — a self-reported `evidence.json` cannot be a
+The work directory is local and uncommitted **on purpose**, and CI never trusts it — a self-reported `evidence.json` cannot be a
 merge gate (it is trivially fabricated). So the gate is two-tier:
 
-- **Local `ruse pr check`** — a *preflight*: it reads your `.ruse/` and tells you whether the gate will pass.
+- **Local `ruse pr check`** — a *preflight*: it reads your local work directory and tells you whether the gate will pass.
   Convenience, not authority.
 - **CI `change-policy` job** — the *gate of record* ([`.github/workflows/change-policy.yml`](../../.github/workflows/change-policy.yml)).
   It reads only the author's DECLARED contract from the `ruse-gate:v1` block that `ruse pr render` embeds in
@@ -127,7 +136,7 @@ python3 tools/ruse.py verify --changed
 python3 tools/ruse.py change start --issue 123 --kind implementation --area core --goal "..."
 # edit change.yaml: affected IDs, allow_paths
 python3 tools/ruse.py context build --issue 123     # what to read (bounded)
-python3 tools/ruse.py impact --issue 123 --out .ruse/work/123/impact.json
+python3 tools/ruse.py impact --issue 123 --out "$(git rev-parse --git-path ruse/work)/123/impact.json"
 # ... implement within allow_paths ...
 python3 tools/ruse.py verify --changed               # records evidence.json
 python3 tools/ruse.py pr render --issue 123 > pr.md

@@ -82,7 +82,7 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 | --- | --- | --- |
 | Change Impact Analysis | live | `ruse impact` (spec cross-reference graph) → runtime/coverage graph planned |
 | Risk-Based Verification | live | spec/change-kinds.yaml risk ladder + `ruse verify` scope selection |
-| Evidence-Driven Completion | live | local `.ruse/.../evidence.json` (preflight only) + **server-side gate of record**: `.github/workflows/change-policy.yml` re-derives kind/blast-radius from the PR diff and re-runs verify — local files untrusted (RA-RUSE-006) |
+| Evidence-Driven Completion | live | local `$(git rev-parse --git-path ruse/work)/<id>/evidence.json` (preflight only; D-062) + **server-side gate of record**: `.github/workflows/change-policy.yml` re-derives kind/blast-radius from the PR diff and re-runs verify — local files untrusted (RA-RUSE-006) |
 | Property / Model-Based / Differential testing | live | property tests shipped (`crates/core/tests/properties.rs`); **nvim differential oracle live** (`tools/parity/oracle.py`, `--selftest`-gated non-corruption) + corpus at `tests/parity/vim/fixtures/` (ATOMIC + COMPOSITE — composite finds interaction bugs), `apps/tui/tests/parity_compare.rs` fails on any divergence not in `tests/parity/vim/known-divergences.txt` (#883), `gov parity_oracle` gate (nvim-optional) |
 
 ### 4. Agent layer — *humans and agents, bounded*

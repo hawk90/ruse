@@ -631,7 +631,8 @@ machine/global (user profile)  <  workspace (project)  <  buffer-local (mode)  <
    lower precedence  ────────────────────────────────────────────────────────────────────►  higher
 ```
 
-- **Machine/global vs workspace:** a workspace (`.ruse/…` in a repo root) may set project settings
+- **Machine/global vs workspace:** a workspace (`.ruse/…` in a repo root; committed project config only,
+  never per-user state, D-062) may set project settings
   (formatter, tab width, enabled plugins) but **must not override security-sensitive or machine-scoped
   settings** (trust decisions, credential paths, remote exec policy) — INV-TRUST-1 / ARCH-FORBID
   ("a workspace must not override security-sensitive settings"). The `SettingsResolver` classifies each

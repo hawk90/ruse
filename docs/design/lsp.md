@@ -57,6 +57,11 @@ spawns **nothing** until the workspace (the working directory) is trusted — IN
 session. Untrusted: focusing a code buffer shows a one-time status notice, LSP commands (`:fmt`, `:rename`,
 …) report the untrusted state, and no `spawn`/`didOpen` happens.
 
+This gate is root-bound. The workspace *config* layer is additionally content-bound (D-062): the user-side
+trust record also holds a hash of the workspace's `.ruse/` contents, and if they change after the grant the
+workspace config is stale and not loaded until the user re-confirms
+([config-model](config-model.md#workspace-trust--user-owned-and-content-bound-d-058-d-062)).
+
 ## Session integration + render
 
 `LspCoordinator` (`apps/tui/src/app/lsp_coordinator.rs`) keeps the clients by server key, the per-document

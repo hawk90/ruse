@@ -323,7 +323,8 @@ the priority rules **like an ABI** (lower number = higher priority):
 
 **PROVENANCE axis** — *within the winning layer, whose binding wins* (principle locked, ordering open; D-008):
 
-4. **Workspace override**
+4. **Workspace override** — holds no active bindings (D-062): a workspace, even a trusted one, cannot add or
+   change bindings; a project's bindings are *suggested* only and use tier 7's opt-in rule.
 5. **User profile override**
 6. **Plugin explicit binding**
 7. **Plugin suggested binding**

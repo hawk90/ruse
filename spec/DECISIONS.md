@@ -962,3 +962,34 @@ related:
 - Refs: [RFC-0020](../docs/rfc/proposed/RFC-0020-ex-edits-in-the-trace.md),
   [command-engine.md](../docs/design/command-engine.md), RFC-0012, D-001, D-006, D-025, D-039, INV-CMD-SEMANTIC,
   INV-ADDITIVE, INV-TXN, F-009.
+
+## D-062 — The workspace config boundary: user-only keymaps, product-owned `.ruse/`, content-bound trust · decided (design)
+- **Decision:** Three rules for what a workspace contributes and how it is trusted.
+  (1) **Keymaps (#1026):** `keymap.*` stay `scope: user` in `spec/config-schema.yaml`; a workspace, even a
+  trusted one, cannot add or change active key bindings. Projects contribute COMMANDS (trust- and
+  capability-gated; project commands are #647) and may declare SUGGESTED bindings, which enter the existing
+  plugin-suggested, opt-in tier: they appear only as hints in which-key and the palette and take effect only
+  when the user opts in. Relaxing this needs a new D-*.
+  (2) **`.ruse/` ownership (#987):** `.ruse/` at a workspace root belongs to the PRODUCT and holds only
+  committed project configuration (e.g. `.ruse/config.toml`); ruse never writes local or per-user state into a
+  user's repository. The ruse repo's own development tooling moves out of `.ruse/`: per-change contracts to
+  `$(git rev-parse --git-path ruse/work)` (inside `.git`, per worktree, never committed) and the upstream-source
+  cache to `${XDG_CACHE_HOME:-~/.cache}/ruse-dev/` (shared across worktrees). The tooling migration is #1137.
+  (3) **Content-bound trust (adopted from Helix):** trust is stored on the user side, never in the repository,
+  and records with the trusted root a hash of the workspace's `.ruse/` contents; if they change after the grant,
+  the workspace config is treated as untrusted (stale) and is not loaded until the user re-confirms. This amends
+  D-058 for the config layer; the D-058 language-server gate stays root-bound. Full design:
+  [RFC-0021](../docs/rfc/proposed/RFC-0021-workspace-config-boundary.md).
+- **Reason:** a binding invokes a command, so a project rebinding common keys is a confused-deputy risk; trust
+  means "may run this repo's tools", not "may rewire my keys"; keys are muscle memory and per-profile
+  (INV-PROFILE-ISOLATION). Precedent: VS Code keybindings are application-scoped (user file only); Zed limits
+  project settings to editor behaviour and language tooling and keeps `vim_mode` user-only. A shared `.ruse/`
+  would mix committed project config with never-committed per-user state (precedent: `.helix/`, `.zed/` hold
+  project config only). A root-only grant lets a later pull or branch switch load config the user never saw
+  (Helix workspace trust; helix-editor/helix#9514).
+- **Re-evaluate if:** project commands (#647) and project views exist and users ask for view-local project
+  bindings; re-confirmation on every `.ruse/` change proves noisy; or a workspace contributes config the loader
+  reads from outside `.ruse/` (it must then be hashed too).
+- Refs: [RFC-0021](../docs/rfc/proposed/RFC-0021-workspace-config-boundary.md), D-058, D-046, D-008, #1026,
+  #987, #1137, #647, INV-TRUST-1, INV-PROFILE-ISOLATION, INV-PRIORITY, CAP-LSP-COORD, F-014,
+  [config-model.md](../docs/design/config-model.md), [change-workflow.md](../docs/operations/change-workflow.md).

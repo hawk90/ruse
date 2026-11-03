@@ -1,7 +1,7 @@
 # Plan — <issue>
 
 <!-- Written by the Planner (human or AI in a read-only role) BEFORE implementation.
-     `python3 tools/ruse.py plan validate .ruse/work/<issue>/plan.md` checks that every
+     `python3 tools/ruse.py plan validate "$(git rev-parse --git-path ruse/work)/<issue>/plan.md"` checks that every
      section below is present and non-empty. It cannot judge whether the plan is *correct*
      — only whether a perspective was skipped. A human approves the plan before Execute. -->
 

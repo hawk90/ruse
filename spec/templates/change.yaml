@@ -1,5 +1,6 @@
 # Change Contract — the small, local, per-task agreement. Lives at
-# .ruse/work/<issue>/change.yaml (NOT committed; .ruse/ is gitignored). Only the final
+# $(git rev-parse --git-path ruse/work)/<issue>/change.yaml (inside .git, per worktree, NOT committed;
+# `.ruse/` belongs to the product's committed project config, D-062; tooling move: #1137). Only the final
 # RFC / Decision / PRD change / PR is permanent. `python3 tools/ruse.py change start`
 # scaffolds this; you fill it in before asking an agent to implement.
 #

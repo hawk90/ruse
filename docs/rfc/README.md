@@ -45,6 +45,7 @@ compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 | [RFC-0017](proposed/RFC-0017-better-than-vanilla-defaults.md) | Better-than-vanilla defaults at the frontend layer | D-056 | [config-model](../design/config-model.md) |
 | [RFC-0019](proposed/RFC-0019-version-named-milestones.md) | Version-named milestones | D-059 | [spec/phases.yaml](../../spec/phases.yaml) |
 | [RFC-0020](proposed/RFC-0020-ex-edits-in-the-trace.md) | Ex edits are recorded in the trace as resolved commands | D-061 | [command-engine §7.3](../design/command-engine.md) |
+| [RFC-0021](proposed/RFC-0021-workspace-config-boundary.md) | The workspace config boundary (keymaps, `.ruse/` ownership, content-bound trust) | D-062 | [config-model](../design/config-model.md) |
 
 ## Accepted
 
