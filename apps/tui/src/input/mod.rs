@@ -1518,6 +1518,16 @@ impl InputEngine {
         self.last_search = Some((pattern, forward, offset));
     }
 
+    /// The whole last-search state (pattern, direction, offset), for `:keeppatterns` to put back (#609).
+    pub(crate) fn search_state(&self) -> Option<(String, bool, SearchOffset)> {
+        self.last_search.clone()
+    }
+
+    /// Put back a state [`InputEngine::search_state`] returned.
+    pub(crate) fn restore_search_state(&mut self, state: Option<(String, bool, SearchOffset)>) {
+        self.last_search = state;
+    }
+
     /// The last search pattern (`/`, `?`, `*`, `#`), or `None` if nothing has been searched yet. The
     /// frontend reads it to resolve an empty `:s//repl/` pattern, which Vim fills from the last search.
     #[must_use]
@@ -4352,9 +4362,12 @@ use repeat::{change_kind, ChangeIntent, ChangeKind};
 
 mod ex;
 mod ex_cmd;
+mod ex_extra;
 mod nvim_options;
 pub(crate) use ex::reuse_last_search;
+pub(crate) use ex_cmd::full_command_name;
 pub use ex_cmd::{strip_modifiers, ExModifiers};
+pub use ex_extra::{FileCmd, PrintFlags, StartKind, ZSpec};
 // `GlobalPayload` is referenced by the non-test dispatch/run-loop (routing `:g/pat/normal` vs `d`/`s`) and
 // by the integration scenarios that drive `:g` directly, so it is part of the input surface like `Ex`.
 pub use ex::{

@@ -171,8 +171,8 @@ fn check_other_target(
 }
 
 /// Make `path` the focused buffer's file: its name, file identity and highlighter (`:sav`, and `:w {file}`
-/// from a buffer with no file).
-fn adopt_file(
+/// from a buffer with no file, `:file {name}`).
+pub(crate) fn adopt_file(
     ws: &mut Workspace,
     files: &mut Files,
     highlighters: &mut Highlighters,

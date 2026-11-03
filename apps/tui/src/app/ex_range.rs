@@ -364,7 +364,8 @@ fn search_line(
     hit.ok_or_else(|| ExRangeError::PatternNotFound(pat.to_string()))
 }
 
-/// For `:d`, `:y` (each `[x] [count]`), `:j[!] [count]` and `:>`/`:<` `[count]` (`:help :d`): the line in
+/// For `:d`, `:y` (each `[x] [count]`), `:j[!] [count]`, `:>`/`:<` `[count]` and the print commands
+/// `:p`/`:l`/`:nu`/`:#` `[count] [flags]` (`:help :d`, `:help :p`): the line in
 /// canonical form, with a count turned into the range of `count` lines from `line2` (clamped to the
 /// buffer, as Vim does) and the register after one space (`2,4d a`). `None` when `tail` is not one of
 /// these commands or has no argument.
@@ -377,6 +378,7 @@ fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<String>, ExRang
         Some(&c @ (b'>' | b'<')) => {
             tail.split_at(tail.find(|x| x != c as char).unwrap_or(tail.len()))
         }
+        Some(b'#') => tail.split_at(1),
         _ => {
             let end = tail
                 .find(|c: char| !c.is_ascii_alphabetic())
@@ -385,10 +387,16 @@ fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<String>, ExRang
             tail.split_at(end + bang)
         }
     };
+    // The print commands (#609) take `[count] [flags]`: the flags (`l`, `p`, `#`) stay after the count.
+    let prints = verb == "#"
+        || matches!(
+            crate::input::full_command_name(verb),
+            Some("print" | "list" | "number")
+        );
     let takes_register = match verb {
         "d" | "de" | "del" | "dele" | "delet" | "delete" | "y" | "ya" | "yan" | "yank" => true,
         "j" | "jo" | "joi" | "join" | "j!" | "jo!" | "joi!" | "join!" => false,
-        _ if verb.starts_with(['>', '<']) => false,
+        _ if verb.starts_with(['>', '<']) || prints => false,
         _ => return Ok(None),
     };
     let mut a = args.trim_start();
@@ -417,6 +425,12 @@ fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<String>, ExRang
     } else {
         None
     };
+    let mut flags = "";
+    if prints {
+        let end = a.find(|c: char| !"lp# \t".contains(c)).unwrap_or(a.len());
+        flags = a[..end].trim_end();
+        a = &a[end..];
+    }
     if !a.is_empty() {
         return Err(ExRangeError::Trailing(a.to_string()));
     }
@@ -426,7 +440,12 @@ fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<String>, ExRang
     };
     let last = line2.saturating_add(n - 1).min(nlines);
     let reg = reg.map(|c| format!(" {c}")).unwrap_or_default();
-    Ok(Some(format!("{line2},{last}{verb}{reg}")))
+    let flags = if flags.is_empty() {
+        String::new()
+    } else {
+        format!(" {flags}")
+    };
+    Ok(Some(format!("{line2},{last}{verb}{reg}{flags}")))
 }
 
 #[cfg(test)]

@@ -902,6 +902,55 @@ impl Workspace {
         n
     }
 
+    /// Run `:[range]retab[!] [N]` against the FOCUSED window (swap-trick; see [`EditorState::retab`]).
+    /// Returns whether any line changed.
+    pub fn retab(&mut self, range: SubRange, bang: bool, new_tabstop: Option<usize>) -> bool {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = self.lend(doc, view);
+        let changed = st.retab(range, bang, new_tabstop);
+        let (doc, view) = self.reclaim(st);
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        changed
+    }
+
+    /// `:keepjumps` (#609): while `on`, no view records a jumplist or change-list entry (so `''`, `` `. ``,
+    /// `CTRL-O` and `g;` are as they were before the command).
+    pub fn set_keep_jumps(&mut self, on: bool) {
+        for view in self.views.iter_mut().flatten() {
+            view.keep_jumps = on;
+        }
+    }
+
+    /// Whether `:keepjumps` is in force (see [`Workspace::set_keep_jumps`]).
+    #[must_use]
+    pub fn keep_jumps(&self) -> bool {
+        self.views.iter().flatten().any(|v| v.keep_jumps)
+    }
+
+    /// Make `id` the alternate buffer (`None` clears it), as `:keepalt` restores it (#609).
+    pub fn set_alternate(&mut self, id: Option<DocumentId>) {
+        self.alt = id;
+    }
+
+    /// Name (or rename) buffer `id`; a retired id is ignored (`:cd` renames every buffer, #610).
+    pub fn set_buffer_name(&mut self, id: DocumentId, name: impl Into<String>) {
+        if let Some(slot) = self.names.get_mut(Self::doc_slot(id)) {
+            *slot = Some(name.into());
+        }
+    }
+
+    /// Remove the FOCUSED buffer's name (`:0file`, #610).
+    pub fn clear_focused_buffer_name(&mut self) {
+        let slot = Self::doc_slot(self.focused_buffer());
+        self.names[slot] = None;
+    }
+
     /// Run `:[range]sort` against the FOCUSED window (swap-trick): sort the range's lines as one undo
     /// group. Returns the number of lines removed by the `unique` flag.
     ///
@@ -2351,9 +2400,13 @@ mod tests {
     #[test]
     fn sort_lines_variants() {
         use crate::SortOptions;
-        let opts = |reverse, numeric, unique| SortOptions {
+        let opts = |reverse, numeric: bool, unique| SortOptions {
             reverse,
-            numeric,
+            key: if numeric {
+                crate::SortKind::Decimal
+            } else {
+                crate::SortKind::Text
+            },
             unique,
             ..SortOptions::default()
         };
@@ -2401,7 +2454,7 @@ mod tests {
             String::from_utf8(w.focused().doc.bytes().to_vec()).unwrap()
         };
         let numeric = SortOptions {
-            numeric: true,
+            key: crate::SortKind::Decimal,
             ..SortOptions::default()
         };
         assert_eq!(sorted("b\n-5\na\n3\n", numeric.clone()), "b\na\n-5\n3\n");
@@ -2438,6 +2491,45 @@ mod tests {
         assert_eq!(w.focused().doc.bytes(), b"b\na\n");
     }
 
+    /// #1104: `:sort x`/`o`/`b`/`f`/`l` key extraction, checked against nvim v0.12.6.
+    #[test]
+    fn sort_lines_number_formats_and_locale() {
+        use crate::{SortKind, SortOptions};
+        let sorted = |text: &str, key: SortKind| {
+            let mut w = Workspace::new(text.as_bytes().to_vec());
+            let opts = SortOptions {
+                key,
+                ..SortOptions::default()
+            };
+            w.sort_lines(SubRange::WholeFile, &opts).unwrap();
+            String::from_utf8(w.focused().doc.bytes().to_vec()).unwrap()
+        };
+        assert_eq!(
+            sorted("x0x1F\nb\n0x0a\n-0x3\n0xff\nzz\n", SortKind::Hex),
+            "zz\n-0x3\n0x0a\nb\nx0x1F\n0xff\n"
+        );
+        assert_eq!(
+            sorted("0b101\n0b11\nb\n-0b1\n10\n", SortKind::Binary),
+            "b\n-0b1\n10\n0b11\n0b101\n"
+        );
+        assert_eq!(
+            sorted("017\n8\n07\na\n-01\n9\n", SortKind::Octal),
+            "a\n-01\n8\n9\n07\n017\n"
+        );
+        assert_eq!(
+            sorted("1.5\na\n-2e1\n0.3\nb\n1e-1\n3\n", SortKind::Float),
+            "-2e1\na\nb\n1e-1\n0.3\n1.5\n3\n"
+        );
+        assert_eq!(
+            sorted(
+                "x\n1.5e\ninf\n-inf\n2\n \n0x1p2\n0x.8\n+ 3\n",
+                SortKind::Float
+            ),
+            "-inf\n \nx\n0x.8\n1.5e\n2\n+ 3\n0x1p2\ninf\n"
+        );
+        assert_eq!(sorted("B\na\nb\nA\n", SortKind::Locale), "a\nA\nb\nB\n");
+    }
+
     #[test]
     fn sort_lines_ignore_case_and_pattern() {
         use crate::SortOptions;
@@ -2472,7 +2564,7 @@ mod tests {
             &SortOptions {
                 pattern: Some("\\d\\+".into()),
                 use_match: true,
-                numeric: true,
+                key: crate::SortKind::Decimal,
                 ..SortOptions::default()
             },
         )

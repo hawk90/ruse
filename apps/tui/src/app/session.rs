@@ -481,6 +481,15 @@ pub(crate) struct Session {
     /// The error a `:silent!` hid from the status line (Vim's `v:errmsg` still records it, #609); the
     /// headless harness reads and clears it.
     pub(crate) silenced_error: Option<String>,
+    /// The alternate file name a `:w {file}`, `:sav` or `:file {name}` left (#610).
+    alt_file: Option<crate::app::ex_more::AltFile>,
+    /// The working directory before the last `:cd` (`:cd -`, #610).
+    prev_dir: Option<PathBuf>,
+    /// The `:filter` pattern of the command being run (#609).
+    ex_filter: Option<(String, bool)>,
+    /// A `:startinsert`/`:stopinsert` waiting for its command line to end (#609): `None` inside is
+    /// `:stopinsert`.
+    pending_insert: Option<Option<(crate::input::StartKind, bool)>>,
 }
 
 impl Session {
@@ -598,6 +607,10 @@ impl Session {
             status,
             normal_depth: 0,
             silenced_error: None,
+            alt_file: None,
+            prev_dir: None,
+            ex_filter: None,
+            pending_insert: None,
         }
     }
 
@@ -1028,6 +1041,7 @@ impl Session {
             status,
             profile_name,
             meta_tail,
+            alt_file,
             ..
         } = self;
         let (revision, text_rows) = (frame.revision, frame.text_rows);
@@ -2017,6 +2031,7 @@ impl Session {
                 let ctx = ExCompletion {
                     ws,
                     files,
+                    alt_file,
                     fold_method: fold_method.get(&buf).copied(),
                     foldlevel: foldlevel.get(&buf).copied(),
                 };
@@ -2025,7 +2040,7 @@ impl Session {
             // `c_CTRL-R {reg}`: the register's text at the caret. The read-only `"/ ": ". "%` registers are
             // refreshed first, as before any dispatch. An unknown or empty register splices nothing.
             Feed::CmdlineInsertRegister(name) => {
-                sync_special_registers(ws, engine, &self.last_ex_line, files);
+                sync_special_registers(ws, engine, &self.last_ex_line, files, &self.alt_file);
                 let name = name.to_ascii_lowercase();
                 let linewise = ws
                     .register_snapshot()
@@ -2093,7 +2108,7 @@ impl Session {
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
-                sync_special_registers(ws, engine, last_ex_line, files);
+                sync_special_registers(ws, engine, last_ex_line, files, alt_file);
                 for cmd in cmds {
                     run_cmd(cmd, ws, files, recorded, status, quit);
                 }
@@ -2119,6 +2134,7 @@ impl Session {
             last_ex_line,
             keyword_lines_picker,
             status,
+            alt_file,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -2252,7 +2268,7 @@ impl Session {
         }
         // Refresh the read-only special registers `"/ ": ". "%` before dispatch so a `"/p` /
         // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
-        sync_special_registers(ws, engine, last_ex_line, files);
+        sync_special_registers(ws, engine, last_ex_line, files, alt_file);
         run_cmd(cmd, ws, files, recorded, status, quit);
     }
 
@@ -2264,6 +2280,56 @@ impl Session {
         // leading `:` (the engine already strips it). Read by `C-r :` / `":p` / `@:`.
         self.last_ex_line = Some(text.clone());
         self.run_ex_pieces(crate::input::split_bar(&text), frame);
+        if let Some(start) = self.pending_insert.take() {
+            self.start_or_stop_insert(start);
+        }
+    }
+
+    /// Run a `:startinsert`-family command (or `:stopinsert` for `None`) once its line has run (#609), the
+    /// way Vim's `restart_edit` starts Insert after the command line.
+    fn start_or_stop_insert(&mut self, start: Option<(crate::input::StartKind, bool)>) {
+        use crate::input::StartKind;
+        let Session {
+            ws,
+            files,
+            recorded,
+            status,
+            quit,
+            ..
+        } = self;
+        let mode = ws.focused().view.mode();
+        let Some((kind, bang)) = start else {
+            if mode != Mode::Normal {
+                // Only `i_CTRL-O` runs an Ex command in Insert mode; its return is dropped, and the
+                // cursor stays where `CTRL-O` left it (no `<Esc>` step back) unless it sat past the end.
+                let at = ws.focused().view.cursor();
+                run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+                let b = ws.focused().doc.bytes();
+                if at < ruse_core::pos::line_end(b, at) {
+                    ws.place_focused_cursor(at);
+                }
+            }
+            return;
+        };
+        if mode != Mode::Normal {
+            return;
+        }
+        let enter = match kind {
+            StartKind::Insert if bang => Command::AppendLineEnd,
+            StartKind::Insert => Command::EnterInsert,
+            StartKind::Replace => Command::EnterReplace,
+            StartKind::VirtualReplace => Command::EnterVirtualReplace,
+        };
+        if bang && kind != StartKind::Insert {
+            // `:startreplace!` replaces from the end of the line: enter at the line's end, as `A` does.
+            run_cmd(Command::AppendLineEnd, ws, files, recorded, status, quit);
+            run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+            let pane = ws.focused();
+            let b = pane.doc.bytes();
+            let end = ruse_core::pos::line_end(b, pane.view.cursor());
+            ws.place_focused_cursor(end);
+        }
+        run_cmd(enter, ws, files, recorded, status, quit);
     }
 
     /// Run the `|`-separated commands of one line in turn (see [`Session::execute_ex`]). A backwards range
@@ -2276,7 +2342,40 @@ impl Session {
             // message but not an error; `:silent!` hides the error too, and the line goes on after it. The
             // hidden error is still the last error (Vim's `v:errmsg`).
             let (mods, cmd) = crate::input::strip_modifiers(&cmd);
+            if mods.filter.is_some() && cmd.trim().is_empty() {
+                self.status = "E476: Invalid command".into();
+                break;
+            }
+            // `:keeppatterns`, `:keepalt` and `:keepjumps` (#609): put back what the command changed.
+            let kept_patterns = mods.keep_patterns.then(|| {
+                (
+                    self.engine.search_state(),
+                    self.search_hl.clone(),
+                    self.last_substitute.clone(),
+                )
+            });
+            let kept_alt = mods
+                .keep_alt
+                .then(|| (self.ws.alternate(), self.alt_file.clone()));
+            let jumps_were_kept = self.ws.keep_jumps();
+            if mods.keep_jumps {
+                self.ws.set_keep_jumps(true);
+            }
+            self.ex_filter = mods.filter.clone();
             self.execute_ex_one(cmd.to_string(), frame);
+            self.ex_filter = None;
+            if !jumps_were_kept {
+                self.ws.set_keep_jumps(false);
+            }
+            if let Some((search, hl, sub)) = kept_patterns {
+                self.engine.restore_search_state(search);
+                self.search_hl = hl;
+                self.last_substitute = sub;
+            }
+            if let Some((alt, alt_file)) = kept_alt {
+                self.ws.set_alternate(alt);
+                self.alt_file = alt_file;
+            }
             if let Some(prompt) = &mut self.swap {
                 prompt.pending.extend(pieces);
                 return;
@@ -2349,6 +2448,11 @@ impl Session {
             terminals,
             lsp,
             status,
+            keyword_lines_picker,
+            alt_file,
+            prev_dir,
+            ex_filter,
+            pending_insert,
             ..
         } = self;
         let (cols, text_rows) = (frame.cols, frame.text_rows);
@@ -2361,7 +2465,7 @@ impl Session {
         };
         let (cur_name, alt_name) = (
             file_name(Some(ws.focused_buffer())),
-            file_name(ws.alternate()),
+            crate::app::ex_more::alternate_name(alt_file, ws, files),
         );
         let numbered: Vec<(u64, String)> = files
             .iter()
@@ -2418,6 +2522,13 @@ impl Session {
         let ex = match parse_ex(&text) {
             Ex::Edit(spec) => {
                 expand_opt(spec.file.clone()).map(|file| Ex::Edit(EditSpec { file, ..spec }))
+            }
+            Ex::Find { split, spec } => expand_opt(spec.file.clone()).map(|file| Ex::Find {
+                split,
+                spec: EditSpec { file, ..spec },
+            }),
+            Ex::Drop(spec) => {
+                expand_opt(spec.file.clone()).map(|file| Ex::Drop(EditSpec { file, ..spec }))
             }
             Ex::SaveAs { bang, file, opts } => {
                 expand(&file).map(|file| Ex::SaveAs { bang, file, opts })
@@ -2632,20 +2743,71 @@ impl Session {
                 *search_hl = Some(spec.pattern.clone());
                 match &spec.cmd {
                     crate::input::GlobalPayload::Core(cmd) => {
-                        *status = match ws.global(spec.range, &spec.pattern, spec.negate, cmd) {
-                            // Not an error in Vim: `:g` with no match only echoes the message (no `E486`).
-                            Ok(0) => format!("Pattern not found: {}", spec.pattern),
-                            Ok(n) => {
-                                // The `:s` that ran on the marked lines set the last search in turn.
-                                if let ruse_core::GlobalCmd::Substitute { pattern, .. } = cmd {
-                                    engine.set_last_search_pattern(pattern.clone());
-                                    *search_hl = Some(pattern.clone());
-                                }
-                                format!("{n} lines changed")
+                        // Vim reports a pattern `:g` cannot use as `E476` (`ex_global`).
+                        let marked = match ws.global_marks(spec.range, &spec.pattern, spec.negate) {
+                            Ok(marked) => marked,
+                            Err(e) => {
+                                *status = crate::app::dispatch::invalid_command_msg(&e);
+                                return;
                             }
-                            // Vim reports a pattern `:g` cannot use as `E476` (`ex_global`).
+                        };
+                        // Not an error in Vim: `:g` with no match only echoes the message (no `E486`).
+                        let Some(&last_marked) = marked.last() else {
+                            *status = format!("Pattern not found: {}", spec.pattern);
+                            return;
+                        };
+                        let result = ws.global(spec.range, &spec.pattern, spec.negate, cmd);
+                        // The `:s` that ran on the marked lines set the last search in turn, even when it
+                        // changed nothing (#1104).
+                        if let ruse_core::GlobalCmd::Substitute { pattern, .. } = cmd {
+                            engine.set_last_search_pattern(pattern.clone());
+                            *search_hl = Some(pattern.clone());
+                        }
+                        *status = match result {
+                            // The inner `:s` matched nowhere: no message, and the cursor rests at the start
+                            // of the last marked line, where `:g` put it to run the command (nvim v0.12.6).
+                            Ok(0) => {
+                                let at = crate::app::ex_more::line_start(
+                                    ws.focused().doc.bytes(),
+                                    last_marked,
+                                );
+                                ws.place_focused_cursor(at);
+                                String::new()
+                            }
+                            Ok(n) => format!("{n} lines changed"),
                             Err(e) => crate::app::dispatch::invalid_command_msg(&e),
                         };
+                    }
+                    // `:g/pat/p` (#609): show the marked lines; the cursor ends on the last one.
+                    crate::input::GlobalPayload::Print(flags) => {
+                        let marked = match ws.global_marks(spec.range, &spec.pattern, spec.negate) {
+                            Ok(marked) => marked,
+                            Err(e) => {
+                                *status = crate::app::dispatch::invalid_command_msg(&e);
+                                return;
+                            }
+                        };
+                        let Some(&last_marked) = marked.last() else {
+                            *status = format!("Pattern not found: {}", spec.pattern);
+                            return;
+                        };
+                        let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
+                            Ok(keep) => keep,
+                            Err(e) => {
+                                *status = e;
+                                return;
+                            }
+                        };
+                        let pane = ws.focused();
+                        let b = pane.doc.bytes();
+                        let ts = pane.view.tab_width();
+                        let rows: Vec<String> = marked
+                            .iter()
+                            .flat_map(|&n| crate::app::ex_print::rows(b, n, n, *flags, ts, &*keep))
+                            .collect();
+                        let at = crate::app::ex_more::line_start(b, last_marked);
+                        ws.place_focused_cursor(at);
+                        crate::app::ex_more::show_rows(rows, status, keyword_lines_picker);
                     }
                     crate::input::GlobalPayload::Normal { keys, .. } => {
                         self.ex_global_normal(spec.range, &spec.pattern, spec.negate, keys, frame);
@@ -2812,12 +2974,31 @@ impl Session {
                     *status = msg.to_string();
                     return;
                 }
-                let Ex::Substitute(spec) = ex else {
+                let Ex::Substitute(mut spec) = ex else {
                     unreachable!("bound by the arm's pattern")
                 };
-                let flags = ruse_core::SubFlags {
-                    global: spec.global,
-                    ignore_case: spec.ignore_case,
+                // A count after the flags acts on that many lines from the range's last one (#1104).
+                if let Some(n) = spec.count {
+                    let line2 = crate::app::dispatch::resolve_normal_range(ws, spec.range).1;
+                    let total = crate::app::dispatch::line_count(ws.focused().doc.bytes());
+                    spec.range =
+                        ruse_core::SubRange::Lines(line2, line2.saturating_add(n - 1).min(total));
+                }
+                // `&` starts from the previous substitute's flags; the `g` given here toggles its `g`.
+                let stored = last_substitute
+                    .as_ref()
+                    .map(|(_, _, f)| *f)
+                    .unwrap_or_default();
+                let flags = if spec.keep_flags {
+                    ruse_core::SubFlags {
+                        global: stored.global != spec.global,
+                        ignore_case: spec.ignore_case.or(stored.ignore_case),
+                    }
+                } else {
+                    ruse_core::SubFlags {
+                        global: spec.global,
+                        ignore_case: spec.ignore_case,
+                    }
                 };
                 if !spec.pattern.is_empty() {
                     *last_substitute =
@@ -2859,9 +3040,27 @@ impl Session {
                         }
                         // A `:s/\n//` join on the last line: nothing to join, not an error.
                         Ok(out) if out.replacements == 0 => String::new(),
-                        Ok(out) => {
-                            format!("{} substitutions on {} lines", out.replacements, out.lines)
-                        }
+                        Ok(out) => match spec.print {
+                            // `p`/`#`/`l`: show the last substituted line, where the cursor is.
+                            Some(pflags) => {
+                                let pane = ws.focused();
+                                let b = pane.doc.bytes();
+                                let line = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
+                                crate::app::ex_print::rows(
+                                    b,
+                                    line,
+                                    line,
+                                    pflags,
+                                    pane.view.tab_width(),
+                                    &|_| true,
+                                )
+                                .pop()
+                                .unwrap_or_default()
+                            }
+                            None => {
+                                format!("{} substitutions on {} lines", out.replacements, out.lines)
+                            }
+                        },
                         Err(e) => crate::app::dispatch::invalid_command_msg(&e),
                     };
                 }
@@ -2869,6 +3068,8 @@ impl Session {
             // The `:w` family (#610). `:wq`/`:x` close the window only after a successful write (#842): no
             // file, or a failed write, keeps it open; `!` also lets the focused buffer's changes go.
             Ex::Write(spec) => {
+                let id = ws.focused_buffer();
+                let had_file = files.contains_key(&id);
                 let ok = crate::app::file_cmds::ex_write(
                     &spec,
                     ws,
@@ -2877,12 +3078,23 @@ impl Session {
                     *fixeol_on,
                     status,
                 );
+                // Writing a buffer that has a file to another name makes that name the alternate file
+                // (Vim's 'cpoptions' `A`, #610).
+                if let (true, true, WriteTarget::File(Some(name))) = (ok, had_file, &spec.target) {
+                    let other =
+                        crate::app::dispatch::buffer_for_path(files, std::path::Path::new(name));
+                    if other != Some(id) {
+                        *alt_file = Some(crate::app::ex_more::AltFile::new(ws, name.clone()));
+                    }
+                }
                 if ok && spec.quit {
                     quit_window(ws, status, quit, spec.bang);
                 }
             }
             Ex::SaveAs { bang, file, opts } => {
-                crate::app::file_cmds::ex_saveas(
+                let id = ws.focused_buffer();
+                let old = files.get(&id).map(|bf| bf.path.display().to_string());
+                let ok = crate::app::file_cmds::ex_saveas(
                     bang,
                     &file,
                     opts,
@@ -2892,6 +3104,11 @@ impl Session {
                     *fixeol_on,
                     status,
                 );
+                // The buffer's old name becomes the alternate file (Vim's 'cpoptions' `A`, #610).
+                let renamed = files.get(&id).map(|bf| bf.path.display().to_string());
+                if let Some(old) = old.filter(|o| ok && Some(o) != renamed.as_ref()) {
+                    *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
+                }
             }
             // `:wa` / `:wqa` / `:xa`: write every modified buffer with a file (a terminal has none to write).
             Ex::WriteAll { quit: then_quit } => {
@@ -3004,12 +3221,32 @@ impl Session {
             }
             // `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed
             // line (a charwise register is still put as whole lines — the linewise-forcing rule).
-            Ex::Put { addr, reg } => {
+            Ex::Put { addr, reg, above } => {
+                let put_addr = addr;
+                // `:put!` puts above the line (#609).
+                let addr = if above {
+                    crate::app::ex_more::put_above(addr)
+                } else {
+                    addr
+                };
+                let target = {
+                    let pane = ws.focused();
+                    let b = pane.doc.bytes();
+                    let cur = ruse_core::pos::line_of(b, pane.view.cursor());
+                    put_addr.insert_index(cur, crate::app::dispatch::line_count(b))
+                };
                 let n = ws.put_lines(addr, reg);
                 *status = if n == 1 {
                     "1 more line".into()
                 } else if n > 1 {
                     format!("{n} more lines")
+                } else if !matches!(reg, Some('+' | '*')) {
+                    // An empty register: `E353`, with the cursor already on the addressed line (nvim's
+                    // `ex_put` moves it there before it reads the register).
+                    if let Some(line) = target {
+                        goto_line(line.max(1), ws, files, recorded, status, quit);
+                    }
+                    format!("E353: Nothing in register {}", reg.unwrap_or('"'))
                 } else {
                     String::new()
                 };
@@ -3051,6 +3288,22 @@ impl Session {
                 ws.cycle_buffer(false);
                 *status = focused_buffer_label(ws);
             }
+            Ex::Buffer(BufTarget::Alternate)
+                if crate::app::ex_more::AltFile::current(alt_file, ws).is_some() =>
+            {
+                // The alternate file a write or rename named has no buffer yet: edit it (nvim's `:b#`
+                // goes to the buffer it made for the name).
+                let name = crate::app::ex_more::AltFile::current(alt_file, ws)
+                    .unwrap_or_default()
+                    .to_string();
+                let spec = EditSpec {
+                    bang: false,
+                    file: Some(name),
+                    cmd: None,
+                    opts: crate::input::FileOpts::default(),
+                };
+                crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status);
+            }
             Ex::Buffer(target) => {
                 let id = match target {
                     BufTarget::Number(n) => Some(DocumentId(n)),
@@ -3060,6 +3313,216 @@ impl Session {
                     Some(id) if ws.focus_buffer(id) => *status = focused_buffer_label(ws),
                     Some(id) => *status = format!("E86: buffer {} does not exist", id.0),
                     None => *status = "E23: no alternate buffer".into(),
+                }
+            }
+            // `:p`, `:l`, `:nu`, `:#` (#609): the range's lines in the message area, filtered by a `:filter`;
+            // the cursor goes to the last line of the range at the wanted column, as `:N` does.
+            Ex::Print { range, flags } => {
+                let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
+                    Ok(keep) => keep,
+                    Err(e) => {
+                        *status = e;
+                        return;
+                    }
+                };
+                let (first, last) = crate::app::dispatch::resolve_normal_range(ws, range);
+                let pane = ws.focused();
+                let rows = crate::app::ex_print::rows(
+                    pane.doc.bytes(),
+                    first,
+                    last,
+                    flags,
+                    pane.view.tab_width(),
+                    &*keep,
+                );
+                goto_line(last, ws, files, recorded, status, quit);
+                crate::app::ex_more::show_rows(rows, status, keyword_lines_picker);
+            }
+            // `:z` (#609): a window of lines around the addressed one; the cursor goes to the line nvim's
+            // `ex_z` picks, at column 0 when that is another line.
+            Ex::Z(spec) => {
+                let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
+                    Ok(keep) => keep,
+                    Err(e) => {
+                        *status = e;
+                        return;
+                    }
+                };
+                let (lnum, addressed) = match spec.line {
+                    Some(r) => (crate::app::dispatch::resolve_normal_range(ws, r).1, true),
+                    None => (
+                        crate::app::dispatch::resolve_normal_range(
+                            ws,
+                            ruse_core::SubRange::CurrentLine,
+                        )
+                        .1,
+                        false,
+                    ),
+                };
+                let win_h = usize::from(rects.get(ws.focus()).map_or(text_rows, |r| r.h));
+                // Twice `'scroll'` (half the window) with one window, the window less 3 with more, and the
+                // screen less the command line under `!`.
+                let window = if spec.bang {
+                    usize::from(text_rows)
+                } else if ws.window_count() == 1 {
+                    win_h / 2 * 2
+                } else {
+                    win_h.saturating_sub(3)
+                };
+                let pane = ws.focused();
+                let b = pane.doc.bytes();
+                let nlines = crate::app::dispatch::line_count(b);
+                let cur = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
+                let (start, end, curs) =
+                    crate::app::ex_print::z_window(&spec, lnum, addressed, window, nlines);
+                let dashes = "-".repeat(usize::from(cols).saturating_sub(1));
+                let mut rows = Vec::new();
+                for n in start..=end {
+                    let mark = spec.kind == Some('=') && n == lnum;
+                    if mark {
+                        rows.push(dashes.clone());
+                    }
+                    rows.extend(crate::app::ex_print::rows(
+                        b,
+                        n,
+                        n,
+                        spec.flags,
+                        pane.view.tab_width(),
+                        &*keep,
+                    ));
+                    if mark {
+                        rows.push(dashes.clone());
+                    }
+                }
+                if curs != cur {
+                    let at = crate::app::ex_more::line_start(b, curs);
+                    ws.place_focused_cursor(at);
+                }
+                crate::app::ex_more::show_rows(rows, status, keyword_lines_picker);
+            }
+            // `:=` (#609): the last line number of the range, or of the buffer.
+            Ex::LineNumber(range) => {
+                let n = match range {
+                    Some(r) => crate::app::dispatch::resolve_normal_range(ws, r).1,
+                    None => crate::app::dispatch::line_count(ws.focused().doc.bytes()),
+                };
+                *status = n.to_string();
+            }
+            // `:retab` (#609).
+            Ex::Retab {
+                range,
+                bang,
+                tabstop,
+            } => {
+                ws.retab(range, bang, tabstop);
+            }
+            // `:startinsert` and friends (#609) start Insert once the whole line has run.
+            Ex::StartInsert { kind, bang } => *pending_insert = Some(Some((kind, bang))),
+            Ex::StopInsert => *pending_insert = Some(None),
+            // `:pwd` / `:cd` (#610). Buffer files keep pointing at the same files across a `:cd`.
+            Ex::Pwd => {
+                *status = std::env::current_dir()
+                    .map_or_else(|e| e.to_string(), |d| d.display().to_string());
+            }
+            Ex::Cd(dir) => {
+                let dir = match dir
+                    .map(|d| if d == "-" { Ok(d) } else { expand(&d) })
+                    .transpose()
+                {
+                    Ok(dir) => dir,
+                    Err(e) => {
+                        *status = e.to_string();
+                        return;
+                    }
+                };
+                match crate::app::ex_more::cd_target(dir.as_deref(), prev_dir.as_deref()) {
+                    Ok(target) => {
+                        let shown = dir.as_deref().unwrap_or("~");
+                        match crate::app::ex_more::change_dir(&target, shown, ws, files) {
+                            Ok(old) => *prev_dir = Some(old),
+                            Err(e) => *status = e,
+                        }
+                    }
+                    Err(e) => *status = e,
+                }
+            }
+            // `:file` (#610): show the file information, rename the buffer, or remove its name. The old name
+            // becomes the alternate file.
+            Ex::File(cmd) => {
+                let id = ws.focused_buffer();
+                let old = files.get(&id).map(|bf| bf.path.display().to_string());
+                match cmd {
+                    crate::input::FileCmd::Info => {
+                        *status = info_status(&Command::FileInfo, ws).unwrap_or_default();
+                    }
+                    crate::input::FileCmd::Rename(name) => match expand(&name) {
+                        Ok(name) => {
+                            let fmt = files.get(&id).map(|bf| bf.fmt).unwrap_or_default();
+                            crate::app::file_cmds::adopt_file(
+                                ws,
+                                files,
+                                highlighters,
+                                id,
+                                &name,
+                                fmt,
+                            );
+                            if let Some(old) = old.filter(|o| *o != name) {
+                                *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
+                            }
+                        }
+                        Err(e) => *status = e.to_string(),
+                    },
+                    crate::input::FileCmd::Clear => {
+                        files.remove(&id);
+                        highlighters.remove(&id);
+                        ws.clear_focused_buffer_name();
+                        if let Some(old) = old {
+                            *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
+                        }
+                    }
+                }
+            }
+            // `:find` / `:sfind` (#610): edit the file found in `'path'` (`.,,`), in a new window for `:sf`.
+            Ex::Find { split, spec } => {
+                let name = spec.file.clone().unwrap_or_default();
+                let current = files.get(&ws.focused_buffer()).map(|bf| bf.path.clone());
+                match crate::app::ex_more::find_in_path(&name, current.as_deref()) {
+                    Some(found) => {
+                        if split {
+                            ws.split(SplitDir::Horizontal);
+                        }
+                        let spec = EditSpec {
+                            file: Some(found),
+                            ..spec
+                        };
+                        if crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status) {
+                            then_run = spec
+                                .cmd
+                                .as_deref()
+                                .map(crate::app::file_cmds::plus_cmd_line);
+                        }
+                    }
+                    None => *status = format!("E345: Can't find file \"{name}\" in path"),
+                }
+            }
+            // `:drop {file}` (#610): go to a window that shows the file, or edit it here.
+            Ex::Drop(spec) => {
+                let name = spec.file.clone().unwrap_or_default();
+                let shown =
+                    crate::app::dispatch::buffer_for_path(files, std::path::Path::new(&name))
+                        .and_then(|id| (0..ws.window_count()).find(|&i| ws.pane(i).doc.id() == id));
+                let opened = match shown {
+                    Some(i) => {
+                        ws.focus_window(i);
+                        true
+                    }
+                    None => crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status),
+                };
+                if opened {
+                    then_run = spec
+                        .cmd
+                        .as_deref()
+                        .map(crate::app::file_cmds::plus_cmd_line);
                 }
             }
             Ex::Fail(msg) => *status = msg,
@@ -3854,6 +4317,7 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
 struct ExCompletion<'a> {
     ws: &'a Workspace,
     files: &'a Files,
+    alt_file: &'a Option<crate::app::ex_more::AltFile>,
     fold_method: Option<crate::input::FoldMethod>,
     foldlevel: Option<usize>,
 }
@@ -3873,7 +4337,7 @@ impl crate::input::complete::CompletionContext for ExCompletion<'_> {
         self.file_name(Some(self.ws.focused_buffer()))
     }
     fn alternate_file(&self) -> Option<String> {
-        self.file_name(self.ws.alternate())
+        crate::app::ex_more::alternate_name(self.alt_file, self.ws, self.files)
     }
     fn buffer_files(&self) -> Vec<(u64, String)> {
         self.files
@@ -3902,6 +4366,7 @@ fn sync_special_registers(
     engine: &InputEngine,
     last_ex_line: &Option<String>,
     files: &Files,
+    alt_file: &Option<crate::app::ex_more::AltFile>,
 ) {
     // `"%` shows the file name as it was opened (a relative path, matching Vim's default `%`); an unnamed
     // buffer has no `Files` entry, so the slot stays empty.
@@ -3914,11 +4379,9 @@ fn sync_special_registers(
         engine.last_inserted_text(),
         file,
     );
-    // `"#` is the alternate buffer's file name, shown the same way (#1022).
-    let alternate = ws
-        .alternate()
-        .and_then(|id| files.get(&id))
-        .map(|bf| bf.path.display().to_string());
+    // `"#` is the alternate file name (#1022): the one a `:w {file}`, `:sav` or `:file` left (#610), or the
+    // alternate buffer's file, shown the same way.
+    let alternate = crate::app::ex_more::alternate_name(alt_file, ws, files);
     ws.set_alternate_register(alternate);
 }
 

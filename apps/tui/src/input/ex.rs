@@ -111,6 +111,8 @@ pub enum Ex {
     Put {
         addr: LineAddr,
         reg: Option<char>,
+        /// `:put!` — above the addressed line instead of below it.
+        above: bool,
     },
     /// `:set {option}` — set one editor option on the focused view (F-009 / indent config).
     Set(EditorOption),
@@ -214,6 +216,46 @@ pub enum Ex {
     /// `:!{cmd}` — run `{cmd}` through the shell and show its output on the status line; NO buffer change.
     /// Handled in the run loop (unix `sh -c` only).
     Shell(String),
+    /// `:[range]p[rint]`, `:[range]l[ist]`, `:[range]nu[mber]`, `:[range]#` `[count] [flags]` — show the
+    /// range's lines in the message area and move the cursor to the last one (#609).
+    Print {
+        range: SubRange,
+        flags: super::PrintFlags,
+    },
+    /// `:[line]z[!][+-^.=][count]` — show a window of lines around `line` (#609).
+    Z(super::ZSpec),
+    /// `:[range]=` — show the range's last line number (no range: the buffer's last line) (#609).
+    LineNumber(Option<SubRange>),
+    /// `:[range]ret[ab][!] [new_tabstop]` — redo the white space that holds a tab with the current
+    /// `'expandtab'` and the new tabstop (`!`: runs of spaces too) (#609).
+    Retab {
+        range: SubRange,
+        bang: bool,
+        tabstop: Option<usize>,
+    },
+    /// `:startinsert[!]` / `:startreplace[!]` / `:startgreplace[!]` — start Insert (or Replace) mode once
+    /// the command line is done; `!` appends at the end of the line (#609).
+    StartInsert {
+        kind: super::StartKind,
+        bang: bool,
+    },
+    /// `:stopi[nsert]` — leave Insert mode once the command is done (#609).
+    StopInsert,
+    /// `:pw[d]` — show the working directory (#610).
+    Pwd,
+    /// `:cd [{path}]` / `:chdir` — change the working directory: `None` is the home directory, `-` the
+    /// previous one (#610).
+    Cd(Option<String>),
+    /// `:f[ile] [{name}]` / `:0f[ile]` — show the file information, rename the buffer, or unname it (#610).
+    File(super::FileCmd),
+    /// `:fin[d][!] [++opt] [+cmd] {file}` / `:sf[ind]` — edit `{file}` found in `'path'` (`.,,`: the current
+    /// file's directory, then the working directory); `split` opens it in a new window (#610).
+    Find {
+        split: bool,
+        spec: EditSpec,
+    },
+    /// `:dr[op] [++opt] [+cmd] {file}` — go to the window that shows `{file}`, or edit it (#610).
+    Drop(EditSpec),
     /// A known command whose argument is wrong or missing (`:normal` with no keys, `:m` with no address,
     /// `:set nosuchoption`): the status is nvim's error, and nothing runs.
     Fail(String),
@@ -327,6 +369,8 @@ pub enum GlobalPayload {
     /// `:g/pat/normal[!] {keys}` — replay `{keys}` as Normal-mode input on each marked line (frontend).
     /// `keys` is the VERBATIM payload after the single delimiting space (internal spaces preserved).
     Normal { bang: bool, keys: String },
+    /// `:g/pat/p` (also `l`, `nu`, `#`, and a bare `:g/pat/`) — show each marked line (#609).
+    Print(super::PrintFlags),
 }
 
 /// A parsed `:s///` command (F-009 #2): the line range, the Vim pattern + replacement, and the flags.
@@ -349,6 +393,13 @@ pub struct SubSpec {
     pub count_only: bool,
     /// `e`: no `E486` when the pattern matches nothing (`:help :s_e`).
     pub quiet: bool,
+    /// `&` (first flag): start from the previous substitute's flags. `global` then holds whether the `g`
+    /// flags given here toggle it (an odd number of them), and `ignore_case` is `None` unless `i`/`I` came.
+    pub keep_flags: bool,
+    /// `[count]` after the flags: act on `count` lines from the range's last line (`:help :s_c`).
+    pub count: Option<usize>,
+    /// `p`, `#` or `l`: show the last substituted line afterwards (`:help :s_flags`).
+    pub print: Option<super::PrintFlags>,
 }
 
 /// Parse `:earlier [N]` / `:later [N]` (or `:ea` / `:lat`) — chronological undo time travel. The optional
@@ -466,10 +517,10 @@ fn parse_set_option(opt: &str) -> Option<Ex> {
 /// Parse `:[range]sort[!] [b][i][l][n][o][r][u][x] [/pattern/]` (`sort`/`sor`) the way nvim's `ex_sort`
 /// reads its argument (v0.12.6). No range = the WHOLE FILE (Vim). Flags and one `/pattern/` may come in any
 /// order, with blanks between; the pattern is delimited by any non-letter and ends as `:s` patterns do
-/// ([`ruse_core::pattern::skip_regexp`]), and a `"` starts a comment. Honors `!` reverse, `n` numeric, `u`
+/// ([`ruse_core::pattern::skip_regexp`]), and a `"` starts a comment. Honors `!` reverse, the number formats, `u`
 /// unique, `i` case-insensitive, and the pattern (with `r` = sort on the matched text). An empty pattern
-/// (`//`) is `Some("")`, for the caller to fill from the last search. `b`/`x`/`o` (binary/hex/octal numbers)
-/// and `l` (locale) are accepted but sort as text; `f` (float) is not supported. A bad argument is
+/// (`//`) is `Some("")`, for the caller to fill from the last search. `n`/`x`/`o`/`b`/`f` sort on the
+/// first decimal, hex, octal, binary or float number, and `l` in locale order. A bad argument is
 /// [`Ex::Fail`]: `E475` for an unknown flag or a second pattern, `E474` for two number formats, `E654`
 /// for a pattern without its closing delimiter.
 fn parse_sort(line: &str) -> Option<Ex> {
@@ -498,6 +549,7 @@ fn parse_sort(line: &str) -> Option<Ex> {
         ..ruse_core::SortOptions::default()
     };
     let mut use_match = false;
+    let mut locale = false;
     let mut formats = 0;
     let mut p = rest;
     while let Some(c) = p.chars().next() {
@@ -505,13 +557,18 @@ fn parse_sort(line: &str) -> Option<Ex> {
         match c {
             ' ' | '\t' => {}
             'i' => opts.ignore_case = true,
-            'l' => {}
+            'l' => locale = true,
             'r' => use_match = true,
-            'n' => {
-                opts.numeric = true;
+            'n' | 'b' | 'o' | 'x' | 'f' => {
+                opts.key = match c {
+                    'n' => ruse_core::SortKind::Decimal,
+                    'b' => ruse_core::SortKind::Binary,
+                    'o' => ruse_core::SortKind::Octal,
+                    'x' => ruse_core::SortKind::Hex,
+                    _ => ruse_core::SortKind::Float,
+                };
                 formats += 1;
             }
-            'b' | 'o' | 'x' => formats += 1,
             'u' => opts.unique = true,
             '"' => break,
             c if !c.is_ascii_alphabetic() && opts.pattern.is_none() => {
@@ -532,15 +589,24 @@ fn parse_sort(line: &str) -> Option<Ex> {
     if formats > 1 {
         return Some(Ex::Fail("E474: Invalid argument".into()));
     }
+    // A number format decides the order; `l` only changes how text compares.
+    if locale && formats == 0 {
+        opts.key = ruse_core::SortKind::Locale;
+    }
     // `r` only means "sort on the match" when there is a pattern; otherwise it is inert.
     opts.use_match = use_match && opts.pattern.is_some();
     Some(Ex::Sort(range, opts))
 }
 
-/// Parse a `:[range]s/pat/rep/flags` line into a [`SubSpec`], or `None` if it is not a substitute.
-/// `gdefault` inverts the meaning of the `g` flag (Vim `'gdefault'`); pass it through so the caller's
-/// config toggles it. MVP ranges: none (current line), `%` (whole file), `N` / `N,M` (line numbers).
-pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
+/// Parse a `:[range]s/pat/rep/[flags] [count]` line into a [`SubSpec`], or `None` if it is not a
+/// substitute. `gdefault` inverts the meaning of the `g` flag (Vim `'gdefault'`); pass it through so the
+/// caller's config toggles it. The flags are read the way nvim's `do_sub` reads them: `&` first keeps the
+/// previous flags, `g`, `c` and `e` toggle, `n` counts only, `i`/`I` set the case (the last one wins), `r`
+/// is accepted, and `p`/`#`/`l` print the last line; then a count, then only a `"` comment may follow.
+///
+/// # Errors
+/// `E488` for any other character after the flags and count, `E939` for a zero count.
+pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<Result<SubSpec, String>> {
     // Split the leading range prefix (chars `[0-9,%.$]`) from the command.
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -568,29 +634,62 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
         None => ("", ""),
     };
     let replacement = replacement.to_string();
-
-    let mut global = flags.contains('g');
-    if gdefault {
-        global = !global; // 'gdefault' inverts the g flag
-    }
-    let ignore_case = if flags.contains('i') {
-        Some(true)
-    } else if flags.contains('I') {
-        Some(false)
-    } else {
-        None
-    };
     let range = parse_sub_range(range_str)?;
-    Some(SubSpec {
+    let (keep_flags, mut f) = match flags.strip_prefix('&') {
+        Some(r) => (true, r),
+        None => (false, flags),
+    };
+    let mut spec = SubSpec {
         range,
         pattern,
         replacement,
-        global,
-        ignore_case,
-        confirm: flags.contains('c'),
-        count_only: flags.contains('n'),
-        quiet: flags.contains('e'),
-    })
+        global: gdefault && !keep_flags,
+        ignore_case: None,
+        confirm: false,
+        count_only: false,
+        quiet: false,
+        keep_flags,
+        count: None,
+        print: None,
+    };
+    while let Some(c) = f.chars().next() {
+        match c {
+            'g' => spec.global = !spec.global,
+            'c' => spec.confirm = !spec.confirm,
+            'n' => spec.count_only = true,
+            'e' => spec.quiet = !spec.quiet,
+            'r' => {}
+            'p' => {
+                spec.print.get_or_insert_default();
+            }
+            '#' => spec.print.get_or_insert_default().number = true,
+            'l' => spec.print.get_or_insert_default().list = true,
+            'i' => spec.ignore_case = Some(true),
+            'I' => spec.ignore_case = Some(false),
+            _ => break,
+        }
+        f = &f[1..];
+    }
+    // `n` reports only, so it never asks.
+    if spec.count_only {
+        spec.confirm = false;
+    }
+    let f = f.trim_start();
+    let digits = f.find(|c: char| !c.is_ascii_digit()).unwrap_or(f.len());
+    let f = if digits > 0 {
+        let n: usize = f[..digits].parse().unwrap_or(usize::MAX);
+        if n == 0 {
+            return Some(Err("E939: Positive count required".into()));
+        }
+        spec.count = Some(n);
+        f[digits..].trim_start()
+    } else {
+        f
+    };
+    if !f.is_empty() && !f.starts_with('"') {
+        return Some(Err(format!("E488: Trailing characters: {f}")));
+    }
+    Some(Ok(spec))
 }
 
 /// The `:s`/`:&` repeat-substitute flag chars this MVP honors, mirroring [`parse_substitute`]: `g` (all
@@ -682,7 +781,7 @@ fn parse_global(line: &str) -> Option<GlobalSpec> {
     // Vim's `skip_regexp`: a delimiter inside `[...]` does not end the pattern (#803).
     let pend = ruse_core::pattern::skip_regexp(body, delim, true);
     let pattern = body[..pend].to_string();
-    let cmd_str = body[pend..].strip_prefix(delim)?;
+    let cmd_str = body[pend..].strip_prefix(delim).unwrap_or(&body[pend..]);
     let cmd = parse_global_cmd(cmd_str)?;
     let range = if range_str.is_empty() {
         SubRange::WholeFile
@@ -726,10 +825,19 @@ fn parse_global_cmd(cmd: &str) -> Option<GlobalPayload> {
     if let Some(payload) = parse_global_normal(cmd) {
         return Some(payload);
     }
+    if let Some(Ex::Print {
+        range: SubRange::CurrentLine,
+        flags,
+    }) = super::ex_extra::parse(cmd.trim())
+    {
+        return Some(GlobalPayload::Print(flags));
+    }
     match cmd.trim() {
+        // A bare `:g/pat/` prints the marked lines (`:help :g`).
+        "" => Some(GlobalPayload::Print(super::PrintFlags::default())),
         "d" | "delete" => Some(GlobalPayload::Core(GlobalCmd::Delete)),
         other => {
-            let spec = parse_substitute(other, false)?;
+            let spec = parse_substitute(other, false)?.ok()?;
             Some(GlobalPayload::Core(GlobalCmd::Substitute {
                 pattern: spec.pattern,
                 replacement: spec.replacement,
@@ -764,7 +872,7 @@ fn parse_global_normal(cmd: &str) -> Option<GlobalPayload> {
 
 /// Parse a `:s` line-range prefix. MVP: empty → current line, `%` → whole file, `N` → that line,
 /// `N,M` → the inclusive span. Unsupported forms (`.`, `$`, marks) yield `None`.
-fn parse_sub_range(s: &str) -> Option<SubRange> {
+pub(super) fn parse_sub_range(s: &str) -> Option<SubRange> {
     let s = s.trim();
     if s.is_empty() || s == "." {
         return Some(SubRange::CurrentLine);
@@ -1186,6 +1294,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(ex) = parse_bang(line) {
                 ex
+            } else if let Some(ex) = super::ex_extra::parse(line) {
+                ex
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
             } else if let Some(ex) = parse_mark(line) {
@@ -1210,8 +1320,8 @@ pub fn parse_ex(line: &str) -> Ex {
                     left,
                     levels,
                 }
-            } else if let Some((addr, reg)) = parse_put(line) {
-                Ex::Put { addr, reg }
+            } else if let Some((addr, reg, above)) = parse_put(line) {
+                Ex::Put { addr, reg, above }
             } else if let Some(ex) = parse_sort(line) {
                 ex
             } else if let Some(ex) = parse_set(line) {
@@ -1220,7 +1330,7 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
-                Ex::Substitute(spec)
+                spec.map_or_else(Ex::Fail, Ex::Substitute)
             } else if let Some(ex) = parse_repeat_substitute(line, false) {
                 // Bare `:s` / `:s {flags}` / `:&` / `:&&` — repeat the last `:s` (resolved in the run loop).
                 ex
@@ -1399,12 +1509,12 @@ fn parse_shift(line: &str) -> Option<(SubRange, bool, u32)> {
     Some((range, first == '<', verb.len() as u32))
 }
 
-/// Parse `:[line]put [reg]` into `(addr, reg)`. After the optional `[0-9.$]` address prefix the verb is
+/// Parse `:[line]put[!] [reg]` into `(addr, reg, above)`. After the optional `[0-9.$]` address prefix the verb is
 /// `put`/`pu` (longest first). A register argument, when present, is a SINGLE non-whitespace char that must
 /// be separated from the verb by whitespace (`:put a` — not `:puta`, which Vim rejects as E492). No address
 /// prefix means the bare `:put` default (after the current line → `LineAddr::Current`). Returns `None`
 /// (→ falls through) unless the line is a `:put`.
-fn parse_put(line: &str) -> Option<(LineAddr, Option<char>)> {
+fn parse_put(line: &str) -> Option<(LineAddr, Option<char>, bool)> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
         .unwrap_or(line.len());
@@ -1413,6 +1523,10 @@ fn parse_put(line: &str) -> Option<(LineAddr, Option<char>)> {
     let rest = rest
         .strip_prefix("put")
         .or_else(|| rest.strip_prefix("pu"))?;
+    let (above, rest) = match rest.strip_prefix('!') {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
     // The register arg: nothing (unnamed), or a whitespace-separated single register char. A char directly
     // after the verb (`:puta`) is NOT the put verb — Vim errors E492, so fall through to `Unknown`.
     let reg = if rest.is_empty() {
@@ -1432,7 +1546,7 @@ fn parse_put(line: &str) -> Option<(LineAddr, Option<char>)> {
     } else {
         parse_line_addr(addr_str.trim())?
     };
-    Some((addr, reg))
+    Some((addr, reg, above))
 }
 
 /// Parse `:[range]ma[rk] {x}` and `:[range]k[ ]{x}` with `{x}` a letter (nvim's `ex_mark`, #1088): no
@@ -1497,12 +1611,19 @@ enum FileVerb {
     Exit,
     Update,
     SaveAs,
-    WriteAll { quit: bool },
+    WriteAll {
+        quit: bool,
+    },
     Edit,
+    /// `:fin[d]` / `:sf[ind]` (`split`).
+    Find {
+        split: bool,
+    },
+    Drop,
 }
 
 /// The file command `verb` names, with every abbreviation Vim accepts (`:w`…`:write`, `:x`/`:exi`, `:up`,
-/// `:sav`, `:wa`, `:wqa`/`:xa`, `:e`…`:edit` and `:ex`).
+/// `:sav`, `:wa`, `:wqa`/`:xa`, `:e`…`:edit`, `:ex` and `:vi`, `:fin`, `:sf`, `:dr`).
 fn file_verb(verb: &str) -> Option<FileVerb> {
     let abbrev = |full: &str, min: usize| verb.len() >= min && full.starts_with(verb);
     Some(if abbrev("write", 1) {
@@ -1519,8 +1640,15 @@ fn file_verb(verb: &str) -> Option<FileVerb> {
         FileVerb::WriteAll { quit: false }
     } else if abbrev("wqall", 3) || abbrev("xall", 2) {
         FileVerb::WriteAll { quit: true }
-    } else if abbrev("edit", 1) || verb == "ex" {
+    } else if abbrev("edit", 1) || verb == "ex" || abbrev("visual", 2) {
+        // `:vi[sual]` outside Ex mode is `:edit` (`:help :visual`).
         FileVerb::Edit
+    } else if abbrev("find", 3) {
+        FileVerb::Find { split: false }
+    } else if abbrev("sfind", 2) {
+        FileVerb::Find { split: true }
+    } else if abbrev("drop", 2) {
+        FileVerb::Drop
     } else {
         return None;
     })
@@ -1647,7 +1775,7 @@ fn parse_file_command(line: &str) -> Option<Ex> {
             }
             Ex::WriteAll { quit }
         }
-        FileVerb::Edit => {
+        FileVerb::Edit | FileVerb::Find { .. } | FileVerb::Drop => {
             // `+cmd` runs to the next unescaped blank; `\ ` is a space inside it.
             let (cmd, rest) = match rest.strip_prefix('+') {
                 Some(after) => {
@@ -1674,16 +1802,25 @@ fn parse_file_command(line: &str) -> Option<Ex> {
                 Ok(r) => r,
                 Err(fail) => return Some(fail),
             };
-            match file_arg(rest) {
-                Ok(file) => Ex::Edit(EditSpec {
-                    bang,
-                    file,
-                    cmd,
-                    opts: FileOpts {
-                        ff: more.ff.or(opts.ff),
-                    },
-                }),
-                Err(fail) => fail,
+            let file = match file_arg(rest) {
+                Ok(file) => file,
+                Err(fail) => return Some(fail),
+            };
+            let spec = EditSpec {
+                bang,
+                file,
+                cmd,
+                opts: FileOpts {
+                    ff: more.ff.or(opts.ff),
+                },
+            };
+            match verb {
+                FileVerb::Find { .. } | FileVerb::Drop if spec.file.is_none() => {
+                    Ex::Fail(ARGUMENT_REQUIRED.into())
+                }
+                FileVerb::Find { split } => Ex::Find { split, spec },
+                FileVerb::Drop => Ex::Drop(spec),
+                _ => Ex::Edit(spec),
             }
         }
     })
@@ -1877,6 +2014,9 @@ mod reuse_last_search_tests {
             confirm: false,
             count_only: false,
             quiet: false,
+            keep_flags: false,
+            count: None,
+            print: None,
         })
     }
 

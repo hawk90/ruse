@@ -68637,6 +68637,2776 @@
       }
     },
     {
+      "name": "exl_sort_hex",
+      "lines": [
+        "x0x1F",
+        "b",
+        "0x0a",
+        "-0x3",
+        "0xff",
+        "zz"
+      ],
+      "keys": ":sort x<CR>",
+      "expect": {
+        "text": [
+          "zz",
+          "-0x3",
+          "0x0a",
+          "b",
+          "x0x1F",
+          "0xff"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_sort_hex_reverse",
+      "lines": [
+        "0x10",
+        "9",
+        "x"
+      ],
+      "keys": ":sort! x<CR>",
+      "expect": {
+        "text": [
+          "0x10",
+          "9",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_sort_hex_unique_whole_lines",
+      "lines": [
+        "0x10 a",
+        "0x10 b",
+        "q",
+        "0xA"
+      ],
+      "keys": ":sort xu<CR>",
+      "expect": {
+        "text": [
+          "q",
+          "0xA",
+          "0x10 a",
+          "0x10 b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_sort_binary",
+      "lines": [
+        "0b101",
+        "0b11",
+        "b",
+        "-0b1",
+        "10"
+      ],
+      "keys": ":sort b<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "-0b1",
+          "10",
+          "0b11",
+          "0b101"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_sort_octal",
+      "lines": [
+        "017",
+        "8",
+        "07",
+        "a",
+        "-01",
+        "9"
+      ],
+      "keys": ":sort o<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "-01",
+          "8",
+          "9",
+          "07",
+          "017"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_sort_float",
+      "lines": [
+        "1.5",
+        "a",
+        "-2e1",
+        "0.3",
+        "b",
+        "1e-1",
+        "3"
+      ],
+      "keys": ":sort f<CR>",
+      "expect": {
+        "text": [
+          "-2e1",
+          "a",
+          "b",
+          "1e-1",
+          "0.3",
+          "1.5",
+          "3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_sort_float_prefixes",
+      "lines": [
+        "x",
+        "1.5e",
+        "inf",
+        "-inf",
+        "2",
+        " ",
+        "0x1p2",
+        "0x.8",
+        "+ 3"
+      ],
+      "keys": ":sort f<CR>",
+      "expect": {
+        "text": [
+          "-inf",
+          " ",
+          "x",
+          "0x.8",
+          "1.5e",
+          "2",
+          "+ 3",
+          "0x1p2",
+          "inf"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_sort_float_and_n_fail",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort fn<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_sort_pattern_n",
+      "lines": [
+        "a3 x",
+        "b1 x",
+        "c2"
+      ],
+      "keys": ":sort /./ n<CR>",
+      "expect": {
+        "text": [
+          "b1 x",
+          "c2",
+          "a3 x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_unknown_flag",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/z<CR>",
+      "expect": {
+        "text": [
+          "aa",
+          "aa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_s_flag_then_garbage",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/g2x<CR>",
+      "expect": {
+        "text": [
+          "aa",
+          "aa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_s_count",
+      "lines": [
+        "aa",
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/ 2<CR>",
+      "expect": {
+        "text": [
+          "ba",
+          "ba",
+          "aa"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_count_unspaced",
+      "lines": [
+        "aa",
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/2<CR>",
+      "expect": {
+        "text": [
+          "ba",
+          "ba",
+          "aa"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_g_count",
+      "lines": [
+        "aa",
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/g 2<CR>",
+      "expect": {
+        "text": [
+          "bb",
+          "bb",
+          "aa"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_count_from_range_end",
+      "lines": [
+        "aa",
+        "aa",
+        "aa"
+      ],
+      "keys": ":2s/a/b/ 5<CR>",
+      "expect": {
+        "text": [
+          "aa",
+          "ba",
+          "ba"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_count_zero",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/ 0<CR>",
+      "expect": {
+        "text": [
+          "aa",
+          "aa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E939",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_s_gg_toggles_off",
+      "lines": [
+        "aa"
+      ],
+      "keys": ":s/a/b/gg<CR>",
+      "expect": {
+        "text": [
+          "ba"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_comment_after_flags",
+      "lines": [
+        "aa"
+      ],
+      "keys": ":s/a/b/g \"note<CR>",
+      "expect": {
+        "text": [
+          "bb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_print_flag",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/p<CR>",
+      "expect": {
+        "text": [
+          "ba",
+          "aa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_number_flag",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/#<CR>",
+      "expect": {
+        "text": [
+          "ba",
+          "aa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_amp_keeps_g",
+      "lines": [
+        "aa",
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/g<CR>j:s/a/c/&<CR>",
+      "expect": {
+        "text": [
+          "bb",
+          "cc",
+          "aa"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_amp_without_g",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/<CR>:s/a/c/&<CR>",
+      "expect": {
+        "text": [
+          "bc",
+          "aa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_s_amp_not_first",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/<CR>j:s/a/c/g&<CR>",
+      "expect": {
+        "text": [
+          "ba",
+          "aa"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_g_inner_s_unmatched_sets_pattern",
+      "lines": [
+        "ab",
+        "ab",
+        "ab"
+      ],
+      "keys": ":g/a/s/zzz/y/<CR>:s//Q/<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_g_inner_s_unmatched_cursor",
+      "lines": [
+        "ab",
+        "ab"
+      ],
+      "keys": ":g/a/s/zzz/y/<CR>x",
+      "expect": {
+        "text": [
+          "ab",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_g_no_match_sets_pattern",
+      "lines": [
+        "ab",
+        "ab",
+        "ab"
+      ],
+      "keys": ":g/zz/s/b/y/<CR>:s//Q/<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_print_range_cursor",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":2,3p<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_print_count",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":2p 2<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_print_count_and_flags",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":2p 2 l#<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_print_trailing",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":p x<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_print_zero_count",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":p 0<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E939",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_print_keeps_column",
+      "lines": [
+        "abcd",
+        "abcd"
+      ],
+      "keys": "ll:2#<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "abcd"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_list_cursor",
+      "lines": [
+        "a",
+        "b\tc",
+        "d"
+      ],
+      "keys": ":2l<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b\tc",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_number_abbrev",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":%nu<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_pl_is_unknown",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2pl<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_P_is_unknown",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":P<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_g_print_cursor",
+      "lines": [
+        "aa",
+        "b",
+        "aa",
+        "c"
+      ],
+      "keys": ":g/a/p<CR>",
+      "expect": {
+        "text": [
+          "aa",
+          "b",
+          "aa",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_g_number_cursor",
+      "lines": [
+        "aa",
+        "b",
+        "aa",
+        "c"
+      ],
+      "keys": ":g/a/nu<CR>",
+      "expect": {
+        "text": [
+          "aa",
+          "b",
+          "aa",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_addressed",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":2z<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_from_cursor",
+      "lines": [
+        "abcd",
+        "  bcd",
+        "xyzw"
+      ],
+      "keys": "ll:z<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  bcd",
+          "xyzw"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_minus",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":3z-<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_minus_count",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":3z-2<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_equal",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g"
+      ],
+      "keys": ":4z=1<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_dot",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":2z.<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_caret",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "G:2z^<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_plus",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":z+<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_count",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":z 2<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_zero",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "j:z 0<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_z_number_flag",
+      "lines": [
+        "a",
+        "  b",
+        "c",
+        "d"
+      ],
+      "keys": "l:2z#<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "  b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_z_other_word",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":zx<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_z_non_numeric",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":z-x<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E144",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_line_number_stays",
+      "lines": [
+        "abcd",
+        "  bcd",
+        "x"
+      ],
+      "keys": "ll:2=<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  bcd",
+          "x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_put_bang",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "yy:2put!<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_put_bang_current",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jyy:put!<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_put_bang_first_line",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "yy:put!<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_put_bang_last",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "yy:$put!<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_put_bang_register",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "\"ayyj:put! a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_put_empty_register",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "yy:$put! a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "emsg": "E353",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_retab_bang_noet",
+      "lines": [
+        "\tab",
+        "        cd",
+        "    ef"
+      ],
+      "keys": ":set noet<CR>:set ts=8<CR>:retab!<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "\tab",
+          "\tcd",
+          "    ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_et",
+      "lines": [
+        "\tab",
+        "        cd",
+        "    ef"
+      ],
+      "keys": ":set ts=8<CR>:retab<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "        ab",
+          "        cd",
+          "    ef"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_noet_new_ts",
+      "lines": [
+        "\tab",
+        "        cd",
+        "    ef"
+      ],
+      "keys": ":set noet<CR>:set ts=8<CR>:retab 4<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "\t\tab",
+          "        cd",
+          "    ef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_range_bang",
+      "lines": [
+        "\tab",
+        "        cd",
+        "    e\tf"
+      ],
+      "keys": ":set noet<CR>:set ts=8<CR>:2retab! 4<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "\tab",
+          "\t\tcd",
+          "    e\tf"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_mixed_run",
+      "lines": [
+        "  \t  ab"
+      ],
+      "keys": ":set noet<CR>:set ts=8<CR>:retab!<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "\t  ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_mid_line",
+      "lines": [
+        "a  \t  ab"
+      ],
+      "keys": ":set ts=8<CR>:retab 2<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "a         ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_sets_tabstop",
+      "lines": [
+        "a\tb"
+      ],
+      "keys": ":set noet<CR>:retab 8<CR>:retab! 4<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "a\tb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_single_space_kept",
+      "lines": [
+        "a b  c"
+      ],
+      "keys": ":set noet<CR>:retab!<CR>",
+      "setup": "set tabstop=4 expandtab",
+      "expect": {
+        "text": [
+          "a b  c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_retab_bad_arg",
+      "lines": [
+        "\ta"
+      ],
+      "keys": ":retab x<CR>",
+      "expect": {
+        "text": [
+          "\ta"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E475",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_startinsert",
+      "lines": [
+        "abc"
+      ],
+      "keys": "l:startinsert<CR>X<Esc>",
+      "expect": {
+        "text": [
+          "aXbc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_startinsert_bang",
+      "lines": [
+        "abc"
+      ],
+      "keys": "l:startinsert!<CR>X<Esc>",
+      "expect": {
+        "text": [
+          "abcX"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_startreplace",
+      "lines": [
+        "abc"
+      ],
+      "keys": "l:startreplace<CR>XY<Esc>",
+      "expect": {
+        "text": [
+          "aXY"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_startreplace_bang",
+      "lines": [
+        "abc"
+      ],
+      "keys": "l:startreplace!<CR>XY<Esc>",
+      "expect": {
+        "text": [
+          "abcXY"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_startgreplace",
+      "lines": [
+        "abc"
+      ],
+      "keys": "l:startgreplace<CR>XY<Esc>",
+      "expect": {
+        "text": [
+          "aXY"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_startinsert_trailing",
+      "lines": [
+        "abc"
+      ],
+      "keys": "l:startinsert x<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_startinsert_after_bar",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":startinsert|s/a/Q/<CR>Z<Esc>",
+      "expect": {
+        "text": [
+          "ZQbc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_stopinsert_from_ctrl_o",
+      "lines": [
+        "abc"
+      ],
+      "keys": "iX<C-o>:stopinsert<CR>Y",
+      "expect": {
+        "text": [
+          "Xabc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_keeppatterns_search_kept",
+      "lines": [
+        "ab",
+        "ab",
+        "ab"
+      ],
+      "keys": "/b<CR>:keeppatterns s/a/X/<CR>jn",
+      "expect": {
+        "text": [
+          "Xb",
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_keeppatterns_no_substitute",
+      "lines": [
+        "ab",
+        "ab",
+        "ab"
+      ],
+      "keys": "/b<CR>:keeppatterns s/a/X/<CR>j&",
+      "expect": {
+        "text": [
+          "Xb",
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E33",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_keeppatterns_empty_pattern",
+      "lines": [
+        "ab",
+        "ab",
+        "ab"
+      ],
+      "keys": "/b<CR>:keeppatterns s/a/X/<CR>j:s//Y/<CR>",
+      "expect": {
+        "text": [
+          "Xb",
+          "aY",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_keeppatterns_address",
+      "lines": [
+        "ab",
+        "ab",
+        "ab"
+      ],
+      "keys": "/a<CR>:keeppatterns /b/d<CR>n",
+      "expect": {
+        "text": [
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_keepjumps_keeps_context_mark",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "jG:keepjumps normal gg<CR>''x",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_without_keepjumps_context_mark",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "jG:normal gg<CR>''x",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          ""
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_keepjumps_no_change_mark",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":keepj norm Gx<CR>gg`.x",
+      "expect": {
+        "text": [
+          "",
+          "b",
+          "c",
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_filter_print_cursor",
+      "lines": [
+        "ab",
+        "b",
+        "cb"
+      ],
+      "keys": ":filter /c/ %p<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "b",
+          "cb"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_filter_no_command",
+      "lines": [
+        "ab",
+        "b",
+        "cb"
+      ],
+      "keys": ":filter /c/<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "b",
+          "cb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E476",
+        "failed": true
+      }
+    },
+    {
+      "name": "exl_filter_other_command_runs",
+      "lines": [
+        "ab",
+        "b",
+        "cb"
+      ],
+      "keys": ":filter /c/ 2d<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cb"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_curswant_after_s",
+      "lines": [
+        "abc",
+        "abc",
+        "abc"
+      ],
+      "keys": "ll:s/a/X/<CR>j",
+      "expect": {
+        "text": [
+          "Xbc",
+          "abc",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_curswant_after_g_s",
+      "lines": [
+        "abc",
+        "abc",
+        "abc"
+      ],
+      "keys": "ll:g/a/s/b/Y/<CR>k",
+      "expect": {
+        "text": [
+          "aYc",
+          "aYc",
+          "aYc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_curswant_after_sort",
+      "lines": [
+        "cbc",
+        "abc",
+        "abc"
+      ],
+      "keys": "ll:sort<CR>j",
+      "expect": {
+        "text": [
+          "abc",
+          "abc",
+          "cbc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_curswant_after_d",
+      "lines": [
+        "abc",
+        "abc",
+        "abc",
+        "abc"
+      ],
+      "keys": "ll:d<CR>j",
+      "expect": {
+        "text": [
+          "abc",
+          "abc",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_curswant_after_shift",
+      "lines": [
+        "abc",
+        "abc",
+        "abc",
+        "abc"
+      ],
+      "keys": "ll:>|<<CR>j",
+      "expect": {
+        "text": [
+          "abc",
+          "abc",
+          "abc",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_curswant_after_put",
+      "lines": [
+        "abc",
+        "abc",
+        "abc",
+        "abc"
+      ],
+      "keys": "llyy:put<CR>j",
+      "expect": {
+        "text": [
+          "abc",
+          "abc",
+          "abc",
+          "abc",
+          "abc"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exl_curswant_after_j",
+      "lines": [
+        "abc",
+        "abc",
+        "abc",
+        "abc"
+      ],
+      "keys": "ll:j<CR>j",
+      "expect": {
+        "text": [
+          "abc abc",
+          "abc",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "wild_command_single",
       "lines": [
         "abc"

@@ -85,6 +85,25 @@ const COMMANDS: &[ExCommand] = &[
     cmd("vglobal", 1, "v"),
     cmd("normal", 4, "normal"),
     cmd("trust", 3, "trust"),
+    // #609: the print family, `:retab` and the Insert starters.
+    cmd("print", 1, "print"),
+    cmd("list", 1, "list"),
+    cmd("number", 2, "number"),
+    cmd("z", 1, "z"),
+    cmd("retab", 3, "retab"),
+    cmd("startinsert", 4, "startinsert"),
+    cmd("startreplace", 6, "startreplace"),
+    cmd("startgreplace", 6, "startgreplace"),
+    cmd("stopinsert", 5, "stopinsert"),
+    // #610: the working directory and the file name.
+    cmd("pwd", 2, "pwd"),
+    cmd("cd", 2, "cd"),
+    cmd("chdir", 3, "cd"),
+    cmd("file", 1, "file"),
+    cmd("find", 3, "find"),
+    cmd("sfind", 2, "sfind"),
+    cmd("drop", 2, "drop"),
+    cmd("visual", 2, "visual"),
 ];
 
 /// ruse's own commands (no Vim counterpart). Matched by exact spelling and never abbreviated, so they
@@ -115,6 +134,10 @@ enum Modifier {
     Verbose,
     /// Accepted with no effect: ruse has no autocommands.
     NoAutocmd,
+    KeepJumps,
+    KeepPatterns,
+    KeepAlt,
+    Filter,
 }
 
 /// The modifiers with nvim v0.12.6's minimal abbreviations.
@@ -123,15 +146,27 @@ const MODIFIERS: &[(&str, usize, Modifier)] = &[
     ("unsilent", 3, Modifier::Unsilent),
     ("verbose", 4, Modifier::Verbose),
     ("noautocmd", 3, Modifier::NoAutocmd),
+    ("keepjumps", 5, Modifier::KeepJumps),
+    ("keeppatterns", 5, Modifier::KeepPatterns),
+    ("keepalt", 5, Modifier::KeepAlt),
+    ("filter", 4, Modifier::Filter),
 ];
 
 /// What the modifiers before a command asked for.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct ExModifiers {
     /// `:silent` — the command's normal messages are not shown.
     pub silent: bool,
     /// `:silent!` — its error messages are not shown either, and an error does not end the `|` chain.
     pub silent_errors: bool,
+    /// `:keepj[umps]` — the command adds nothing to the jumplist or the change list.
+    pub keep_jumps: bool,
+    /// `:keepp[atterns]` — the command leaves the last search and substitute patterns as they were.
+    pub keep_patterns: bool,
+    /// `:keepa[lt]` — the command leaves the alternate file as it was.
+    pub keep_alt: bool,
+    /// `:filt[er][!] {pat}` — the command lists only the lines that match `pat` (`!`: that do not).
+    pub filter: Option<(String, bool)>,
 }
 
 /// Every command name `:` completion offers (`:help cmdline-completion`, #613): the implemented Vim
@@ -263,7 +298,7 @@ pub fn strip_modifiers(line: &str) -> (ExModifiers, &str) {
             return (mods, rest);
         };
         let mut after = &rest[len..];
-        let bang = m == Modifier::Silent && after.starts_with('!');
+        let bang = matches!(m, Modifier::Silent | Modifier::Filter) && after.starts_with('!');
         if bang {
             after = &after[1..];
         }
@@ -276,10 +311,39 @@ pub fn strip_modifiers(line: &str) -> (ExModifiers, &str) {
                 mods.silent = true;
                 mods.silent_errors |= bang;
             }
-            Modifier::Unsilent => mods = ExModifiers::default(),
+            Modifier::Unsilent => {
+                mods.silent = false;
+                mods.silent_errors = false;
+            }
             Modifier::Verbose | Modifier::NoAutocmd => {}
+            Modifier::KeepJumps => mods.keep_jumps = true,
+            Modifier::KeepPatterns => mods.keep_patterns = true,
+            Modifier::KeepAlt => mods.keep_alt = true,
+            Modifier::Filter => {
+                let (pattern, next) = filter_pattern(after.trim_start());
+                mods.filter = Some((pattern, bang));
+                after = next;
+            }
         }
         rest = after.trim_start_matches([' ', '\t', ':']);
+    }
+}
+
+/// The pattern of a `:filter` (`:help :filter`): `/pat/` delimited by any character that is not a letter,
+/// digit, `"` or `|` (it ends where an Ex pattern ends), or else the word up to the next blank. Returns it
+/// and the text after it.
+fn filter_pattern(s: &str) -> (String, &str) {
+    match s.chars().next() {
+        Some(d) if !d.is_ascii_alphanumeric() && !matches!(d, '"' | '|' | ' ' | '\t') => {
+            let body = &s[d.len_utf8()..];
+            let end = ruse_core::pattern::skip_regexp(body, d, true);
+            let rest = body[end..].strip_prefix(d).unwrap_or(&body[end..]);
+            (body[..end].to_string(), rest)
+        }
+        _ => {
+            let end = s.find([' ', '\t']).unwrap_or(s.len());
+            (s[..end].to_string(), &s[end..])
+        }
     }
 }
 
@@ -334,7 +398,7 @@ mod tests {
             (
                 ExModifiers {
                     silent: true,
-                    silent_errors: false
+                    ..ExModifiers::default()
                 },
                 "2d"
             )
@@ -344,7 +408,8 @@ mod tests {
             (
                 ExModifiers {
                     silent: true,
-                    silent_errors: true
+                    silent_errors: true,
+                    ..ExModifiers::default()
                 },
                 "s/a/b/"
             )
@@ -356,5 +421,19 @@ mod tests {
         assert_eq!(strip_modifiers("si d").1, "si d");
         assert_eq!(strip_modifiers("silentx").1, "silentx");
         assert_eq!(strip_modifiers("d").1, "d");
+        let (mods, rest) = strip_modifiers("keepj keepp keepa 2d");
+        assert!(mods.keep_jumps && mods.keep_patterns && mods.keep_alt);
+        assert_eq!(rest, "2d");
+        assert_eq!(
+            strip_modifiers("keep d").1,
+            "keep d",
+            "too short for :keepjumps"
+        );
+        let (mods, rest) = strip_modifiers("filter /a b/ %p");
+        assert_eq!(mods.filter, Some(("a b".to_string(), false)));
+        assert_eq!(rest, "%p");
+        let (mods, rest) = strip_modifiers("filt! foo nu");
+        assert_eq!(mods.filter, Some(("foo".to_string(), true)));
+        assert_eq!(rest, "nu");
     }
 }

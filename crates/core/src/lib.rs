@@ -59,7 +59,8 @@ pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
 pub use editor::{
     apply_command, commit, plan, CaretGravity, EditorOption, EditorState, GlobalCmd, IndentStyle,
-    LineAddr, Mode, Plan, SortOptions, SubFlags, SubOutcome, SubRange, Substitution, View,
+    LineAddr, Mode, Plan, SortKind, SortOptions, SubFlags, SubOutcome, SubRange, Substitution,
+    View,
 };
 pub use effect::Effect;
 pub use expr::{eval as eval_expr, eval_or_empty as eval_expr_or_empty, ExprError};

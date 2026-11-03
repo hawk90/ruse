@@ -33,6 +33,21 @@ pub(crate) fn open(matches: &[(usize, String)]) -> Picker<usize> {
     Picker::new(items)
 }
 
+/// Open the same view-only overlay over rows shown verbatim: the output of an Ex print command (`:p`,
+/// `:nu`, `:z`, #609) longer than the one-line message area. The payload is the row's 1-based index.
+pub(crate) fn open_rows(rows: &[String]) -> Picker<usize> {
+    let items = rows
+        .iter()
+        .enumerate()
+        .map(|(i, text)| PickItem {
+            display: text.clone(),
+            search: text.clone(),
+            payload: i + 1,
+        })
+        .collect();
+    Picker::new(items)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

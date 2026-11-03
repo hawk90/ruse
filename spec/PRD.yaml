@@ -355,6 +355,15 @@ features:
     # input/cmdline.rs; <BS>/<Del> on an empty line abandon it. #609: Ex command words resolve through one
     # abbreviation table (input/ex_cmd.rs, nvim's fullcommand() minima) and :silent[!]/:unsilent/:verbose/
     # :noautocmd modifiers precede a command. Census rows stay unclassified (whole-surface lock).
+    # #609 (v0.1.5; input/ex_extra.rs, app/ex_print.rs, app/ex_more.rs): the print family :p/:l/:nu/:#
+    # with [count] [flags], :z[!][+-^.=][count], :=, :g/pat/p, and the :s p/#/l flags show their lines
+    # the way nvim's print_line does (one line on the status line, more in the view-only listing overlay);
+    # :put!, :retab[!] [N], :startinsert[!]/:startreplace[!]/:startgreplace/:stopinsert, and the
+    # :keepjumps/:keeppatterns/:keepalt/:filter[!] modifiers. #1104: :sort x/o/b/f/l, the full :s flag
+    # grammar (& first, g/c/e toggle, r, p/#/l, [count], E488 on anything else), and an inner :s in :g sets
+    # the last pattern even when it changes nothing. Ex commands that end with Vim's beginline() reset the
+    # wanted column. Not yet: :earlier {N}s/m/h/f (needs undo timestamps), :append/:insert/:change,
+    # :keepmarks/:lockmarks, :confirm, and :filter on the listing pickers (:ls, :marks, :jumps, :reg).
     # #613: `:` completion at nvim's defaults (wildmode=full, wildoptions=pum): <Tab>/<S-Tab> complete
     # (input/complete.rs: Ex command names, file/directory names with %/# and escaping, buffer names,
     # :set option names and values), the wildmenu cycles with <Tab>/CTRL-N/<Right> and back, CTRL-E/CTRL-Y
@@ -559,8 +568,11 @@ features:
     # `:x[!]`, `:sav[!] {file}`, `:wa`/`:wqa`/`:xa`, `:e[!] [++ff] [+cmd] [file]` (a missing file opens as
     # a new buffer), and `%`/`#`/`#n` with the `:p :~ :. :h :t :r :e` modifiers. Replacing writes keep the
     # atomic save and its non-regular-file refusal; E13/E17/E139/E140/E141/E172/E212/E502 as nvim.
-    # Not modeled: the alternate file a `:w {file}`/`:sav` sets (ruse's alternate is a buffer), and
-    # `:find`, `:view`, `:drop`, the `:cd` family, `:pwd`, `:oldfiles`, `:checktime`, `:file`.
+    # v0.1.5 (#610; app/ex_more.rs): the alternate file name a `:w {file}`, `:sav` or `:file {name}` leaves
+    # (`#`, `"#`, `:e #`, `:b#`), `:f[ile] [{name}]`/`:0file`, `:fin[d]`/`:sf[ind]` over the default
+    # `'path'` (`.,,`), `:dr[op]`, `:vi[sual]`, `:pw[d]`, `:cd`/`:chd[ir]` (`-`, `~`; buffer paths follow).
+    # Not modeled yet: `:view`/`:sview` (no 'readonly'), `:lcd`/`:tcd` (no window-local directory),
+    # `:oldfiles`/`#<n` (no viminfo/shada), `:checktime`, and `:file`'s `[Not edited]` state.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only recovery journal.

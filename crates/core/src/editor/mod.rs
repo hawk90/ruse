@@ -310,6 +310,8 @@ pub struct View {
     /// oldest → newest, bounded to [`MAX_CHANGES`]. Navigated by `CTRL-O` (older) / `CTRL-I` (newer) through
     /// [`jump_idx`]; recorded in [`apply_command`] and snapped every commit like the marks.
     jumps: Vec<usize>,
+    /// `:keepjumps` (#609): while set, [`View::push_jump`] and [`View::push_change`] record nothing.
+    pub(crate) keep_jumps: bool,
     /// The current cursor into [`jumps`] for `CTRL-O`/`CTRL-I`. Equals `jumps.len()` (past the newest) until
     /// the first `CTRL-O`, which saves the current position so `CTRL-I` can return, then walks the list.
     jump_idx: usize,
@@ -410,6 +412,7 @@ impl View {
             },
             text_width: 0,
             curswant: 0,
+            keep_jumps: false,
             search_case: SearchCase {
                 ignore: false,
                 smart: false,
@@ -498,6 +501,9 @@ impl View {
     /// typing a word, or `xxx`, leaves one entry. The list is bounded to [`MAX_CHANGES`] (oldest dropped).
     /// Resets the `g;`/`g,` cursor past the newest entry.
     fn push_change(&mut self, b: &[u8], pos: usize, new_step: bool) {
+        if self.keep_jumps {
+            return;
+        }
         self.new_change |= new_step;
         if self.new_change || self.changes.is_empty() {
             let line_col = |p: usize| {
@@ -552,6 +558,9 @@ impl View {
     /// identical positions coalesce; bounded to [`MAX_CHANGES`]; resets the `CTRL-O`/`CTRL-I` cursor past
     /// the newest. Entries on one line are folded when the list is next walked ([`View::clean_jumps`]).
     pub(crate) fn push_jump(&mut self, from: usize) {
+        if self.keep_jumps {
+            return;
+        }
         if self.jumps.last() != Some(&from) {
             self.jumps.push(from);
             if self.jumps.len() > MAX_CHANGES {
@@ -622,7 +631,8 @@ impl View {
     }
 
     /// The regex compile options for a search in this view (magic default; case per config).
-    fn search_options(&self) -> crate::pattern::Options {
+    #[must_use]
+    pub fn search_options(&self) -> crate::pattern::Options {
         crate::pattern::Options {
             magic: crate::pattern::Magic::Magic,
             ignore_case: self.search_case.ignore,
@@ -1270,6 +1280,7 @@ impl EditorState {
             self.view.cursor = motion::first_non_blank(nb, line_start);
         }
         self.settle_offsets();
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
         SubOutcome {
             replacements,
             lines: lines_seen.len(),
@@ -1427,6 +1438,7 @@ impl EditorState {
                 };
                 self.view.cursor = motion::first_non_blank(nb, line_start);
                 self.settle_offsets();
+                self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column
                 Ok(marked.len())
             }
             GlobalCmd::Substitute {
@@ -1516,6 +1528,7 @@ impl EditorState {
         let at = motion::off_phantom(nb, start.min(nb.len()));
         self.view.cursor = motion::first_non_blank(nb, line_start(nb, at));
         self.settle_offsets();
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
         last - first + 1
     }
 
@@ -1575,7 +1588,8 @@ impl EditorState {
         // joined line (`ex_join` → `beginline(BL_WHITE)`; nvim v0.12.6). The join keeps `first`'s start.
         let b = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(b, lines[first].0);
-        // The lines that took part: one more than the seams removed (0 when nothing joined).
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
+                                                // The lines that took part: one more than the seams removed (0 when nothing joined).
         let seams = before - crate::pos::count_newlines(b);
         if seams == 0 {
             0
@@ -1601,6 +1615,7 @@ impl EditorState {
         let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let count = (last - first + 1) as u32;
+        let want = self.view.curswant;
         // Anchor the cursor at the FIRST line so the reused shift (which reads its start line from the
         // cursor) covers `[first, last]`; every extra level re-shifts the same span from there.
         self.view.cursor = lines[first].0;
@@ -1622,6 +1637,8 @@ impl EditorState {
                 self.view.cursor = motion::first_non_blank(b, last_ls);
             }
         }
+        // `:>` keeps the wanted column (`beginline(BL_SOL | BL_FIX)` under 'nostartofline', #1104).
+        self.view.curswant = want;
         count as usize
     }
 
@@ -1809,6 +1826,7 @@ impl EditorState {
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
         count
     }
 
@@ -1886,6 +1904,7 @@ impl EditorState {
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
         count
     }
 
@@ -1975,7 +1994,71 @@ impl EditorState {
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
         input_count
+    }
+
+    /// `:[range]retab[!] [new_tabstop]` (#609), as nvim's `ex_retab` does it (v0.12.6): every run of white
+    /// space that holds a `<Tab>` (with `bang`, also every run of two or more spaces) is rewritten for the
+    /// same width — measured with the current `'tabstop'` — as tabs and spaces under `new_tabstop`, or as
+    /// spaces only when `'expandtab'` is set. A run is left alone when the rewrite would not make it
+    /// shorter, except under `'expandtab'` or when it holds a tab. `'tabstop'` then becomes `new_tabstop`
+    /// (`0` or `None` keeps it). The changed lines are one undo group, and the cursor stays on its line at
+    /// the wanted column. Returns whether any line changed.
+    pub fn retab(&mut self, range: SubRange, bang: bool, new_tabstop: Option<usize>) -> bool {
+        let old_ts = self.view.indent.tab_width.max(1);
+        let new_ts = new_tabstop.filter(|&n| n > 0).unwrap_or(old_ts);
+        let expand = self.view.indent.style == IndentStyle::Space;
+        let bytes = self.doc.bytes().to_vec();
+        let Ok(hay) = std::str::from_utf8(&bytes) else {
+            return false;
+        };
+        let spans = line_spans(hay);
+        if spans.is_empty() {
+            self.view.indent.tab_width = new_ts;
+            return false;
+        }
+        let cursor_line = crate::pos::line_of(&bytes, self.view.cursor);
+        // The wanted column the cursor returns to, measured with the tabstop in force now (Vim computes
+        // it when it is needed, so a `:set ts` since the last move counts).
+        if self.view.curswant != range::MAXCOL {
+            self.view.curswant = self.wanted_col();
+        }
+        let (first, last) = resolve_line_range(range, &spans, cursor_line);
+        let last = last.min(spans.len() - 1);
+        let first = first.min(last);
+        let mut out = bytes[..spans[first].0].to_vec();
+        let mut changed = false;
+        for li in first..=last {
+            let (ls, le) = spans[li];
+            let new_line = retab_line(&bytes[ls..le], bang, expand, old_ts, new_ts);
+            changed |= new_line != bytes[ls..le];
+            out.extend_from_slice(&new_line);
+            if li < last {
+                out.extend_from_slice(&bytes[le..spans[li + 1].0]);
+            }
+        }
+        out.extend_from_slice(&bytes[spans[last].1..]);
+        self.view.indent.tab_width = new_ts;
+        if !changed {
+            return false;
+        }
+        let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), out)])
+            .expect("a single edit is well-formed");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc.apply(txn).expect("retab applies cleanly");
+        self.view.last_was_edit = true;
+        let nb = self.doc.bytes();
+        let ls = nb
+            .split_inclusive(|&b| b == b'\n')
+            .take(cursor_line)
+            .map(<[u8]>::len)
+            .sum::<usize>()
+            .min(nb.len());
+        self.view.cursor = self.relocated_cursor(nb, ls);
+        self.settle_offsets();
+        true
     }
 
     /// `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file when the caller
@@ -2041,12 +2124,14 @@ impl EditorState {
                 },
                 None => line,
             };
-            if opts.numeric {
-                SortKey::Num(first_number(base))
-            } else if opts.ignore_case {
-                SortKey::Text(base.to_ascii_lowercase())
-            } else {
-                SortKey::Text(base.to_string())
+            match opts.key {
+                SortKind::Decimal | SortKind::Hex | SortKind::Octal | SortKind::Binary => {
+                    SortKey::Num(first_number(base, opts.key))
+                }
+                SortKind::Float => SortKey::Float(first_float(base)),
+                SortKind::Locale => SortKey::Locale(base.to_string()),
+                SortKind::Text if opts.ignore_case => SortKey::Text(base.to_ascii_lowercase()),
+                SortKind::Text => SortKey::Text(base.to_string()),
             }
         };
 
@@ -2054,7 +2139,7 @@ impl EditorState {
             .iter()
             .map(|l| (key_of(l), l.clone()))
             .collect();
-        keyed.sort_by(|a, b| a.0.cmp(&b.0)); // stable (Vim breaks ties by line number)
+        keyed.sort_by(|a, b| a.0.compare(&b.0)); // stable (Vim breaks ties by line number)
         if opts.reverse {
             keyed.reverse();
         }
@@ -2089,6 +2174,7 @@ impl EditorState {
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
         Ok(removed)
     }
 
@@ -2357,8 +2443,9 @@ mod substitute;
 pub struct SortOptions {
     /// `!` — sort descending.
     pub reverse: bool,
-    /// `n` — sort on each line's first decimal number (in the pattern-selected key).
-    pub numeric: bool,
+    /// How keys compare: as text (the default), in locale order (`l`), or by the first number in them
+    /// (`n` decimal, `x` hex, `o` octal, `b` binary, `f` float).
+    pub key: SortKind,
     /// `u` — drop runs of equal sort KEYS after sorting.
     pub unique: bool,
     /// `i` — compare case-insensitively.
@@ -2370,30 +2457,283 @@ pub struct SortOptions {
     pub use_match: bool,
 }
 
-/// A line's comparable sort key: a number (`n`) or text. All keys in one sort share a variant, so the
-/// derived ordering (which compares `Num` < `Text` across variants) never actually mixes them. `Num(None)`
-/// (no number in the key) orders before every number, as in Vim.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum SortKey {
-    Num(Option<i64>),
-    Text(String),
+/// One line of [`EditorState::retab`] (nvim's `ex_retab` loop): columns are measured with `old_ts`, and a
+/// rewritten run is laid out with `new_ts` (`tabstop_fromto`).
+fn retab_line(line: &[u8], bang: bool, expand: bool, old_ts: usize, new_ts: usize) -> Vec<u8> {
+    use unicode_width::UnicodeWidthChar;
+    let text = String::from_utf8_lossy(line);
+    let mut out = Vec::with_capacity(line.len());
+    let (mut vcol, mut start_vcol, mut start) = (0usize, 0usize, 0usize);
+    let (mut got_tab, mut num_spaces) = (false, 0usize);
+    let chars = text.char_indices().map(Some).chain(std::iter::once(None));
+    let mut copied = 0usize;
+    for item in chars {
+        let (col, c) = item.unwrap_or((text.len(), '\0'));
+        if item.is_some() && (c == ' ' || c == '\t') {
+            if !got_tab && num_spaces == 0 {
+                start_vcol = vcol;
+                start = col;
+            }
+            if c == ' ' {
+                num_spaces += 1;
+            } else {
+                got_tab = true;
+            }
+        } else {
+            if got_tab || (bang && num_spaces > 1) {
+                let len = vcol - start_vcol;
+                let (mut tabs, mut spaces) = (0, len);
+                if !expand {
+                    let initspc = new_ts - start_vcol % new_ts;
+                    if spaces >= initspc {
+                        spaces -= initspc;
+                        tabs += 1;
+                    }
+                    tabs += spaces / new_ts;
+                    spaces %= new_ts;
+                }
+                if expand || got_tab || tabs + spaces < len {
+                    out.extend_from_slice(&text.as_bytes()[copied..start]);
+                    out.extend(std::iter::repeat_n(b'\t', tabs));
+                    out.extend(std::iter::repeat_n(b' ', spaces));
+                    copied = col;
+                }
+            }
+            got_tab = false;
+            num_spaces = 0;
+        }
+        if item.is_none() {
+            break;
+        }
+        vcol += if c == '\t' {
+            old_ts - vcol % old_ts
+        } else {
+            c.width().unwrap_or(0)
+        };
+    }
+    out.extend_from_slice(&text.as_bytes()[copied..]);
+    if out == text.as_bytes() {
+        // Unchanged: keep the original bytes (a line that is not UTF-8 is never rewritten).
+        return line.to_vec();
+    }
+    if std::str::from_utf8(line).is_err() {
+        return line.to_vec();
+    }
+    out
 }
 
-/// The first decimal number in `s` for `:sort n`, with a `-` just before it, or `None` when `s` has no
-/// digit. A number past the `i64` range saturates to its bound (Vim's `vim_str2nr`).
-fn first_number(s: &str) -> Option<i64> {
+/// How `:sort` compares its keys (`:help :sort`).
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum SortKind {
+    /// Byte order (case-folded under `i`).
+    #[default]
+    Text,
+    /// `l` — the locale's collation order. ruse does not read the system locale: letters compare
+    /// ignoring case first, and a lowercase letter goes before its uppercase form, which is the order the
+    /// common UTF-8 locales (`en_US.UTF-8`) give ASCII text.
+    Locale,
+    /// `n` — the first decimal number.
+    Decimal,
+    /// `x` — the first hexadecimal number (an optional `0x`/`0X` prefix).
+    Hex,
+    /// `o` — the first octal number.
+    Octal,
+    /// `b` — the first binary number (an optional `0b`/`0B` prefix).
+    Binary,
+    /// `f` — the first floating-point number, read as C's `strtod` does.
+    Float,
+}
+
+/// A line's comparable sort key. All keys in one sort share a variant. `Num(None)` (no number in the key)
+/// orders before every number, as in Vim.
+#[derive(Clone, PartialEq)]
+enum SortKey {
+    Num(Option<i64>),
+    Float(f64),
+    Text(String),
+    Locale(String),
+}
+
+impl SortKey {
+    fn compare(&self, other: &SortKey) -> std::cmp::Ordering {
+        match (self, other) {
+            (SortKey::Num(a), SortKey::Num(b)) => a.cmp(b),
+            // nvim compares with `==`/`>`, which a NaN defeats; a total order keeps the sort well-defined.
+            (SortKey::Float(a), SortKey::Float(b)) => a.total_cmp(b),
+            (SortKey::Text(a), SortKey::Text(b)) => a.cmp(b),
+            (SortKey::Locale(a), SortKey::Locale(b)) => locale_cmp(a, b),
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+/// The `:sort l` order (see [`SortKind::Locale`]): case-insensitive first, then lowercase before
+/// uppercase, then bytewise.
+fn locale_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let fold = |s: &str| s.chars().flat_map(char::to_lowercase).collect::<String>();
+    fold(a).cmp(&fold(b)).then_with(|| {
+        let case = |s: &str| s.chars().map(char::is_uppercase).collect::<Vec<_>>();
+        case(a).cmp(&case(b)).then_with(|| a.cmp(b))
+    })
+}
+
+/// The first number in `s` for `:sort n`/`x`/`o`/`b` (nvim's `ex_sort` + `vim_str2nr`): skip to the
+/// first digit of the base (for `x` any hex digit, for `b` a `0` or `1`), take a `-` just before it, then
+/// read the number, after an optional `0x`/`0b` prefix for `x`/`b`. `None` when `s` has no such digit. A
+/// number past the `i64` range saturates to its bound.
+fn first_number(s: &str, kind: SortKind) -> Option<i64> {
     let b = s.as_bytes();
-    let i = b.iter().position(u8::is_ascii_digit)?;
+    let starts = |c: &u8| match kind {
+        SortKind::Hex => c.is_ascii_hexdigit(),
+        SortKind::Binary => matches!(c, b'0' | b'1'),
+        _ => c.is_ascii_digit(),
+    };
+    let i = b.iter().position(starts)?;
     let negative = i > 0 && b[i - 1] == b'-';
-    let digits = b[i..].iter().take_while(|c| c.is_ascii_digit());
-    let magnitude = digits.fold(0u64, |n, &d| {
-        n.saturating_mul(10).saturating_add(u64::from(d - b'0'))
+    let (radix, prefix) = match kind {
+        SortKind::Hex => (16, b'x'),
+        SortKind::Octal => (8, 0),
+        SortKind::Binary => (2, b'b'),
+        _ => (10, 0),
+    };
+    let digit = |c: u8| char::from(c).to_digit(radix);
+    let mut at = i;
+    if prefix != 0
+        && b[at] == b'0'
+        && b.get(at + 1).map(u8::to_ascii_lowercase) == Some(prefix)
+        && b.get(at + 2).is_some_and(|&c| digit(c).is_some())
+    {
+        at += 2;
+    }
+    let magnitude = b[at..].iter().map_while(|&c| digit(c)).fold(0u64, |n, d| {
+        n.saturating_mul(u64::from(radix))
+            .saturating_add(u64::from(d))
     });
     Some(if negative {
         0i64.checked_sub_unsigned(magnitude).unwrap_or(i64::MIN)
     } else {
         i64::try_from(magnitude).unwrap_or(i64::MAX)
     })
+}
+
+/// The number at the start of `s` for `:sort f` (nvim's `ex_sort`): blanks and one `+` are skipped, an
+/// empty rest sorts before every number (`-DBL_MAX`), and otherwise the value is what C's `strtod` reads
+/// (0 when nothing parses).
+fn first_float(s: &str) -> f64 {
+    let s = s.trim_start_matches([' ', '\t']);
+    let s = s
+        .strip_prefix('+')
+        .map_or(s, |r| r.trim_start_matches([' ', '\t']));
+    if s.is_empty() {
+        return -f64::MAX;
+    }
+    strtod_prefix(s)
+}
+
+/// The value of the longest prefix of `s` that C's `strtod` accepts (after leading whitespace): an
+/// optional sign, then `inf`/`infinity`, `nan`, a hex number (`0x1.8p3`) or a decimal one (`1.5e-3`).
+fn strtod_prefix(s: &str) -> f64 {
+    let s = s.trim_start();
+    let b = s.as_bytes();
+    let (sign, mut i) = match b.first() {
+        Some(b'-') => (-1.0, 1),
+        Some(b'+') => (1.0, 1),
+        _ => (1.0, 0),
+    };
+    let rest = &s[i..];
+    let starts_ci = |w: &str| rest.len() >= w.len() && rest[..w.len()].eq_ignore_ascii_case(w);
+    if starts_ci("inf") {
+        return sign * f64::INFINITY;
+    }
+    if starts_ci("nan") {
+        return f64::NAN;
+    }
+    let digits_from = |i: &mut usize, hex: bool| {
+        let start = *i;
+        while b.get(*i).is_some_and(|c| {
+            if hex {
+                c.is_ascii_hexdigit()
+            } else {
+                c.is_ascii_digit()
+            }
+        }) {
+            *i += 1;
+        }
+        *i - start
+    };
+    // Hex: `0x` hexdigits [`.` hexdigits] [`p` exponent].
+    if b.get(i) == Some(&b'0') && matches!(b.get(i + 1), Some(b'x' | b'X')) {
+        let mut j = i + 2;
+        let mut mantissa = 0f64;
+        let int_start = j;
+        let int_len = digits_from(&mut j, true);
+        for &c in &b[int_start..int_start + int_len] {
+            mantissa = mantissa * 16.0 + f64::from(char::from(c).to_digit(16).unwrap_or(0));
+        }
+        let mut frac_len = 0;
+        if b.get(j) == Some(&b'.') {
+            let mut k = j + 1;
+            let fs = k;
+            frac_len = digits_from(&mut k, true);
+            let mut scale = 1.0 / 16.0;
+            for &c in &b[fs..fs + frac_len] {
+                mantissa += f64::from(char::from(c).to_digit(16).unwrap_or(0)) * scale;
+                scale /= 16.0;
+            }
+            if int_len + frac_len > 0 {
+                j = k;
+            }
+        }
+        if int_len + frac_len == 0 {
+            // Only the `0` parses.
+            return sign * 0.0;
+        }
+        let mut exp = 0i32;
+        if matches!(b.get(j), Some(b'p' | b'P')) {
+            let mut k = j + 1;
+            let neg = match b.get(k) {
+                Some(b'-') => {
+                    k += 1;
+                    true
+                }
+                Some(b'+') => {
+                    k += 1;
+                    false
+                }
+                _ => false,
+            };
+            let es = k;
+            if digits_from(&mut k, false) > 0 {
+                let e: i32 = s[es..k].parse().unwrap_or(i32::MAX);
+                exp = if neg { -e } else { e };
+            }
+        }
+        return sign * mantissa * 2f64.powi(exp);
+    }
+    // Decimal: digits [`.` digits] [`e` exponent], with at least one digit.
+    let start = i;
+    let int_len = digits_from(&mut i, false);
+    let mut frac_len = 0;
+    if b.get(i) == Some(&b'.') {
+        let mut k = i + 1;
+        frac_len = digits_from(&mut k, false);
+        if int_len + frac_len > 0 {
+            i = k;
+        }
+    }
+    if int_len + frac_len == 0 {
+        return 0.0;
+    }
+    if matches!(b.get(i), Some(b'e' | b'E')) {
+        let mut k = i + 1;
+        if matches!(b.get(k), Some(b'-' | b'+')) {
+            k += 1;
+        }
+        if digits_from(&mut k, false) > 0 {
+            i = k;
+        }
+    }
+    sign * s[start..i].parse::<f64>().unwrap_or(0.0)
 }
 
 pub(crate) use substitute::{find_substitutions, line_spans, resolve_line_range};

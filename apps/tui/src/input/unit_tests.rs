@@ -609,14 +609,16 @@ mod tests {
             parse_ex("put"),
             Ex::Put {
                 addr: LineAddr::Current,
-                reg: None
+                reg: None,
+                above: false
             }
         );
         assert_eq!(
             parse_ex("pu"),
             Ex::Put {
                 addr: LineAddr::Current,
-                reg: None
+                reg: None,
+                above: false
             }
         );
         // Addressed puts: `:2put` (after line 2), `:0put` (top), `:$put` (last line), `:.put` (current).
@@ -624,28 +626,32 @@ mod tests {
             parse_ex("2put"),
             Ex::Put {
                 addr: LineAddr::Line(2),
-                reg: None
+                reg: None,
+                above: false
             }
         );
         assert_eq!(
             parse_ex("0put"),
             Ex::Put {
                 addr: LineAddr::Line(0),
-                reg: None
+                reg: None,
+                above: false
             }
         );
         assert_eq!(
             parse_ex("$put"),
             Ex::Put {
                 addr: LineAddr::Last,
-                reg: None
+                reg: None,
+                above: false
             }
         );
         assert_eq!(
             parse_ex(".put"),
             Ex::Put {
                 addr: LineAddr::Current,
-                reg: None
+                reg: None,
+                above: false
             }
         );
         // A register argument (whitespace-separated): named, numbered, and the clipboard register.
@@ -653,28 +659,41 @@ mod tests {
             parse_ex("put a"),
             Ex::Put {
                 addr: LineAddr::Current,
-                reg: Some('a')
+                reg: Some('a'),
+                above: false
             }
         );
         assert_eq!(
             parse_ex("2put a"),
             Ex::Put {
                 addr: LineAddr::Line(2),
-                reg: Some('a')
+                reg: Some('a'),
+                above: false
             }
         );
         assert_eq!(
             parse_ex("put +"),
             Ex::Put {
                 addr: LineAddr::Current,
-                reg: Some('+')
+                reg: Some('+'),
+                above: false
             }
         );
         assert_eq!(
             parse_ex("pu 0"),
             Ex::Put {
                 addr: LineAddr::Current,
-                reg: Some('0')
+                reg: Some('0'),
+                above: false
+            }
+        );
+        // `:put!` puts above.
+        assert_eq!(
+            parse_ex("2put! a"),
+            Ex::Put {
+                addr: LineAddr::Line(2),
+                reg: Some('a'),
+                above: true
             }
         );
         // The register must be separated by whitespace — `:puta` is not `:put a` (Vim E492) → Unknown.
@@ -770,14 +789,14 @@ mod tests {
         match parse_ex("sort! n") {
             Ex::Sort(r, s) => {
                 assert_eq!(r, SubRange::WholeFile);
-                assert!(s.reverse && s.numeric && !s.unique);
+                assert!(s.reverse && s.key == ruse_core::SortKind::Decimal && !s.unique);
             }
             other => panic!("expected Sort, got {other:?}"),
         }
         match parse_ex("1,3sort u") {
             Ex::Sort(r, s) => {
                 assert_eq!(r, SubRange::Lines(1, 3));
-                assert!(!s.reverse && !s.numeric && s.unique);
+                assert!(!s.reverse && s.key == ruse_core::SortKind::Text && s.unique);
             }
             other => panic!("expected Sort, got {other:?}"),
         }
@@ -799,7 +818,7 @@ mod tests {
         match parse_ex("sort rn /\\d\\+/") {
             Ex::Sort(_, s) => {
                 assert_eq!(s.pattern.as_deref(), Some("\\d\\+"));
-                assert!(s.use_match && s.numeric);
+                assert!(s.use_match && s.key == ruse_core::SortKind::Decimal);
             }
             other => panic!("expected Sort, got {other:?}"),
         }
@@ -4987,8 +5006,8 @@ mod substitute_parse_tests {
     #[test]
     fn gdefault_inverts_the_g_flag() {
         // With gdefault ON, a BARE `:s///` is global and `:s///g` is single.
-        assert!(parse_substitute("s/a/b/", true).unwrap().global);
-        assert!(!parse_substitute("s/a/b/g", true).unwrap().global);
+        assert!(parse_substitute("s/a/b/", true).unwrap().unwrap().global);
+        assert!(!parse_substitute("s/a/b/g", true).unwrap().unwrap().global);
     }
 
     #[test]
