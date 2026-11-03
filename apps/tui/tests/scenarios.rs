@@ -255,6 +255,23 @@ fn dot_repeats_a_block_change_with_width_preserved() {
 }
 
 #[test]
+fn a_block_change_backspaced_past_its_start_splits_no_char() {
+    // #1149: `c`, two `<BS>` over the kept split-tab spaces, then `héh`: the insert start falls inside
+    // `é`. nvim v0.12.6 copies the net 2 bytes from there and writes `\xa9h` (a split `é`) on the row
+    // below; ruse copies from the next char, `h`. The `.` repeat replays the same keys and stays valid.
+    let mut h = session("\t가\t\n가\n가\n");
+    feed_str(&mut h, "jhb<C-v>hljc<BS><BS>héh<Esc>");
+    assert_eq!(buf(&h), "héh\t\n가h\n가\n");
+    feed_str(&mut h, "j0.");
+    let ws = h.workspace();
+    assert!(
+        std::str::from_utf8(ws.focused().doc.bytes()).is_ok(),
+        "{:?}",
+        buf(&h)
+    );
+}
+
+#[test]
 fn dot_repeat_of_block_insert_ignores_the_count() {
     // nvim ignores `[count].` for a block insert: `2.` behaves exactly like `.` (one X, one row).
     let mut h = session("aaaa\nbbbb\ncccc");

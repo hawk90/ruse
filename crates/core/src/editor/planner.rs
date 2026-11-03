@@ -4405,7 +4405,7 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
         set_anchor: None,
         set_mark: None,
     };
-    let start = session.insert_start;
+    let mut start = session.insert_start;
     // Insert left the block's top line (a `<BS>` at its start joined it onto the line above): nothing is
     // replicated, as Vim's `op_insert` gives up when the cursor's line changed, and the cursor steps left
     // as a plain `<Esc>` does. `insert_start` and `top_left` no longer point into that line.
@@ -4417,6 +4417,12 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
     // typed run is empty/aborted (nothing to sit after). A non-empty block CHANGE instead rests one char
     // left of the top row's typed text (Vim's normal Insert-exit), computed once `typed` is known below.
     let end_cursor = session.top_left.min(b.len());
+    // A `<BS>` past the insert start and wider text typed over it (`c<BS><BS>é`) can leave `start` inside a
+    // char. nvim copies the net bytes added from the start column regardless and writes a split char onto
+    // the rows below (verified vs nvim v0.12.6); here the copy starts at the next char instead (#1149).
+    while start < cur && start < b.len() && (b[start] & 0xC0) == 0x80 {
+        start += 1;
+    }
     // The text typed on the top row. Empty (or containing a newline) → nothing to replicate.
     if cur <= start || b[start..cur].contains(&b'\n') {
         return nop(end_cursor);
