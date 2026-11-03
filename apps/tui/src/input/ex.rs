@@ -598,6 +598,24 @@ fn parse_sort(line: &str) -> Option<Ex> {
     Some(Ex::Sort(range, opts))
 }
 
+/// Why the flags and count of a `:s` line are wrong. `Display` is nvim's message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SubError {
+    /// `E488`: text after the flags and count.
+    Trailing(String),
+    /// `E939`: a zero count.
+    ZeroCount,
+}
+
+impl std::fmt::Display for SubError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SubError::Trailing(t) => write!(f, "E488: Trailing characters: {t}"),
+            SubError::ZeroCount => f.write_str("E939: Positive count required"),
+        }
+    }
+}
+
 /// Parse a `:[range]s/pat/rep/[flags] [count]` line into a [`SubSpec`], or `None` if it is not a
 /// substitute. `gdefault` inverts the meaning of the `g` flag (Vim `'gdefault'`); pass it through so the
 /// caller's config toggles it. The flags are read the way nvim's `do_sub` reads them: `&` first keeps the
@@ -605,8 +623,9 @@ fn parse_sort(line: &str) -> Option<Ex> {
 /// is accepted, and `p`/`#`/`l` print the last line; then a count, then only a `"` comment may follow.
 ///
 /// # Errors
-/// `E488` for any other character after the flags and count, `E939` for a zero count.
-pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<Result<SubSpec, String>> {
+/// [`SubError::Trailing`] (`E488`) for any other character after the flags and count,
+/// [`SubError::ZeroCount`] (`E939`) for a zero count.
+pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<Result<SubSpec, SubError>> {
     // Split the leading range prefix (chars `[0-9,%.$]`) from the command.
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -679,7 +698,7 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<Result<SubS
     let f = if digits > 0 {
         let n: usize = f[..digits].parse().unwrap_or(usize::MAX);
         if n == 0 {
-            return Some(Err("E939: Positive count required".into()));
+            return Some(Err(SubError::ZeroCount));
         }
         spec.count = Some(n);
         f[digits..].trim_start()
@@ -687,7 +706,7 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<Result<SubS
         f
     };
     if !f.is_empty() && !f.starts_with('"') {
-        return Some(Err(format!("E488: Trailing characters: {f}")));
+        return Some(Err(SubError::Trailing(f.to_string())));
     }
     Some(Ok(spec))
 }
@@ -1330,7 +1349,7 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
-                spec.map_or_else(Ex::Fail, Ex::Substitute)
+                spec.map_or_else(|e| Ex::Fail(e.to_string()), Ex::Substitute)
             } else if let Some(ex) = parse_repeat_substitute(line, false) {
                 // Bare `:s` / `:s {flags}` / `:&` / `:&&` — repeat the last `:s` (resolved in the run loop).
                 ex

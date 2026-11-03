@@ -2794,7 +2794,7 @@ impl Session {
                         let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
                             Ok(keep) => keep,
                             Err(e) => {
-                                *status = e;
+                                *status = regex_error_msg(&e);
                                 return;
                             }
                         };
@@ -3321,7 +3321,7 @@ impl Session {
                 let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
                     Ok(keep) => keep,
                     Err(e) => {
-                        *status = e;
+                        *status = regex_error_msg(&e);
                         return;
                     }
                 };
@@ -3344,7 +3344,7 @@ impl Session {
                 let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
                     Ok(keep) => keep,
                     Err(e) => {
-                        *status = e;
+                        *status = regex_error_msg(&e);
                         return;
                     }
                 };
@@ -3440,10 +3440,10 @@ impl Session {
                         let shown = dir.as_deref().unwrap_or("~");
                         match crate::app::ex_more::change_dir(&target, shown, ws, files) {
                             Ok(old) => *prev_dir = Some(old),
-                            Err(e) => *status = e,
+                            Err(e) => *status = e.to_string(),
                         }
                     }
-                    Err(e) => *status = e,
+                    Err(e) => *status = e.to_string(),
                 }
             }
             // `:file` (#610): show the file information, rename the buffer, or remove its name. The old name

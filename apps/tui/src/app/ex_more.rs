@@ -74,19 +74,18 @@ pub(crate) type LineTest = Box<dyn Fn(&str) -> bool>;
 /// compiled with the focused view's search case. No filter keeps every line.
 ///
 /// # Errors
-/// The pattern's error message when it does not compile.
+/// The pattern's error when it does not compile.
 pub(crate) fn filter_keep(
     ws: &Workspace,
     filter: Option<&(String, bool)>,
-) -> Result<LineTest, String> {
+) -> Result<LineTest, ruse_core::RegexError> {
     let Some((pat, bang)) = filter else {
         return Ok(Box::new(|_| true));
     };
     if pat.is_empty() {
         return Ok(Box::new(|_| true));
     }
-    let re = ruse_core::pattern::Regex::compile(pat, ws.focused().view.search_options())
-        .map_err(|e| crate::app::dispatch::regex_error_msg(&e))?;
+    let re = ruse_core::pattern::Regex::compile(pat, ws.focused().view.search_options())?;
     let bang = *bang;
     Ok(Box::new(move |line: &str| {
         re.find_at(line, 0).is_some() != bang
@@ -135,12 +134,33 @@ pub(crate) fn find_in_path(name: &str, current: Option<&Path>) -> Option<String>
     is_file(path).then(|| name.to_string())
 }
 
+/// Why a `:cd` could not be made. `Display` is nvim's message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CdError {
+    /// `:cd -` before any `:cd` (`E186`).
+    NoPrevious,
+    /// The directory cannot be entered (`E344`); the name as typed.
+    NotFound(String),
+    /// The working directory itself cannot be read.
+    Cwd(String),
+}
+
+impl std::fmt::Display for CdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CdError::NoPrevious => f.write_str("E186: No previous directory"),
+            CdError::NotFound(d) => write!(f, "E344: Can't find directory \"{d}\" in cdpath"),
+            CdError::Cwd(e) => write!(f, "E: cannot read the working directory: {e}"),
+        }
+    }
+}
+
 /// The directory `:cd {arg}` goes to (#610): the home directory without an argument, `prev` for `-`, and
 /// `~` at the start stands for the home directory.
 ///
 /// # Errors
-/// `E186` for `-` with no previous directory.
-pub(crate) fn cd_target(arg: Option<&str>, prev: Option<&Path>) -> Result<PathBuf, String> {
+/// [`CdError::NoPrevious`] for `-` with no previous directory.
+pub(crate) fn cd_target(arg: Option<&str>, prev: Option<&Path>) -> Result<PathBuf, CdError> {
     let home = || {
         std::env::var_os("HOME")
             .map(PathBuf::from)
@@ -148,9 +168,7 @@ pub(crate) fn cd_target(arg: Option<&str>, prev: Option<&Path>) -> Result<PathBu
     };
     Ok(match arg {
         None => home(),
-        Some("-") => prev
-            .map(Path::to_path_buf)
-            .ok_or_else(|| "E186: No previous directory".to_string())?,
+        Some("-") => prev.map(Path::to_path_buf).ok_or(CdError::NoPrevious)?,
         Some("~") => home(),
         Some(d) => match d.strip_prefix("~/") {
             Some(rest) => home().join(rest),
@@ -164,16 +182,15 @@ pub(crate) fn cd_target(arg: Option<&str>, prev: Option<&Path>) -> Result<PathBu
 /// under it (as nvim shows names). Returns the old directory.
 ///
 /// # Errors
-/// nvim's `E344` when the directory cannot be entered.
+/// [`CdError::NotFound`] when the directory cannot be entered.
 pub(crate) fn change_dir(
     target: &Path,
     shown: &str,
     ws: &mut Workspace,
     files: &mut Files,
-) -> Result<PathBuf, String> {
-    let old = std::env::current_dir().map_err(|e| e.to_string())?;
-    std::env::set_current_dir(target)
-        .map_err(|_| format!("E344: Can't find directory \"{shown}\" in cdpath"))?;
+) -> Result<PathBuf, CdError> {
+    let old = std::env::current_dir().map_err(|e| CdError::Cwd(e.to_string()))?;
+    std::env::set_current_dir(target).map_err(|_| CdError::NotFound(shown.to_string()))?;
     let new = std::env::current_dir().unwrap_or_else(|_| target.to_path_buf());
     let focused = ws.focused_buffer();
     let mut renamed: Vec<(DocumentId, String)> = Vec::new();
@@ -223,10 +240,7 @@ mod tests {
     fn cd_targets() {
         let prev = PathBuf::from("/tmp");
         assert_eq!(cd_target(Some("-"), Some(&prev)), Ok(prev.clone()));
-        assert_eq!(
-            cd_target(Some("-"), None),
-            Err("E186: No previous directory".into())
-        );
+        assert_eq!(cd_target(Some("-"), None), Err(CdError::NoPrevious));
         assert_eq!(cd_target(Some("sub"), None), Ok(PathBuf::from("sub")));
     }
 
