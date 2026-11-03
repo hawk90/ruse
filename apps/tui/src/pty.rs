@@ -33,10 +33,10 @@ pub fn encode_key(key: KeyEvent) -> Option<Vec<u8>> {
             let lc = c.to_ascii_lowercase();
             if lc.is_ascii_alphabetic() {
                 vec![lc as u8 - b'a' + 1] // C-a = 0x01 … C-z = 0x1a
-            } else if c == ' ' {
-                vec![0] // C-space = NUL
             } else {
-                utf8(c)
+                // The other C0 chords as their control byte (`C-@`/`C-Space` = NUL, `C-\` = 0x1c, also when
+                // a legacy terminal delivered it as `C-4`), never as the bare char (#603).
+                crate::keys::encode(key).unwrap_or_else(|| utf8(c))
             }
         }
         KeyCode::Char(c) => utf8(c),
@@ -185,4 +185,23 @@ fn spawn_reader(mut fd: File, tx: Sender<Vec<u8>>) -> JoinHandle<()> {
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// #603: a C0 punctuation chord reaches the child as its control byte, also in the `CTRL-4`..`CTRL-7`
+    /// form crossterm decodes from a legacy terminal, never as the bare digit.
+    #[test]
+    fn ctrl_chords_forward_as_control_bytes() {
+        let ctrl = |c| encode_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
+        assert_eq!(ctrl('a'), Some(vec![0x01]));
+        assert_eq!(ctrl(' '), Some(vec![0x00]));
+        assert_eq!(ctrl('4'), Some(vec![0x1c]));
+        assert_eq!(ctrl('\\'), Some(vec![0x1c]));
+        assert_eq!(ctrl('5'), Some(vec![0x1d]));
+        assert_eq!(ctrl(']'), Some(vec![0x1d]));
+        assert_eq!(ctrl('7'), Some(vec![0x1f]));
+    }
 }

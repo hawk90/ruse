@@ -840,6 +840,20 @@ impl Workspace {
         }
     }
 
+    /// Move focus to the previous Window in tile order, wrapping (Vim `C-w W`). No-op with one Window.
+    pub fn focus_prev(&mut self) {
+        if !self.windows.is_empty() {
+            self.focus = (self.focus + self.windows.len() - 1) % self.windows.len();
+        }
+    }
+
+    /// Focus the `i`th Window in tile order (0-based), clamped to the last one (Vim `{count}C-w w`).
+    pub fn focus_window(&mut self, i: usize) {
+        if !self.windows.is_empty() {
+            self.focus = i.min(self.windows.len() - 1);
+        }
+    }
+
     /// Split the focused Window into a second Window onto the SAME buffer, in direction `dir`, and
     /// focus the new pane (Vim opens and focuses the new split). The new View is a CLONE of the focused
     /// View — same buffer id, same cursor/scroll/registers/config snapshot — so both panes start at the

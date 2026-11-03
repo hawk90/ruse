@@ -52,8 +52,9 @@ const LSP_TICK_MS: u64 = 100;
 enum Prefix {
     /// No session prefix is armed.
     None,
-    /// `C-w` (Normal mode): the next key is a window command (F-007).
-    Window,
+    /// `C-w` (Normal mode): the next key is a window command (F-007). Holds the count typed before `C-w` or
+    /// between it and the command (0 = none): `{count}C-w w` goes to window `count` (#1068).
+    Window(u32),
     /// `z` (Normal or Visual): the next key is a scroll or fold verb (`zz`/`zt`/`zb`/`zf`/`zo`…). Holds the
     /// count typed before `z` (0 = none): `{count}zt` puts line `count` at the top (#850).
     Z(u32),
@@ -726,10 +727,17 @@ impl Session {
     /// split Alt chord (typed, #896), else the next key of a macro replay (`@{reg}`, `@:`). The caller runs
     /// a full frame before each one and feeds it to [`Session::on_key`] before reading the terminal.
     pub(crate) fn next_queued(&mut self) -> Option<(KeyEvent, bool)> {
-        match self.meta_tail.take() {
-            Some(k) => Some((k, false)),
-            None => self.macros.next_replay().map(|k| (k, true)),
+        if let Some(k) = self.meta_tail.take() {
+            return Some((k, false));
         }
+        // A linewise-Visual `@{reg}` runs on each line from its column 0, clamped to the last line.
+        if let Some(line) = self.macros.next_line_run() {
+            let b = self.ws.focused().doc.bytes();
+            let lines = ruse_core::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
+            let at = ruse_core::pos::nth_line_start(b, line.min(lines.saturating_sub(1)));
+            self.ws.place_focused_cursor(at);
+        }
+        self.macros.next_replay().map(|k| (k, true))
     }
 
     /// Route one key through the session (#878): the macro state machine, the LSP hover / completion
@@ -908,13 +916,12 @@ impl Session {
         // and `Q` are commands only at a command boundary (#679, #680, #851): not while an overlay or a
         // session prefix (`C-w`, `z`, …) owns the key, not in Insert or on the command line, and not while
         // the engine waits for one (`fq`, `"q`, `gq`, `dq`, a Native leader key), where the `q` or `@` is
-        // that key. `q` also records and stops from Visual; `@`/`Q` are Normal-only.
+        // that key. `q`, `@` and `Q` also work from Visual (nvim 0.12.6, #1068), but not from Select.
         let boundary =
             !overlay && matches!(prefix, Prefix::None) && engine.pending() == Pending::Base;
         let mode = ws.focused().view.mode();
-        let macro_normal = boundary && matches!(mode, Mode::Normal);
-        let macro_q = boundary && matches!(mode, Mode::Normal | Mode::Visual { .. });
-        let step = macros.step_gated(raw_key, from_replay, macro_normal, macro_q);
+        let macro_cmd = boundary && matches!(mode, Mode::Normal | Mode::Visual { .. });
+        let step = macros.step_gated(raw_key, from_replay, macro_cmd, macro_cmd);
         // A count typed before `q` (record or stop), `Q` with nothing recorded, or an aborted register name
         // is discarded, as in nvim (`3qaxq` deletes one char); only an armed `@` keeps it for its replay.
         if matches!(
@@ -946,6 +953,23 @@ impl Session {
                 // across all copies, so `999@a` of a big macro still terminates.
                 let n = engine.take_count().max(1);
                 let bytes = ws.register_bytes(Some(reg));
+                // In linewise Visual nvim runs the register on each selected line instead (`v_@-default`:
+                // `:'<,'>normal! @{reg}`), ignoring the count: leave Visual, then one run per line.
+                if mode
+                    == (Mode::Visual {
+                        kind: ruse_core::SelectKind::Linewise,
+                    })
+                {
+                    let pane = ws.focused();
+                    let b = pane.doc.bytes();
+                    if let Some((s, e)) = pane.view.selection_span(b) {
+                        let first = ruse_core::pos::line_of(b, s);
+                        let last = ruse_core::pos::line_of(b, e.saturating_sub(1).max(s));
+                        macros.replay(b"\x1b");
+                        macros.replay_lines(first, last, bytes);
+                    }
+                    return;
+                }
                 for _ in 0..n {
                     if !macros.replay(&bytes) {
                         *status = "macro replay aborted (key limit)".to_string();
@@ -1184,12 +1208,14 @@ impl Session {
                         }
                         return;
                     }
-                    Mode::TerminalNormal => {
-                        if matches!(key.code, KeyCode::Char('i' | 'a' | 'A')) {
-                            run_cmd(Command::EnterTerminal, ws, files, recorded, status, quit);
-                            return;
-                        }
-                        // else: fall through to the normal editor grammar (read-only over an empty doc).
+                    // Only the plain keys resume: `<C-a>` / `<C-i>` are not `a` / `i` (#1069). Anything else
+                    // falls through to the normal editor grammar (read-only over an empty doc).
+                    Mode::TerminalNormal
+                        if matches!(key.code, KeyCode::Char('i' | 'a' | 'A'))
+                            && !crate::input::is_chord(key) =>
+                    {
+                        run_cmd(Command::EnterTerminal, ws, files, recorded, status, quit);
+                        return;
                     }
                     _ => {}
                 }
@@ -1460,9 +1486,17 @@ impl Session {
         // F-007 window layer: a `C-w` prefix (Normal mode, no command-line, not Insert where `C-w`
         // deletes a word) arms the next key as a window command. A thin frontend intercept for MVP;
         // F-003's keymap router will absorb it into a proper layer.
-        if matches!(prefix, Prefix::Window) {
+        if let Prefix::Window(count) = *prefix {
+            // A count may also follow `C-w` (`C-w 3 w`, as in nvim); a leading `0` is not a count.
+            if let KeyCode::Char(d @ '0'..='9') = key.code {
+                if key.modifiers.is_empty() && (d != '0' || count > 0) {
+                    let digit = d.to_digit(10).unwrap_or(0);
+                    *prefix = Prefix::Window(count.saturating_mul(10).saturating_add(digit));
+                    return;
+                }
+            }
             *prefix = Prefix::None;
-            dispatch_window(key, ws, quit, status);
+            dispatch_window(key, count, ws, quit, status);
             return;
         }
         // The command-line window (`q:`/`q/`/`q?`) owns the keystream while open, like the `:` line: suppress
@@ -1519,8 +1553,7 @@ impl Session {
             return;
         }
         if chord && is_ctrl(key, 'w') {
-            engine.take_count();
-            *prefix = Prefix::Window;
+            *prefix = Prefix::Window(engine.take_count());
             return;
         }
         // F-014: `K` = hover, `<C-]>` = goto-definition (when the focused buffer has a live server; else
@@ -2912,12 +2945,23 @@ fn sync_special_registers(
 /// (Vim beeps). The full `C-w` family is post-MVP.
 fn dispatch_window(
     key: crossterm::event::KeyEvent,
+    count: u32,
     ws: &mut Workspace,
     quit: &mut bool,
     status: &mut String,
 ) {
+    // `{count}C-w w` / `{count}C-w W` go to window `count`, the last one when there are fewer (nvim 0.12.6:
+    // `9<C-w>w` with three windows lands in window 3); without a count they step to the next / previous.
+    let nth = |ws: &mut Workspace| {
+        let n = (count as usize).min(ws.window_count());
+        ws.focus_window(n - 1);
+    };
     match key.code {
-        KeyCode::Char('w') => ws.focus_next(),
+        KeyCode::Char('w' | 'W') if count > 0 => nth(ws),
+        _ if is_ctrl(key, 'w') && count > 0 => nth(ws),
+        _ if is_ctrl(key, 'w') => ws.focus_next(),
+        KeyCode::Char('w') if key.modifiers.is_empty() => ws.focus_next(),
+        KeyCode::Char('W') => ws.focus_prev(),
         KeyCode::Char('s') => {
             ws.split(SplitDir::Horizontal);
         }

@@ -2726,6 +2726,80 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn undo_puts_the_cursor_where_the_change_began() {
+        // #1063: not at the old byte offset. `x` on line 2, back to line 1, `u`: line 2 again.
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::MoveDown,
+                Command::MoveRight,
+                Command::DeleteUnder(1),
+                Command::MoveUp,
+                Command::Undo,
+            ],
+        );
+        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\ndef", 5));
+        // Redo goes there too, and so do `g-` / `g+`.
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::MoveDown,
+                Command::MoveRight,
+                Command::DeleteUnder(1),
+                Command::Undo,
+                Command::MoveUp,
+                Command::Redo,
+            ],
+        );
+        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\ndf", 5));
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::MoveDown,
+                Command::DeleteUnder(1),
+                Command::MoveUp,
+                Command::UndoOlder,
+            ],
+        );
+        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\ndef", 4));
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::MoveDown,
+                Command::DeleteUnder(1),
+                Command::UndoOlder,
+                Command::MoveUp,
+                Command::UndoNewer,
+            ],
+        );
+        assert_eq!((text(&st).as_str(), st.cursor()), ("abc\nef", 4));
+    }
+
+    #[test]
+    fn undo_from_insert_may_leave_the_cursor_past_the_line_end() {
+        // `Ax<C-o>u`: the append began past the last char, and Insert may rest there (Normal clamps).
+        let st = run(
+            "ab",
+            &[
+                Command::AppendLineEnd,
+                Command::InsertChar('x'),
+                Command::Undo,
+            ],
+        );
+        assert_eq!((text(&st).as_str(), st.cursor()), ("ab", 2));
+        let st = run(
+            "ab",
+            &[
+                Command::AppendLineEnd,
+                Command::InsertChar('x'),
+                Command::EnterNormal,
+                Command::Undo,
+            ],
+        );
+        assert_eq!((text(&st).as_str(), st.cursor()), ("ab", 1));
+    }
+
+    #[test]
     fn open_below_on_last_line() {
         let st = run("ab", &[Command::OpenBelow, Command::InsertChar('X')]);
         assert_eq!(text(&st), "ab\nX");

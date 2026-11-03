@@ -87,3 +87,15 @@ fn a_recorded_ctrl_bracket_replays_as_nothing() {
     // A macro holding `i<C-]>Z<Esc>` used to record `<C-]>` as `5`; replayed, it typed `5Z`.
     assert_eq!(edit("x\n", "qai\u{1d}Z\u{1b}q@a"), "ZZx\n");
 }
+
+/// #1069: in Terminal-Normal mode only a plain `i`/`a`/`A` resumes Terminal mode. `<C-a>` (0x01) used to,
+/// so the `:q!` after it went to the shell. Neovim: `<C-a>` stays in Terminal-Normal and `:q!` quits.
+#[test]
+fn terminal_normal_ctrl_a_does_not_resume_terminal_mode() {
+    let dir = Scratch::new();
+    let mut ed = Editor::start(&dir, &[]);
+    ed.keys(":terminal\r");
+    // `CTRL-\ CTRL-N` as a legacy terminal sends it (0x1c 0x0e), then `<C-a>`.
+    ed.keys("\u{1c}\u{e}\u{1}:q!\r");
+    assert_eq!(ed.exit_status(), 0, "`<C-a>` resumed Terminal mode");
+}

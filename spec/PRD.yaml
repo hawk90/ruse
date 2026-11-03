@@ -194,7 +194,9 @@ features:
     # <S-Left>/<C-Left> = b, <S-Right>/<C-Right> = w, <C-Home> = gg, <C-End>, g<Down>/g<Up>/g<Home>/g<End>.
     # `U` (#605) undoes the latest changes on the last changed line as one undoable change (a second `U`
     # redoes, `.` does not repeat it); see crates/core/src/line_undo.rs for the save/drop rules and the one
-    # deliberate divergence (the saved line follows lines added or deleted above it). Also #605: `{count}:`
+    # deliberate divergence (the saved line follows lines added or deleted above it). `u`/CTRL-R/`g-`/`g+`
+    # (#1063) put the cursor where the change began, as nvim's `u_undoredo` does (crates/core/src/
+    # undo_cursor.rs). Also #605: `{count}:`
     # opens the line on the count's lines, CTRL-\ CTRL-N / CTRL-\ CTRL-G go to Normal, 'tildeop' (`:set
     # top`) makes `~` an operator, `z+`/`z^` scroll past the window's ends, `g8` prints the UTF-8 bytes,
     # `q`/`@` take the numbered and unnamed registers, and `zp`/`zP`/`zy` paste and yank a block without
@@ -255,6 +257,8 @@ features:
     # captures RAW KEYSTROKES and stores them as bytes in these same a-z registers, replayed by re-feeding the
     # input engine (so `"ap` shows a macro and yanked text runs as one). This is a distinct mechanism from
     # dot-repeat/trace (which record resolved Commands), and not an F-029 acceptance criterion. See macros.md.
+    # #1068: `q`, `@{reg}` and `Q` also work from Visual; in linewise Visual `@{reg}`/`Q` run once per
+    # selected line from column 0 (nvim's `v_@-default`, `:'<,'>normal! @{reg}`), ignoring the count.
     status: done
     depends_on: [C-EDITLANG, C-REGISTER]
     summary: Named/unnamed/yank-only registers via the `"{register}` prefix + p/P; entries carry a shape that survives round-trip. Census anchor = the `"` selection key (registers are a prefix, not a dedicated surface); numbered ring, black-hole, expression and clipboard registers ship beyond these criteria. Macros (q/@) reuse these registers (D-055).
@@ -501,6 +505,8 @@ features:
     # layout (`!` abandons every change), `:cq [N]` exits with status N, `:hide` and the `!` forms of
     # `:close`/`:only` are accepted. A buffer is never unloaded by a window close, so `:q!` in a split
     # keeps a hidden buffer's changes (nvim discards them) — the conservative side of #736.
+    # #1068: `{count}C-w w` / `C-w {count}w` / `{count}C-w W` go to window `count` (the last one when there
+    # are fewer); `C-w C-w` = `C-w w`, `C-w W` steps back.
     status: done
     depends_on: [C-VIEW, C-WORKSPACE]
     summary: Same buffer openable in multiple views; view-local state stays in the view.

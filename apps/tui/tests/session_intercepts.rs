@@ -86,6 +86,52 @@ fn ctrl_w_q_closes_a_split_without_quitting() {
     assert_eq!(h.workspace().window_count(), 1);
 }
 
+/// #1068: `{count}C-w w` goes to window `count`, clamped to the last one; the count may also follow `C-w`.
+/// nvim 0.12.6 with three windows: `2<C-w>w` -> 2, `9<C-w>w` -> 3, `<C-w>3w` -> 3, `1<C-w>W` -> 1.
+/// (ruse opens a split below the focused window, nvim above, so the window numbers differ; the count
+/// semantics are what is pinned.)
+#[test]
+fn counted_ctrl_w_w_goes_to_that_window() {
+    let focus = |keys: &str| {
+        let mut h = Headless::vim(
+            "a
+b
+",
+        );
+        h.keys("<C-w>s<C-w>s").keys(keys);
+        assert_eq!(h.workspace().window_count(), 3);
+        h.workspace().focus()
+    };
+    assert_eq!(focus(""), 2);
+    assert_eq!(focus("1<C-w>w"), 0);
+    assert_eq!(focus("2<C-w>w"), 1);
+    assert_eq!(
+        focus("9<C-w>w"),
+        2,
+        "a count past the last window goes to the last"
+    );
+    assert_eq!(focus("1<C-w><C-w>"), 0);
+    assert_eq!(focus("<C-w>1w"), 0, "the count may follow C-w");
+    assert_eq!(focus("<C-w>12w"), 2);
+    assert_eq!(focus("1<C-w>W"), 0);
+    // Without a count `w` / `C-w` step forward and `W` back, wrapping.
+    assert_eq!(focus("<C-w>w"), 0);
+    assert_eq!(focus("<C-w><C-w>"), 0);
+    assert_eq!(focus("<C-w>W"), 1);
+    assert_eq!(focus("1<C-w>w<C-w>W"), 2);
+    // The count is the window command's: it does not leak into the next command.
+    let mut h = Headless::vim(
+        "abcdef
+",
+    );
+    h.keys("<C-w>s2<C-w>wx");
+    assert_eq!(
+        h.text(),
+        "bcdef
+"
+    );
+}
+
 // ---- `z` scroll prefix (observed through `H`/`M`/`L`, which read the viewport) ---------------------------
 
 #[test]
@@ -432,6 +478,55 @@ fn at_colon_without_an_ex_line_is_e30() {
     let mut h = Headless::vim("a\n");
     h.keys("@:");
     assert_eq!(h.status(), "E30: No previous command line");
+}
+
+/// #1068: `@{reg}` and `Q` run from charwise and blockwise Visual as if the keys were typed there, the count
+/// repeating them; `q` records from Visual. Ground truth: nvim 0.12.6, typed keys.
+#[test]
+fn at_and_q_run_a_macro_in_visual() {
+    const ONE: &str = "abc def ghi\n";
+    assert_eq!(edit(ONE, "qalq0v@ad"), "c def ghi\n");
+    assert_eq!(edit(ONE, "qalq0v2@ad"), " def ghi\n");
+    assert_eq!(edit(ONE, "qalq0vQd"), "c def ghi\n");
+    assert_eq!(edit(ONE, "qaxq0v@a"), "c def ghi\n");
+    assert_eq!(edit(ONE, "vqalqd"), "c def ghi\n");
+    assert_eq!(
+        edit("abc\ndef\nghi\njkl\n", "qaxqj<C-v>j@ad"),
+        "bc\nef\nhi\njkl\n"
+    );
+    // `@:` from Visual repeats the Ex line over the selection (`:'<,'>`).
+    assert_eq!(edit("a\na\na\na\n", ":s/a/X/<CR>jvj@:"), "X\nX\nX\na\n");
+    // A Select-mode `@` is typed text, not a macro.
+    assert_eq!(edit(ONE, "qalq0gh@"), "@bc def ghi\n");
+}
+
+/// #1068: in linewise Visual, `@{reg}` and `Q` run the register once per selected line from its column 0
+/// and ignore the count (nvim's `v_@-default`, `:'<,'>normal! @{reg}`). Ground truth: nvim 0.12.6.
+#[test]
+fn linewise_visual_at_runs_the_macro_on_each_line() {
+    const FOUR: &str = "abc\ndef\nghi\njkl\n";
+    let run = |keys: &str| {
+        let mut h = Headless::vim(FOUR);
+        h.keys(keys);
+        assert!(!h.quit());
+        (h.text(), h.cursor_row_col())
+    };
+    assert_eq!(run("qaxqjVj@a"), ("bc\nef\nhi\njkl\n".into(), (3, 0)));
+    assert_eq!(run("qaxqjVj3@a"), ("bc\nef\nhi\njkl\n".into(), (3, 0)));
+    assert_eq!(run("qaxqjVjQ"), ("bc\nef\nhi\njkl\n".into(), (3, 0)));
+    assert_eq!(run("qaxqGVk@a"), ("bc\ndef\nhi\nkl\n".into(), (4, 0)));
+    // `@@` afterwards repeats it once, in Normal mode.
+    assert_eq!(run("qaxqjVj@a@@"), ("bc\nef\ni\njkl\n".into(), (3, 0)));
+    // Each run starts at column 0, and one left in Insert is ended before the next line.
+    assert_eq!(
+        run("qaAx<Esc>qjVj@a"),
+        ("abcx\ndefx\nghix\njkl\n".into(), (3, 3))
+    );
+    // Lines are not renumbered after a run deletes some: line 2 of what is left is next. (Unterminated, as
+    // `dd` on the last line of a terminated buffer leaves the cursor past it.)
+    let mut h = Headless::vim("abc\ndef\nghi\njkl");
+    h.keys("qaddqVj@a");
+    assert_eq!((h.text(), h.cursor_row_col()), ("ghi".into(), (1, 0)));
 }
 
 #[test]

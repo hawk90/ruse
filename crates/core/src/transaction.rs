@@ -36,6 +36,9 @@ pub struct Transaction {
     pub origin: TransactionOrigin,
     /// How this change groups with the previous one for undo (persistence §6).
     pub group_hint: GroupHint,
+    /// Where the cursor stood when the change began (Vim's `uh_cursor`), in the text before it — where
+    /// `u`/`C-r` put the cursor back. `None` takes the start of the first edited line.
+    pub cursor: Option<usize>,
 }
 
 impl Transaction {
@@ -47,7 +50,15 @@ impl Transaction {
             edits,
             origin,
             group_hint: GroupHint::Continue,
+            cursor: None,
         }
+    }
+
+    /// Record where the cursor stood when this change began (see [`Transaction::cursor`]).
+    #[must_use]
+    pub fn with_cursor(mut self, cursor: usize) -> Transaction {
+        self.cursor = Some(cursor);
+        self
     }
 
     /// Set an explicit grouping hint (`BreakBefore` / `JoinPrev`).

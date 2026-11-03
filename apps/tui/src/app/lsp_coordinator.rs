@@ -679,12 +679,14 @@ impl LspCoordinator {
         files: &Files,
         snapshot: &[u8],
     ) -> bool {
-        if !(normal && (matches!(key.code, KeyCode::Char('K')) || is_ctrl(key, ']'))) {
+        // `K` only unmodified (SHIFT aside); `<C-]>` in either encoding (a legacy terminal sends `CTRL-5`).
+        let k = matches!(key.code, KeyCode::Char('K')) && !crate::input::is_chord(key);
+        if !(normal && (k || is_ctrl(key, ']'))) {
             return false;
         }
         if let Some((key_s, uri)) = self.focused_server(ws, files) {
             let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, ws.focused().view.cursor());
-            let hover = matches!(key.code, KeyCode::Char('K'));
+            let hover = k;
             let method = if hover {
                 "textDocument/hover"
             } else {

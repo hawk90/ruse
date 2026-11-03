@@ -136,9 +136,13 @@ pub(crate) fn open_file_into_buffer(
     }
 }
 
-/// Whether `key` is `CTRL-<c>`. Shared frontend key predicate.
+/// Whether `key` is `CTRL-<c>`. Shared frontend key predicate. A C0 punctuation chord also matches the key
+/// a legacy terminal delivers for it: crossterm decodes `CTRL-\ CTRL-] CTRL-^ CTRL-_` (0x1c..0x1f) as
+/// `CTRL-4`..`CTRL-7` and `CTRL-@` (NUL) as `CTRL-Space` (#603, #1069).
 pub(crate) fn is_ctrl(key: KeyEvent, c: char) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char(c)
+    key.modifiers.contains(KeyModifiers::CONTROL)
+        && (key.code == KeyCode::Char(c)
+            || crate::keys::legacy_ctrl_alias(c).is_some_and(|a| key.code == KeyCode::Char(a)))
 }
 
 /// One file buffer's on-disk identity: its path and the detected encoding/line-ending to restore on save
@@ -864,6 +868,27 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
 mod dispatch_tests {
     use super::*;
     use ruse_core::Command;
+
+    /// #1069: a C0 punctuation chord matches in both encodings — the kitty protocol's `CTRL-]` and the
+    /// `CTRL-5` crossterm decodes from a legacy terminal's 0x1d — and a letter chord only as itself.
+    #[test]
+    fn is_ctrl_accepts_the_legacy_encoding_of_punctuation_chords() {
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+        for (c, legacy) in [('\\', '4'), (']', '5'), ('^', '6'), ('_', '7'), ('@', ' ')] {
+            assert!(is_ctrl(ctrl(c), c), "CTRL-{c}");
+            assert!(is_ctrl(ctrl(legacy), c), "CTRL-{c} sent as CTRL-{legacy}");
+            assert!(!is_ctrl(
+                KeyEvent::new(KeyCode::Char(legacy), KeyModifiers::NONE),
+                c
+            ));
+        }
+        assert!(is_ctrl(ctrl('w'), 'w'));
+        assert!(!is_ctrl(ctrl('5'), 'w'));
+        assert!(!is_ctrl(
+            KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE),
+            ']'
+        ));
+    }
 
     /// `:q` refuses (E37) once the focused buffer is modified; `:q!` quits regardless; a clean `:q` quits.
     #[test]

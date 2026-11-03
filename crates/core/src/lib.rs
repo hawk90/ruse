@@ -41,6 +41,7 @@ mod textobj;
 pub mod trace;
 pub mod transaction;
 pub mod undo;
+mod undo_cursor;
 pub mod workspace;
 
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
@@ -69,7 +70,8 @@ pub use registry::{
 pub use snapshot::{AnchorIndex, DocumentSnapshot};
 pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};
-pub use undo::{MonotonicSeq, UndoHistory};
+pub use undo::{MonotonicSeq, UndoHistory, UndoStep};
+pub use undo_cursor::UndoCursor;
 pub use workspace::{Pane, SplitDir, ViewId, Window, Workspace};
 
 /// Reject a transaction whose base revision is stale (INV-TXN, ENG-TXN-001). Retained as the kernel's

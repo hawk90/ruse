@@ -46,6 +46,9 @@ pub struct MacroState {
     last_recorded: Option<char>, // the last register a recording COMPLETED into (lowercased), for `Q`
     queue: VecDeque<KeyEvent>,
     budget: u32,
+    /// A linewise-Visual `@{reg}` still to run on lines `.0..=.1` (0-based): the register's bytes, run once
+    /// per line from its column 0 (nvim `v_@-default`, i.e. `:'<,'>normal! @{reg}`; #1068).
+    line_run: Option<(usize, usize, Vec<u8>)>,
 }
 
 /// What the session should do with a key after [`MacroState::step`] has processed it.
@@ -104,6 +107,35 @@ impl MacroState {
         enqueue_macro(&mut self.queue, &mut self.budget, bytes)
     }
 
+    /// Replay `bytes` once for each line `first..=last` (0-based), after the keys already queued: the
+    /// linewise-Visual `@{reg}` and `Q`. Lines are numbered as they are now and not adjusted for lines the
+    /// runs add or delete, as in nvim's `:{range}normal`.
+    pub fn replay_lines(&mut self, first: usize, last: usize, bytes: Vec<u8>) {
+        self.line_run = Some((first, last, bytes));
+    }
+
+    /// Once the queue has drained, start the next line of a [`MacroState::replay_lines`] run: queue its keys
+    /// and an `<Esc>` that ends whatever they left unfinished (`:normal` aborts an incomplete command), and
+    /// return the line the caller puts the cursor on (column 0) first.
+    pub fn next_line_run(&mut self) -> Option<usize> {
+        if !self.queue.is_empty() {
+            return None;
+        }
+        let (next, last, bytes) = self.line_run.as_mut()?;
+        let line = *next;
+        if line > *last {
+            self.line_run = None;
+            return None;
+        }
+        *next += 1;
+        let mut keys = bytes.clone();
+        keys.push(0x1b);
+        if !enqueue_macro(&mut self.queue, &mut self.budget, &keys) {
+            self.line_run = None; // the key budget ran out: stop, like the other replays
+        }
+        Some(line)
+    }
+
     /// Whether `@` is armed and the next key names the register to replay. The session keeps the count typed
     /// before `@` for that replay; every other key the macro layer consumes discards it (#850).
     #[must_use]
@@ -120,7 +152,7 @@ impl MacroState {
     /// Vim records `@x`, not its expansion). The session derives both gates from one command-boundary test
     /// (`InputEngine::pending() == Pending::Base`, no command line, overlay or session prefix owning the
     /// key; #679, #680, #851):
-    /// - `normal`: that boundary in Normal mode. `@` and `Q` arm only here.
+    /// - `normal`: where `@` and `Q` arm: that boundary in Normal or Visual mode (#1068).
     /// - `q_cmd`: that boundary in Normal or Visual mode. A typed `q` is the record command only here: it
     ///   arms a recording or stops the live one. Anywhere else (Insert, the command line, a char argument
     ///   like `fq`/`"q`, an armed operator like `gq`/`dq`) it is an ordinary key (matches nvim v0.12.6).
@@ -202,7 +234,8 @@ impl MacroState {
                 None => Step::Consumed,
             };
         }
-        // Arm the prefixes (Normal only). `q` only arms when NOT recording (a recording `q` stopped above).
+        // Arm the prefixes (Normal and Visual). `q` only arms when NOT recording (a recording `q` stopped
+        // above).
         if q_cmd && self.recording.is_none() && is_bare(key, 'q') {
             self.pending_q = true;
             return Step::Consumed;
@@ -228,6 +261,22 @@ impl MacroState {
             };
         }
         Step::Dispatch(key)
+    }
+}
+
+/// The character a legacy terminal's `CTRL-<c>` arrives as when `c` is C0 punctuation: crossterm decodes
+/// `CTRL-\ CTRL-] CTRL-^ CTRL-_` (0x1c..0x1f) as `CTRL-4`..`CTRL-7` and `CTRL-@` (NUL) as `CTRL-Space`.
+/// `CTRL-[` is ESC and arrives as the `Esc` key. Every session handler that matches one of these chords
+/// accepts both forms (through `is_ctrl`), so the chord works with and without the kitty protocol.
+#[must_use]
+pub fn legacy_ctrl_alias(c: char) -> Option<char> {
+    match c {
+        '\\' => Some('4'),
+        ']' => Some('5'),
+        '^' => Some('6'),
+        '_' => Some('7'),
+        '@' => Some(' '),
+        _ => None,
     }
 }
 

@@ -291,13 +291,13 @@ fn insert_ctrl_x_ctrl_l_does_not_complete() {
 
 // ---- Terminal escape (`CTRL-\ CTRL-N`); the child is `/bin/sh` since the harness sets no SHELL --------
 
-/// Known divergence #603: under the legacy key encoding `CTRL-\` arrives as `CTRL-4`, so the escape prefix
-/// never arms and the keys go to the shell. Neovim leaves Terminal mode and `:q!` quits.
+/// #603: under the legacy key encoding `CTRL-\` arrives as `CTRL-4`; the escape prefix accepts it, so
+/// `CTRL-\ CTRL-N` leaves Terminal mode and `:q!` quits, as in Neovim.
 #[test]
-fn terminal_escape_does_not_arm_under_legacy_encoding() {
+fn terminal_escape_arms_under_legacy_encoding() {
     let dir = Scratch::new();
     let mut ed = Editor::start(&dir, &[]);
     ed.keys(":terminal\r");
     ed.keys("\u{1c}\u{e}:q!\r");
-    assert!(ed.is_running(), "`:q!` went to the shell");
+    assert_eq!(ed.exit_status(), 0, "`:q!` went to the shell");
 }

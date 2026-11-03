@@ -1291,8 +1291,13 @@ impl EditorState {
             .delete(None, Register::linewise(lines_text));
         let list = EditList::new(vec![Edit::delete(start, end - start)])
             .expect("a single line-range delete is well-formed");
+        // Vim moves the cursor to the range's first line (keeping its column) before deleting, so that is
+        // where `u` puts it back (nvim 0.12.6: `4l:3d<CR>u` -> line 3, column 4).
+        let col = self.view.cursor - line_start(bytes, self.view.cursor);
+        let undo_at = snap(bytes, (fs + col).min(lines[first].1));
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
-            .with_hint(GroupHint::BreakBefore);
+            .with_hint(GroupHint::BreakBefore)
+            .with_cursor(undo_at);
         self.doc
             .apply(txn)
             .expect("line-range delete applies cleanly");
@@ -2150,6 +2155,83 @@ fn edit_bracket(list: &EditList) -> Option<(usize, usize)> {
     Some((start, post_last_start + last.ins.len()))
 }
 
+/// Where a change begins for `u`/`C-r` (Vim's `uh_cursor`, #1063): the cursor at the moment Vim saves the
+/// first undo entry, which an operator has already moved to the start of its span. Inferred from the mode
+/// the change was made in and its first edit, since the plan does not carry the operator span.
+fn change_start(
+    b: &[u8],
+    mode: Mode,
+    cursor: usize,
+    anchor: Option<usize>,
+    edits: &EditList,
+) -> usize {
+    let Some(first) = edits.edits().first() else {
+        return cursor;
+    };
+    let pos = first.pos.0;
+    match (mode.selection(), anchor) {
+        // A selection operator starts at the selection's start; a linewise one at column 0 of its top line
+        // unless the cursor is the top end (nvim 0.12.6: `jlVj>u` -> col 0, `jjlVk>u` -> col 1).
+        (Some(SelectKind::Linewise), Some(a)) if a < cursor => line_start(b, a),
+        (Some(SelectKind::Linewise), _) => cursor,
+        (Some(SelectKind::Charwise), Some(a)) => a.min(cursor),
+        (Some(SelectKind::Blockwise), Some(a)) => {
+            let (top, bottom) = (a.min(cursor), a.max(cursor));
+            let col =
+                col_of(b, line_start(b, top), top).min(col_of(b, line_start(b, bottom), bottom));
+            at_col(b, line_start(b, top), col)
+        }
+        (Some(_), None) => pos.min(cursor),
+        // A text-entry session starts where the caret was when its first change landed.
+        _ if is_text_entry(mode) => cursor,
+        _ => {
+            let at_line_start = pos == 0 || b[pos - 1] == b'\n';
+            let end = pos + first.del;
+            // Deleting whole lines: `dd`/`dj` keep the cursor's column, so only the line can move up.
+            let whole_lines = first.del > 0
+                && ((at_line_start && (b[end - 1] == b'\n' || end == b.len()))
+                    || (b.get(pos) == Some(&b'\n') && end == b.len()));
+            if first.del > 0 && !whole_lines && pos < cursor {
+                // A charwise operator over a backward span (`db`, `d0`, `X`): its start.
+                pos
+            } else {
+                // A linewise operator reaching up (`dk`, `>k`): its first line, at the cursor's column.
+                let top = if whole_lines && !at_line_start {
+                    pos + 1
+                } else {
+                    pos
+                };
+                if top < line_start(b, cursor) {
+                    at_col(
+                        b,
+                        line_start(b, top),
+                        col_of(b, line_start(b, cursor), cursor),
+                    )
+                } else {
+                    cursor
+                }
+            }
+        }
+    }
+}
+
+/// The byte offset for an undo placement: the column on its line (clamped, and pulled off the newline in
+/// Normal mode as Vim's `check_cursor` does), or the sticky column when Vim would `beginline`.
+fn undo_target(st: &EditorState, placed: crate::undo_cursor::UndoCursor, mode: Mode) -> usize {
+    let b = st.doc.bytes();
+    let ls = crate::pos::nth_line_start(b, placed.line);
+    let le = line_end(b, ls);
+    let at = match placed.col {
+        Some(col) => snap(b, (ls + col).min(le)),
+        None => at_col(b, ls, st.view.curswant),
+    };
+    if at == le && ls < le && mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
+        prev_boundary(b, le)
+    } else {
+        at
+    }
+}
+
 /// Whether `mode` is one of the text-entry sessions (Insert / Replace / VirtualReplace) — used to decide how
 /// the `[`/`]` change marks are bounded (a whole typed run, tracked from session entry to exit) versus a
 /// one-shot Normal edit (bounded directly by its [`EditList`]).
@@ -2189,8 +2271,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         Action::Txn { edits, hint } => {
             edit_span = edit_bracket(&edits);
             st.doc.prime_line_undo(entry_cursor, new_command);
+            let start = change_start(
+                st.doc.bytes(),
+                entry_mode,
+                entry_cursor,
+                entry_anchor,
+                &edits,
+            );
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
-                .with_hint(hint);
+                .with_hint(hint)
+                .with_cursor(start);
             // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
             st.doc
                 .apply(txn)
@@ -2204,8 +2294,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         } => {
             edit_span = edit_bracket(&edits);
             st.doc.prime_line_undo(entry_cursor, new_command);
+            let start = change_start(
+                st.doc.bytes(),
+                entry_mode,
+                entry_cursor,
+                entry_anchor,
+                &edits,
+            );
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
-                .with_hint(hint);
+                .with_hint(hint)
+                .with_cursor(start);
             st.doc
                 .apply(txn)
                 .expect("planned transaction applies cleanly");
@@ -2217,13 +2315,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             }
         }
         Action::Undo => {
-            st.doc.undo();
+            let placed = st.doc.undo_from(entry_cursor);
+            nav_target = placed.map(|p| undo_target(st, p, plan.mode));
         }
         Action::Redo => {
-            st.doc.redo();
+            let placed = st.doc.redo_from(entry_cursor);
+            nav_target = placed.map(|p| undo_target(st, p, plan.mode));
         }
         Action::UndoChrono { older } => {
-            st.doc.undo_chronological(older);
+            let placed = st.doc.chronological_from(older, entry_cursor);
+            nav_target = placed.map(|p| undo_target(st, p, plan.mode));
         }
         Action::LineUndo => {
             nav_target = st.doc.line_undo(entry_cursor);
@@ -2245,8 +2346,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             if !edits.is_empty() {
                 edit_span = edit_bracket(&edits);
                 st.doc.prime_line_undo(entry_cursor, new_command);
+                let start = change_start(
+                    st.doc.bytes(),
+                    entry_mode,
+                    entry_cursor,
+                    entry_anchor,
+                    &edits,
+                );
                 let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
-                    .with_hint(hint);
+                    .with_hint(hint)
+                    .with_cursor(start);
                 st.doc
                     .apply(txn)
                     .expect("planned transaction applies cleanly");

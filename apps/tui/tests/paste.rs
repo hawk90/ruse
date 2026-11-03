@@ -71,9 +71,18 @@ fn crlf_and_cr_become_newlines() {
 
 #[test]
 fn normal_paste_is_one_undo_step_and_dot_repeats_it() {
-    // nvim's undo puts the cursor back at (1, 4); ruse leaves it on line 2 after undoing ANY multi-line
-    // insert, typed or pasted (`aP1<CR>P2<Esc>u` too), so only the text is pinned here.
-    assert_eq!(paste(4, "", "P1\nP2", "u").text(), TEXT);
+    // Undo puts the cursor back where the paste began, and redo too (#1063). DIVERGENCE: nvim says (1, 4),
+    // since its Normal-mode paste is a put that leaves the cursor where it was; ruse pastes as `a` does,
+    // so the change begins one column right, where `a` put the caret.
+    check(&paste(4, "", "P1\nP2", "u"), TEXT, (1, 5), Mode::Normal);
+    check(
+        &paste(4, "", "P1\nP2", "u<C-r>"),
+        "abc dP1\nP2ef\nxyz\n  ind\n",
+        (1, 5),
+        Mode::Normal,
+    );
+    // The same after a typed multi-line insert (nvim: `4laP1<CR>P2<Esc>u` -> (1, 5)).
+    check(&at(4, "aP1<CR>P2<Esc>u"), TEXT, (1, 5), Mode::Normal);
     check(
         &paste(4, "", "PP", "j0."),
         "abc dPPef\nxPPyz\n  ind\n",
@@ -139,8 +148,12 @@ fn insert_paste_gets_no_autoindent() {
 
 #[test]
 fn insert_paste_is_one_undo_step_with_the_insert_and_dot_repeats() {
-    // Text only: see the undo-cursor note in `normal_paste_is_one_undo_step_and_dot_repeats_it`.
-    assert_eq!(paste(4, "iZ", "P1\nP2", "<Esc>u").text(), TEXT);
+    check(
+        &paste(4, "iZ", "P1\nP2", "<Esc>u"),
+        TEXT,
+        (1, 4),
+        Mode::Normal,
+    );
     check(
         &paste(4, "i", "PP", "<Esc>j0."),
         "abc PPdef\nPPxyz\n  ind\n",

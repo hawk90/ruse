@@ -15,7 +15,8 @@ use crate::line_undo::LineUndo;
 use crate::pos::Revision;
 use crate::snapshot::{AnchorIndex, DocumentSnapshot};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
-use crate::undo::{MonotonicSeq, UndoHistory};
+use crate::undo::{MonotonicSeq, UndoHistory, UndoStep};
+use crate::undo_cursor::{self, UndoCursor};
 
 /// A typed, generation-free document handle (INV-HANDLE). Process-unique id per open document.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -182,8 +183,15 @@ impl Document {
         );
         self.anchors.apply_edits(&txn.edits);
         let (origin, hint) = (txn.origin, txn.group_hint);
+        // Without an explicit start cursor, the change began at the start of its first edited line.
+        let cursor = txn.cursor.unwrap_or_else(|| {
+            txn.edits
+                .edits()
+                .first()
+                .map_or(0, |e| crate::pos::line_start(&self.text, e.pos.0))
+        });
         self.undo
-            .record(txn.edits, inverse, origin, hint, self.revision);
+            .record(txn.edits, inverse, origin, hint, self.revision, cursor);
         self.rebuild_index();
         Ok(self.revision)
     }
@@ -192,26 +200,12 @@ impl Document {
     /// root. Re-applies each node's inverse (a whole insert session / operator undoes in one step) and moves
     /// `current` to the node below the group — the revision advances (INV-TXN §2) but no new node is created.
     pub fn undo(&mut self) -> Option<Revision> {
-        let inverses = self.undo.undo();
-        if inverses.is_empty() {
-            return None;
-        }
-        for edits in &inverses {
-            self.reapply(edits);
-        }
-        Some(self.revision)
+        self.undo_from(0).map(|_| self.revision)
     }
 
     /// Redo the next change **group** along the newest branch, or `None` if there is nothing to redo.
     pub fn redo(&mut self) -> Option<Revision> {
-        let forwards = self.undo.redo();
-        if forwards.is_empty() {
-            return None;
-        }
-        for edits in &forwards {
-            self.reapply(edits);
-        }
-        Some(self.revision)
+        self.redo_from(0).map(|_| self.revision)
     }
 
     /// Move one logical change along CHRONOLOGICAL creation order — `g-` (`older = true`) to the
@@ -219,14 +213,48 @@ impl Document {
     /// abandoned by a new edit is still reachable (Vim `g-`/`g+`). Returns the new revision, or
     /// `None` at either end. Re-applies the transforming edits; no new node is created.
     pub fn undo_chronological(&mut self, older: bool) -> Option<Revision> {
-        let edits = self.undo.to_chronological(older);
-        if edits.is_empty() {
-            return None;
+        self.chronological_from(older, 0).map(|_| self.revision)
+    }
+
+    /// [`Document::undo`] that also says where Vim leaves the cursor; `cursor` is the caret before it.
+    pub fn undo_from(&mut self, cursor: usize) -> Option<UndoCursor> {
+        let step = self.undo.undo()?;
+        Some(self.replay(step, cursor))
+    }
+
+    /// [`Document::redo`] that also says where Vim leaves the cursor; `cursor` is the caret before it.
+    pub fn redo_from(&mut self, cursor: usize) -> Option<UndoCursor> {
+        let step = self.undo.redo()?;
+        Some(self.replay(step, cursor))
+    }
+
+    /// [`Document::undo_chronological`] that also says where Vim leaves the cursor.
+    pub fn chronological_from(&mut self, older: bool, cursor: usize) -> Option<UndoCursor> {
+        let step = self.undo.to_chronological(older)?;
+        Some(self.replay(step, cursor))
+    }
+
+    /// Apply an undo step and place the cursor from its last group, as Vim's `u_undoredo` does (#1063).
+    fn replay(&mut self, step: UndoStep, cursor: usize) -> UndoCursor {
+        let cur_line = crate::pos::line_of(&self.text, cursor);
+        let mut entries = Vec::new();
+        let mut uh = (0, 0);
+        for (i, edits) in step.edits.iter().enumerate() {
+            if i == step.tail && step.forward {
+                // A redo's `uh_cursor` is in the text before the change, which is the text right now.
+                uh = undo_cursor::line_col(&self.text, step.cursor);
+            }
+            let old = Arc::clone(&self.text);
+            self.reapply(edits);
+            if i >= step.tail {
+                undo_cursor::entries(&old, &self.text, edits, &mut entries);
+            }
         }
-        for e in &edits {
-            self.reapply(e);
+        if !step.forward {
+            // An undo's `uh_cursor` is in the text the undo restores.
+            uh = undo_cursor::line_col(&self.text, step.cursor);
         }
-        Some(self.revision)
+        undo_cursor::place(&entries, uh, cur_line, undo_cursor::line_count(&self.text))
     }
 
     /// Before a change: the caret it starts from (the column `U` returns to) and whether it begins a new
@@ -256,7 +284,8 @@ impl Document {
         let list =
             EditList::new(vec![Edit::replace(s, e - s, text)]).expect("one edit is disjoint");
         let txn = Transaction::new(self.revision, list, TransactionOrigin::UserInput)
-            .with_hint(GroupHint::BreakBefore);
+            .with_hint(GroupHint::BreakBefore)
+            .with_cursor(cursor);
         self.apply_inner(txn, false)
             .expect("the saved line's span is in range");
         Some(s + col.min(len))
