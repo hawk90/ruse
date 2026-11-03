@@ -201,8 +201,12 @@ frontend viewport pass from the cursor's row.
 for it (the `>` filler for a wide glyph that does not fit in a row's last cell, the `'showbreak'` /
 `'breakindent'` head of each continuation row, the `'linebreak'` padding), so with `'wrap'` a cell's virtual
 column is `row × width + col`. `'list'` / `'listchars'` decide what tabs, spaces, nbsp and the line end show.
-The window's gutter (`'signcolumn'` with the diagnostics' `E`/`W`/`I`/`H`, then `'number'` /
-`'relativenumber'` / `'numberwidth'`) narrows the text area; `ui/window_view.rs` resolves a window's options
+A character nvim does not print shows transcribed, one cell per character, never raw (#1181): `^X` for a C0
+control and `^?` for DEL (`<xx>` under `'display'` `uhex`), `<xx>` for a C1 control, `<xxxx>` for the format
+and bidi-control characters nvim's `utf_printable` refuses. `Screen::put_styled` transcribes too, so no
+control byte from a buffer, a file name or a message ever reaches the terminal. The window's gutter
+(`'foldcolumn'` with nvim's `fill_foldcolumn` marks, `'signcolumn'` with the diagnostics' `E`/`W`/`I`/`H`,
+then `'number'` / `'relativenumber'` / `'numberwidth'`) narrows the text area; `ui/window_view.rs` resolves a window's options
 (window-local on its View, global-local over the session's globals) into a `WinView` per frame, which the
 viewport pass, the painter and the key handlers share. The layout is unit-tested against 528 nvim screens.
 
@@ -210,16 +214,33 @@ viewport pass, the painter and the key handlers share. The layout is unit-tested
 'smoothscroll': `scroll_cursor_top` / `scroll_cursor_bot` / `scroll_cursor_halfway`) moves `top` so the cursor
 line shows whole with `'scrolloff'` rows of context, counting wrapped rows and a closed fold as one row; a jump
 further than about half a window centres the cursor line, and `'scrolljump'` is the least it scrolls. A cursor
-line taller than the window shows from the row that keeps the cursor on screen. Without `'wrap'` the window
+line taller than the window shows from the row that keeps the cursor on screen (nvim's `curs_columns`
+`w_skipcol`, kept on the View as `skipcol`). Without `'wrap'` the window
 scrolls sideways (`View.leftcol`): nvim's `curs_columns` with `'sidescroll'` / `'sidescrolloff'`, plus
 `zh` / `zl` / `zH` / `zL` / `zs` / `ze`. The screen-line motions `gj` / `gk` / `g0` / `g^` / `gm` / `g$` are
 resolved by the frontend in these rows (nvim's `nv_screengo`) and handed to the engine as a `go`-style byte
 target, so operators compose and the trace replays them.
 
+**Scroll keys.** `scroll.rs` ports nvim's `move.c` scroll commands over the same rows: `CTRL-E` / `CTRL-Y`
+(`scroll_redraw`, `scrollup`, `scrolldown`), `CTRL-D` / `CTRL-U` by the window's `'scroll'` and
+`CTRL-F` / `CTRL-B` by a page less nvim's overlap (`pagescroll`, `scroll_with_sms`, `get_scroll_overlap`), with
+the `'scrolloff'` correction (`cursor_correct`, `cursor_correct_sms`). As in nvim the page commands scroll by
+rows with `'smoothscroll'` switched on and then put the top line back on a line boundary, so over wrapped
+lines the view and the cursor move by different amounts. With `'smoothscroll'` the top line can start inside
+a line (`skipcol`), marked `<<<`. A scroll that nvim marks `VALID_TOPLINE` is kept by the next frame until
+the cursor or the text moves. Known gap: after a scroll that lands short of nvim's wanted column (the
+`CTRL-U` screen column on a shorter line), a later `j` / `G` aims at the landing column, because the core has
+no command that sets the wanted column alone.
+
 **Rendering.** `render` paints each window's lines from `top` through the layout, the last line that does not
 fit as `'display'` says (`lastline` `@@@`, `truncate`, or `@` rows), and places the terminal cursor on the
-cursor's cell (a tab's last cell in Normal mode, as nvim). Known gaps: no `~` end-of-buffer rows
-(`'fillchars'`), no 'smoothscroll', and `CTRL-F` / `CTRL-D` count buffer lines, not wrapped rows.
+cursor's cell (a tab's last cell in Normal mode, as nvim). Rows after the last line show `'fillchars'` `eob`
+(`~`); a closed fold's row is filled with `fold`; `vert` / `horiz` draw the split dividers. `'cursorline'`
+(`'cursorlineopt'` `line` / `screenline` / `number`), `'cursorcolumn'` and `'colorcolumn'` are background
+overlays at virtual columns, as nvim places them: on the row of a wrapped line that holds that column, and on
+no row past the line's last. `'statuscolumn'` is not supported: its value is an expression language
+(`%{...}` evaluates Vimscript), and running Vimscript is a non-goal; `:set stc=...` says
+`option not supported`.
 
 ## Reference Invariants (this doc)
 
