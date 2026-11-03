@@ -650,7 +650,16 @@ impl View {
     #[must_use]
     pub fn block_spans(&self, bytes: &[u8]) -> Option<Vec<(usize, usize)>> {
         match self.mode.selection()? {
-            SelectKind::Blockwise => Some(block_rows(bytes, self.anchor?, self.cursor).0),
+            SelectKind::Blockwise => Some(
+                block_geom(
+                    bytes,
+                    self.anchor?,
+                    self.cursor,
+                    self.indent.tab_width,
+                    self.curswant == MAXCOL,
+                )
+                .spans(),
+            ),
             _ => None,
         }
     }
@@ -724,8 +733,8 @@ struct BlockInsert {
     top_left: usize,
     /// Byte offset of the top block row's line start — the stable anchor to walk down from at `<Esc>`.
     top_line_start: usize,
-    /// Char column at which each lower row receives the typed text (left edge for `I`/`c`, right edge+1
-    /// for `A`).
+    /// Virtual (screen) column at which each lower row receives the typed text (left edge for `I`/`c`,
+    /// right edge+1 for `A`).
     target_col: usize,
     /// Number of block rows below the top row (the rows to replicate onto).
     rows_below: usize,
@@ -739,7 +748,7 @@ struct BlockInsert {
     /// leaves a block CHANGE with the caret one char left of the top row's typed text (normal Insert-exit),
     /// whereas `I`/`A` snap back to the block's top-left corner. The replicate geometry is identical.
     change: bool,
-    /// The block's inclusive column span (`col_hi - col_lo + 1`, >= 1) — the number of columns `A` appends
+    /// The block's width in cells (`hi - lo + 1`, >= 1) — the number of columns `A` appends
     /// past and `c` deletes per row. Retained (with the row count) into [`BlockGeom`] so dot-repeat can
     /// rebuild an equivalent block at the caret. `I` ignores it (insert at the left edge), but it is stored
     /// uniformly so the geometry round-trips for every kind.
@@ -755,7 +764,8 @@ struct BlockInsert {
 struct BlockGeom {
     /// Total block rows (>= 1) — how many lines the repeat replicates onto, clamped at end-of-buffer.
     height: usize,
-    /// Inclusive column span (>= 1) — chars `A` appends past / `c` deletes per row (see [`BlockInsert::width`]).
+    /// The block's width in cells (>= 1) — what `A` appends past / `c` deletes per row (see
+    /// [`BlockInsert::width`]).
     width: usize,
     /// `I` (insert at left edge) / `A` (append at right edge) / `c` (delete then insert at left edge).
     kind: BlockInsertKind,
@@ -765,14 +775,15 @@ struct BlockGeom {
 
 /// The AMOUNT of text the last Visual-selection operator covered, kept so dot-repeat (`.`) can rebuild an
 /// equivalent selection at the caret (`:help visual-repeat`, #794): the same number of lines; within one
-/// line the same number of chars; for a multi-line charwise selection the same end column on the last
-/// line; for a block the same width. Columns are CHAR columns, like [`block_rows`](range::block_rows).
+/// line the same number of screen cells; for a multi-line charwise selection the same end column on the
+/// last line; for a block the same width. Columns are VIRTUAL (screen) columns, as in Vim (#1064): a `<Tab>`
+/// spans to its tabstop and a wide character two cells (see [`vcols_at`](range::vcols_at)).
 #[derive(Clone, Copy, Debug)]
 struct VisualOpGeom {
     kind: SelectKind,
     /// Lines spanned (>= 1).
     lines: usize,
-    /// Charwise one-line: char count. Charwise multi-line: the end's char column. Blockwise: width.
+    /// Charwise one-line: cell count. Charwise multi-line: the end's last cell column. Blockwise: width.
     cols: usize,
     /// `$` extended the selection (curswant at MAXCOL): the repeat runs to each line's end.
     to_eol: bool,
@@ -808,12 +819,14 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
         (Some(kind), Some(anchor)) => {
             let (lo, hi) = (anchor.min(cur), anchor.max(cur));
             let lines = crate::pos::line_of(b, hi) - crate::pos::line_of(b, lo) + 1;
-            let col = |p: usize| col_of(b, line_start(b, p), p);
+            let ts = st.view.indent.tab_width;
             let cols = match kind {
-                SelectKind::Charwise if lines == 1 => col(hi) - col(lo) + 1,
-                SelectKind::Charwise => col(hi),
+                SelectKind::Charwise if lines == 1 => {
+                    vcols_at(b, hi, ts).1 + 1 - vcols_at(b, lo, ts).0
+                }
+                SelectKind::Charwise => vcols_at(b, hi, ts).1,
                 SelectKind::Linewise => 0,
-                SelectKind::Blockwise => col(anchor).abs_diff(col(cur)) + 1,
+                SelectKind::Blockwise => block_geom(b, anchor, cur, ts, false).width(),
             };
             st.view.last_visual_op = Some(VisualOpGeom {
                 kind,
@@ -826,15 +839,16 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
             let Some(g) = st.view.last_visual_op else {
                 return;
             };
+            let ts = st.view.indent.tab_width;
             let ls = line_start(b, cur);
-            let start_col = col_of(b, ls, cur);
+            let start_col = vcols_at(b, cur, ts).0;
             let end_ls = crate::pos::nth_line_start(b, crate::pos::line_of(b, cur) + g.lines - 1);
             let end = match g.kind {
                 _ if g.to_eol => line_end(b, end_ls),
-                SelectKind::Charwise if g.lines == 1 => at_col(b, ls, start_col + g.cols - 1),
-                SelectKind::Charwise => at_col(b, end_ls, g.cols),
+                SelectKind::Charwise if g.lines == 1 => at_vcol(b, ls, start_col + g.cols - 1, ts),
+                SelectKind::Charwise => at_vcol(b, end_ls, g.cols, ts),
                 SelectKind::Linewise => end_ls,
-                SelectKind::Blockwise => at_col(b, end_ls, start_col + g.cols - 1),
+                SelectKind::Blockwise => at_vcol(b, end_ls, start_col + g.cols - 1, ts),
             };
             st.view.mode = Mode::Visual { kind: g.kind };
             st.view.anchor = Some(cur);
@@ -1482,13 +1496,20 @@ impl EditorState {
             text.push('\n');
         }
         let new_bytes = text.into_bytes();
-        // Cursor: onto the first relocated line at its new position.
-        let cursor = new_bytes
-            .split_inclusive(|&b| b == b'\n')
-            .take(adj)
-            .map(<[u8]>::len)
-            .sum::<usize>()
-            .min(new_bytes.len());
+        // Cursor: onto the LAST relocated line, at the wanted column (Vim `ex_copymove` →
+        // `beginline(BL_SOL | BL_FIX)`, which with 'nostartofline' keeps `curswant`; nvim v0.12.6).
+        let ls = crate::pos::nth_line_start(&new_bytes, adj + count - 1).min(new_bytes.len());
+        let le = line_end(&new_bytes, ls);
+        let cursor = if self.view.curswant == range::MAXCOL {
+            motion::prev_boundary(&new_bytes, le).max(ls)
+        } else {
+            motion::at_col(&new_bytes, ls, self.view.curswant)
+        };
+        let cursor = if cursor >= le && le > ls {
+            motion::prev_boundary(&new_bytes, le)
+        } else {
+            cursor
+        };
 
         let list = EditList::new(vec![Edit::replace(0, bytes.len(), new_bytes)])
             .expect("a single whole-buffer replace is well-formed");

@@ -42347,6 +42347,3371 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "blk_U_rows",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>jU",
+      "expect": {
+        "text": [
+          "Abc",
+          "Def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_u_rows",
+      "lines": [
+        "ABC",
+        "DEF"
+      ],
+      "keys": "<C-v>ju",
+      "expect": {
+        "text": [
+          "aBC",
+          "dEF"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tilde_rows",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>j~",
+      "expect": {
+        "text": [
+          "Abc",
+          "Def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_rot13_rows",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>jg?",
+      "expect": {
+        "text": [
+          "nbc",
+          "qef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_r_rows",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>jrx",
+      "expect": {
+        "text": [
+          "xbc",
+          "xef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_r_short_row",
+      "lines": [
+        "abcd",
+        "a",
+        "abcd"
+      ],
+      "keys": "l<C-v>jjlrx",
+      "expect": {
+        "text": [
+          "axxd",
+          "a",
+          "axxd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_U_dollar",
+      "lines": [
+        "ab",
+        "abcd"
+      ],
+      "keys": "<C-v>j$U",
+      "expect": {
+        "text": [
+          "AB",
+          "ABCD"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_paste_charwise_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi",
+        "ZZ"
+      ],
+      "keys": "Gyiwgg<C-v>jp",
+      "expect": {
+        "text": [
+          "ZZbc",
+          "ZZef",
+          "ghi",
+          "ZZ"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ZZ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_past_eof",
+      "lines": [
+        "abcd",
+        "efgh",
+        "XY",
+        "ZW"
+      ],
+      "keys": "gg<C-v>jlyGp",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "XY",
+          "ZabW",
+          " ef"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab\nef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab\nef",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_pads_short_row",
+      "lines": [
+        "abc",
+        "a",
+        "abc",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjlyG0kklP",
+      "expect": {
+        "text": [
+          "abc",
+          "a",
+          "abc",
+          "xbcyz",
+          "x  yz",
+          "xbcyz"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_into_end_slot",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "<C-v>jyGo<Esc>p",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "a",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a\nc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_issue_695_short_rows",
+      "lines": [
+        "abc",
+        "a",
+        "abc",
+        "xyz",
+        "xyz",
+        "xyz"
+      ],
+      "keys": "l<C-v>jjlyGkkP",
+      "expect": {
+        "text": [
+          "abc",
+          "a",
+          "abc",
+          "xbcyz",
+          "x  yz",
+          "xbcyz"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\n\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "vput_issue_704_char_sel_block_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "ll<C-v>jyggvp",
+      "expect": {
+        "text": [
+          "abc",
+          "deff",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "c\nf",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "vput_issue_704_block_same_block",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "ll<C-v>jygg<C-v>jp",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c\nf",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "c\nf",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_count_past_eof",
+      "lines": [
+        "abcd",
+        "efgh",
+        "x"
+      ],
+      "keys": "l<C-v>jlyG2p",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "xbcbc",
+          " fgfg"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_zp_no_fill",
+      "lines": [
+        "abcd",
+        "efgh",
+        "xy"
+      ],
+      "keys": "l<C-v>jlyG0lzp",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "xybc",
+          "  fg"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_dollar_pads",
+      "lines": [
+        "ab",
+        "abcd",
+        "x"
+      ],
+      "keys": "<C-v>j$yGPx",
+      "expect": {
+        "text": [
+          "ab",
+          "abcd",
+          "b  x",
+          "abcd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab\nabcd",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_yank_short_line_spaces",
+      "lines": [
+        "abcdef",
+        "a",
+        "abcdef"
+      ],
+      "keys": "fc<C-v>jj0fdy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "a",
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cd\n  \ncd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "cd\n  \ncd",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_yank_short_line_dollar",
+      "lines": [
+        "abcdef",
+        "a",
+        "abcdef"
+      ],
+      "keys": "fc<C-v>jj0fd$y",
+      "expect": {
+        "text": [
+          "abcdef",
+          "a",
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cdef\n     \ncdef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "cdef\n     \ncdef",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_tab_corner_d",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>j0fdd",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abc",
+          "aefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\t\nbcd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_corner_y",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>j0fdy",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "a\tbc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\t\nbcd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "\t\nbcd",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_tab_corner_U",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>j0fdU",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "a\tbc",
+          "aBCDefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_corner_r",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>j0fdrx",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "axxxbc",
+          "axxxefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_corner_I",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>j0fdIX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "aX\tbc",
+          "aXbcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_corner_A",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>j0fdAX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "a\tXbc",
+          "abcdXefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_corner_c",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>j0fdcX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "aXbc",
+          "aXefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\t\nbcd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_right_y",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jfby",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "a\tbc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a \nab",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a \nab",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_right_d",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jfbd",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "  bc",
+          "cdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a \nab",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_right_r",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jfbrx",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "xx  bc",
+          "xxcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_right_c",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jfbcX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "X  bc",
+          "Xcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a \nab",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_left_y",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fc<C-v>j0fby",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abcdefgh",
+          "a\tbc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cde\n  b",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "cde\n  b",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_left_d",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fc<C-v>j0fbd",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abfgh",
+          "a c"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cde\n  b",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_left_I",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fc<C-v>j0fbIX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abXcdefgh",
+          "a X  bc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_left_A",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fc<C-v>j0fbAX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abcdeXfgh",
+          "a\tbXc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_left_r",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fc<C-v>j0fbrx",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abxxxfgh",
+          "a xxxc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_left_U",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fc<C-v>j0fbU",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abCDEfgh",
+          "a\tBc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_I_lower",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fb<C-v>jIX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "aXbcdefgh",
+          "aX\tbc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_tab_split_A_lower",
+      "lines": [
+        "abcdefgh",
+        "a\tbc"
+      ],
+      "keys": "fb<C-v>jAX<Esc>",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abcdXefgh",
+          "a\tXbc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_paste_after_tab",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "jl<C-v>lykp",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "a\tbcbc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "bc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_before_tab",
+      "lines": [
+        "a\tbc",
+        "abcdefgh"
+      ],
+      "keys": "jl<C-v>lykP",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "abc\tbc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_splits_tab",
+      "lines": [
+        "xy",
+        "xy",
+        "abc",
+        "a\tb"
+      ],
+      "keys": "<C-v>jlyjjlp",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "xy",
+          "xy",
+          "abxyc",
+          "a xy  b"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_splits_tab_P",
+      "lines": [
+        "xy",
+        "xy",
+        "abc",
+        "a\tb"
+      ],
+      "keys": "<C-v>jlyjjlP",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "xy",
+          "xy",
+          "axybc",
+          "axy\tb"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_wide_straddle",
+      "lines": [
+        "xy",
+        "xy",
+        "abc",
+        "a宽b"
+      ],
+      "keys": "<C-v>jlyjjlp",
+      "expect": {
+        "text": [
+          "xy",
+          "xy",
+          "abxyc",
+          "a xy宽b"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_paste_wide_straddle_P",
+      "lines": [
+        "xy",
+        "xy",
+        "abc",
+        "a宽b"
+      ],
+      "keys": "<C-v>jlyjjlP",
+      "expect": {
+        "text": [
+          "xy",
+          "xy",
+          "axybc",
+          "axy宽b"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "xy\nxy",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_wide_corner_d",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "f宽<C-v>jfcd",
+      "expect": {
+        "text": [
+          "abc",
+          "adefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "宽\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_wide_corner_y",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "f宽<C-v>jfcy",
+      "expect": {
+        "text": [
+          "a宽bc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "宽\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "宽\nbc",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "blk_wide_corner_U",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "f宽<C-v>jfcU",
+      "expect": {
+        "text": [
+          "a宽bc",
+          "aBCdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_wide_corner_r",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "f宽<C-v>jfcrx",
+      "expect": {
+        "text": [
+          "axxbc",
+          "axxdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_wide_corner_I",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "f宽<C-v>jfcIX<Esc>",
+      "expect": {
+        "text": [
+          "aX宽bc",
+          "aXbcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_wide_corner_A",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "f宽<C-v>jfcAX<Esc>",
+      "expect": {
+        "text": [
+          "a宽Xbc",
+          "abcXdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_wide_split_d",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jfbd",
+      "expect": {
+        "text": [
+          " bc",
+          "cdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a \nab",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_r_wide_char_odd",
+      "lines": [
+        "a宽bc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>lr宽",
+      "expect": {
+        "text": [
+          "宽 bc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "blk_r_wide_char_even",
+      "lines": [
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jlr宽",
+      "expect": {
+        "text": [
+          "宽c",
+          "宽cdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vrep_tab_charwise",
+      "lines": [
+        "\tabcdef",
+        "abcdefgh"
+      ],
+      "keys": "vldj0.",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "bcdef",
+          "fgh"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcde",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vrep_tab_block",
+      "lines": [
+        "\tab",
+        "\tab",
+        "abcdefgh",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jdjj0.",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "efgh",
+          "efgh"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcd\nabcd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vrep_tab_block_r",
+      "lines": [
+        "\tab",
+        "\tab",
+        "abcdefgh",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jrxjj0.",
+      "setup": "set ts=4",
+      "expect": {
+        "text": [
+          "xxxxab",
+          "xxxxab",
+          "xxxxefgh",
+          "xxxxefgh"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vrep_wide_charwise",
+      "lines": [
+        "宽宽x",
+        "abcdefgh"
+      ],
+      "keys": "vldj0.",
+      "expect": {
+        "text": [
+          "x",
+          "efgh"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vrep_wide_block",
+      "lines": [
+        "宽ab",
+        "宽ab",
+        "abcdefgh",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jdjj0.",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "cdefgh",
+          "cdefgh"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nab",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vrep_wide_block_U",
+      "lines": [
+        "宽ab",
+        "宽ab",
+        "abcdefgh",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jUjj0.",
+      "expect": {
+        "text": [
+          "宽ab",
+          "宽ab",
+          "ABcdefgh",
+          "ABcdefgh"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_char_reg",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "yiwjVp",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_char_reg_P",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "yiwjVP",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_char_reg_last",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yiwGVp",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "abc"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_two_lines",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "yljVjp",
+      "expect": {
+        "text": [
+          "ab",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cd\nef\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_line_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yyjVp",
+      "expect": {
+        "text": [
+          "abc",
+          "abc",
+          "ghi"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_line_reg_last",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yyGVp",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "abc"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_block_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "ll<C-v>jyjVp",
+      "expect": {
+        "text": [
+          "abc",
+          "c",
+          "f",
+          "ghi"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "c\nf",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "vput_line_sel_block_reg_last",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "ll<C-v>jyGVp",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "c",
+          "f"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "c\nf",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_line_reg",
+      "lines": [
+        "foo bar",
+        "x"
+      ],
+      "keys": "jyykviwp",
+      "expect": {
+        "text": [
+          "",
+          "x",
+          " bar",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "x\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_line_reg_P",
+      "lines": [
+        "foo bar",
+        "x"
+      ],
+      "keys": "jyykviwP",
+      "expect": {
+        "text": [
+          "",
+          "x",
+          " bar",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "x\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_line_reg_eol",
+      "lines": [
+        "foo bar",
+        "baz"
+      ],
+      "keys": "jyyk$viwp",
+      "expect": {
+        "text": [
+          "foo ",
+          "baz",
+          "",
+          "baz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "baz\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_lines_reg",
+      "lines": [
+        "foo bar",
+        "x",
+        "y"
+      ],
+      "keys": "jVjyggviwp",
+      "expect": {
+        "text": [
+          "",
+          "x",
+          "y",
+          " bar",
+          "x",
+          "y"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "x\ny\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_line_reg_mid",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yyjvlp",
+      "expect": {
+        "text": [
+          "abc",
+          "",
+          "abc",
+          "f",
+          "ghi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "de",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_line_reg_end",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yyj$vp",
+      "expect": {
+        "text": [
+          "abc",
+          "de",
+          "abc",
+          "",
+          "ghi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_block_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "ll<C-v>jyG$vp",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "ghc",
+          "  f"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "i",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "c\nf",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_multiline_char_reg",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "ylvjp",
+      "expect": {
+        "text": [
+          "aef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_lines_line_reg",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "yyvjp",
+      "expect": {
+        "text": [
+          "",
+          "abc",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_last_word",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yiwGv$p",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "abc"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "ghi",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_char_sel_named_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "\"ayljvl\"ap",
+      "expect": {
+        "text": [
+          "abc",
+          "af",
+          "ghi"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "de",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_char_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yl<C-v>jlp",
+      "expect": {
+        "text": [
+          "ac",
+          "af",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nde",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_char_reg_P",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yl<C-v>jlP",
+      "expect": {
+        "text": [
+          "ac",
+          "af",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_char_reg_dollar",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yl<C-v>jj$p",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\ndef\nghi",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_char_reg_short",
+      "lines": [
+        "abc",
+        "de",
+        "ghi"
+      ],
+      "keys": "yl<C-v>jjllp",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nde\nghi",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_char_reg_at_eol",
+      "lines": [
+        "abcd",
+        "abcd",
+        "abcd"
+      ],
+      "keys": "ylfd<C-v>jjp",
+      "expect": {
+        "text": [
+          "abca",
+          "abca",
+          "abca"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "d\nd\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_char_reg_mid",
+      "lines": [
+        "abcd",
+        "abcd",
+        "abcd"
+      ],
+      "keys": "ylfc<C-v>jjp",
+      "expect": {
+        "text": [
+          "abad",
+          "abad",
+          "abad"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c\nc\nc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_line_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yy<C-v>jlp",
+      "expect": {
+        "text": [
+          "c",
+          "f",
+          "abc",
+          "ghi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nde",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_multiline_char_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "vjy<C-v>jlp",
+      "expect": {
+        "text": [
+          "abc",
+          "dc",
+          "f",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nde",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc\nd",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_block_reg",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jly<C-v>p",
+      "expect": {
+        "text": [
+          "abccd",
+          "efgfgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_one_cell",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "ylj<C-v>p",
+      "expect": {
+        "text": [
+          "ab",
+          "ad"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "vput_block_sel_block_reg_wider",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "vly<C-v>jp",
+      "expect": {
+        "text": [
+          "abbc",
+          "abef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "exr_d_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2,6d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_line_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":5d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_y_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2,6y<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_s_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2,6s/./X/<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_m_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2,6m0<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_t_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2,6t0<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_j_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2,6j<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_normal_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":2,6normal Ax<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_goto_past_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":5<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_zero",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":0d<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_to_dollar",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": ":2,$d<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def\nghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_dot_dollar",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "j:.,$d<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def\nghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_dot_offset",
+      "lines": [
+        "abc",
+        "def",
+        "ghi",
+        "jkl"
+      ],
+      "keys": ":.,.+1d<CR>",
+      "expect": {
+        "text": [
+          "ghi",
+          "jkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\ndef\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_offsets",
+      "lines": [
+        "abc",
+        "def",
+        "ghi",
+        "jkl"
+      ],
+      "keys": ":.+1,$-1d<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "jkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def\nghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_before_start",
+      "lines": [
+        "abc",
+        "def",
+        "ghi",
+        "jkl"
+      ],
+      "keys": ":$-5,$d<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "ghi",
+          "jkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_semicolon",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": ":2;+1d<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def\nghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_cursor_first_nonblank",
+      "lines": [
+        "abc",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "$:2,3d<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "  jkl"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  defgh\nghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_d_cursor_through_end",
+      "lines": [
+        "abc",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "$:2,4d<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  defgh\nghi\n  jkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_m_cursor_last_line",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "ll:2,3m$<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  jkl",
+          "  defgh",
+          "ghi"
+        ],
+        "cursor": [
+          4,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_m_cursor_dollar",
+      "lines": [
+        "abc",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "$:2,3m$<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "  jkl",
+          "  defgh",
+          "ghi"
+        ],
+        "cursor": [
+          4,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_t_cursor_last_line",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "ll:2,3t0<CR>",
+      "expect": {
+        "text": [
+          "  defgh",
+          "ghi",
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_t_dest_past_end",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "ll:t99<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_m_dest_past_end",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "ll:m99<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_put_past_end",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "yyll:99put<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abcd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abcd\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "exr_goto_keeps_column",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "ll:3<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_goto_dollar",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "ll:$<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          4,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_goto_minus",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "jjll:-<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_goto_before_start",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "jj:-5<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "ghi",
+          "  jkl"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_visual_offset",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": "Vj<Esc>G:'<,'>+1d<CR>",
+      "expect": {
+        "text": [
+          "  jkl"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abcd\n  defgh\nghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_s_to_dollar",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": ":3,$s/^/X/<CR>",
+      "expect": {
+        "text": [
+          "abcd",
+          "  defgh",
+          "Xghi",
+          "X  jkl"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "exr_j_dot_dollar",
+      "lines": [
+        "abcd",
+        "  defgh",
+        "ghi",
+        "  jkl"
+      ],
+      "keys": ":.,$j<CR>",
+      "expect": {
+        "text": [
+          "abcd defgh ghi jkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

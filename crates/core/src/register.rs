@@ -27,7 +27,7 @@ pub enum RegKind {
 pub struct Register {
     text: Vec<u8>,
     kind: RegKind,
-    /// A block's width in columns (Vim's `y_width + 1`): a paste pads short rows to it. 0 otherwise.
+    /// A block's width in screen cells (Vim's `y_width + 1`): a paste pads short rows to it. 0 otherwise.
     width: usize,
 }
 
@@ -57,12 +57,14 @@ impl Register {
     }
 
     /// A blockwise register (`CTRL-V` yank/delete): the per-row slices already joined by `\n`. Stored
-    /// verbatim (ragged rows, no trailing newline); the paste path pads short target lines.
+    /// verbatim (ragged rows, no trailing newline); the paste path pads short target lines. Its width is
+    /// the widest row in screen cells, a `<Tab>` counting to Vim's default tabstop of 8; the editor's own
+    /// block ops know the real block and use [`Register::blockwise_width`].
     #[must_use]
     pub fn blockwise(text: Vec<u8>) -> Register {
         let width = text
             .split(|&c| c == b'\n')
-            .map(|row| String::from_utf8_lossy(row).chars().count())
+            .map(|row| crate::editor::text_cells(row, 8))
             .max()
             .unwrap_or(0);
         Register::blockwise_width(text, width)

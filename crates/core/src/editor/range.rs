@@ -6,9 +6,7 @@
 //! these names through that re-export).
 
 use crate::command::ForcedWise;
-use crate::motion::{
-    self, at_col, col_of, line_end, line_start, next_boundary, prev_boundary, Motion,
-};
+use crate::motion::{self, at_col, line_end, line_start, next_boundary, prev_boundary, Motion};
 
 /// `curswant` sentinel meaning "the end of whatever line you land on" — Vim's MAXCOL, set by `$`.
 pub(crate) const MAXCOL: usize = usize::MAX;
@@ -473,72 +471,291 @@ pub(crate) fn selection_range(
     }
 }
 
-/// The geometry of a BLOCKWISE selection whose two corners are the byte offsets `anchor` and `cursor`.
-/// Returns one `[start, end)` byte range per line the rectangle crosses (top line first), plus the block's
-/// inclusive char-column bounds `(col_lo, col_hi)`.
-///
-/// Columns are CHAR columns (via [`col_of`]/[`at_col`]) — correct for ASCII and multibyte code points;
-/// tab/wide-char VISUAL columns are a documented follow-up (the same curswant family as the i_CTRL-O gap).
-/// Each row's range is clamped to that line's own length, so a line shorter than `col_lo` yields an empty
-/// range at its end (Vim: short lines contribute nothing to a block delete/yank).
-pub(crate) fn block_rows(
-    b: &[u8],
-    anchor: usize,
-    cursor: usize,
-) -> (Vec<(usize, usize)>, usize, usize) {
-    let a_ls = line_start(b, anchor);
-    let c_ls = line_start(b, cursor);
-    let a_col = col_of(b, a_ls, anchor);
-    let c_col = col_of(b, c_ls, cursor);
-    let col_lo = a_col.min(c_col);
-    let col_hi = a_col.max(c_col);
-    let top_ls = a_ls.min(c_ls);
-    let bot_ls = a_ls.max(c_ls);
+// --- Blockwise geometry in VIRTUAL (screen) columns -------------------------------------------------
+// One model for every `CTRL-V` operation — yank/delete/change, `~`/`u`/`U`/`g?`/`r`, block insert, block
+// paste, Visual put and the Visual dot-repeat — so they all agree with Vim's `block_prep`. A column here is a
+// display cell: a `<Tab>` spans to the next tabstop and a wide (CJK) character spans two cells.
 
+/// One display cluster at byte `i` of a line ending at `le`, starting at virtual column `v`: its end byte
+/// and its width in cells. A grapheme cluster is one cell run (a combining mark rides on its base); a
+/// `<Tab>` reaches the next multiple of `ts`; anything else is its base char's terminal width, at least 1
+/// (the renderer's rule, `screen.rs`).
+pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: usize) -> (usize, usize) {
+    use unicode_width::UnicodeWidthChar;
+    if b[i] == b'\t' {
+        let ts = ts.max(1);
+        return (i + 1, ts - v % ts);
+    }
+    let j = motion::next_grapheme(b, i).clamp(i + 1, le.max(i + 1));
+    let w = std::str::from_utf8(&b[i..j])
+        .ok()
+        .and_then(|s| s.chars().next())
+        .and_then(UnicodeWidthChar::width)
+        .unwrap_or(1)
+        .max(1);
+    (j, w)
+}
+
+/// The virtual columns `[start, end]` (inclusive) the cluster at `pos` covers on its line; at the line end
+/// (no char there) both are the column just past the line's last cell, as Vim's `getvvcol` reports on NUL.
+pub(crate) fn vcols_at(b: &[u8], pos: usize, ts: usize) -> (usize, usize) {
+    let ls = line_start(b, pos);
+    let le = line_end(b, ls);
+    let (mut i, mut v) = (ls, 0);
+    while i < le {
+        let (j, w) = cluster_cells(b, i, le, v, ts);
+        if pos < j {
+            return (v, v + w - 1);
+        }
+        i = j;
+        v += w;
+    }
+    (v, v)
+}
+
+/// The cells a whole line (from `ls`) spans: the virtual column just past its last character.
+pub(crate) fn line_cells(b: &[u8], ls: usize, ts: usize) -> usize {
+    vcols_at(b, line_end(b, ls), ts).0
+}
+
+/// The cells `text` spans when laid out from column 0 (a register row's width).
+pub(crate) fn text_cells(text: &[u8], ts: usize) -> usize {
+    let (mut i, mut v) = (0, 0);
+    while i < text.len() {
+        let (j, w) = cluster_cells(text, i, text.len(), v, ts);
+        i = j;
+        v += w;
+    }
+    v
+}
+
+/// The byte of the character covering virtual column `vcol` on the line starting at `ls` — Vim's
+/// `coladvance` in Normal/Visual: past the last character it stops ON that last character (an empty line
+/// gives its start).
+pub(crate) fn at_vcol(b: &[u8], ls: usize, vcol: usize, ts: usize) -> usize {
+    let le = line_end(b, ls);
+    let (mut i, mut v) = (ls, 0);
+    let mut last = ls;
+    while i < le {
+        let (j, w) = cluster_cells(b, i, le, v, ts);
+        if vcol < v + w {
+            return i;
+        }
+        last = i;
+        i = j;
+        v += w;
+    }
+    last
+}
+
+/// One line's slice of a block (Vim's `struct block_def`). Columns `lo..=hi` are the block's; a character
+/// that crosses an edge (a `<Tab>` or a wide char) "straddles" it and is split into spaces by the ops.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(crate) struct BlockRow {
+    /// The line's start and end bytes.
+    pub ls: usize,
+    pub le: usize,
+    /// The characters WHOLLY inside the block (what a yank copies and `~`/`r` change).
+    pub s: usize,
+    pub e: usize,
+    /// The characters the block touches at all, straddlers included (what a delete removes).
+    pub ds: usize,
+    pub de: usize,
+    /// Cells of a straddler on the left / right that lie INSIDE the block (a yank keeps them as spaces).
+    pub in_l: usize,
+    pub in_r: usize,
+    /// Cells of a straddler on the left / right that lie OUTSIDE the block (a delete leaves them as spaces).
+    pub out_l: usize,
+    pub out_r: usize,
+    /// The virtual column just past the line's last character.
+    pub cells: usize,
+}
+
+impl BlockRow {
+    /// The line ends strictly before the block's left edge.
+    pub fn short(&self, lo: usize) -> bool {
+        self.cells < lo
+    }
+}
+
+/// A block: its rows (top first) and its inclusive virtual-column bounds. `hi` is [`MAXCOL`] for a `$`
+/// block, whose rows each run to their own line end.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct Block {
+    pub rows: Vec<BlockRow>,
+    pub lo: usize,
+    pub hi: usize,
+}
+
+impl Block {
+    /// The block's width in cells — a blockwise register's width (Vim `y_width + 1`): `hi - lo + 1`, or
+    /// for a `$` block the longest row.
+    pub fn width(&self) -> usize {
+        if self.hi == MAXCOL {
+            self.rows
+                .iter()
+                .map(|r| r.cells.saturating_sub(self.lo))
+                .max()
+                .unwrap_or(0)
+        } else {
+            self.hi - self.lo + 1
+        }
+    }
+
+    /// The `[start, end)` byte range per row the selection highlights (the characters it touches).
+    pub fn spans(&self) -> Vec<(usize, usize)> {
+        self.rows.iter().map(|r| (r.ds, r.de)).collect()
+    }
+
+    /// The text a block yank captures, one row per line joined by `\n`: each row's whole characters, with
+    /// the inside cells of a straddler as spaces, and a line that ends before the block as `width` spaces
+    /// (Vim's `block_prep` with `is_del` false).
+    pub fn yank_text(&self, b: &[u8]) -> Vec<u8> {
+        let width = self.width();
+        let mut text = Vec::new();
+        for (i, r) in self.rows.iter().enumerate() {
+            if i > 0 {
+                text.push(b'\n');
+            }
+            if r.short(self.lo) {
+                // Vim fills `end_vcol - start_vcol + 1` cells, and a `$` block's `end_vcol` is the column
+                // just past its longest line — one more than its width.
+                let fill = width + usize::from(self.hi == MAXCOL);
+                text.extend(std::iter::repeat_n(b' ', fill));
+                continue;
+            }
+            text.extend(std::iter::repeat_n(b' ', r.in_l));
+            text.extend_from_slice(&b[r.s..r.e]);
+            text.extend(std::iter::repeat_n(b' ', r.in_r));
+        }
+        text
+    }
+}
+
+/// The slice of the line at `ls` that the block `lo..=hi` covers (see [`BlockRow`]).
+pub(crate) fn block_row(b: &[u8], ls: usize, lo: usize, hi: usize, ts: usize) -> BlockRow {
+    let le = line_end(b, ls);
+    let mut r = BlockRow {
+        ls,
+        le,
+        ..BlockRow::default()
+    };
+    let (mut i, mut v) = (ls, 0);
+    let (mut s, mut ds) = (None, None);
+    let mut after_left = None; // the byte just past a left straddler
+    while i < le {
+        let (j, w) = cluster_cells(b, i, le, v, ts);
+        let last = v + w - 1;
+        if last < lo {
+            i = j;
+            v += w;
+            continue;
+        }
+        if v > hi {
+            break;
+        }
+        ds.get_or_insert(i);
+        r.de = j;
+        match (v < lo, last > hi) {
+            (false, false) => {
+                s.get_or_insert(i);
+                r.e = j;
+            }
+            (true, false) => {
+                r.out_l = lo - v;
+                r.in_l = last - lo + 1;
+                after_left = Some(j);
+            }
+            (false, true) => {
+                r.in_r = hi - v + 1;
+                r.out_r = last - hi;
+            }
+            (true, true) => {
+                r.out_l = lo - v;
+                r.in_l = hi - lo + 1;
+                r.out_r = last - hi;
+                after_left = Some(i);
+            }
+        }
+        i = j;
+        v += w;
+    }
+    // Where the inside run sits when it holds no whole character: after a left straddler, or where the walk
+    // stopped (the first character right of the block, or the line end).
+    let s = s.unwrap_or(after_left.unwrap_or(i));
+    r.s = s;
+    if r.e < s {
+        r.e = s;
+    }
+    r.ds = ds.unwrap_or(s);
+    if r.de < r.ds {
+        r.de = r.ds;
+    }
+    r.cells = {
+        let mut cells = v;
+        while i < le {
+            let (j, w) = cluster_cells(b, i, le, cells, ts);
+            i = j;
+            cells += w;
+        }
+        cells
+    };
+    r
+}
+
+/// The block a `CTRL-V` selection with corners `anchor` and `cursor` covers (Vim `do_pending_operator`):
+/// the left edge is the lower of the corners' first cells, the right edge the higher of their last cells
+/// (so a corner on a `<Tab>` or a wide char takes all of it), or [`MAXCOL`] when `to_eol` (`$`).
+pub(crate) fn block_geom(b: &[u8], anchor: usize, cursor: usize, ts: usize, to_eol: bool) -> Block {
+    let (a0, a1) = vcols_at(b, anchor, ts);
+    let (c0, c1) = vcols_at(b, cursor, ts);
+    let hi = if to_eol { MAXCOL } else { a1.max(c1) };
+    block_from(
+        b,
+        anchor.min(cursor),
+        anchor.max(cursor),
+        a0.min(c0),
+        hi,
+        ts,
+    )
+}
+
+/// A block of `width` cells and `height` rows whose top-left corner is the first cell of the character at
+/// `cursor` — what a dot-repeat rebuilds at the caret (nvim reuses the original size there). Rows stop at the
+/// end of the buffer, so fewer than `height` come back near the last line.
+pub(crate) fn block_at(
+    b: &[u8],
+    cursor: usize,
+    width: usize,
+    height: usize,
+    ts: usize,
+    to_eol: bool,
+) -> Block {
+    let lo = vcols_at(b, cursor, ts).0;
+    let hi = if to_eol {
+        MAXCOL
+    } else {
+        lo + width.max(1) - 1
+    };
+    let ls = line_start(b, cursor);
+    let last = crate::pos::nth_line_start(b, crate::pos::line_of(b, ls) + height.max(1) - 1);
+    block_from(b, ls, last.max(ls), lo, hi, ts)
+}
+
+/// The rows of the block `lo..=hi` on every line from the one holding `top` down to the one holding `bot`.
+fn block_from(b: &[u8], top: usize, bot: usize, lo: usize, hi: usize, ts: usize) -> Block {
+    let bot_ls = line_start(b, bot);
     let mut rows = Vec::new();
-    let mut rs = top_ls;
+    let mut rs = line_start(b, top);
     loop {
-        // `at_col` clamps to the line end, so on a short line `s == e == line_end` (an empty slice).
-        let s = at_col(b, rs, col_lo);
-        let e = at_col(b, rs, col_hi + 1);
-        rows.push((s, e));
+        rows.push(block_row(b, rs, lo, hi, ts));
         let le = line_end(b, rs);
         if rs >= bot_ls || le >= b.len() {
             break;
         }
         rs = le + 1;
     }
-    (rows, col_lo, col_hi)
-}
-
-/// Rebuild a blockwise selection of a given `width` (inclusive char columns) and `height` (rows) whose
-/// TOP-LEFT corner is the char position of `cursor` — the geometry a dot-repeat (`.`) of a block
-/// insert/append/change reconstructs at the caret (nvim reuses the original block size, positioned at the
-/// cursor). Returns the same shape as [`block_rows`]: one `[start, end)` byte range per row (clamped to that
-/// line's own length, so a short line yields an empty range at its end), plus the inclusive column bounds
-/// `(col_lo, col_hi)`. Rows stop at end-of-buffer, so fewer than `height` rows are returned near the last line.
-pub(crate) fn block_rows_at(
-    b: &[u8],
-    cursor: usize,
-    width: usize,
-    height: usize,
-) -> (Vec<(usize, usize)>, usize, usize) {
-    let ls = line_start(b, cursor);
-    let col_lo = col_of(b, ls, cursor);
-    let col_hi = col_lo + width.saturating_sub(1);
-    let mut rows = Vec::new();
-    let mut rs = ls;
-    for _ in 0..height.max(1) {
-        let s = at_col(b, rs, col_lo);
-        let e = at_col(b, rs, col_hi + 1);
-        rows.push((s, e));
-        let le = line_end(b, rs);
-        if le >= b.len() {
-            break; // no further line to extend the block onto
-        }
-        rs = le + 1;
-    }
-    (rows, col_lo, col_hi)
+    Block { rows, lo, hi }
 }
 
 /// Walk `count` char boundaries forward from `from`, never past `limit` (typically the line end).

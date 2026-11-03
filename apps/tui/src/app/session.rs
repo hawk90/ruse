@@ -2094,8 +2094,31 @@ impl Session {
             *last_shell = Some(cmd.clone());
             Ok(cmd)
         };
-        // `'<,'>` (Visual `:`) resolves to the last selection's line numbers (`:help v_:`).
-        let text = crate::app::dispatch::expand_visual_range(&text, ws);
+        // The leading range (`.`, `$`, offsets, `'<,'>` from Visual `:`) resolves to line numbers; one past
+        // the buffer is E16 (#1079), and a range with no command goes to its line (`:5`, `:$`).
+        let text = match crate::app::dispatch::resolve_ex_range(&text, ws) {
+            Ok(crate::app::dispatch::ExRange::Line(text)) => text,
+            Ok(crate::app::dispatch::ExRange::Goto(line)) => {
+                // Vim `beginline(BL_SOL | BL_FIX)` under 'nostartofline': the wanted column is kept, so
+                // this is `j`/`k` by the distance (nvim v0.12.6 `ll:3` stays in column 2).
+                let b = ws.focused().doc.bytes();
+                let here = ruse_core::pos::line_of(b, ws.focused().view.cursor()) + 1;
+                let (n, motion) = if line >= here {
+                    (line - here, ruse_core::Motion::Down)
+                } else {
+                    (here - line, ruse_core::Motion::Up)
+                };
+                if n > 0 {
+                    let cmd = Command::Move(n as u32, motion);
+                    crate::app::dispatch::run_cmd(cmd, ws, files, recorded, status, quit);
+                }
+                return;
+            }
+            Err(e) => {
+                *status = e;
+                return;
+            }
+        };
         let ex = match parse_ex(&text) {
             Ex::Edit(file) => expand(&file).map(Ex::Edit),
             Ex::Read {

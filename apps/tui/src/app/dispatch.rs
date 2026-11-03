@@ -374,28 +374,129 @@ pub(crate) fn may_quit(ws: &Workspace, status: &mut String, abandon_focused: boo
     }
 }
 
-/// Resolve a leading `'<,'>` (or a lone `'<` / `'>`) range of an ex line to the 1-based line numbers of
-/// the focused view's last Visual selection, so the numeric range parser sees `N,M` (`:help v_:`). The line
-/// is returned unchanged when it has no such range or no selection has ended yet.
-pub(crate) fn expand_visual_range(line: &str, ws: &Workspace) -> String {
-    let pane = ws.focused();
-    let Some((s, e, _)) = pane.view.last_visual_bounds() else {
-        return line.to_string();
-    };
-    let bytes = pane.doc.bytes();
-    let first = ruse_core::pos::line_of(bytes, s) + 1;
-    let last = ruse_core::pos::line_of(bytes, e) + 1;
+/// An ex line whose leading range [`resolve_ex_range`] turned into plain line numbers.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ExRange {
+    /// The line to parse: its range, if any, is now `N` or `N,M` (1-based), or still `%`.
+    Line(String),
+    /// A range and no command (`:5`, `:$`, `:.+2`): go to that line, clamped to the buffer.
+    Goto(usize),
+}
+
+/// Resolve the leading range of an ex line (`:help :range`) against the focused buffer, so the numeric
+/// range parser sees `N` or `N,M`. An address is a line number, `.` (the cursor's line), `$` (the last
+/// line) or `'<`/`'>` (the last Visual selection, `:help v_:`), followed by any `+N`/`-N` offsets; a bare
+/// offset counts from the cursor's line. Addresses are separated by `,`, or by `;`, which makes the one
+/// before it the current line for the next (`:2;+1`). A missing address after a separator is the cursor's
+/// line. Of more than two addresses the last two count.
+///
+/// As in Vim, an address above the last line or below 0 is `E16: Invalid range` for every range-taking
+/// command (#1079), while a range with no command just goes to the line, clamped. A line without a range
+/// comes back unchanged. Other marks (`'a`) are left for the parser.
+pub(crate) fn resolve_ex_range(line: &str, ws: &Workspace) -> Result<ExRange, String> {
+    const E16: &str = "E16: Invalid range";
     let rest = line.trim_start_matches([' ', ':']);
-    for (mark, lines) in [
-        ("'<,'>", format!("{first},{last}")),
-        ("'<", first.to_string()),
-        ("'>", last.to_string()),
-    ] {
-        if let Some(tail) = rest.strip_prefix(mark) {
-            return format!("{lines}{tail}");
+    let pane = ws.focused();
+    let b = pane.doc.bytes();
+    let nlines = (b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"))).max(1) as i64;
+    let mut cur_line = (ruse_core::pos::line_of(b, pane.view.cursor()) as i64 + 1).min(nlines);
+    let visual = pane.view.last_visual_bounds().map(|(s, e, _)| {
+        (
+            ruse_core::pos::line_of(b, s) as i64 + 1,
+            ruse_core::pos::line_of(b, e) as i64 + 1,
+        )
+    });
+    let s = rest.as_bytes();
+    let digits = |i: &mut usize| -> Option<i64> {
+        let start = *i;
+        while s.get(*i).is_some_and(u8::is_ascii_digit) {
+            *i += 1;
+        }
+        (start < *i).then(|| rest[start..*i].parse().unwrap_or(i64::MAX))
+    };
+    let mut addrs: Vec<i64> = Vec::new();
+    let mut i = 0;
+    loop {
+        while s.get(i) == Some(&b' ') {
+            i += 1;
+        }
+        let start = i;
+        let base = match s.get(i) {
+            Some(b'0'..=b'9') => digits(&mut i),
+            Some(b'.') => {
+                i += 1;
+                Some(cur_line)
+            }
+            Some(b'$') => {
+                i += 1;
+                Some(nlines)
+            }
+            Some(b'\'') if matches!(s.get(i + 1), Some(b'<' | b'>')) => {
+                let Some((first, last)) = visual else {
+                    return Err("E20: Mark not set".into());
+                };
+                i += 2;
+                Some(if s[i - 1] == b'<' { first } else { last })
+            }
+            Some(b'\'') => return Ok(ExRange::Line(rest.to_string())),
+            _ => None,
+        };
+        let mut v = base.unwrap_or(cur_line);
+        let mut have = base.is_some();
+        while let Some(&sign @ (b'+' | b'-')) = s.get(i) {
+            i += 1;
+            let n = digits(&mut i).unwrap_or(1);
+            v = if sign == b'+' {
+                v.saturating_add(n)
+            } else {
+                v.saturating_sub(n)
+            };
+            have = true;
+        }
+        if !have && addrs.is_empty() && i == start {
+            break; // no range at all
+        }
+        addrs.push(v);
+        while s.get(i) == Some(&b' ') {
+            i += 1;
+        }
+        match s.get(i) {
+            Some(b',') => i += 1,
+            Some(b';') => {
+                i += 1;
+                cur_line = v.clamp(1, nlines);
+            }
+            _ => break,
+        }
+        // A separator with nothing after it (`:5,d`) closes the range on the cursor's line.
+        if !matches!(
+            s.get(i),
+            Some(b'0'..=b'9' | b'.' | b'$' | b'\'' | b'+' | b'-' | b' ')
+        ) {
+            addrs.push(cur_line);
+            break;
         }
     }
-    line.to_string()
+    let Some(&last) = addrs.last() else {
+        return Ok(ExRange::Line(rest.to_string()));
+    };
+    let tail = &rest[i..];
+    if tail.trim().is_empty() {
+        // Going to a line clamps past the end (`:99`), but not below the start (`:-5` on line 3 is E16).
+        if last < 0 {
+            return Err(E16.into());
+        }
+        return Ok(ExRange::Goto(last.clamp(1, nlines) as usize));
+    }
+    let used = &addrs[addrs.len().saturating_sub(2)..];
+    if used.iter().any(|&a| a < 0 || a > nlines) {
+        return Err(E16.into());
+    }
+    let range = match used {
+        [a, b] => format!("{a},{b}"),
+        _ => last.to_string(),
+    };
+    Ok(ExRange::Line(format!("{range}{tail}")))
 }
 
 // The ex-line dispatcher legitimately needs the full editor context (buffer, file identity+format,
@@ -751,7 +852,9 @@ fn dest_in_range(ws: &Workspace, dest: ruse_core::LineAddr) -> bool {
     let cursor = ws.focused().view.cursor().min(b.len());
     let cursor_line = b[..cursor].iter().filter(|&&c| c == b'\n').count();
     let nlines = b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"));
-    dest.insert_index(cursor_line, nlines).is_some()
+    // An absolute line past the end is E16 too (`:t99`, #801), not the end of the buffer.
+    let absolute_ok = !matches!(dest, ruse_core::LineAddr::Line(n) if n > nlines.max(1));
+    absolute_ok && dest.insert_index(cursor_line, nlines).is_some()
 }
 
 /// `:q` (Vim `:quit`): with other windows open, close the focused one — its buffer stays loaded and
@@ -1038,6 +1141,104 @@ mod dispatch_tests {
         assert!(ex_run(&mut ws, "cquit").1);
         assert_eq!(exit_status(), 1);
         EXIT_STATUS.store(0, Ordering::Relaxed);
+    }
+
+    /// #1079: the leading range resolves `.`, `$`, offsets and `;` to line numbers, and an address past the
+    /// last line is E16 for a command but clamps for a bare `:N` (nvim v0.12.6).
+    #[test]
+    fn ex_ranges_resolve_and_refuse_past_the_end() {
+        let resolve = |cursor_line: usize, line: &str| {
+            let mut ws = Workspace::new(b"a\nb\nc\nd\n".to_vec());
+            ws.place_focused_cursor(cursor_line * 2);
+            resolve_ex_range(line, &ws)
+        };
+        let line = |s: &str| Ok(ExRange::Line(s.to_string()));
+        let e16 = Err("E16: Invalid range".to_string());
+        assert_eq!(resolve(0, "2,$d"), line("2,4d"));
+        assert_eq!(resolve(1, ".,$d"), line("2,4d"));
+        assert_eq!(resolve(1, ".,.+1d"), line("2,3d"));
+        assert_eq!(resolve(0, ".+1,$-1d"), line("2,3d"));
+        assert_eq!(resolve(0, "2;+1d"), line("2,3d"));
+        assert_eq!(resolve(2, "-,+d"), line("2,4d"));
+        assert_eq!(
+            resolve(0, "1,2,3d"),
+            line("2,3d"),
+            "the last two addresses count"
+        );
+        assert_eq!(
+            resolve(3, "2,d"),
+            line("2,4d"),
+            "a missing address is the cursor's line"
+        );
+        assert_eq!(resolve(0, "%d"), line("%d"));
+        assert_eq!(resolve(0, "s/a/b/"), line("s/a/b/"));
+        assert_eq!(
+            resolve(0, "'a,'bd"),
+            line("'a,'bd"),
+            "other marks are left for the parser"
+        );
+        assert_eq!(resolve(0, "0d"), line("0d"));
+        for past in [
+            "2,6d",
+            "5d",
+            "2,6y",
+            "2,6s/a/b/",
+            "2,6>",
+            "2,6m0",
+            "2,6t0",
+            "2,6normal x",
+            "5put",
+        ] {
+            assert_eq!(resolve(0, past), e16, "{past}");
+        }
+        assert_eq!(resolve(0, "$-5,$d"), e16);
+        assert_eq!(
+            resolve(2, "-5"),
+            e16,
+            "a bare range above line 1 is still E16"
+        );
+        assert_eq!(resolve(0, "9"), Ok(ExRange::Goto(4)), "a bare range clamps");
+        assert_eq!(resolve(0, "$"), Ok(ExRange::Goto(4)));
+        assert_eq!(resolve(2, "-"), Ok(ExRange::Goto(2)));
+        assert_eq!(resolve(0, "0"), Ok(ExRange::Goto(1)));
+        assert_eq!(resolve(0, "'<,'>d"), Err("E20: Mark not set".to_string()));
+        // A buffer without a final newline has the same lines; an empty buffer has one.
+        let ws = Workspace::new(b"a\nb".to_vec());
+        assert_eq!(resolve_ex_range("3d", &ws), e16);
+        assert_eq!(resolve_ex_range("2d", &ws), line("2d"));
+        let ws = Workspace::new(Vec::new());
+        assert_eq!(resolve_ex_range("1d", &ws), line("1d"));
+        assert_eq!(resolve_ex_range("2d", &ws), e16);
+    }
+
+    /// `:t`/`:m` to an absolute line past the end is E16 too (#801), and the cursor rests on the last line
+    /// moved or copied, at the wanted column (nvim v0.12.6 `ll:2,3t0`: line 2, column 2).
+    #[test]
+    fn move_and_copy_refuse_absolute_lines_past_the_end_and_keep_the_column() {
+        let mut ws = Workspace::new(b"abcd\n  defgh\nghi\n  jkl\n".to_vec());
+        ws.place_focused_cursor(2);
+        ws.apply(&Command::MoveRight); // a horizontal move sets the wanted column
+        ws.apply(&Command::MoveLeft);
+        assert_eq!(ex_run(&mut ws, "t99").0, "E16: Invalid range");
+        assert_eq!(ex_run(&mut ws, "m99").0, "E16: Invalid range");
+        ex_run(&mut ws, "2,3t0");
+        assert_eq!(
+            ws.focused().doc.bytes(),
+            b"  defgh\nghi\nabcd\n  defgh\nghi\n  jkl\n"
+        );
+        assert_eq!(ws.focused().view.cursor(), 8 + 2);
+        // `:d` lands on the first non-blank of the line that took the range's place.
+        let mut ws = Workspace::new(b"abc\n  defgh\nghi\n  jkl\n".to_vec());
+        ex_run(&mut ws, "2,3d");
+        assert_eq!(ws.focused().doc.bytes(), b"abc\n  jkl\n");
+        assert_eq!(ws.focused().view.cursor(), 4 + 2);
+        ex_run(&mut ws, "2d");
+        assert_eq!(ws.focused().doc.bytes(), b"abc\n");
+        assert_eq!(
+            ws.focused().view.cursor(),
+            0,
+            "through the end: the new last line"
+        );
     }
 
     /// #601: `:m`/`:t` destinations relative to the cursor line, verified against nvim v0.12.6. Before the

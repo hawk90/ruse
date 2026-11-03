@@ -1,4 +1,5 @@
 use super::*;
+use crate::RegKind;
 
 /// Enter a blockwise insert-replicate session (`CTRL-V` `I`/`A`/`c`): compute the top-row insert point
 /// and, for `c`, the block-delete edits + captured blockwise register. The typed text is replicated down
@@ -15,71 +16,69 @@ fn plan_block_insert(
 ) -> Plan {
     let append = matches!(kind, BlockInsertKind::Append);
     let change = matches!(kind, BlockInsertKind::Change);
-    let (rows, col_lo, col_hi, to_eol) = if let Some(anchor) = st.view.anchor {
-        // Live block insert from a Visual-block selection: the two corners are `anchor` and `cur`.
-        let (rows, col_lo, col_hi) = block_rows(b, anchor, cur);
-        // `$A` (`` <C-v>$A ``): `$` set curswant to MAXCOL, so the block is ragged — append at EACH row's own
-        // line-end, not a fixed column. (curswant is still MAXCOL here; `update_curswant` runs after commit.)
-        let to_eol = append && st.view.curswant == crate::editor::range::MAXCOL;
-        (rows, col_lo, col_hi, to_eol)
+    let ts = st.view.indent.tab_width;
+    let block = if let Some(anchor) = st.view.anchor {
+        // Live block insert from a Visual-block selection: the two corners are `anchor` and `cur`. `$`
+        // (curswant at MAXCOL) makes the block ragged: `$A` appends at EACH row's own line end.
+        block_geom(b, anchor, cur, ts, st.view.curswant == MAXCOL)
     } else if let Some(geom) = st.view.last_block_geom {
         // Dot-repeat (`.`): no live selection. Rebuild an equivalent block of the stored WIDTH x HEIGHT with
         // its top-left at the caret — nvim positions the repeat at the cursor and reuses the original geometry
         // (verified vs nvim v0.12.4). The recorded command carries the kind (I/A/c); `geom` carries the size
         // and the `$`-ragged flag (only meaningful with `A`). Rows clamp at end-of-buffer like the live path.
-        let (rows, col_lo, col_hi) =
-            crate::editor::range::block_rows_at(b, cur, geom.width, geom.height);
-        (rows, col_lo, col_hi, append && geom.to_eol)
+        block_at(b, cur, geom.width, geom.height, ts, geom.to_eol)
     } else {
         // Neither a live selection nor a prior block insert to repeat — degrade to a plain Insert entry.
         return nop(cur, Mode::Insert);
     };
-    let width = col_hi + 1 - col_lo;
-    let target_col = if append { col_hi + 1 } else { col_lo };
-    let top_start = rows.first().map_or(cur, |&(s, _)| s);
-    let top_ls = line_start(b, top_start);
-    let rows_below = rows.len().saturating_sub(1);
+    let to_eol = append && block.hi == MAXCOL;
+    let width = block.width().max(1);
+    let lo = block.lo;
+    let target_col = if append { lo + width } else { lo };
+    let top = block.rows[0];
+    let top_ls = top.ls;
+    let rows_below = block.rows.len().saturating_sub(1);
 
     let mut edits: Vec<Edit> = Vec::new();
     let mut reg: Option<Register> = None;
-    // `c`: delete the block on every row first (capture it blockwise), then insert at the left edge
-    // — where the top-row delete began, which stays valid after the delete.
-    if change {
-        let mut text: Vec<u8> = Vec::new();
-        for (i, &(s, e)) in rows.iter().enumerate() {
-            if i > 0 {
-                text.push(b'\n');
+    // `c`: delete the block on every row first (capture it blockwise), then insert at the left edge.
+    let (insert_start, top_left) = if change {
+        reg = Some(Register::blockwise_width(block.yank_text(b), width));
+        for (i, r) in block.rows.iter().enumerate() {
+            let mut keep = vec![b' '; r.out_l + r.out_r];
+            if i == 0 {
+                keep.splice(r.out_l..r.out_l, seed.iter().copied());
             }
-            text.extend_from_slice(&b[s..e]);
-        }
-        reg = Some(Register::blockwise(text));
-        for (i, &(s, e)) in rows.iter().enumerate() {
-            if i == 0 && !seed.is_empty() {
-                edits.push(Edit::replace(s, e - s, seed.to_vec()));
-            } else if e > s {
-                edits.push(Edit::delete(s, e - s));
+            if r.de > r.ds || !keep.is_empty() {
+                edits.push(Edit::replace(r.ds, r.de - r.ds, keep));
             }
         }
-    }
-
-    // Where the insert begins on the top row. For `A` on a top row shorter than the append column,
-    // pad it out with spaces so the cursor sits at the append column.
-    let top_le = line_end(b, top_ls);
-    let toplen = col_of(b, top_ls, top_le);
-    let insert_start = if change {
-        top_start
+        (top.ds + top.out_l, top.ds + top.out_l)
     } else if to_eol {
-        top_le // `$A`: append at the top row's own end (ragged), no padding
-    } else if append && toplen < target_col {
-        edits.push(Edit::insert(top_le, vec![b' '; target_col - toplen]));
-        top_le + (target_col - toplen)
+        (top.le, top.ds) // `$A`: append at the top row's own end (ragged), no padding
     } else {
-        at_col(b, top_ls, target_col.min(toplen))
+        // `I` at the left edge, `A` past the right edge; a short `A` row is padded out to the column. On
+        // this row the caret cannot sit inside a `<Tab>` or wide char crossing the column, so the insert goes
+        // before it (`I`) or after it (`A`), as in nvim; the other rows split it (`block_replicate`).
+        let (at, _, pre, _) = block_insert_point(b, top_ls, target_col, ts, append);
+        let at = if at < top.le && pre > 0 {
+            if append {
+                cluster_cells(b, at, top.le, 0, ts).0
+            } else {
+                at
+            }
+        } else {
+            if pre > 0 {
+                edits.push(Edit::insert(at, vec![b' '; pre]));
+            }
+            at + pre
+        };
+        (at, if append { top.ds } else { at })
     };
 
     let session = BlockInsert {
         insert_start,
-        top_left: at_col(b, top_ls, col_lo),
+        top_left,
         top_line_start: top_ls,
         target_col,
         rows_below,
@@ -183,6 +182,7 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
     let (first, last) = (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi));
     let lines = (last - first + 1) as u32;
     // The shared line planners keep the mode they were called in; a Visual operator ends the selection.
+    let ts = st.view.indent.tab_width;
     let normal = |p: Plan| Plan {
         mode: Mode::Normal,
         ..p
@@ -190,7 +190,7 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
     match op {
         VisualOp::Lines(k) => plan_selection_span(st, b, anchor, cur, k, true, hint),
         VisualOp::BlockToEol(k) if kind == SelectKind::Blockwise => {
-            block_op(b, anchor, cur, k, hint, true)
+            block_op(b, &block_geom(b, anchor, cur, ts, true), k, hint)
         }
         VisualOp::BlockToEol(k) => plan_selection_span(st, b, anchor, cur, k, true, hint),
         VisualOp::Shift { left, count } => normal(plan_shift_times(
@@ -216,11 +216,9 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
         VisualOp::YankTrim if kind == SelectKind::Blockwise => {
             let mut p = block_op(
                 b,
-                anchor,
-                cur,
+                &block_geom(b, anchor, cur, ts, st.view.curswant == MAXCOL),
                 OpKind::Yank,
                 hint,
-                st.view.curswant == crate::editor::range::MAXCOL,
             );
             if let Some(RegWrite::Yank(reg, span)) = p.set_register.take() {
                 let rows: Vec<&[u8]> = reg
@@ -245,11 +243,10 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
         // Block `O`: the cursor takes the anchor's column on its own row, the anchor the cursor's column on
         // its row — the other corner of the same rectangle, horizontally. Charwise/linewise `O` is `o`.
         VisualOp::OtherCorner if kind == SelectKind::Blockwise => {
-            let col = |p: usize| col_of(b, line_start(b, p), p);
-            let (a_col, c_col) = (col(anchor), col(cur));
+            let (a_col, c_col) = (vcols_at(b, anchor, ts).0, vcols_at(b, cur, ts).0);
             Plan {
-                set_anchor: Some(at_col(b, line_start(b, anchor), c_col)),
-                ..nop(at_col(b, line_start(b, cur), a_col), st.view.mode)
+                set_anchor: Some(at_vcol(b, line_start(b, anchor), c_col, ts)),
+                ..nop(at_vcol(b, line_start(b, cur), a_col, ts), st.view.mode)
             }
         }
         VisualOp::OtherCorner => Plan {
@@ -1351,6 +1348,261 @@ fn visual_span(st: &EditorState, b: &[u8], cur: usize) -> Result<(usize, usize, 
     Ok((s, e, line))
 }
 
+/// The live `CTRL-V` selection's [`Block`], or `None` when the selection is not blockwise. `$` (curswant at
+/// MAXCOL) makes it ragged, each row running to its own line end.
+fn selection_block(st: &EditorState, b: &[u8], cur: usize) -> Option<Block> {
+    if st.view.mode.selection() != Some(SelectKind::Blockwise) {
+        return None;
+    }
+    let anchor = st.view.anchor?;
+    let to_eol = st.view.curswant == MAXCOL;
+    Some(block_geom(b, anchor, cur, st.view.indent.tab_width, to_eol))
+}
+
+/// Block `r{char}` (Vim `op_replace`): every cell of the block on each row becomes `c` — a `<Tab>` or a
+/// wide character inside turns into one `c` per cell, a straddler's outside cells stay as spaces, and a
+/// double-width `c` fills two cells each (an odd cell left over becomes a space). Rows the block does not
+/// reach are left alone. The cursor goes to the block's top-left.
+fn block_replace(block: &Block, c: char, hint: GroupHint) -> Plan {
+    use unicode_width::UnicodeWidthChar;
+    let cw = c.width().unwrap_or(1).max(1);
+    let mut buf = [0u8; 4];
+    let cb = c.encode_utf8(&mut buf).as_bytes();
+    let edits: Vec<Edit> = block
+        .rows
+        .iter()
+        .filter(|r| r.de > r.ds)
+        .map(|r| {
+            let short = block.hi == MAXCOL || r.cells <= block.hi;
+            let end = if block.hi == MAXCOL {
+                r.cells
+            } else {
+                (block.hi + 1).min(r.cells)
+            };
+            let cells = end.saturating_sub(block.lo);
+            let extra = if short { 0 } else { cells % cw };
+            let mut ins = vec![b' '; r.out_l];
+            for _ in 0..cells / cw {
+                ins.extend_from_slice(cb);
+            }
+            if !short {
+                ins.extend(std::iter::repeat_n(b' ', r.out_r + extra));
+            }
+            Edit::replace(r.ds, r.de - r.ds, ins)
+        })
+        .collect();
+    let at = block.rows[0].ds;
+    match EditList::new(edits) {
+        Ok(list) if !list.is_empty() => edit(list, at, Mode::Normal, hint),
+        _ => nop(at, Mode::Normal),
+    }
+}
+
+/// Visual `p`/`P` (nvim `nv_put_opt`): delete the selection, then put the register where it was, shaped by
+/// the selection and register kinds:
+/// - a linewise selection puts any register as whole lines (a charwise or block register becomes lines);
+/// - a charwise selection with a linewise register splits the line and puts the lines between the halves;
+/// - a block selection with a one-line charwise register puts that text on every row of the block (rows
+///   shorter than the block's left edge are skipped); with a linewise register `p` puts the lines below the
+///   block and `P` above it;
+/// - anything else is an ordinary put at the selection's start.
+///
+/// The put goes before the cursor, or after it when the delete left the cursor on the last character of
+/// the line or file (Vim's "cursor at the end" test). The register is read before the delete, so `p` of the
+/// unnamed register still puts the old text; `p` then leaves the deleted text in the unnamed register, `P`
+/// leaves the registers as they were. The whole replacement is one edit and one undo step.
+fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool) -> Plan {
+    let (Some(kind), Some(anchor)) = (st.view.mode.selection(), st.view.anchor) else {
+        return nop(cur, Mode::Normal);
+    };
+    let ts = st.view.indent.tab_width;
+    let reg = st.view.registers.get(st.view.pending_register).clone();
+    // 1. The delete: its edits, the captured text, and where the cursor sits afterwards.
+    let (dels, deleted, mut c2, block_lines) = match kind {
+        SelectKind::Blockwise => {
+            let block = block_geom(b, anchor, cur, ts, st.view.curswant == MAXCOL);
+            let dels: Vec<Edit> = block
+                .rows
+                .iter()
+                .filter(|r| r.de > r.ds)
+                .map(|r| Edit::replace(r.ds, r.de - r.ds, vec![b' '; r.out_l + r.out_r]))
+                .collect();
+            let reg = Register::blockwise_width(block.yank_text(b), block.width());
+            let top = block.rows[0];
+            let first = crate::pos::line_of(b, top.ls);
+            (
+                dels,
+                reg,
+                top.ds + top.out_l,
+                Some((first, first + block.rows.len() - 1)),
+            )
+        }
+        SelectKind::Linewise => {
+            let (s, e) = selection_range(b, anchor, cur, true);
+            // Lines through the end of an unterminated buffer also take the newline before them (as `Vd`).
+            let s0 = if e == b.len() && b.last() != Some(&b'\n') && s > 0 {
+                s - 1
+            } else {
+                s
+            };
+            (
+                vec![Edit::delete(s0, e - s0)],
+                captured(b, s, e, true),
+                s0,
+                None,
+            )
+        }
+        SelectKind::Charwise => {
+            let (s, e) = selection_range(b, anchor, cur, false);
+            if s >= e {
+                return nop(s, Mode::Normal);
+            }
+            (
+                vec![Edit::delete(s, e - s)],
+                captured(b, s, e, false),
+                s,
+                None,
+            )
+        }
+    };
+    let b2 = EditList::new(dels)
+        .expect("selection deletes are disjoint (one per line)")
+        .apply_to(b);
+    // 2. Normal mode cannot rest past a line's last character: a delete that emptied the end of its line (or
+    //    took the last lines) leaves the cursor on the character (line) before, and the put goes after it.
+    let mut forward = false;
+    if kind == SelectKind::Linewise {
+        if c2 >= b2.len() && !b2.is_empty() {
+            c2 = line_start(&b2, b2.len() - usize::from(b2.ends_with(b"\n")));
+            forward = true;
+        } else {
+            c2 = line_start(&b2, c2);
+        }
+    } else if c2 > line_start(&b2, c2) && c2 >= line_end(&b2, c2) {
+        c2 = prev_boundary(&b2, c2);
+        forward = true;
+    }
+    let caret = st.view.caret;
+    let put = |reg: &Register, at: usize, after: bool| {
+        paste(&b2, at, Mode::Normal, reg, after, 1, caret, false, true, ts)
+    };
+    let applied = |p: Plan| -> (Vec<u8>, usize) {
+        match p.action {
+            Action::Txn { edits, .. } => (edits.apply_to(&b2), p.cursor),
+            _ => (b2.clone(), p.cursor),
+        }
+    };
+    // 3. The put, on the post-delete text.
+    let (mut b3, cursor) = if reg.is_empty() {
+        (b2.clone(), c2.min(b2.len()))
+    } else {
+        match (kind, reg.kind()) {
+            (SelectKind::Linewise, RegKind::Linewise) => applied(put(&reg, c2, forward)),
+            (SelectKind::Linewise, _) => {
+                applied(put(&Register::linewise(reg.text().to_vec()), c2, forward))
+            }
+            (SelectKind::Charwise, RegKind::Linewise) => {
+                let sp = if forward { next_boundary(&b2, c2) } else { c2 };
+                let mut out = b2[..sp].to_vec();
+                out.push(b'\n');
+                out.extend_from_slice(reg.text());
+                out.extend_from_slice(&b2[sp..]);
+                let fnb = reg
+                    .text()
+                    .iter()
+                    .take_while(|&&c| c == b' ' || c == b'\t')
+                    .count();
+                (out, sp + 1 + fnb)
+            }
+            (SelectKind::Blockwise, RegKind::Linewise) if swap => {
+                let (_, last) = block_lines.expect("a block selection records its lines");
+                let at = crate::pos::nth_line_start(&b2, last).min(b2.len());
+                applied(put(&reg, at, true))
+            }
+            (SelectKind::Blockwise, RegKind::Charwise) if !reg.text().contains(&b'\n') => {
+                let (first, last) = block_lines.expect("a block selection records its lines");
+                let (v0, v1) = vcols_at(&b2, c2, ts);
+                let vcol = if forward { v1 + 1 } else { v0 };
+                let mut edits = Vec::new();
+                let mut cursor = c2;
+                for line in first..=last {
+                    let ls = crate::pos::nth_line_start(&b2, line);
+                    if ls > b2.len() || line_cells(&b2, ls, ts) < vcol {
+                        continue;
+                    }
+                    let le = line_end(&b2, ls);
+                    let at = if vcol >= line_cells(&b2, ls, ts) {
+                        le
+                    } else {
+                        at_vcol(&b2, ls, vcol, ts)
+                    };
+                    if line == first {
+                        cursor = at + reg.text().len() - 1;
+                    }
+                    edits.push(Edit::insert(at, reg.text().to_vec()));
+                }
+                let list = EditList::new(edits).expect("one insert per line");
+                (list.apply_to(&b2), cursor)
+            }
+            _ => applied(put(&reg, c2, forward)),
+        }
+    };
+    // Putting lines into a buffer the delete emptied leaves no extra empty line behind (Vim deletes it).
+    if kind == SelectKind::Linewise
+        && b2.is_empty()
+        && b.last() != Some(&b'\n')
+        && b3.ends_with(b"\n")
+    {
+        b3.pop();
+    }
+    // 4. One edit from the old text to the new: the changed middle between the common ends, kept on char
+    //    boundaries.
+    let max = b.len().min(b3.len());
+    let mut p = b
+        .iter()
+        .zip(&b3)
+        .take_while(|(x, y)| x == y)
+        .count()
+        .min(max);
+    while p > 0 && p < b.len() && (b[p] & 0xC0) == 0x80 {
+        p -= 1;
+    }
+    let mut q = b
+        .iter()
+        .rev()
+        .zip(b3.iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count()
+        .min(max - p);
+    while q > 0 && (b[b.len() - q] & 0xC0) == 0x80 {
+        q -= 1;
+    }
+    let set_register = swap.then_some(RegWrite::Edit(deleted));
+    if b3 == b {
+        return Plan {
+            set_register,
+            ..nop(cursor.min(b.len()), Mode::Normal)
+        };
+    }
+    Plan {
+        action: Action::Txn {
+            edits: one(Edit::replace(
+                p,
+                b.len() - p - q,
+                b3[p..b3.len() - q].to_vec(),
+            )),
+            hint: GroupHint::BreakBefore,
+        },
+        cursor,
+        mode: Mode::Normal,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register,
+        set_anchor: None,
+        set_mark: None,
+    }
+}
+
 /// Like [`edit_yank`] but routes the captured span through [`RegWrite::KillAppend`] — an Emacs kill that
 /// accumulates onto the current unnamed entry when it follows another kill (kill-ring behaviour).
 /// Select's `open/replace-selection` over a charwise or linewise selection, shared by a typed key
@@ -1674,7 +1926,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // the block (see `block_replicate`); the session is cleared in `commit` as Insert is left.
             if st.view.mode == Mode::Insert {
                 if let Some(session) = st.view.block_insert {
-                    return block_replicate(b, cur, session, hint);
+                    return block_replicate(b, cur, session, hint, st.view.indent.tab_width);
                 }
                 // Autoindent cleanup (Vim): if this Insert session opened a line with auto-indent and
                 // nothing non-blank was typed on it, leaving Insert removes the indent so no trailing
@@ -2230,7 +2482,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // (`incr_number` finds the first number at/after it, expanding to the whole number). This makes a
         // column of numbers that are NOT the first on their line increment correctly — the whole point of the
         // feature — for both `CTRL-V` (block left column) and `v` (the start column on the first line):
-        //   - BLOCKWISE (`CTRL-V`): each row's left-column byte offset (`block_rows`).
+        //   - BLOCKWISE (`CTRL-V`): the first character each row touches (`block_geom`).
         //   - LINEWISE (`V`): the line start (whole lines).
         //   - CHARWISE (`v`): the selection start on the first line, the line start on continuation lines.
         // (Charwise does not yet CLIP a number sitting past the selection end on the last line — a rare edge,
@@ -2241,11 +2493,13 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             };
             // Per selected line: (line_start, search_from).
             let lines: Vec<(usize, usize)> = match st.view.mode.selection() {
-                Some(SelectKind::Blockwise) => block_rows(b, anchor, cur)
-                    .0
-                    .into_iter()
-                    .map(|(from, _end)| (line_start(b, from), from))
-                    .collect(),
+                Some(SelectKind::Blockwise) => {
+                    block_geom(b, anchor, cur, st.view.indent.tab_width, false)
+                        .rows
+                        .iter()
+                        .map(|r| (r.ls, r.ds))
+                        .collect()
+                }
                 kind => {
                     let linewise = kind == Some(SelectKind::Linewise);
                     let (s, e) = selection_range(b, anchor, cur, linewise);
@@ -2578,7 +2832,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // Forced blockwise (`d<C-v>j`): the cursor and the motion target are the block's two corners.
             if *wise == ForcedWise::Blockwise {
                 let target = motion::target(b, cur, *motion, *count);
-                return block_op(b, cur, target, *op, hint, false);
+                let block = block_geom(b, cur, target, st.view.indent.tab_width, false);
+                return block_op(b, &block, *op, hint);
             }
             let sp = forced_span(b, cur, *motion, *count, *wise, st.view.curswant);
             if sp.s >= sp.e && *op == OpKind::Change && !sp.linewise {
@@ -2649,6 +2904,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             st.view.caret,
             *move_after,
             true,
+            st.view.indent.tab_width,
         ),
         // `zp` / `zP` — `p` / `P`, but a block's short rows get no trailing spaces (nvim `PUT_BLOCK_INNER`).
         Command::PasteBlockInner { after, count } => paste(
@@ -2661,6 +2917,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             st.view.caret,
             false,
             false,
+            st.view.indent.tab_width,
         ),
         // `]p`/`[p` — indent-adjusting paste. For a linewise register, reindent its lines to the current
         // line's indent before pasting; a charwise/blockwise register pastes unchanged (Vim `]p` = `p`).
@@ -2688,6 +2945,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     st.view.caret,
                     false,
                     true,
+                    st.view.indent.tab_width,
                 )
             } else {
                 paste(
@@ -2700,6 +2958,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     st.view.caret,
                     false,
                     true,
+                    st.view.indent.tab_width,
                 )
             }
         }
@@ -2790,14 +3049,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     Command::ChangeSelection => OpKind::Change,
                     _ => OpKind::Delete,
                 };
-                return block_op(
-                    b,
-                    anchor,
-                    cur,
-                    op,
-                    hint,
-                    st.view.curswant == crate::editor::range::MAXCOL,
-                );
+                let ts = st.view.indent.tab_width;
+                let block = block_geom(b, anchor, cur, ts, st.view.curswant == MAXCOL);
+                return block_op(b, &block, op, hint);
             }
             let line = st.view.mode.selection() == Some(SelectKind::Linewise);
             let op = match cmd {
@@ -2808,8 +3062,23 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             plan_selection_span(st, b, anchor, cur, op, line, hint)
         }
         Command::VisualOp(op) => plan_visual_op(st, b, cur, *op, hint),
-        // Visual `u`/`U`/`~` — recase the selection in place, cursor at its start, back to Normal.
+        // Visual `u`/`U`/`~`/`g?` — recase the selection in place, cursor at its start, back to Normal. A
+        // block recases each row's characters wholly inside it (Vim `op_tilde` over `block_prep`).
         Command::CaseSelection(case) => {
+            if let Some(block) = selection_block(st, b, cur) {
+                let edits: Vec<Edit> = block
+                    .rows
+                    .iter()
+                    .filter_map(|r| recase_span(b, r.s, r.e, *case).map(|new| (r, new)))
+                    .filter(|(r, new)| new[..] != b[r.s..r.e])
+                    .map(|(r, new)| Edit::replace(r.s, r.e - r.s, new))
+                    .collect();
+                let at = block.rows[0].ds;
+                return match EditList::new(edits) {
+                    Ok(list) if !list.is_empty() => edit(list, at, Mode::Normal, hint),
+                    _ => nop(at, Mode::Normal),
+                };
+            }
             let (s, e, _line) = match visual_span(st, b, cur) {
                 Ok(v) => v,
                 Err(c) => return nop(c, Mode::Normal),
@@ -2823,8 +3092,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         // Visual `r{char}` — overwrite every non-newline char in the selection with `c`, keeping line
-        // breaks and the byte length's char count; cursor to the span start, back to Normal.
+        // breaks and the byte length's char count; cursor to the span start, back to Normal. A block fills
+        // each row's cells with `c` (Vim `op_replace`), so a `<Tab>` or wide char inside becomes several.
         Command::ReplaceSelectionChar(c) => {
+            if let Some(block) = selection_block(st, b, cur) {
+                return block_replace(&block, *c, hint);
+            }
             let (s, e, _line) = match visual_span(st, b, cur) {
                 Ok(v) => v,
                 Err(c) => return nop(c, Mode::Normal),
@@ -2847,35 +3120,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
         // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
-        Command::PasteSelection { swap } => {
-            let (s, e, line) = match visual_span(st, b, cur) {
-                Ok(v) => v,
-                Err(c) => return nop(c, Mode::Normal),
-            };
-            let deleted = captured(b, s, e, line);
-            let reg = st.view.registers.get(st.view.pending_register).clone();
-            let repl = reg.text().to_vec();
-            // Cursor: charwise register → on the last pasted byte; linewise/empty → at the span start.
-            let cursor = if repl.is_empty() || reg.is_linewise() {
-                s
-            } else {
-                s + repl.len() - 1
-            };
-            let set_register = swap.then_some(RegWrite::Edit(deleted));
-            Plan {
-                action: Action::Txn {
-                    edits: one(Edit::replace(s, e - s, repl)),
-                    hint: GroupHint::BreakBefore,
-                },
-                cursor,
-                mode: Mode::Normal,
-                is_edit: true,
-                effects: Vec::new(),
-                set_register,
-                set_anchor: None,
-                set_mark: None,
-            }
-        }
+        Command::PasteSelection { swap } => plan_paste_selection(st, b, cur, *swap),
         Command::SearchNext(pat) => {
             let m = search_fwd(b, pat, cur + 1, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)
@@ -3106,6 +3351,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 st.view.caret,
                 false, // Emacs yank is not `gp` — normal cursor placement
                 true,
+                st.view.indent.tab_width,
             );
             if !matches!(p.action, Action::Nop) {
                 p.set_mark = Some(MarkWrite::Set(cur));
@@ -3745,27 +3991,19 @@ fn plan_shift_times(
 /// which is verified against nvim to match Visual-block change byte-for-byte. Dot-repeat of the
 /// operator-forced block change is NOT yet wired (the same open gap as Visual-block-insert dot-repeat) and
 /// is intentionally not oracle-tested; the replicate + single-undo-unit ARE.
-fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint, to_eol: bool) -> Plan {
-    let (mut rows, col_lo, col_hi) = block_rows(b, c1, c2);
-    // `$` (curswant at MAXCOL) or blockwise `D`/`C`: every row runs to its own line end (ragged block).
-    if to_eol {
-        for row in &mut rows {
-            row.1 = line_end(b, row.0);
-        }
-    }
-    let top_left = rows.first().map_or(c1.min(c2), |&(s, _)| s);
-    // The blockwise register: each row's slice, joined by '\n' (ragged rows, no trailing newline).
-    let mut text: Vec<u8> = Vec::new();
-    for (i, &(s, e)) in rows.iter().enumerate() {
-        if i > 0 {
-            text.push(b'\n');
-        }
-        text.extend_from_slice(&b[s..e]);
-    }
-    let reg = Register::blockwise(text);
+fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> Plan {
+    let top = block.rows[0];
+    // The cursor lands on the block's top-left corner, the character covering the left edge — after a
+    // delete, past the spaces a split `<Tab>` leaves there.
+    let top_left = if op == OpKind::Yank {
+        top.ds
+    } else {
+        top.ds + top.out_l
+    };
+    let reg = Register::blockwise_width(block.yank_text(b), block.width());
     // The `[`/`]` change-mark span for a blockwise yank: top-left corner → bottom-right corner (the end of
     // the last row's slice). An approximation of Vim's rectangular bracketing, adequate for the mark jump.
-    let block_span = (top_left, rows.last().map_or(top_left, |&(_, e)| e));
+    let block_span = (top.ds, block.rows.last().map_or(top.ds, |r| r.de));
     let nop = |mode: Mode| Plan {
         action: Action::Nop,
         cursor: top_left,
@@ -3776,6 +4014,16 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint, to_eol:
         set_anchor: None,
         set_mark: None,
     };
+    // One edit per row (rows on different lines are inherently disjoint): remove every character the block
+    // touches, leaving the outside cells of a split `<Tab>` or wide char as spaces (Vim `op_delete`).
+    let deletes = || -> Vec<Edit> {
+        block
+            .rows
+            .iter()
+            .filter(|r| r.de > r.ds)
+            .map(|r| Edit::replace(r.ds, r.de - r.ds, vec![b' '; r.out_l + r.out_r]))
+            .collect()
+    };
     match op {
         // Yank leaves the buffer unchanged, cursor at the block's top-left, back to Normal.
         OpKind::Yank => Plan {
@@ -3783,13 +4031,7 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint, to_eol:
             ..nop(Mode::Normal)
         },
         OpKind::Delete => {
-            // One delete per row (rows on different lines are inherently disjoint); empty rows contribute
-            // nothing. `EditList::new` sorts + validates disjointness.
-            let edits: Vec<Edit> = rows
-                .iter()
-                .filter(|&&(s, e)| e > s)
-                .map(|&(s, e)| Edit::delete(s, e - s))
-                .collect();
+            let edits = deletes();
             if edits.is_empty() {
                 // The block sits entirely past every line's end — nothing to remove.
                 return nop(Mode::Normal);
@@ -3813,24 +4055,19 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint, to_eol:
         // every line's end) we still arm the session so a typed run replicates; `is_edit` tracks whether
         // the delete transaction is non-empty. `append`/`to_eol` are false — `c` inserts at the left edge.
         OpKind::Change => {
-            let top_ls = line_start(b, top_left);
-            let edits: Vec<Edit> = rows
-                .iter()
-                .filter(|&&(s, e)| e > s)
-                .map(|&(s, e)| Edit::delete(s, e - s))
-                .collect();
             let session = BlockInsert {
                 insert_start: top_left,
-                top_left: at_col(b, top_ls, col_lo),
-                top_line_start: top_ls,
-                target_col: col_lo,
-                rows_below: rows.len().saturating_sub(1),
+                top_left,
+                top_line_start: top.ls,
+                target_col: block.lo,
+                rows_below: block.rows.len().saturating_sub(1),
                 append: false,
                 to_eol: false,
                 change: true,
-                width: col_hi + 1 - col_lo,
+                width: block.width().max(1),
             };
-            let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
+            let list =
+                EditList::new(deletes()).expect("block-row deletes are disjoint (one per line)");
             let is_edit = !list.is_empty();
             Plan {
                 action: Action::BlockInsertArm {
@@ -3850,6 +4087,38 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint, to_eol:
     }
 }
 
+/// Where text inserted at virtual column `t` goes on the line starting at `ls` (Vim `block_insert`):
+/// `(at, del, pre, post)` — replace `del` bytes at `at` with `pre` spaces, the text, then `post` spaces. A
+/// `<Tab>` crossing `t` is split into the spaces on either side; another wide character crossing it stays
+/// after the text, with `pre` spaces before. A line ending before `t` is padded out to it when `pad` (`A`).
+fn block_insert_point(
+    b: &[u8],
+    ls: usize,
+    t: usize,
+    ts: usize,
+    pad: bool,
+) -> (usize, usize, usize, usize) {
+    let le = line_end(b, ls);
+    let (mut i, mut v) = (ls, 0);
+    while i < le {
+        if v >= t {
+            return (i, 0, 0, 0);
+        }
+        let (j, w) = cluster_cells(b, i, le, v, ts);
+        if v + w > t {
+            let pre = t - v;
+            return if b[i] == b'\t' {
+                (i, 1, pre, w - pre)
+            } else {
+                (i, 0, pre, 0)
+            };
+        }
+        i = j;
+        v += w;
+    }
+    (le, 0, if pad { t.saturating_sub(v) } else { 0 }, 0)
+}
+
 /// Finish a blockwise insert-replicate session (`<Esc>` after `CTRL-V` `I`/`A`/`c`): take the text typed
 /// on the top row since `session.insert_start` and insert it at `session.target_col` on each of the
 /// `rows_below` rows beneath the top line. `append` rows pad short lines with spaces; non-append (`I`/`c`)
@@ -3857,7 +4126,7 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint, to_eol:
 /// replicate (Vim). For `I`/`A` the cursor returns to the block's top-left corner (`session.top_left`);
 /// for `c` (change) it rests one char left of the top row's typed text — the normal Insert-exit position,
 /// which Vim keeps for a block change (matters only when more than one char was typed).
-fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) -> Plan {
+fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, ts: usize) -> Plan {
     let nop = |cursor: usize| Plan {
         action: Action::Nop,
         cursor,
@@ -3893,28 +4162,21 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
         }
         rs = le + 1;
         let row_le = line_end(b, rs);
-        let rowlen = col_of(b, rs, row_le);
         if session.to_eol {
             // `$A`: append at THIS row's own end (ragged), never a fixed column.
             edits.push(Edit::insert(row_le, typed.to_vec()));
-        } else if session.append {
-            if rowlen < session.target_col {
-                let mut ins = vec![b' '; session.target_col - rowlen];
-                ins.extend_from_slice(typed);
-                edits.push(Edit::insert(row_le, ins));
-            } else {
-                edits.push(Edit::insert(
-                    at_col(b, rs, session.target_col),
-                    typed.to_vec(),
-                ));
-            }
-        } else if rowlen >= session.target_col {
-            edits.push(Edit::insert(
-                at_col(b, rs, session.target_col),
-                typed.to_vec(),
-            ));
+            continue;
         }
-        // non-append + short row: skipped (Vim leaves lines shorter than the block's left edge untouched).
+        // Non-append + short row: skipped (Vim leaves lines shorter than the block's left edge untouched).
+        if !session.append && line_cells(b, rs, ts) < session.target_col {
+            continue;
+        }
+        let (at, del, pre, post) =
+            block_insert_point(b, rs, session.target_col, ts, session.append);
+        let mut ins = vec![b' '; pre];
+        ins.extend_from_slice(typed);
+        ins.extend(std::iter::repeat_n(b' ', post));
+        edits.push(Edit::replace(at, del, ins));
     }
     if edits.is_empty() {
         return nop(rest_cursor);
@@ -3932,86 +4194,113 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
     }
 }
 
-/// Blockwise paste (`p`/`P` of a `CTRL-V` register): drop the register's rows as a rectangle. Row `i`
-/// lands at the target column on the line `i` rows below the cursor's line; the target column is the
-/// cursor's column for `P` and one past it for `p` (Vim). Lines shorter than the target column are padded
-/// with spaces; rows past the last line are appended as new lines. The cursor ends at the block's
-/// top-left. `{count}p` repeats each row `count` times horizontally. With `pad`, a row shorter than the
-/// block is filled with spaces to the block's width between copies and before any text that follows it,
-/// so that text stays in one column (nvim `do_put`); `zp`/`zP` paste without (`pad` false).
-fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize, pad: bool) -> Plan {
+/// Blockwise paste (`p`/`P` of a `CTRL-V` register, nvim `do_put`): drop the register's rows as a
+/// rectangle. Row `i` lands on the line `i` rows below the cursor's, at the virtual column of the cursor's
+/// first cell for `P` and one past its last cell for `p`. A line shorter than that column is padded with
+/// spaces; a `<Tab>` crossing it is split into spaces around the block (another wide character crossing it
+/// moves right, as in Vim); rows past the last line open new lines. The cursor ends at the block's top-left.
+/// `{count}p` repeats each row `count` times horizontally. With `pad`, a row narrower than the block is
+/// filled with spaces to the block's width between copies and before any text that follows it, so that text
+/// stays in one column; `zp`/`zP` paste without (`pad` false).
+fn paste_block(
+    b: &[u8],
+    cur: usize,
+    reg: &Register,
+    after: bool,
+    count: usize,
+    pad: bool,
+    ts: usize,
+) -> Plan {
     let units: Vec<&[u8]> = reg.text().split(|&c| c == b'\n').collect();
-    let width = |row: &[u8]| col_of(row, 0, row.len());
     let block_width = reg.block_width();
-    // Row `i` repeated `count` times; `follows` = text stays after it on its line.
-    let build = |row: &[u8], follows: bool| {
+    let cls = line_start(b, cur);
+    let (v0, v1) = vcols_at(b, cur, ts);
+    let col = if after && cur < line_end(b, cls) {
+        v1 + 1
+    } else {
+        v0
+    };
+    // The cursor's line is real even when it is the empty slot after a final newline (`Go<Esc>` in a
+    // buffer without one, #1080): the first row lands in it. Lines opened past the end then follow it with
+    // a separator before each; after a terminated last line each new line carries its own newline (#695).
+    let in_end_slot = cls == b.len();
+    let terminated = !in_end_slot && b.last() == Some(&b'\n');
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut tail: Vec<u8> = Vec::new();
+    let mut cursor = cur;
+    let mut line = Some(cls);
+    for (i, unit) in units.iter().enumerate() {
         let fill = if pad {
-            block_width.saturating_sub(width(row))
+            block_width.saturating_sub(text_cells(unit, ts))
         } else {
             0
         };
-        let mut out = Vec::new();
-        for j in 0..count {
-            out.extend_from_slice(row);
-            if j + 1 < count || follows {
-                out.extend(std::iter::repeat_n(b' ', fill));
+        // Row `i` repeated `count` times; the fill goes between copies, and after the last one only when
+        // text follows it on its line.
+        let build = |shortline: bool| {
+            let mut out = Vec::new();
+            for j in 0..count {
+                out.extend_from_slice(unit);
+                if j + 1 < count || !shortline {
+                    out.extend(std::iter::repeat_n(b' ', fill));
+                }
+            }
+            out
+        };
+        let Some(ls) = line else {
+            let mut row = vec![b' '; col];
+            row.extend(build(true));
+            if terminated {
+                tail.extend(row);
+                tail.push(b'\n');
+            } else {
+                tail.push(b'\n');
+                tail.extend(row);
+            }
+            continue;
+        };
+        let le = line_end(b, ls);
+        let (mut p, mut prev, mut v, mut w) = (ls, ls, 0, 0);
+        while v < col && p < le {
+            prev = p;
+            let (j, cw) = cluster_cells(b, p, le, v, ts);
+            p = j;
+            w = cw;
+            v += w;
+        }
+        let (mut at, mut del, mut pre, mut post) = (p, 0, 0, 0);
+        if v < col {
+            pre = col - v; // line too short: pad with spaces
+        } else if v > col {
+            // The last character crosses the column: split a `<Tab>` into spaces on both sides; anything
+            // else moves to after the block.
+            post = v - col;
+            pre = w - post;
+            at = prev;
+            if b[prev] == b'\t' {
+                del = p - prev;
+            } else {
+                post = 0;
             }
         }
-        out
-    };
-    let cls = line_start(b, cur);
-    let ccol = col_of(b, cls, cur);
-    let has_char = cur < line_end(b, cls);
-    let target_col = if after && has_char { ccol + 1 } else { ccol };
-
-    let mut edits: Vec<Edit> = Vec::new();
-    let mut trailing: Vec<u8> = Vec::new();
-    let mut cursor = cur;
-    let mut cursor_set = false;
-    let mut rs = cls;
-    let mut past_eof = false;
-    for (i, unit) in units.iter().enumerate() {
-        if !past_eof && rs < b.len() {
-            let le = line_end(b, rs);
-            let linelen = col_of(b, rs, le);
-            let (at, pad) = if target_col <= linelen {
-                (at_col(b, rs, target_col), 0usize)
-            } else {
-                (le, target_col - linelen)
-            };
-            let row = build(unit, at < le);
-            if i == 0 {
-                cursor = at + pad; // the start of the pasted text on the cursor's line
-                cursor_set = true;
-            }
-            if pad > 0 || !row.is_empty() {
-                let mut ins = vec![b' '; pad];
-                ins.extend_from_slice(&row);
-                edits.push(Edit::insert(at, ins));
-            }
-            if le < b.len() {
-                rs = le + 1;
-            } else {
-                past_eof = true;
-            }
-        } else {
-            // Past the last line: append the remaining rows as fresh lines at the buffer end.
-            past_eof = true;
-            trailing.push(b'\n');
-            trailing.extend(std::iter::repeat_n(b' ', target_col));
-            trailing.extend_from_slice(&build(unit, false));
+        let shortline = v < col || (v == col && p >= le);
+        let mut ins = vec![b' '; pre];
+        ins.extend(build(shortline));
+        ins.extend(std::iter::repeat_n(b' ', post));
+        if i == 0 {
+            cursor = at + pre;
         }
+        if del > 0 || !ins.is_empty() {
+            edits.push(Edit::replace(at, del, ins));
+        }
+        line = (le + 1 < b.len()).then_some(le + 1);
     }
-    if !trailing.is_empty() {
+    if !tail.is_empty() {
         // Merge into a bottom-most edit already sitting at the buffer end (avoids two inserts at one
         // position, which the disjoint-edit invariant forbids); otherwise append as its own edit.
         match edits.last_mut() {
-            Some(last) if last.end() == b.len() => last.ins.extend_from_slice(&trailing),
-            _ => edits.push(Edit::insert(b.len(), trailing)),
-        }
-        if !cursor_set {
-            // The whole block landed past EOF: cursor at the first appended row's text start.
-            cursor = b.len() + 1 + target_col;
+            Some(last) if last.end() == b.len() => last.ins.extend_from_slice(&tail),
+            _ => edits.push(Edit::insert(b.len(), tail)),
         }
     }
     if edits.is_empty() {
@@ -4026,7 +4315,7 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize, 
             set_mark: None,
         };
     }
-    let list = EditList::new(edits).expect("block paste inserts are disjoint (one per line)");
+    let list = EditList::new(edits).expect("block paste edits are disjoint (one per line)");
     Plan {
         action: Action::Txn {
             edits: list,
@@ -4124,6 +4413,7 @@ fn paste(
     gravity: CaretGravity,
     move_after: bool,
     pad_block: bool,
+    ts: usize,
 ) -> Plan {
     let nop = Plan {
         action: Action::Nop,
@@ -4145,7 +4435,7 @@ fn paste(
     let unit_len = reg.text().len().max(1);
     let count = (count.max(1) as usize).min((MAX_PASTE_BYTES / unit_len).max(1));
     if reg.is_blockwise() {
-        return paste_block(b, cur, reg, after, count, pad_block);
+        return paste_block(b, cur, reg, after, count, pad_block, ts);
     }
     // `{count}p` pastes the register `count` times (Vim); the register itself is unchanged. The repeated
     // bytes are one contiguous insert, so the cursor math below (last pasted byte) still holds.

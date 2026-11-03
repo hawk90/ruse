@@ -252,7 +252,8 @@ features:
     # NOW IMPLEMENTED (register.rs; unit-tested — census-tracing/formal acceptance is a follow-up): the
     # numbered ring `"1`-`"9`, small-delete `"-`, and black-hole `"_` registers, plus `:registers`/`:reg`
     # (F-026 command engine + a picker). Also implemented: expression `"=` (crates/core/src/expr.rs) and
-    # clipboard `"+`/`"*` (crates/core/src/clipboard.rs); open register bugs include #704, #708, #749, #796 and #816.
+    # clipboard `"+`/`"*` (crates/core/src/clipboard.rs); open register bugs include #708, #749, #796 and #816.
+    # Visual `p`/`P` shapes the put by the selection and register kinds, as nvim does (#704).
     # MACROS (q record / @ replay) ship per D-055, with open bugs #787 and #812: recording
     # captures RAW KEYSTROKES and stores them as bytes in these same a-z registers, replayed by re-feeding the
     # input engine (so `"ap` shows a macro and yanked text runs as one). This is a distinct mechanism from

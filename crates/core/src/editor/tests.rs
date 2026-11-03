@@ -3968,15 +3968,251 @@ mod blockwise_tests {
 
     #[test]
     fn block_rows_clamp_a_short_line_to_an_empty_range() {
-        // Geometry directly (motions through a short line collapse the tracked column — the deferred
-        // curswant gap — so exercise `block_rows` on explicit corners). Cols [1,3] over three rows; the
-        // middle line "x" is shorter than col 1, so it contributes an empty range at its end.
+        // Geometry directly on explicit corners. Cols [1,3] over three rows; the middle line "x" ends at
+        // col 1, so it contributes an empty range at its end.
         let b = b"abcd\nx\nefgh";
-        let (rows, lo, hi) = block_rows(b, 3, 8); // (row0,col3) .. (row2,col1)
-        assert_eq!((lo, hi), (1, 3));
-        assert_eq!(rows, vec![(1, 4), (6, 6), (8, 11)]);
-        assert_eq!(&b[1..4], b"bcd");
-        assert_eq!(&b[8..11], b"fgh");
+        let block = block_geom(b, 3, 8, 4, false); // (row0,col3) .. (row2,col1)
+        assert_eq!((block.lo, block.hi), (1, 3));
+        assert_eq!(block.spans(), vec![(1, 4), (6, 6), (8, 11)]);
+        assert_eq!(block.yank_text(b), b"bcd\n\nfgh");
+    }
+
+    #[test]
+    fn block_geometry_counts_screen_cells() {
+        // `a<Tab>bc` at ts=4: the tab covers cells 1-3. A corner on the tab takes all of it, so the block
+        // over `abcdefgh` below is cells 1-3 (nvim v0.12.6 `jll<C-v>ky`: `\t` / `bcd`).
+        let b = b"a\tbc\nabcdefgh";
+        let block = block_geom(b, 1, 7, 4, false);
+        assert_eq!((block.lo, block.hi, block.width()), (1, 3, 3));
+        assert_eq!(block.yank_text(b), b"\t\nbcd");
+        // A block edge inside the tab yanks its inside cells as spaces (`<C-v>jfby`: `a ` / `ab`).
+        let block = block_geom(b, 0, 6, 4, false);
+        assert_eq!((block.lo, block.hi), (0, 1));
+        assert_eq!(block.yank_text(b), b"a \nab");
+        let top = block.rows[0];
+        assert_eq!((top.ds, top.de, top.in_r, top.out_r), (0, 2, 1, 2));
+        // A wide char is two cells: `a宽bc` over `abcdefgh`, corners on `宽` and `c` → cells 1-2.
+        let b = "a宽bc\nabcdefgh".as_bytes();
+        let block = block_geom(b, 1, 9, 4, false);
+        assert_eq!((block.lo, block.hi), (1, 2));
+        assert_eq!(block.yank_text(b), "宽\nbc".as_bytes());
+        // A line that ends before the block's left edge yanks as the block's width in spaces (Vim
+        // `block_prep`: `is_short` with `endspaces = width`).
+        let b = b"abcdef\na\nabcdef";
+        let block = block_geom(b, 2, 12, 4, false);
+        assert_eq!(block.yank_text(b), b"cd\n  \ncd");
+    }
+
+    #[test]
+    fn vcol_helpers_round_trip_tabs_and_wide_chars() {
+        let b = "\tx宽y".as_bytes();
+        assert_eq!(vcols_at(b, 0, 4), (0, 3));
+        assert_eq!(vcols_at(b, 1, 4), (4, 4));
+        assert_eq!(vcols_at(b, 2, 4), (5, 6));
+        assert_eq!(vcols_at(b, 5, 4), (7, 7));
+        assert_eq!(
+            vcols_at(b, b.len(), 4),
+            (8, 8),
+            "line end is the cell past the last char"
+        );
+        assert_eq!(at_vcol(b, 0, 2, 4), 0, "a cell inside the tab is the tab");
+        assert_eq!(
+            at_vcol(b, 0, 6, 4),
+            2,
+            "the second cell of the wide char is that char"
+        );
+        assert_eq!(
+            at_vcol(b, 0, 99, 4),
+            5,
+            "past the end stops on the last char"
+        );
+        assert_eq!(line_cells(b, 0, 4), 8);
+        assert_eq!(text_cells(b"a\tb", 4), 5);
+    }
+
+    /// `<C-v>j` from the start of `text`, then `cmds`.
+    fn block_then(text: &str, cmds: &[Command]) -> EditorState {
+        let mut all = vec![
+            Command::EnterVisual {
+                kind: SelectKind::Blockwise,
+            },
+            Command::MoveDown,
+        ];
+        all.extend_from_slice(cmds);
+        run(text, &all)
+    }
+
+    const PASTE_AFTER: Command = Command::Paste {
+        after: true,
+        count: 1,
+        move_after: false,
+    };
+
+    #[test]
+    fn block_case_and_replace_act_on_the_block_only() {
+        // #694 (nvim v0.12.6): `abc\ndef` `<C-v>jU` → `Abc\nDef`, `<C-v>jrx` → `xbc\nxef`.
+        let up = block_then("abc\ndef", &[Command::CaseSelection(WordCase::Upcase)]);
+        assert_eq!(text(&up), "Abc\nDef");
+        assert_eq!(up.cursor(), 0);
+        let rot = block_then("abc\ndef", &[Command::CaseSelection(WordCase::Rot13)]);
+        assert_eq!(text(&rot), "nbc\nqef");
+        let r = block_then("abc\ndef", &[Command::ReplaceSelectionChar('x')]);
+        assert_eq!(text(&r), "xbc\nxef");
+        // A double-width replacement fills two cells; an odd cell left over becomes a space.
+        let wide = run(
+            "a宽bc\nabcdefgh",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveRight,
+                Command::ReplaceSelectionChar('宽'),
+            ],
+        );
+        assert_eq!(text(&wide), "宽 bc\nabcdefgh");
+    }
+
+    #[test]
+    fn block_paste_past_a_final_newline_adds_no_blank_line() {
+        // #695 (nvim v0.12.6, buffers with a final newline): `gg<C-v>jlyGp` and `<C-v>jyGp`.
+        let st = run(
+            "abcd\nefgh\nXY\nZW\n",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::MoveRight,
+                Command::YankSelection,
+                Command::Move(4, Motion::GotoLine),
+                PASTE_AFTER,
+            ],
+        );
+        assert_eq!(text(&st), "abcd\nefgh\nXY\nZabW\n ef\n");
+        let st = block_then(
+            "ab\ncd\n\n",
+            &[
+                Command::YankSelection,
+                Command::Move(3, Motion::GotoLine),
+                PASTE_AFTER,
+            ],
+        );
+        assert_eq!(text(&st), "ab\ncd\na\nc\n");
+        assert_eq!(st.cursor(), 6, "top-left of the pasted block");
+    }
+
+    #[test]
+    fn block_paste_into_the_empty_last_line_starts_there() {
+        // #1080: `Go<Esc>` then `p` of a block lands in the new empty line, with or without a final
+        // newline before it (nvim v0.12.6: `ab\ncd` + `a\nc` → `ab\ncd\na\nc`).
+        for (start, want) in [("ab\ncd", "ab\ncd\na\nc"), ("ab\ncd\n", "ab\ncd\na\nc\n")] {
+            let st = block_then(
+                start,
+                &[
+                    Command::YankSelection,
+                    Command::Move(2, Motion::GotoLine),
+                    Command::OpenBelow,
+                    Command::EnterNormal,
+                    PASTE_AFTER,
+                ],
+            );
+            assert_eq!(text(&st), want, "from {start:?}");
+            assert_eq!(st.cursor(), 6);
+        }
+        // An empty buffer: the first row fills its one line.
+        let mut st = run("ab\ncd", &[]);
+        apply_command(
+            &mut st,
+            &Command::EnterVisual {
+                kind: SelectKind::Blockwise,
+            },
+        );
+        apply_command(&mut st, &Command::MoveDown);
+        apply_command(&mut st, &Command::YankSelection);
+        let reg = st.view.registers.get(None).clone();
+        let mut empty = EditorState::new(Vec::new());
+        empty.view.registers.yank(None, reg);
+        apply_command(&mut empty, &PASTE_AFTER);
+        assert_eq!(text(&empty), "a\nc");
+    }
+
+    #[test]
+    fn visual_put_shapes_by_selection_and_register_kind() {
+        // #704 (nvim v0.12.6). Linewise selection + charwise register: the text becomes its own line.
+        let st = run(
+            "a\nb\nc",
+            &[
+                Command::Yank(1, Motion::InnerWord),
+                Command::MoveDown,
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::PasteSelection { swap: true },
+            ],
+        );
+        assert_eq!(text(&st), "a\na\nc");
+        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.view.registers.get(None).text(), b"b\n");
+        // Charwise selection + linewise register: the line splits around the put lines.
+        let st = run(
+            "foo bar\nx",
+            &[
+                Command::MoveDown,
+                Command::Yank(1, Motion::Line),
+                Command::MoveUp,
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::InnerWord),
+                Command::PasteSelection { swap: false },
+            ],
+        );
+        assert_eq!(text(&st), "\nx\n bar\nx");
+        assert_eq!(st.cursor(), 1);
+        assert_eq!(
+            st.view.registers.get(None).text(),
+            b"x\n",
+            "`P` keeps the register"
+        );
+        // Block selection + one-line charwise register: the text goes on every row.
+        let st = run(
+            "abc\ndef\nghi",
+            &[
+                Command::Yank(1, Motion::Right),
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::MoveRight,
+                Command::PasteSelection { swap: true },
+            ],
+        );
+        assert_eq!(text(&st), "ac\naf\nghi");
+        assert_eq!(st.view.registers.get(None).text(), b"ab\nde");
+        assert!(st.view.registers.get(None).is_blockwise());
+        // One undo restores the selection's text.
+        let mut st = st;
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(text(&st), "abc\ndef\nghi");
+    }
+
+    #[test]
+    fn visual_repeat_measures_screen_columns() {
+        // #1064 (nvim v0.12.6, ts=4): `vld` over `<Tab>a` is five cells, so `.` on a plain line deletes five.
+        let st = run(
+            "\tabcdef\nabcdefgh",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveRight,
+                Command::DeleteSelection,
+                Command::MoveDown,
+                Command::MoveLineStart,
+                Command::DeleteSelection, // `.` replays the recorded selection operator
+            ],
+        );
+        assert_eq!(text(&st), "bcdef\nfgh");
     }
 
     #[test]

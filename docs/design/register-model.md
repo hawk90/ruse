@@ -351,6 +351,13 @@ captured (replaced) slot. Vim's exact quirk: after Visual-`p`, `""` holds the *r
 `p` pastes what was just overwritten. The register you pasted *from* is unchanged unless it was `""` itself
 (then the replaced text lands in `""`, which is the documented Vim behavior we reproduce). Test T-06.
 
+The put's shape follows the selection and the register (nvim `nv_put_opt`, #704): a linewise selection puts
+any register as whole lines; a charwise selection with a linewise register splits the line and puts the lines
+between the halves; a blockwise selection with a one-line charwise register puts that text on every row of
+the block, and with a linewise register `p` puts the lines below the block and `P` above it; anything else is
+an ordinary put where the selection began. The put goes before the cursor, or after it when the delete left
+the cursor on the last character of its line or file.
+
 ### 4. Register TYPE → paste geometry
 
 `RegisterType` is stored on the `Slot` at produce-time and **fully determines** paste geometry at read-time.
@@ -363,8 +370,13 @@ The paster never re-inspects the text to guess.
 | `Block` | insert as a **column**: fragment *k* goes into row *k* at the paste column, padding short rows with spaces to reach the column | column starting at cursor column | top-left of block |
 
 - **Linewise** never splits the current line; it always lands on its own physical lines (matches `dd`+`p`).
-- **Blockwise** uses `block_widths` (grapheme-cell widths, TERM-WIDTH-aware) to keep the column rectangular;
-  rows shorter than the paste column are space-padded; `$`-blocks (ragged right) skip padding.
+- **Blockwise** works in screen cells (a `<Tab>` spans to its tabstop, a wide character two cells), so the
+  column stays rectangular. The register stores the block's width in cells (Vim `y_width + 1`; for a `$`
+  block, its longest row). Rows shorter than the paste column are space-padded; a row narrower than the block
+  is padded to the block's width when text follows it on its line (`zp`/`zP` skip that). A `<Tab>` crossing
+  the paste column is split into spaces; rows past the last line open new lines (#695, #1080). Every block
+  operation (yank/delete/change, `~`/`u`/`U`/`g?`/`r`, `I`/`A`, put, Visual put, dot-repeat) shares one
+  geometry, `editor::range::block_geom` (Vim `block_prep`).
 - `]p`/`[p` = linewise paste with **reindent** to current line; only valid for `Line` (else falls back to `p`).
 - A `Char` slot whose text contains embedded `\n` (from a charwise multi-line motion) pastes inline and wraps
   onto real lines — distinct from `Line`, which owns whole lines. This distinction is a required test (T-05).
