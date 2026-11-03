@@ -554,6 +554,8 @@ pub(crate) struct Session {
     /// Revision-cached line index: O(log n) row/line lookups instead of an O(buffer) newline scan per
     /// pane per frame (D-042 win D). Refreshed by `pre_frame`.
     pub(crate) line_idx: line_index::LineIndex,
+    /// The line indexes of the other buffers the windows show (#1182), refreshed by `pre_frame`.
+    pub(crate) pane_idx: line_index::PaneIndexes,
     pub(crate) initial: Vec<u8>,
     pub(crate) recorded: Vec<Command>,
     /// The editing options the core reads, as the session began: a saved trace starts by setting them, so
@@ -723,6 +725,7 @@ impl Session {
             files,
             highlighters,
             line_idx: line_index::LineIndex::default(),
+            pane_idx: line_index::PaneIndexes::default(),
             initial,
             recorded: Vec::new(),
             start_options,
@@ -810,6 +813,7 @@ impl Session {
             ws,
             files,
             line_idx,
+            pane_idx,
             journal_throttle,
             journal_failed,
             unnamed_start,
@@ -950,6 +954,16 @@ impl Session {
         let rects = window_rects(cols, text_rows, ws.window_count(), ws.split_dir());
         let has_signs = !lsp.diagnostics_for(ws.focused_buffer()).is_empty();
         let focus_buf = ws.focused_buffer();
+        // The other buffers the windows show keep their own line index, rebuilt on their own edits only.
+        for i in 0..ws.window_count() {
+            let p = ws.pane(i);
+            if p.view.doc() != focus_buf {
+                pane_idx.refresh(p.view.doc(), p.doc.revision(), p.doc.bytes());
+            }
+        }
+        pane_idx.retain(|d| {
+            d != focus_buf && (0..ws.window_count()).any(|i| ws.pane(i).view.doc() == d)
+        });
         let mut wins = Vec::with_capacity(rects.len());
         for (i, rect) in rects.iter().enumerate() {
             let pane_folds: &[crate::folds::Fold] = if i == ws.focus() {
@@ -959,14 +973,12 @@ impl Session {
             };
             let (win, top, leftcol) = {
                 let p = ws.pane(i);
-                let own;
                 let idx = if p.view.doc() == focus_buf {
                     &*line_idx
                 } else {
-                    let mut ix = line_index::LineIndex::default();
-                    ix.refresh_for(p.view.doc(), p.doc.revision(), p.doc.bytes());
-                    own = ix;
-                    &own
+                    pane_idx
+                        .get(p.view.doc(), p.doc.revision())
+                        .unwrap_or(&*line_idx)
                 };
                 let text = PaneText {
                     bytes: p.doc.bytes(),
@@ -4066,10 +4078,17 @@ impl Session {
             .map(|(i, rect)| {
                 let p = self.ws.pane(i);
                 let mut ix = line_index::LineIndex::default();
-                ix.refresh_for(p.view.doc(), p.doc.revision(), p.doc.bytes());
+                let idx = if p.view.doc() == self.ws.focused_buffer() {
+                    &self.line_idx
+                } else if let Some(idx) = self.pane_idx.get(p.view.doc(), p.doc.revision()) {
+                    idx
+                } else {
+                    ix.refresh_for(p.view.doc(), p.doc.revision(), p.doc.bytes());
+                    &ix
+                };
                 let text = PaneText {
                     bytes: p.doc.bytes(),
-                    idx: &ix,
+                    idx,
                 };
                 WinView::resolve(
                     p.view,
@@ -4765,6 +4784,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     .get(&s.ws.focused_buffer())
                     .map_or(&[][..], Vec::as_slice),
                 &s.line_idx,
+                &s.pane_idx,
                 s.ui_opts.showmode,
             )?;
             // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused

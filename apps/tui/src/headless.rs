@@ -549,6 +549,33 @@ mod tests {
         assert_eq!(h.workspace().origin(), UserInput);
     }
 
+    /// #1182: a window on another, unchanged buffer keeps that buffer's line index across frames: one
+    /// newline scan, not one per frame (it used to rebuild it in every viewport pass and every render).
+    #[test]
+    fn an_unfocused_pane_reuses_its_buffers_line_index() {
+        let big: String = (0..200_000).map(|i| format!("line {i}\n")).collect();
+        let mut h = Headless::vim(&big);
+        h.keys(":vsplit<CR>:enew<CR>");
+        let ws = h.workspace();
+        let pane = (0..ws.window_count())
+            .find(|&i| ws.pane(i).view.doc() != ws.focused_buffer())
+            .expect("two buffers shown");
+        let other = ws.pane(pane).view.doc();
+        let builds = |h: &Headless| {
+            let rev = h.s.ws.pane(pane).doc.revision();
+            h.s.pane_idx.get(other, rev).map(|ix| ix.builds())
+        };
+        assert_eq!(builds(&h), Some(1));
+        let start = std::time::Instant::now();
+        h.keys("ihello<Esc>").keys(&"hl".repeat(100));
+        let per_frame = start.elapsed() / 206;
+        assert_eq!(builds(&h), Some(1), "no rebuild over 206 frames");
+        // An edit there, made from the other window, is one rebuild when it is shown unfocused again.
+        h.keys("<C-w>wx<C-w>w").keys("hlhl");
+        assert_eq!(builds(&h), Some(1));
+        eprintln!("frame time with a 200k-line buffer beside: {per_frame:?}");
+    }
+
     #[test]
     fn emsg_code_reads_only_a_numbered_error() {
         assert_eq!(emsg_code("E486: pattern not found: x"), Some("E486"));

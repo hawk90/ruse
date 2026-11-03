@@ -795,6 +795,7 @@ pub(crate) fn render(
     image_dims: &std::collections::HashMap<String, (u32, u32)>,
     folds: &[crate::folds::Fold],
     line_idx: &crate::line_index::LineIndex,
+    pane_idx: &crate::line_index::PaneIndexes,
     showmode: bool,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
@@ -937,15 +938,15 @@ pub(crate) fn render(
         } else {
             Vec::new()
         };
-        // A pane on another buffer than the focused one gets its own line index (the cached one is the
-        // focused buffer's).
-        let own_idx;
+        // A pane on another buffer than the focused one reads that buffer's cached line index (#1182),
+        // which the frame's viewport pass refreshed.
+        let mut own_idx = crate::line_index::LineIndex::default();
         let idx = if p.view.doc() == focus_doc {
             line_idx
+        } else if let Some(ix) = pane_idx.get(p.view.doc(), p.doc.revision()) {
+            ix
         } else {
-            let mut ix = crate::line_index::LineIndex::default();
-            ix.refresh_for(p.view.doc(), p.doc.revision(), pbytes);
-            own_idx = ix;
+            own_idx.refresh_for(p.view.doc(), p.doc.revision(), pbytes);
             &own_idx
         };
         let fallback;

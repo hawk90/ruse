@@ -20,6 +20,8 @@ pub struct LineIndex {
     /// The buffer length, so `nth_line_start` past the last line clamps to the end (as the viewport math
     /// expects) rather than to the last line's start.
     len: usize,
+    /// How many times the index was rebuilt (the #1182 regression test counts them).
+    builds: u64,
 }
 
 impl LineIndex {
@@ -44,6 +46,13 @@ impl LineIndex {
         }
         self.len = bytes.len();
         self.rev = Some(rev);
+        self.builds += 1;
+    }
+
+    /// How many times [`LineIndex::refresh_for`] rebuilt the index.
+    #[must_use]
+    pub fn builds(&self) -> u64 {
+        self.builds
     }
 
     /// The 0-based row of `byte` (the line containing it) — O(log n).
@@ -59,6 +68,35 @@ impl LineIndex {
     #[must_use]
     pub fn nth_line_start(&self, line: usize) -> usize {
         self.starts.get(line).copied().unwrap_or(self.len)
+    }
+}
+
+/// One [`LineIndex`] per buffer that a window shows besides the focused one (#1182): each is rebuilt only
+/// when its own buffer's revision moves, so a split on another large buffer costs no newline scan per
+/// frame.
+#[derive(Default)]
+pub struct PaneIndexes {
+    map: std::collections::HashMap<DocumentId, LineIndex>,
+}
+
+impl PaneIndexes {
+    /// Bring `doc`'s index to `rev` (a no-op when it already is).
+    pub fn refresh(&mut self, doc: DocumentId, rev: Revision, bytes: &[u8]) {
+        self.map
+            .entry(doc)
+            .or_default()
+            .refresh_for(doc, rev, bytes);
+    }
+
+    /// `doc`'s index at revision `rev`, if [`PaneIndexes::refresh`] built that one.
+    #[must_use]
+    pub fn get(&self, doc: DocumentId, rev: Revision) -> Option<&LineIndex> {
+        self.map.get(&doc).filter(|ix| ix.rev == Some((doc, rev)))
+    }
+
+    /// Drop the indexes of the buffers no longer shown.
+    pub fn retain(&mut self, mut shown: impl FnMut(DocumentId) -> bool) {
+        self.map.retain(|d, _| shown(*d));
     }
 }
 
