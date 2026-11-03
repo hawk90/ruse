@@ -452,34 +452,31 @@ impl AnchorStore {
                 _ => regions.push((ws, we, e.delta())),
             }
         }
+        // Every region's anchors are found and mapped first, from the order as it stands, so no search
+        // probes a rank a write has already moved.
+        let n = self.order.len();
+        let plan: Vec<(usize, usize, Vec<(usize, u32, bool)>)> = regions
+            .iter()
+            .map(|&(ws, we, _)| {
+                let lo = partition(n, |r| self.at_rank(r) < ws);
+                let hi = lo + partition(n - lo, |r| self.at_rank(lo + r) <= we);
+                let mut moved: Vec<(usize, u32, bool)> = (lo..hi)
+                    .map(|r| {
+                        let slot = self.order[r];
+                        let a = self.slots[slot as usize].anchor.expect("live");
+                        let (to, gone) = map_anchor(&a, self.at_rank(r), es, map.as_ref());
+                        (to, slot, gone)
+                    })
+                    .collect();
+                moved.sort_by_key(|m| m.0);
+                (lo, hi, moved)
+            })
+            .collect();
         // Each region's anchors are stored LESS the deltas of the regions left of it (`left`), which
         // the later steps add from their ranks on.
         let mut left: isize = regions.iter().map(|r| r.2).sum();
-        let n = self.order.len();
-        for &(ws, we, delta) in regions.iter().rev() {
+        for ((lo, hi, moved), &(_, _, delta)) in plan.iter().zip(&regions).rev() {
             left -= delta;
-            let lo = partition(n, |r| self.at_rank(r) < ws);
-            let hi = lo + partition(n - lo, |r| self.at_rank(lo + r) <= we);
-            let mut moved: Vec<(usize, u32, bool)> = (lo..hi)
-                .map(|r| {
-                    let slot = self.order[r];
-                    let a = self.slots[slot as usize].anchor.expect("live");
-                    let o = self.at_rank(r);
-                    let (to, gone) = match (a.track, &map) {
-                        (Track::Line(g), Some(m)) => match m.map(o, g) {
-                            Some(p) => (p, false),
-                            None => (m.map(o, LineGravity::Keep).expect("Keep never drops"), true),
-                        },
-                        (Track::Line(_), None) => (map_byte_inside(es, o, Bias::After).0, false),
-                        (Track::Byte(bias), _) => {
-                            let (p, inside) = map_byte_inside(es, o, bias);
-                            (p, inside && a.policy == AnchorPolicy::Invalidate)
-                        }
-                    };
-                    (to, slot, gone)
-                })
-                .collect();
-            moved.sort_by_key(|m| m.0);
             for (i, &(to, slot, gone)) in moved.iter().enumerate() {
                 let r = lo + i;
                 self.order[r] = slot;
@@ -489,18 +486,33 @@ impl AnchorStore {
                 a.offset = (to as isize - left - pending) as usize;
                 a.invalidated |= gone;
             }
-            self.shift.add_from(hi, delta);
-            if cfg!(debug_assertions) {
-                // The order holds across the region's edges (anchor-store §3 monotonicity).
-                for r in lo.saturating_sub(1)..(hi + 1).min(n) {
-                    if r + 1 < n {
-                        debug_assert!(
-                            self.at_rank(r) <= self.at_rank(r + 1),
-                            "anchor order inverted at rank {r}"
-                        );
-                    }
-                }
-            }
+            self.shift.add_from(*hi, delta);
+        }
+        // Each region is sorted and the anchors between regions keep their order, so the order holds
+        // unless an anchor left its region. Only a line anchor on a moved block does (`:m`,
+        // [`LineMap::moved`], #1164): it goes where the block was inserted, which can be another
+        // region. Every offset is right either way; a crossed order is rebuilt at the next edit.
+        let inverted = |r: usize| r > 0 && r < n && self.at_rank(r - 1) > self.at_rank(r);
+        if plan.iter().any(|&(lo, hi, _)| inverted(lo) || inverted(hi)) {
+            debug_assert!(map.is_some(), "only a line anchor leaves its region");
+            self.stale = true;
+        }
+    }
+}
+
+/// Where the anchor `a`, now at `o`, goes through the edits `es` (by line when there is a text map,
+/// else by byte), and whether that loses it: its line was dropped, or it is an `Invalidate` anchor a
+/// deleted span swallowed.
+fn map_anchor(a: &Anchor, o: usize, es: &[Edit], map: Option<&LineMap<'_>>) -> (usize, bool) {
+    match (a.track, map) {
+        (Track::Line(g), Some(m)) => match m.map(o, g) {
+            Some(p) => (p, false),
+            None => (m.map(o, LineGravity::Keep).expect("Keep never drops"), true),
+        },
+        (Track::Line(_), None) => (map_byte_inside(es, o, Bias::After).0, false),
+        (Track::Byte(bias), _) => {
+            let (p, inside) = map_byte_inside(es, o, bias);
+            (p, inside && a.policy == AnchorPolicy::Invalidate)
         }
     }
 }
@@ -1213,5 +1225,33 @@ mod tests {
         assert_eq!(store.resolve(keep).offset.0, 2);
         assert!(!store.resolve(keep).invalidated);
         assert_eq!(store.resolve(below).offset.0, 2);
+    }
+
+    #[test]
+    fn a_line_anchor_on_a_moved_line_may_pass_other_anchors() {
+        // #1164 (the property's shrunk case): deleting the last, empty line and inserting an empty line
+        // at the top reads as moving that line (`:m0`), so the mark on it goes to the top, past the
+        // byte anchor at 1. The order must be rebuilt, not left inverted.
+        let old = b"aaaaa\na\n\n\n".to_vec();
+        let list =
+            EditList::new(vec![Edit::delete(9, 1), Edit::insert(0, b"\n".to_vec())]).unwrap();
+        let new = list.apply_to(&old);
+        let mut store = AnchorStore::new();
+        let mark = store.insert_line(9, LineGravity::Drop);
+        let byte = store.insert(1, Bias::Before, AnchorPolicy::Clamp);
+        store.apply_change(&old, &new, &list);
+        store.assert_invariants(new.len());
+        assert_eq!(store.resolve(mark).offset.0, 0);
+        assert!(!store.resolve(mark).invalidated);
+        assert_eq!(store.resolve(byte).offset.0, 2);
+        let order: Vec<usize> = store.resolved().iter().map(|r| r.1.offset.0).collect();
+        assert_eq!(order, [0, 2]);
+        // The next change starts from a rebuilt order and keeps both anchors right.
+        let next = EditList::new(vec![Edit::insert(1, b"z".to_vec())]).unwrap();
+        let newer = next.apply_to(&new);
+        store.apply_change(&new, &newer, &next);
+        store.assert_invariants(newer.len());
+        assert_eq!(store.resolve(mark).offset.0, 0);
+        assert_eq!(store.resolve(byte).offset.0, 3);
     }
 }

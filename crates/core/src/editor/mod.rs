@@ -2541,10 +2541,14 @@ impl EditorState {
             .take(target_idx)
             .map(<[u8]>::len)
             .sum();
+        // Undo and redo come back to the start of the range's LAST line (#1165): nvim's `do_filter` saves
+        // the change with the cursor there (`uh_cursor`), having moved it to `line2` to append the output.
+        let last_start = spans[last].0;
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
+            .with_hint(GroupHint::BreakBefore)
+            .with_cursor(last_start);
         self.apply_txn(txn).expect("line filter applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();

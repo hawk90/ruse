@@ -1327,6 +1327,17 @@ FIXTURES: list[dict] = [
     {"name": "v_J_dot", "lines": ["a", "b", "c", "d", "e"], "keys": "vjJj."},
     {"name": "v_colon_esc_leaves_visual", "lines": ["a", "b"], "keys": "vj:<Esc>x"},
     {"name": "V_bang_filter_two", "lines": ["c", "b", "a"], "keys": "Vj!sort<CR>"},
+    # --- #1165 undo/redo after a filter: nvim's `do_filter` saves the change with the cursor at the start
+    #     of the range's last line, so `u` and `CTRL-R` land there. -------------------------------------
+    {"name": "bang_filter_undo", "lines": ["c", "b", "a"], "keys": "!jsort<CR>u"},
+    {"name": "bang_filter_undo_mid", "lines": ["c", "b", "a", "d"], "keys": "j!jsort<CR>u"},
+    {"name": "bang_filter_undo_col", "lines": ["abc", "  def", "ghi"], "keys": "ll!jsort<CR>u"},
+    {"name": "bang_filter_redo", "lines": ["abc", "  def", "ghi"], "keys": "ll!jsort<CR>u<C-r>"},
+    {"name": "bangbang_filter_undo", "lines": ["c", "b", "a", "d"], "keys": "j!!sort<CR>u"},
+    {"name": "ex_filter_all_undo", "lines": ["c", "b", "a"], "keys": ":%!sort<CR>u"},
+    {"name": "ex_filter_all_redo", "lines": ["c", "b", "a", "d"], "keys": ":%!sort<CR>u<C-r>"},
+    {"name": "ex_filter_range_undo", "lines": ["c", "b", "a", "d"], "keys": "G:1,2!sort<CR>u"},
+    {"name": "V_bang_filter_undo", "lines": ["c", "b", "a", "d"], "keys": "jVj!sort<CR>u"},
     # --- #606/#792 Select mode: `gh`/`gH`/`g CTRL-H` enter it; a typed printable (any letter, digit,
     #     `"`, `:`, space, `<CR>`) replaces the selection and enters Insert; `<BS>`/`CTRL-H`/`<Del>` delete
     #     it; `CTRL-O` runs one Visual command; arrows and `<S-…>`/`<Home>`/`<End>` extend it. -----------

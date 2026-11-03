@@ -22449,6 +22449,286 @@
       }
     },
     {
+      "name": "bang_filter_undo",
+      "lines": [
+        "c",
+        "b",
+        "a"
+      ],
+      "keys": "!jsort<CR>u",
+      "expect": {
+        "text": [
+          "c",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "bang_filter_undo_mid",
+      "lines": [
+        "c",
+        "b",
+        "a",
+        "d"
+      ],
+      "keys": "j!jsort<CR>u",
+      "expect": {
+        "text": [
+          "c",
+          "b",
+          "a",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "bang_filter_undo_col",
+      "lines": [
+        "abc",
+        "  def",
+        "ghi"
+      ],
+      "keys": "ll!jsort<CR>u",
+      "expect": {
+        "text": [
+          "abc",
+          "  def",
+          "ghi"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "bang_filter_redo",
+      "lines": [
+        "abc",
+        "  def",
+        "ghi"
+      ],
+      "keys": "ll!jsort<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "  def",
+          "abc",
+          "ghi"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "bangbang_filter_undo",
+      "lines": [
+        "c",
+        "b",
+        "a",
+        "d"
+      ],
+      "keys": "j!!sort<CR>u",
+      "expect": {
+        "text": [
+          "c",
+          "b",
+          "a",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ex_filter_all_undo",
+      "lines": [
+        "c",
+        "b",
+        "a"
+      ],
+      "keys": ":%!sort<CR>u",
+      "expect": {
+        "text": [
+          "c",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ex_filter_all_redo",
+      "lines": [
+        "c",
+        "b",
+        "a",
+        "d"
+      ],
+      "keys": ":%!sort<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ex_filter_range_undo",
+      "lines": [
+        "c",
+        "b",
+        "a",
+        "d"
+      ],
+      "keys": "G:1,2!sort<CR>u",
+      "expect": {
+        "text": [
+          "c",
+          "b",
+          "a",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "V_bang_filter_undo",
+      "lines": [
+        "c",
+        "b",
+        "a",
+        "d"
+      ],
+      "keys": "jVj!sort<CR>u",
+      "expect": {
+        "text": [
+          "c",
+          "b",
+          "a",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "s_gh_type",
       "lines": [
         "abc"
