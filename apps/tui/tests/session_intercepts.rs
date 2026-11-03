@@ -644,6 +644,14 @@ fn normal_runs_a_nested_ex_line_and_the_outer_macro_resumes_after_it() {
 }
 
 #[test]
+fn normal_takes_its_payload_literally() {
+    // nvim v0.12.6 (#815): `:normal` reads no `<>` notation, so `<Esc>` is five typed keys; a real
+    // Escape goes in with `c_CTRL-V`.
+    assert_eq!(run("x\n", ":normal iA<lt>Esc>x<CR>").text(), "A<Esc>xx\n");
+    assert_eq!(run("xy\n", ":normal iA<C-v><Esc>x<CR>").text(), "xy\n");
+}
+
+#[test]
 fn normal_that_recurses_stops_with_e192() {
     // `@a` where a = `:normal @a^M` never ends; Vim stops at 'maxmapdepth' with E192, ruse earlier.
     let h = run("abc\n", "qa:normal @a<CR>q@a");

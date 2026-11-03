@@ -7,7 +7,7 @@
 //! WORD (`W`/`B`/`E`) split on blanks only. They step one grapheme cluster at a time, as nvim's `inc()` /
 //! `dec()` do, and a cluster takes the class of its first char. All positions land on char boundaries.
 
-use unicode_segmentation::GraphemeCursor;
+use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
 /// A motion in the editing grammar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -727,17 +727,84 @@ pub(crate) fn cword_under_cursor(b: &[u8], cur: usize, big: bool) -> Option<(usi
 /// The keyword (Word-class run) ending exactly AT the caret — the "base" Vim's insert-mode keyword
 /// completion (`i_CTRL-N` / `i_CTRL-P`) matches against. Returns `(start, base)`: `start` is the byte
 /// offset where the run begins, `base` its text (empty, with `start == cur`, when the char before the
-/// caret is not keyword-class or the caret is at a line/buffer start). Char-boundary safe: a multibyte
-/// keyword char is all `Word`-class bytes, so walking back to the first non-word byte lands on a boundary.
+/// caret is not keyword-class or the caret is at a line/buffer start). A keyword is a run of grapheme
+/// clusters of one Vim class of 2 or more ([`crate::charclass::vim_class`]), as nvim's
+/// `get_normal_compl_info` reads it, so the base of "API를" is "를" (#1136).
 pub(crate) fn keyword_before_cursor(b: &[u8], cur: usize) -> (usize, &str) {
-    let mut s = cur.min(b.len());
+    let cur = cur.min(b.len());
+    let ls = line_start(b, cur);
+    let Ok(line) = std::str::from_utf8(&b[ls..cur]) else {
+        return byte_keyword_before_cursor(b, cur);
+    };
+    let mut start = cur;
+    let mut class = None;
+    for (i, g) in line.grapheme_indices(true).rev() {
+        let k = keyword_class(g);
+        if k < crate::charclass::WORD || class.is_some_and(|c| c != k) {
+            break;
+        }
+        class = Some(k);
+        start = ls + i;
+    }
+    (start, &line[start - ls..])
+}
+
+/// The Vim class of a grapheme cluster (its first char's), 0 for a line break.
+fn keyword_class(g: &str) -> u32 {
+    match g.chars().next() {
+        None | Some('\n') => 0,
+        Some(c) => crate::charclass::vim_class(c),
+    }
+}
+
+/// [`keyword_before_cursor`] for a line that is not UTF-8: a run of word-class bytes.
+fn byte_keyword_before_cursor(b: &[u8], cur: usize) -> (usize, &str) {
+    let mut s = cur;
     while s > 0 && class(b[s - 1]) == Class::Word {
         s -= 1;
     }
-    (
-        s,
-        std::str::from_utf8(&b[s..cur.min(b.len())]).unwrap_or(""),
-    )
+    (s, std::str::from_utf8(&b[s..cur]).unwrap_or(""))
+}
+
+/// Every keyword in `b` as `(start, text)`, in positional order: runs of grapheme clusters of one Vim
+/// class of 2 or more (nvim `find_word_end`); a buffer that is not UTF-8 falls back to word-class bytes.
+fn keyword_runs(b: &[u8]) -> Vec<(usize, &str)> {
+    let mut runs: Vec<(usize, &str)> = Vec::new();
+    let Ok(text) = std::str::from_utf8(b) else {
+        let mut i = 0;
+        while i < b.len() {
+            if class(b[i]) == Class::Word {
+                let s = i;
+                while i < b.len() && class(b[i]) == Class::Word {
+                    i += 1;
+                }
+                if let Ok(t) = std::str::from_utf8(&b[s..i]) {
+                    runs.push((s, t));
+                }
+            } else {
+                i += 1;
+            }
+        }
+        return runs;
+    };
+    let mut open: Option<(usize, u32)> = None;
+    for (i, g) in text.grapheme_indices(true) {
+        let k = keyword_class(g);
+        if let Some((s, c)) = open {
+            if c == k {
+                continue;
+            }
+            runs.push((s, &text[s..i]));
+            open = None;
+        }
+        if k >= crate::charclass::WORD {
+            open = Some((i, k));
+        }
+    }
+    if let Some((s, _)) = open {
+        runs.push((s, &text[s..]));
+    }
+    runs
 }
 
 /// The current-buffer keyword-completion candidates for `i_CTRL-N` / `i_CTRL-P` (F-003), in Vim's scan
@@ -752,22 +819,7 @@ pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &str) -> Vec<Strin
     // The run under construction begins here; it is never offered as its own candidate. Only meaningful
     // when `base` is non-empty (an empty base sits after a non-word char, so no run starts at the caret).
     let base_start = cur.saturating_sub(base.len());
-    // All keyword runs, as (start, text), in positional order.
-    let mut runs: Vec<(usize, &str)> = Vec::new();
-    let mut i = 0;
-    while i < b.len() {
-        if class(b[i]) == Class::Word {
-            let s = i;
-            while i < b.len() && class(b[i]) == Class::Word {
-                i += 1;
-            }
-            if let Ok(t) = std::str::from_utf8(&b[s..i]) {
-                runs.push((s, t));
-            }
-        } else {
-            i += 1;
-        }
-    }
+    let runs = keyword_runs(b);
     // Forward-from-caret first (runs starting at/after the caret), then wrap from the buffer start.
     let ordered = runs
         .iter()
@@ -2029,7 +2081,7 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // blank-line landing is a line start (its `\n`), the exclusive end.
         Motion::ParagraphFwd => match paragraph_landing(b, cur, true, n) {
             None => (cur, cur),
-            Some((t, true)) if t < b.len() && b[t] != b'\n' => (cur, next_boundary(b, t)),
+            Some((t, true)) if t < b.len() && b[t] != b'\n' => (cur, next_grapheme(b, t)),
             Some((t, _)) => (cur, t),
         },
         Motion::ParagraphBack => (target(b, cur, m, n), cur),
@@ -2075,7 +2127,7 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         Motion::WordEndBack | Motion::BigWordEndBack => {
             let big = m == Motion::BigWordEndBack;
             let e = repeat_step(n, cur, |e| prev_word_end(b, e, big));
-            (e, next_boundary(b, cur))
+            (e, next_grapheme(b, cur))
         }
         // `^` / `|` / `go` / `gM` are exclusive and can point either way (indent / column / byte / line-%,
         // left or right): ordered pair from the cursor to the absolute target.
@@ -2086,7 +2138,7 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // `g_` is INCLUSIVE (Vim `dg_` deletes through the last non-blank char).
         Motion::LineLastNonBlank => {
             let t = target(b, cur, m, n);
-            (cur.min(t), next_boundary(b, cur.max(t)))
+            (cur.min(t), next_grapheme(b, cur.max(t)))
         }
         // char-search: forward includes through the landing char (`dfx` incl. x, `dtx` up to x); backward
         // spans from the landing to the cursor. A missing match is a no-op range.
@@ -2097,14 +2149,14 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             repeat,
         } => match find_char_target(b, cur, ch, forward, till, repeat, n) {
             None => (cur, cur),
-            Some(t) if forward => (cur, next_boundary(b, t)),
+            Some(t) if forward => (cur, next_grapheme(b, t)),
             Some(t) => (t, cur),
         },
         // bracket match: inclusive of both brackets and everything between (Vim `d%`). No match → no-op.
         Motion::MatchBracket => match match_bracket(b, cur) {
             Some(m) if m != cur => {
                 let (lo, hi) = (cur.min(m), cur.max(m));
-                (lo, next_boundary(b, hi))
+                (lo, next_grapheme(b, hi))
             }
             _ => (cur, cur),
         },

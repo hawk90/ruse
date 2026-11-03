@@ -44,6 +44,10 @@ pub(crate) struct CmdLine {
     pub(crate) wild: Option<Wild>,
     /// The matches `c_CTRL-D` listed, shown above the line until it closes or completes again.
     pub(crate) listing: Option<Vec<super::complete::Item>>,
+    /// Whether the language map (`:lmap`) rewrites what is typed on THIS line (nvim `State & MODE_LANGMAP`
+    /// in `getcmdline`, #810): a `/`/`?` line starts with the Insert state (`'imsearch'` -1 uses
+    /// `'iminsert'`), any other line without it; `c_CTRL-^` flips it for the line.
+    pub(crate) lang: bool,
 }
 
 /// An active wildmenu: the line as it was before completion, the completed word's span in it, and the
@@ -125,6 +129,7 @@ impl CmdLine {
             digraph: None,
             wild: None,
             listing: None,
+            lang: false,
         }
     }
 

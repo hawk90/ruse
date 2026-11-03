@@ -76823,6 +76823,2314 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "dbl_gUgU",
+      "lines": [
+        "foo bar",
+        "baz qux"
+      ],
+      "keys": "gUgU",
+      "expect": {
+        "text": [
+          "FOO BAR",
+          "baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dbl_gugu",
+      "lines": [
+        "ABC",
+        "DEF"
+      ],
+      "keys": "gugu",
+      "expect": {
+        "text": [
+          "abc",
+          "DEF"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dbl_grot_grot",
+      "lines": [
+        "abc"
+      ],
+      "keys": "g?g?",
+      "expect": {
+        "text": [
+          "nop"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dbl_count_gUgU",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "2gUgU",
+      "expect": {
+        "text": [
+          "ABC",
+          "DEF",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dbl_gU_count_gU",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "gU2gU",
+      "expect": {
+        "text": [
+          "ABC",
+          "DEF",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dbl_gUgu_aborts",
+      "lines": [
+        "abc"
+      ],
+      "keys": "gUgux",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "dbl_gtilde_gU_aborts",
+      "lines": [
+        "abc"
+      ],
+      "keys": "g~gUx",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "dig_reversed_umlaut",
+      "lines": [
+        "x"
+      ],
+      "keys": "i<C-k>:a<Esc>",
+      "expect": {
+        "text": [
+          "äx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dig_reversed_acute",
+      "lines": [
+        "x"
+      ],
+      "keys": "i<C-k>'e<Esc>",
+      "expect": {
+        "text": [
+          "éx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dig_reversed_arrow",
+      "lines": [
+        "x"
+      ],
+      "keys": "i<C-k>>-<Esc>",
+      "expect": {
+        "text": [
+          "→x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dig_reversed_none",
+      "lines": [
+        "x"
+      ],
+      "keys": "i<C-k>gD<Esc>",
+      "expect": {
+        "text": [
+          "Dx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dig_cmdline_reversed",
+      "lines": [
+        "ä"
+      ],
+      "keys": "/<C-k>:a<CR>x",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ä",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mac_linewise_reg_nl_is_ctrl_j",
+      "lines": [
+        "$",
+        "     xyz"
+      ],
+      "keys": "yy@\"",
+      "expect": {
+        "text": [
+          "$",
+          "     xyz"
+        ],
+        "cursor": [
+          2,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "$\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "$\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mac_ctrl_j_replays",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "qq<C-j>qgg@qx",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_ctrl_v_esc",
+      "lines": [
+        "xy"
+      ],
+      "keys": ":normal iA<C-v><Esc>x<CR>",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_colon_line_unmapped",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":lmap a b<CR>i<C-^><Esc>:s/a/X/<CR>",
+      "expect": {
+        "text": [
+          "Xbc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_search_follows_insert",
+      "lines": [
+        "abc abd"
+      ],
+      "keys": ":lmap a b<CR>i<C-^><Esc>/a<CR>x",
+      "expect": {
+        "text": [
+          "ac abd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_insert_translates",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":lmap a b<CR>i<C-^>a<Esc>",
+      "expect": {
+        "text": [
+          "babc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_find_arg",
+      "lines": [
+        "abc abd"
+      ],
+      "keys": ":lmap a b<CR>i<C-^><Esc>fax",
+      "expect": {
+        "text": [
+          "ac abd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_replace_arg",
+      "lines": [
+        "abc abd"
+      ],
+      "keys": ":lmap a b<CR>i<C-^><Esc>ra",
+      "expect": {
+        "text": [
+          "bbc abd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_search_toggle_sets_insert",
+      "lines": [
+        "abc abd"
+      ],
+      "keys": ":lmap a b<CR>/<C-^>a<CR>ia<Esc>",
+      "expect": {
+        "text": [
+          "abbc abd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_search_toggle_off",
+      "lines": [
+        "abc abd"
+      ],
+      "keys": ":lmap a b<CR>i<C-^><Esc>/<C-^>a<CR>x",
+      "expect": {
+        "text": [
+          "abc bd"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_colon_toggle_one_line",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":lmap a b<CR>:<C-^>s/a/X/<CR>:s/a/Y/<CR>",
+      "expect": {
+        "text": [
+          "YXc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "lmap_colon_toggle_not_insert",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":lmap a b<CR>:<C-^>s/a/X/<CR>ia<Esc>",
+      "expect": {
+        "text": [
+          "aaXc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "lmap_lunmap_typed_while_on",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":lmap a b<CR>i<C-^><Esc>:lunmap a<CR>ia<Esc>",
+      "expect": {
+        "text": [
+          "aabc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_e_plus_combining",
+      "lines": [
+        "x ab éy z"
+      ],
+      "keys": "/ab/e+2<CR>x",
+      "expect": {
+        "text": [
+          "x ab y z"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_e_plus_two_marks",
+      "lines": [
+        "x ab é́y z"
+      ],
+      "keys": "/ab/e+2<CR>x",
+      "expect": {
+        "text": [
+          "x ab y z"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "é́",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_s_minus_combining",
+      "lines": [
+        "x éab z"
+      ],
+      "keys": "/ab/s-1<CR>x",
+      "expect": {
+        "text": [
+          "x ab z"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_s_minus_skin_tone",
+      "lines": [
+        "x 👍🏽ab z"
+      ],
+      "keys": "/ab/s-1<CR>x",
+      "expect": {
+        "text": [
+          "x ab z"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "👍🏽",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_e_plus_flag",
+      "lines": [
+        "x ab🇰🇷y z"
+      ],
+      "keys": "/ab/e+1<CR>x",
+      "expect": {
+        "text": [
+          "x aby z"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "🇰🇷",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_e_plus_zwj",
+      "lines": [
+        "x ab👨‍👩‍👧y z"
+      ],
+      "keys": "/ab/e+1<CR>x",
+      "expect": {
+        "text": [
+          "x aby z"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "👨‍👩‍👧",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_b_minus_combining",
+      "lines": [
+        "x áb z"
+      ],
+      "keys": "/b/b-1<CR>x",
+      "expect": {
+        "text": [
+          "x b z"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "á",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_e_minus_combining",
+      "lines": [
+        "x aé z"
+      ],
+      "keys": "/aé /e-1<CR>x",
+      "expect": {
+        "text": [
+          "x a z"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_d_search_e_offset",
+      "lines": [
+        "x ab éy z"
+      ],
+      "keys": "d/ab/e+2<CR>",
+      "expect": {
+        "text": [
+          "y z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x ab é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_d_search_s_offset",
+      "lines": [
+        "x éab z"
+      ],
+      "keys": "d/ab/s-1<CR>",
+      "expect": {
+        "text": [
+          "éab z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_dl_combining",
+      "lines": [
+        "ab é c"
+      ],
+      "keys": "3ldl",
+      "expect": {
+        "text": [
+          "ab  c"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_dh_before_combining",
+      "lines": [
+        "ab é c"
+      ],
+      "keys": "$hdh",
+      "expect": {
+        "text": [
+          "ab  c"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_d_slash_combining",
+      "lines": [
+        "ab é c"
+      ],
+      "keys": "3ld/c<CR>",
+      "expect": {
+        "text": [
+          "ab c"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "é ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_dt_combining",
+      "lines": [
+        "ab éx c"
+      ],
+      "keys": "dtx",
+      "expect": {
+        "text": [
+          "x c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_df_combining_target",
+      "lines": [
+        "ab éx c"
+      ],
+      "keys": "dfe",
+      "expect": {
+        "text": [
+          "x c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_v_d_combining",
+      "lines": [
+        "éxx"
+      ],
+      "keys": "vd",
+      "expect": {
+        "text": [
+          "xx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_v_d_zwj",
+      "lines": [
+        "👨‍👩‍👧xx"
+      ],
+      "keys": "vd",
+      "expect": {
+        "text": [
+          "xx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "👨‍👩‍👧",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_yl_combining",
+      "lines": [
+        "é̂x"
+      ],
+      "keys": "ylP",
+      "expect": {
+        "text": [
+          "é̂é̂x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "é̂",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "é̂",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_tilde_combining",
+      "lines": [
+        "éx"
+      ],
+      "keys": "~",
+      "expect": {
+        "text": [
+          "Éx"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_r_combining",
+      "lines": [
+        "éx"
+      ],
+      "keys": "rz",
+      "expect": {
+        "text": [
+          "zx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_complete_combining_base",
+      "lines": [
+        "éab",
+        "é"
+      ],
+      "keys": "jA<C-n><Esc>",
+      "expect": {
+        "text": [
+          "éab",
+          "éab"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_complete_mid_combining",
+      "lines": [
+        "aéb",
+        "a"
+      ],
+      "keys": "jA<C-n><Esc>",
+      "expect": {
+        "text": [
+          "aéb",
+          "aéb"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_complete_back_combining",
+      "lines": [
+        "foo",
+        "fé",
+        "féxy"
+      ],
+      "keys": "jA<C-n><C-n><Esc>",
+      "expect": {
+        "text": [
+          "foo",
+          "fé",
+          "féxy"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_complete_particle_base",
+      "lines": [
+        "x API를 API를x",
+        "API를"
+      ],
+      "keys": "jA<C-n><Esc>",
+      "expect": {
+        "text": [
+          "x API를 API를x",
+          "API를"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_complete_particle_keyword",
+      "lines": [
+        "x 를x 를yy",
+        "를"
+      ],
+      "keys": "jA<C-n><Esc>",
+      "expect": {
+        "text": [
+          "x 를x 를yy",
+          "를"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wcls_complete_latin_before_particle",
+      "lines": [
+        "APIx를",
+        "AP"
+      ],
+      "keys": "jA<C-n><Esc>",
+      "expect": {
+        "text": [
+          "APIx를",
+          "APIx"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cmpl_ctrl_e_cancels_then_restarts",
+      "lines": [
+        "foobar",
+        "foobaz",
+        "fo",
+        "qqqqqqq"
+      ],
+      "keys": "jjA<C-n><C-e><C-n><Esc>",
+      "expect": {
+        "text": [
+          "foobar",
+          "foobaz",
+          "foobar",
+          "qqqqqqq"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cmpl_ctrl_e_restores",
+      "lines": [
+        "foobar",
+        "foobaz",
+        "fo",
+        "qqqqqqq"
+      ],
+      "keys": "jjA<C-n><C-e>x<Esc>",
+      "expect": {
+        "text": [
+          "foobar",
+          "foobaz",
+          "fox",
+          "qqqqqqq"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cmpl_ctrl_y_accepts_with_menu",
+      "lines": [
+        "foobar",
+        "foobaz",
+        "fo",
+        "qqqqqqq"
+      ],
+      "keys": "jjA<C-n><C-y><C-n><Esc>",
+      "expect": {
+        "text": [
+          "foobar",
+          "foobaz",
+          "foobar",
+          "qqqqqqq"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cmpl_ctrl_y_single_inserts_above",
+      "lines": [
+        "foobarZ yy",
+        "fo"
+      ],
+      "keys": "jA<C-n><C-y><Esc>",
+      "expect": {
+        "text": [
+          "foobarZ yy",
+          "foobarZ "
+        ],
+        "cursor": [
+          2,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cmpl_ctrl_e_single_restores",
+      "lines": [
+        "foobarZ yy",
+        "fo",
+        "abcdefghij"
+      ],
+      "keys": "jA<C-n><C-e><Esc>",
+      "expect": {
+        "text": [
+          "foobarZ yy",
+          "fo",
+          "abcdefghij"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_charwise_delete_adds_head",
+      "lines": [
+        "abcdef",
+        "ghijklmnop"
+      ],
+      "keys": "j5lmagg2ld/i<CR>`ax",
+      "expect": {
+        "text": [
+          "abcdeijklmop"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "mk_charwise_delete_in_removed_part",
+      "lines": [
+        "abcdef",
+        "ghijklmnop"
+      ],
+      "keys": "j1lmagg2ld/i<CR>`ax",
+      "expect": {
+        "text": [
+          "abciklmnop"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "j",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_charwise_delete_below_shifts",
+      "lines": [
+        "abcdef",
+        "ghijklmnop",
+        "qrs"
+      ],
+      "keys": "jjlmagg2ld/i<CR>`ax",
+      "expect": {
+        "text": [
+          "abcijklmnop",
+          "qs"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "r",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_visual_delete_adds_head",
+      "lines": [
+        "abcdef",
+        "ghijklmnop"
+      ],
+      "keys": "j5lmagg2lvjhd`ax",
+      "expect": {
+        "text": [
+          "abcdelmno"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "p",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "mk_visual_delete_clamps",
+      "lines": [
+        "abcdef",
+        "ghijklmnop"
+      ],
+      "keys": "j5lmagg2lvjd`ax",
+      "expect": {
+        "text": [
+          "abcdemno"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "p",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "mk_charwise_delete_three_lines",
+      "lines": [
+        "abcdef",
+        "xy",
+        "ghijklmnop"
+      ],
+      "keys": "jjlllmagg2ld/i<CR>`ax",
+      "expect": {
+        "text": [
+          "abcdeijkmnop"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "l",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_charwise_delete_drops_middle",
+      "lines": [
+        "abcdef",
+        "xy",
+        "ghijklmnop"
+      ],
+      "keys": "jmagg2ld/i<CR>`ax",
+      "expect": {
+        "text": [
+          "abjklmnop"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "i",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "mk_join_follows_text",
+      "lines": [
+        "aa",
+        "  bbbb"
+      ],
+      "keys": "j4lmakJ`ax",
+      "expect": {
+        "text": [
+          "aa bbb"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_gJ_follows_text",
+      "lines": [
+        "aa",
+        "  bbbb"
+      ],
+      "keys": "j4lmakgJ`ax",
+      "expect": {
+        "text": [
+          "aa  bbb"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_J_onto_empty_keeps_mark",
+      "lines": [
+        "",
+        "abc"
+      ],
+      "keys": "maJ`ax",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_J_onto_empty_moves_next",
+      "lines": [
+        "",
+        "abc"
+      ],
+      "keys": "jllmakJ`ax",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_J_onto_empty_middle",
+      "lines": [
+        "x",
+        "",
+        "abc"
+      ],
+      "keys": "jmaJ`ax",
+      "expect": {
+        "text": [
+          "x",
+          "bc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_J_count_onto_empty",
+      "lines": [
+        "",
+        "ab",
+        "cd"
+      ],
+      "keys": "ma3J`ax",
+      "expect": {
+        "text": [
+          "b cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_down",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "jma:m3<CR>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "c",
+          "",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_to_top",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "jma:2m0<CR>`ax",
+      "expect": {
+        "text": [
+          "",
+          "a",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_shifts_between",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "jjma:2m3<CR>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "b",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_keeps_column",
+      "lines": [
+        "a",
+        "bxy",
+        "c",
+        "d"
+      ],
+      "keys": "jllma:m$<CR>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "c",
+          "d",
+          "bx"
+        ],
+        "cursor": [
+          4,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "y",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_range",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "jma:1,2m$<CR>`ax",
+      "expect": {
+        "text": [
+          "c",
+          "d",
+          "a",
+          ""
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_up_range",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "Gma:3,4m0<CR>`ax",
+      "expect": {
+        "text": [
+          "c",
+          "",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_last_line_up",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "Gma:m0<CR>`ax",
+      "expect": {
+        "text": [
+          "",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_last_line_onto_empty",
+      "lines": [
+        "a",
+        "",
+        "b"
+      ],
+      "keys": "Gma:m1<CR>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_after_last_line",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "ma:m$<CR>`ax",
+      "expect": {
+        "text": [
+          "b",
+          "c",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_move_terminated",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        ""
+      ],
+      "keys": "jma:m$<CR>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "c",
+          "",
+          ""
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_o_on_empty_line",
+      "lines": [
+        "a",
+        "",
+        "c"
+      ],
+      "keys": "jmao<Esc>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_O_on_empty_line",
+      "lines": [
+        "a",
+        "",
+        "c"
+      ],
+      "keys": "jmaO<Esc>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_o_text_on_empty_line",
+      "lines": [
+        "a",
+        "",
+        "c"
+      ],
+      "keys": "jmaoz<Esc>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "z",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "mk_O_text_on_empty_line",
+      "lines": [
+        "a",
+        "",
+        "c"
+      ],
+      "keys": "jmaOz<Esc>`ax",
+      "expect": {
+        "text": [
+          "a",
+          "z",
+          "",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

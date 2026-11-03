@@ -161,8 +161,13 @@ as nvim's `mark_adjust` / `mark_col_adjust` move marks (#686). A position is `(l
   column);
 - whole lines inserted or deleted before it shift its line; a replaced block of whole lines (`:{range}!`,
   `:sort`) keeps it on the line of the same index while one is left;
-- an edit that runs into its line from above (a join, a charwise delete across lines) moves it with the
-  text after the edit, or to the edit's end if it sat in the removed head;
+- a join that runs into its line from above (the `\n` and the next line's indent replaced by blanks) moves
+  it with the text after the join, or to the join's end if it sat in the removed indent; a charwise delete
+  across lines puts it on the joined line at its old column plus the kept head's length (nvim's `op_delete`
+  cuts both ends without moving marks, then joins with no space); another edit running in from above moves
+  it with the text after the edit;
+- a block of whole lines deleted where the same lines go in elsewhere in the change (`:m`, built as that
+  delete and insert) takes it along to the line of the same index there;
 - when its own line is deleted, `gravity` decides: `Drop` removes it (`a`–`z`, `` `^ ``: `E20` after —
   the anchor stays resolvable at the edit, flagged `invalidated`), `Keep` moves it to the line that took
   the deleted line's place with its column (`A`–`Z`, jumplist, change list, `<`/`>`; nvim's
@@ -170,11 +175,13 @@ as nvim's `mark_adjust` / `mark_col_adjust` move marks (#686). A position is `(l
 
 A whole-line edit is one whose span starts and ends at line starts and inserts whole lines (`dd`, `O`,
 `:put`), or one that starts at a line's `\n` and ends at one or the buffer end and inserts newline-led lines
-(`dd` of the unterminated last line, `o`); with no other clue the first reading wins (`o` and `O` on an
-empty line are the same bytes). Known differences from nvim: a charwise delete across lines leaves a mark
-on the last line on the text after the edit (nvim adds the kept head's length to the mark's old column), a
-`J` from an empty line drops that line's marks, and `:m` keeps marks on their line numbers (nvim moves them
-with the lines). The rule is `LineMap` in `anchor.rs`; it reads the text before and after the change.
+(`dd` of the unterminated last line, `o`); with no other clue the first reading wins. Where two commands
+make the same bytes, the planner picks the edit that reads as the command (#1125): `o` on an empty line
+inserts after its `\n` (its marks stay; `O` moves them down), and `J` onto an empty line takes the next
+line's first char along (`dd` of that line drops its marks; `J` keeps them). Known differences from nvim:
+`J` of two empty lines drops the second line's marks, and `:m` of the unterminated last line onto an empty
+line just above it keeps marks on their line numbers. The rule is `LineMap` in `anchor.rs`; it reads the
+text before and after the change.
 
 ### 4. Batched update & cost {#anchor-cost}
 

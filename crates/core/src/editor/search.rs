@@ -84,7 +84,7 @@ pub(crate) fn match_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> Ve
 pub(crate) fn landing_key(b: &[u8], pos: usize) -> usize {
     let at_eol = pos >= b.len() || b[pos] == b'\n';
     if at_eol && pos > 0 && pos <= b.len() && b[pos - 1] != b'\n' {
-        crate::motion::prev_boundary(b, pos)
+        crate::motion::prev_grapheme(b, pos)
     } else {
         pos
     }
@@ -96,7 +96,7 @@ pub(crate) fn landing_key(b: &[u8], pos: usize) -> usize {
 fn last_landable(b: &[u8]) -> usize {
     let mut p = b.len();
     while p > 0 {
-        let pp = crate::motion::prev_boundary(b, p);
+        let pp = crate::motion::prev_grapheme(b, p);
         if b[pp] != b'\n' {
             return pp;
         }
@@ -114,7 +114,7 @@ pub(crate) fn step_char(b: &[u8], pos: usize, n: i32) -> usize {
     let mut p = pos.min(b.len());
     if n >= 0 {
         for _ in 0..n {
-            let mut np = crate::motion::next_boundary(b, p);
+            let mut np = crate::motion::next_grapheme(b, p);
             while np < b.len() && b[np] == b'\n' {
                 np = crate::motion::next_boundary(b, np);
             }
@@ -128,9 +128,9 @@ pub(crate) fn step_char(b: &[u8], pos: usize, n: i32) -> usize {
             if p == 0 {
                 return 0;
             }
-            let mut pp = crate::motion::prev_boundary(b, p);
+            let mut pp = crate::motion::prev_grapheme(b, p);
             while pp > 0 && b[pp] == b'\n' {
-                pp = crate::motion::prev_boundary(b, pp);
+                pp = crate::motion::prev_grapheme(b, pp);
             }
             p = pp;
         }

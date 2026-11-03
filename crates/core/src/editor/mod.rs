@@ -2000,8 +2000,42 @@ impl EditorState {
         let ls = crate::pos::nth_line_start(&new_bytes, adj + count - 1).min(new_bytes.len());
         let cursor = self.relocated_cursor(&new_bytes, ls);
 
-        let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
-            .expect("a single edit is well-formed");
+        // A move is the block deleted at its place and inserted at the destination, so the line anchors on
+        // it go along (nvim's `ex_copymove` moves the marks, #1125). Without a final newline the last line
+        // has none: a block holding it is cut with the `\n` before it, and one moved after it goes in after
+        // a `\n`. The one shape that does not split that way (the last line moved onto an empty line just
+        // above it) takes the whole-region rewrite, whose marks keep their lines.
+        let old = self.doc.bytes();
+        let at = |line: usize| crate::pos::nth_line_start(old, line).min(old.len());
+        let (s, e, p) = (at(first), at(last + 1), at(ins));
+        let mut block = old[s..e].to_vec();
+        let edits = if copy {
+            None
+        } else if had_trailing_nl || (e < old.len() && p < old.len()) {
+            Some(if p < s {
+                vec![Edit::insert(p, block), Edit::delete(s, e - s)]
+            } else {
+                vec![Edit::delete(s, e - s), Edit::insert(p, block)]
+            })
+        } else if e < old.len() {
+            // After the unterminated last line: `\n` + the block without its own.
+            block.pop();
+            block.insert(0, b'\n');
+            Some(vec![Edit::delete(s, e - s), Edit::insert(p, block)])
+        } else if p + 1 < s {
+            // The unterminated last line moves up: cut it with the `\n` before it.
+            block.push(b'\n');
+            Some(vec![Edit::insert(p, block), Edit::delete(s - 1, e - s + 1)])
+        } else {
+            None
+        };
+        let edits = edits.unwrap_or_else(|| vec![Edit::lines_changed(old, new_bytes.clone())]);
+        let list = EditList::new(edits).expect("the move's delete and insert are disjoint");
+        debug_assert_eq!(
+            list.apply_to(old),
+            new_bytes,
+            "the edits make the relocated text"
+        );
         let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn).expect("line relocate applies cleanly");

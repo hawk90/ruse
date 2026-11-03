@@ -396,7 +396,8 @@ features:
     # cannot loop). #1 = the stage exists (translate_lang). #3 = terminal-IME interaction is DEFINED:
     # composed text arrives on the no-keymap paste/IME path and bypasses the stage, so lmap and the
     # terminal IME are disjoint by construction. Runtime population is `:lmap`/`:lunmap`; `i_CTRL-^`
-    # toggles the map (one boolean; per-context iminsert/imsearch is post-MVP). All three acceptance
+    # toggles the map (one Insert state, which `/`/`?` lines share as nvim's 'imsearch' -1 does; a `:`
+    # line starts unmapped and `c_CTRL-^` flips it for that line, #810). All three acceptance
     # criteria met + tested (7 tests: insert/one-substitution, inert-outside, single-char-arg, toggle,
     # command-line, map-maintenance, parse). keymap.lang is the persistent form (config-schema); no
     # config-file loader is built — none exists for any keymap.* key yet (matches every other namespace).

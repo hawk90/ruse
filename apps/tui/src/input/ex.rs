@@ -191,8 +191,8 @@ pub enum Ex {
     /// `:[range]normal[!] {keys}` — execute `{keys}` as if typed in Normal mode. With no range, once at the
     /// cursor (column preserved); with a range, once per line with the cursor at column 0 of each line. The
     /// `!` (ignore user mappings) parses and is accepted, but is a no-op today — this editor has no user
-    /// remaps. `keys` is the VERBATIM payload after the single delimiting space (spaces included), carrying
-    /// Vim `<>` key-notation the executor resolves.
+    /// remaps. `keys` is the VERBATIM payload after the single delimiting space (spaces included), taken
+    /// literally like Vim's (`<Esc>` is five keys, #815).
     Normal {
         bang: bool,
         range: Option<SubRange>,
@@ -2228,7 +2228,7 @@ mod normal_parse_tests {
 
     #[test]
     fn key_notation_stays_verbatim_in_the_payload() {
-        // The payload is stored VERBATIM; the executor resolves `<Esc>` etc. later.
+        // The payload is stored VERBATIM (and run literally, #815).
         assert_eq!(
             normal("normal Ihi<Esc>"),
             (false, None, "Ihi<Esc>".to_string())

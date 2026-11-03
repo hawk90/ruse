@@ -112,9 +112,14 @@ pub(crate) fn entries() -> &'static [(char, char, char)] {
     TABLE
 }
 
-/// Look up the digraph glyph for the two-character code `c1 c2`. Returns `None` for any pair not in the
-/// curated table; the caller applies Vim's fallback (insert the second char literally). Case-sensitive.
+/// Look up the digraph glyph for the two-character code `c1 c2`, then for the reversed pair `c2 c1` as
+/// Vim's `getdigraph` does (`:a` is `ä` like `a:`, #813). Returns `None` for a pair in neither order; the
+/// caller applies Vim's fallback (insert the second char literally). Case-sensitive.
 pub(crate) fn digraph(c1: char, c2: char) -> Option<char> {
+    exact(c1, c2).or_else(|| if c1 == c2 { None } else { exact(c2, c1) })
+}
+
+fn exact(c1: char, c2: char) -> Option<char> {
     TABLE
         .iter()
         .find(|(a, b, _)| *a == c1 && *b == c2)
@@ -162,8 +167,11 @@ mod tests {
         assert_eq!(digraph('q', 'q'), None);
         // Case-sensitive: `dg` (lowercase) is NOT a Vim digraph; only `DG` is.
         assert_eq!(digraph('d', 'g'), None);
-        // Order matters: `:a` is not the same as `a:`.
-        assert_eq!(digraph(':', 'a'), None);
+        // Either order: Vim tries the reversed pair when the typed one is not a digraph (#813).
+        assert_eq!(digraph(':', 'a'), Some('ä'));
+        assert_eq!(digraph('\'', 'e'), Some('é'));
+        assert_eq!(digraph('>', '-'), Some('→'));
+        assert_eq!(digraph('g', 'D'), None);
     }
 
     #[test]

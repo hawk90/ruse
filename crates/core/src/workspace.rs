@@ -1785,6 +1785,18 @@ mod tests {
         assert_eq!(w.move_lines(SubRange::CurrentLine, LineAddr::Last), Some(1));
         assert_eq!(w.focused().doc.bytes(), b"b\nc\na\n");
 
+        // The moved lines take their marks along; the lines they pass shift (nvim `ex_copymove`, #1125).
+        let mut w = Workspace::new(b"a\nbxy\nc\nd\n".to_vec());
+        w.set_mark_on_line(SubRange::Lines(2, 2), 'a');
+        w.set_mark_on_line(SubRange::Lines(3, 3), 'c');
+        assert_eq!(
+            w.move_lines(SubRange::Lines(2, 2), LineAddr::Line(3)),
+            Some(1)
+        );
+        assert_eq!(w.focused().doc.bytes(), b"a\nc\nbxy\nd\n");
+        assert_eq!(w.focused().view.named_mark('a'), Some(4));
+        assert_eq!(w.focused().view.named_mark('c'), Some(2));
+
         // Destination inside the source → declined (Vim E134).
         let mut w = Workspace::new(b"a\nb\nc\nd\n".to_vec());
         assert_eq!(w.move_lines(SubRange::Lines(2, 3), LineAddr::Line(2)), None);

@@ -572,12 +572,18 @@ impl Tracked {
 ///   leaves the column alone (clamped into the line);
 /// - whole lines inserted or deleted before it shift its line; a deleted line takes the position with it
 ///   ([`LineGravity`]); a replaced block keeps it on the line of the same index while one is left;
-/// - an edit that runs into its line from above (a join, a charwise delete across lines) moves it with
-///   the text after the edit, or to the edit's end if it sat in the removed head.
+/// - a join running into its line from above (its line's `\n` and the next line's indent replaced by
+///   blanks) moves it with the text after the join, or to the join's end if it sat in the removed indent;
+///   a charwise delete across lines puts it on the joined line at its old column plus the kept head's
+///   length, as nvim's `do_join(insert_space = false)` does after `op_delete`; any other edit running in
+///   from above moves it with the text after the edit, or to the edit's end;
+/// - a block of whole lines deleted where the same lines are inserted elsewhere in the change (`:m`) takes
+///   it along to the line of the same index there.
 ///
 /// A whole-line edit is one whose span starts and ends at line starts (`dd`, `O`, `:put`), or one that
 /// starts at a line's `\n` and ends at one (`dd` of the last line, `o`): with no other clue, the first
-/// reading wins. Cost per position is `O(log E)` plus the length of its line.
+/// reading wins. Cost per position is `O(log E)` plus the length of its line (and, for a deleted block,
+/// a scan of the change's edits for its moved copy).
 pub struct LineMap<'a> {
     pub(crate) old: &'a [u8],
     pub(crate) new: &'a [u8],
@@ -670,13 +676,19 @@ impl<'a> LineMap<'a> {
                 continue;
             }
             if self.start_aligned(e) && ls < e.end() {
-                // This line is one of a replaced block of whole lines.
+                // This line is one of a replaced block of whole lines, or of a block moved elsewhere.
                 let j = crate::pos::count_newlines(&self.old[e.pos.0..ls]);
-                out = Some(self.replaced(e, base, j, col, gravity, false));
+                out = Some(match self.moved(e, j, col, false) {
+                    Some(to) => Some(to),
+                    None => self.replaced(e, base, j, col, gravity, false),
+                });
             } else if e.pos.0 < ls && self.end_aligned(e) {
                 // This line is one of the lines after the edit's `\n` it replaces.
                 let j = crate::pos::count_newlines(&self.old[e.pos.0 + 1..ls]);
-                out = Some(self.replaced(e, base, j, col, gravity, true));
+                out = Some(match self.moved(e, j, col, true) {
+                    Some(to) => Some(to),
+                    None => self.replaced(e, base, j, col, gravity, true),
+                });
             } else if e.pos.0 < ls {
                 // A charwise edit runs into this line from above.
                 let le = crate::pos::line_end(self.old, ls);
@@ -686,6 +698,11 @@ impl<'a> LineMap<'a> {
                         LineGravity::Keep => Some(base + e.ins.len()),
                         LineGravity::Cursor => Some(crate::pos::line_start(self.new, base)),
                     }
+                } else if e.ins.is_empty() && !self.is_join(e) {
+                    // A charwise delete across lines (#1125): nvim's `op_delete` cuts both ends without
+                    // moving marks, then joins with no space, which adds the kept head's length.
+                    let head = e.pos.0 - crate::pos::line_start(self.old, e.pos.0);
+                    Some(self.at_col(base - head, head + col))
                 } else if o >= e.end() {
                     Some((o as isize + delta + e.delta()) as usize)
                 } else {
@@ -699,6 +716,58 @@ impl<'a> LineMap<'a> {
             None => self.at_col((ls as isize + delta) as usize, col),
         };
         Some(crate::motion::snap(self.new, new))
+    }
+
+    /// Whether the charwise `e` is a join: it starts at its line's `\n`, removes only blanks after it on
+    /// the next line, and puts only blanks there (`J` / `gJ`), so marks after it follow the text.
+    fn is_join(&self, e: &Edit) -> bool {
+        let blank = |c: &u8| *c == b' ' || *c == b'\t';
+        self.old.get(e.pos.0) == Some(&b'\n')
+            && self.old[e.pos.0 + 1..e.end()].iter().all(blank)
+            && e.ins.iter().all(blank)
+    }
+
+    /// Line `j` (column `col`) of the whole-line block the pure delete `e` removes, when the same change
+    /// inserts those very lines as whole lines elsewhere (`:m`, #1125): the line of the same index in that
+    /// insert. `lead`: `e` removes the lines after a `\n` (an end-aligned delete) rather than lines ending
+    /// in one. `None` when `e` inserts text or no edit carries its lines.
+    fn moved(&self, e: &Edit, j: usize, col: usize, lead: bool) -> Option<usize> {
+        if !e.ins.is_empty() {
+            return None;
+        }
+        let gone = &self.old[e.pos.0 + usize::from(lead)..e.end()];
+        let gone = if lead {
+            gone
+        } else {
+            gone.strip_suffix(b"\n")?
+        };
+        for (k, f) in self.edits.iter().enumerate() {
+            if f.del != 0 || f.pos.0 == e.pos.0 {
+                continue;
+            }
+            // The inserted lines and where the first starts: lines ending in `\n` at a line start, or
+            // lines each after a `\n` at a line's end.
+            let (body, first) = if self.line_start_at(f.pos.0) && f.ins.ends_with(b"\n") {
+                (&f.ins[..f.ins.len() - 1], 0)
+            } else if f.ins.starts_with(b"\n")
+                && (f.pos.0 == self.old.len() || self.old[f.pos.0] == b'\n')
+            {
+                (&f.ins[1..], 1)
+            } else {
+                continue;
+            };
+            if body != gone {
+                continue;
+            }
+            let at = (f.pos.0 as isize + self.prefix[k]) as usize + first;
+            let start: usize = body
+                .split(|&c| c == b'\n')
+                .take(j)
+                .map(|l| l.len() + 1)
+                .sum();
+            return Some(self.at_col(at + start, col));
+        }
+        None
     }
 
     /// Line `j` of the whole-line block `e` replaces (at `base` in the new text): the line of the same
@@ -1079,6 +1148,39 @@ mod tests {
         assert_eq!(line("aa\n  bbbb", j(), 4, LineGravity::Drop), Some(3));
         // The first line's marks stay.
         assert_eq!(line("aa\n  bbbb", j(), 1, LineGravity::Drop), Some(1));
+    }
+
+    #[test]
+    fn a_charwise_delete_across_lines_adds_the_kept_head() {
+        // nvim `d/i` from `f` of "abcdef\nghijklmnop": the mark on `l` (col 5) goes to col 5 + 5 = 10.
+        let d = || vec![Edit::delete(5, 4)];
+        let text = "abcdef\nghijklmnop\n";
+        assert_eq!(line(text, d(), 12, LineGravity::Drop), Some(10));
+        // In the deleted part of the last line: col 1 + 5.
+        assert_eq!(line(text, d(), 8, LineGravity::Drop), Some(6));
+        // Past the joined line's end: clamped onto it.
+        let long = vec![Edit::delete(1, 8)];
+        assert_eq!(line(text, long, 15, LineGravity::Drop), Some(9));
+    }
+
+    #[test]
+    fn a_moved_block_takes_its_marks_along() {
+        // `:2m3` as the block deleted and inserted after line 3: the mark on `b` follows it.
+        let m = || vec![Edit::delete(2, 2), Edit::insert(6, b"b\n".to_vec())];
+        let text = "a\nb\nc\nd\n";
+        assert_eq!(line(text, m(), 2, LineGravity::Drop), Some(4));
+        // The line it passed moves up; the lines around stay.
+        assert_eq!(line(text, m(), 4, LineGravity::Drop), Some(2));
+        assert_eq!(line(text, m(), 6, LineGravity::Drop), Some(6));
+        // Upward: `:3m0`.
+        let up = || vec![Edit::insert(0, b"c\n".to_vec()), Edit::delete(4, 2)];
+        assert_eq!(line(text, up(), 4, LineGravity::Drop), Some(0));
+        assert_eq!(line(text, up(), 0, LineGravity::Drop), Some(2));
+        // A plain delete still drops.
+        assert_eq!(
+            line(text, vec![Edit::delete(2, 2)], 2, LineGravity::Drop),
+            None
+        );
     }
 
     #[test]

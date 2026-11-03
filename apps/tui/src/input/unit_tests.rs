@@ -486,14 +486,31 @@ mod tests {
 
     #[test]
     fn lang_stage_translates_on_the_command_line() {
-        // The Command-line namespace is Lang-Arg-eligible: a mapped key appends its TRANSLATION to the
+        // A `/` line follows the Insert language state; a `:` line starts unmapped, and `c_CTRL-^` flips
+        // the map for that line only (nvim v0.12.6, #810). A mapped key appends its TRANSLATION to the
         // owned line buffer (F-026 owns the buffer; the stage rewrites the key before it lands there).
         let mut e = InputEngine::new();
         e.lang_map.insert('a', 'б');
         e.lang_active = true;
-        assert_eq!(e.feed(k(':'), Mode::Normal), Feed::Pending); // opens the command line
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending); // opens the search line
         let _ = e.feed(k('a'), Mode::Normal);
         assert_eq!(e.cmdline.as_ref().map(|c| c.buffer.as_str()), Some("б"));
+        e.cmdline = None;
+        assert_eq!(e.feed(k(':'), Mode::Normal), Feed::Pending);
+        let _ = e.feed(k('a'), Mode::Normal);
+        assert_eq!(e.cmdline.as_ref().map(|c| c.buffer.as_str()), Some("a"));
+        assert_eq!(e.feed(ctrl_caret(), Mode::Normal), Feed::Pending);
+        let _ = e.feed(k('a'), Mode::Normal);
+        assert_eq!(e.cmdline.as_ref().map(|c| c.buffer.as_str()), Some("aб"));
+        assert!(
+            e.lang_active,
+            "a `:` line's CTRL-^ leaves the Insert state alone"
+        );
+        // On a `/` line CTRL-^ is the Insert state too.
+        e.cmdline = None;
+        let _ = e.feed(k('/'), Mode::Normal);
+        let _ = e.feed(ctrl_caret(), Mode::Normal);
+        assert!(!e.lang_active);
     }
 
     #[test]

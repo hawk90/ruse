@@ -926,6 +926,8 @@ impl InputEngine {
     fn open_cmdline(&mut self, prefix: char, ex_mode: bool) {
         self.cmdline = Some(CmdLine {
             ex_mode,
+            // A search line follows the Insert language state; a `:` line never starts mapped (#810).
+            lang: matches!(prefix, '/' | '?') && self.lang_active,
             ..CmdLine::new(prefix)
         });
     }
@@ -1139,6 +1141,15 @@ impl InputEngine {
         // `<BS>`, `c_CTRL-J`/`<C-m>` run it like `<CR>`, `c_CTRL-B`/`c_CTRL-E` are `<Home>`/`<End>`. The
         // Emacs `M-x` minibuffer shares this editor with Emacs keys instead: `C-g` quits, `C-a`/`C-e`/`C-b`/
         // `C-f` move, `C-d` deletes forward, `C-k` kills to the end; `C-c`/`C-h`/`C-u`/`C-w` are inert.
+        // `c_CTRL-^` flips the language map for this line; on a `/`/`?` line it is the Insert state too
+        // (`'imsearch'` -1), so the next search and Insert keep it (nvim `command_line_toggle_langmap`, #810).
+        if ctrl && !cl.mx && matches!(key.code, KeyCode::Char('^' | '6')) {
+            cl.lang = !cl.lang;
+            if matches!(cl.prefix, '/' | '?') && cl.expr.is_none() {
+                self.lang_active = cl.lang;
+            }
+            return Feed::Pending;
+        }
         key = match key.code {
             KeyCode::Char('[') if ctrl => plain(KeyCode::Esc),
             KeyCode::Char('c') if ctrl && !cl.mx => plain(KeyCode::Esc),
@@ -1877,6 +1888,25 @@ impl InputEngine {
         }
     }
 
+    /// `i_CTRL-E` / `i_CTRL-Y` while a completion cycle is active (`:help complete_CTRL-E`, nvim
+    /// `ins_compl_stop`, #805): either ends the cycle. `CTRL-E` (`cancel`) puts the original text back and
+    /// inserts nothing. `CTRL-Y` accepts the selected text; with more than one candidate the popup menu is
+    /// showing (`'completeopt'` "menu") and it inserts nothing, with one there is no menu and the key goes
+    /// on to insert the char above. `Some` is the consumed key's result; `None` means the caller runs the
+    /// key as usual (no cycle was active, or a menu-less `CTRL-Y`).
+    pub fn complete_end(&mut self, cancel: bool) -> Option<Feed> {
+        let c = self.insert.completion.take()?;
+        if cancel {
+            let out = Feed::Cmd(Command::CompleteWord {
+                back: c.applied,
+                text: c.base,
+            });
+            self.record(&out, Mode::Insert);
+            return Some(out);
+        }
+        (c.cands.len() > 1).then_some(Feed::Pending)
+    }
+
     /// Whether an insert-mode keyword completion cycle (`i_CTRL-N` / `i_CTRL-P`) is currently active. The
     /// frontend checks this to decide whether a fresh `CTRL-N`/`CTRL-P` STARTS a cycle (resolve the base +
     /// candidates from the buffer) or CONTINUES one (just step the index).
@@ -2112,14 +2142,19 @@ impl InputEngine {
         self.lang_map.remove(&lhs);
     }
 
-    /// Whether `mode` (plus the engine's live state) is a Lang-Arg-eligible context: the Command-line or
-    /// Insert namespace, or a command reading a single character (`f`/`t`/`F`/`T`/`r`). Everything else —
+    /// Whether the language map is on for `mode` (plus the engine's live state): a command line whose own
+    /// state is on, or, while the Insert state is on, the Insert namespace or a command reading a single
+    /// character (`f`/`t`/`F`/`T`/`r`). Everything else —
     /// Normal, Visual, Operator-pending, Replace — is inert, which is the whole point of a SEPARATE Lang
     /// namespace (F-027 acceptance #2: "and to nothing else"): operators and motions are never translated.
     fn lang_eligible(&self, mode: Mode) -> bool {
-        // Command-line namespace (typing on the `:`/`/` line).
-        if self.cmdline.is_some() {
-            return true;
+        // Command-line namespace: the line's own state (a `/` line follows Insert's, a `:` line starts off;
+        // `c_CTRL-^` flips it, #810), never inside a `c_CTRL-V` / `c_CTRL-K` collector.
+        if let Some(cl) = self.cmdline.as_ref() {
+            return cl.lang && cl.literal.is_none() && cl.digraph.is_none();
+        }
+        if !self.lang_active {
+            return false;
         }
         // A command reading a single character as its argument: `f`/`t`/`F`/`T` (find target) or `r`
         // (replace). Vim's Lang-Arg translates that argument regardless of how the command was reached.
@@ -2154,7 +2189,7 @@ impl InputEngine {
     /// key with no CTRL/ALT modifier, and a given unit of input is translated by AT MOST ONE of {terminal
     /// IME, lmap} — never both.
     fn translate_lang(&self, key: KeyEvent, mode: Mode) -> KeyEvent {
-        if !self.lang_active || self.lang_map.is_empty() {
+        if self.lang_map.is_empty() {
             return key;
         }
         // Only a bare printable key is a candidate; a modified key (CTRL-*/ALT-*) is a command, and
@@ -2564,6 +2599,8 @@ impl InputEngine {
     /// the window: it is a caret jump like `i_<Down>`, so it breaks the undo sequence and restarts the `.`
     /// record (nvim v0.12.6). Returns the undo break for the caller to run before the scroll.
     pub fn insert_page_jump(&mut self) -> Command {
+        // The jump ends a completion cycle, keeping the selected text (#805).
+        self.insert.completion = None;
         self.restart_insert_change();
         Command::BreakUndo
     }

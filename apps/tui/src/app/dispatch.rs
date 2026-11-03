@@ -920,9 +920,12 @@ mod dispatch_tests {
         // nvim: `:normal Ihi` (NO trailing <Esc>) inserts "hi" at the start and auto-terminates insert.
         let (bytes, _) = run_normal_oracle("abc\n", 1, None, "Ihi");
         assert_eq!(bytes, "hiabc\n");
-        // An EXPLICIT <Esc> is equivalent (the implicit one is a no-op once already in Normal).
-        let (bytes, _) = run_normal_oracle("abc\n", 1, None, "Ihi<Esc>");
+        // An EXPLICIT Escape (the raw byte `c_CTRL-V <Esc>` types) is equivalent (the implicit one is a
+        // no-op once already in Normal); `<Esc>` spelled out is five keys (#815).
+        let (bytes, _) = run_normal_oracle("abc\n", 1, None, "Ihi\u{1b}");
         assert_eq!(bytes, "hiabc\n");
+        let (bytes, _) = run_normal_oracle("abc\n", 1, None, "Ihi<Esc>");
+        assert_eq!(bytes, "hi<Esc>abc\n");
     }
 
     #[test]

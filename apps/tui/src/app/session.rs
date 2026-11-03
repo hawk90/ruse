@@ -1785,6 +1785,13 @@ impl Session {
             && (is_ctrl(key, 'e') || is_ctrl(key, 'y'))
             && engine.insert_plain_text_ctx()
         {
+            // An active completion cycle owns the key first: `CTRL-E` cancels it, `CTRL-Y` accepts (#805).
+            if let Some(feed) = engine.complete_end(is_ctrl(key, 'e')) {
+                if let Feed::Cmd(cmd) = feed {
+                    run_cmd(cmd, ws, files, recorded, status, quit);
+                }
+                return;
+            }
             let ch = ws.adjacent_line_char(is_ctrl(key, 'y'));
             if let Feed::Cmd(cmd) = engine.insert_copy_char(ch) {
                 run_cmd(cmd, ws, files, recorded, status, quit);

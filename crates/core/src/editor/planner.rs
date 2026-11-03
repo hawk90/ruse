@@ -429,7 +429,7 @@ fn search_char_landing(
             SearchOffset::None | SearchOffset::Start(0) => s,
             SearchOffset::Start(k) => step_char(b, s, k),
             // `e` is relative to the match's LAST char (`e` = end-exclusive `e`, so back up one boundary).
-            SearchOffset::End(k) => step_char(b, prev_boundary(b, e), k),
+            SearchOffset::End(k) => step_char(b, motion::prev_grapheme(b, e), k),
             SearchOffset::Line(_) => unreachable!("line offsets take plan_search_line"),
         }
     };
@@ -472,7 +472,7 @@ fn search_char_span(
     // WRAPPED past the buffer's end lands before the cursor (`Gd/foo` deletes back to `foo`, #710).
     let (lo, mut hi) = (cur.min(target), cur.max(target));
     if matches!(offset, SearchOffset::End(_)) {
-        hi = next_boundary(b, hi);
+        hi = motion::next_grapheme(b, hi);
         return if hi <= lo {
             (SearchSpan::Empty, false)
         } else {
@@ -1084,7 +1084,7 @@ fn plan_search_object(
         // last char). `commit` applies `set_anchor` after its enter-selection default, so this span wins.
         SearchOp::Move => Plan {
             action: Action::Nop,
-            cursor: prev_boundary(b, e),
+            cursor: motion::prev_grapheme(b, e),
             mode: Mode::Visual {
                 kind: SelectKind::Charwise,
             },
@@ -1977,7 +1977,22 @@ fn plan_join(
         }
         cursor = del_start - removed; // Vim rests the cursor on the join seam
         removed += del_len - sep.len();
-        edits.push(Edit::replace(del_start, del_len, sep));
+        // Joining onto an EMPTY line removes just its `\n`, which reads as that line deleted; take the next
+        // line's first char along, so the empty line's marks stay on the joined line (nvim `do_join`,
+        // #1125). An empty next line has no char to take; its marks are dropped there.
+        let first = next_grapheme(b, del_start + 1);
+        let onto_empty = del_len == 1 && sep.is_empty() && del_start == line_start(b, del_start);
+        edits.push(
+            if onto_empty && first > del_start + 1 && b[del_start + 1] != b'\n' {
+                Edit::replace(
+                    del_start,
+                    first - del_start,
+                    b[del_start + 1..first].to_vec(),
+                )
+            } else {
+                Edit::replace(del_start, del_len, sep)
+            },
+        );
         le = line_end(b, del_start + del_len); // end of the next line to join (original coords)
     }
     if edits.is_empty() {
@@ -2055,8 +2070,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::AppendLineEnd => nop(line_end(b, cur), Mode::Insert),
         Command::OpenBelow => {
             let le = line_end(b, cur);
+            // On an empty line the new line goes in after its `\n`, the same bytes as before it, so its
+            // marks read as staying on it (nvim `o`; `O` there moves them down, #1125).
+            let at = if le == line_start(b, cur) && le < b.len() {
+                le + 1
+            } else {
+                le
+            };
             edit(
-                one(Edit::insert(le, b"\n".to_vec())),
+                one(Edit::insert(at, b"\n".to_vec())),
                 le + 1,
                 Mode::Insert,
                 hint,
@@ -2896,7 +2918,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 };
                 return Plan {
                     action: Action::Nop,
-                    cursor: prev_boundary(b, e),
+                    cursor: motion::prev_grapheme(b, e),
                     mode: obj_mode,
                     is_edit: false,
                     effects: Vec::new(),
@@ -4748,12 +4770,16 @@ fn paste(
         let multiline = text.contains(&b'\n');
         // Single-line charwise paste: Vim (OnChar) rests the cursor ON the LAST pasted byte; the Emacs
         // profile (BetweenChar, D-050) rests point AFTER the pasted text — Emacs `yank` leaves point past
-        // what it inserted. `end` is the after-last boundary; back it up one grapheme only under OnChar.
-        // `end` is a position in the POST-insert buffer, so back up by one byte (Vim's existing rule) and
-        // let `commit`'s `snap` land it on a char boundary — byte-identical to the pre-D-050 path.
+        // what it inserted. `end` is the after-last boundary; back it up one grapheme only under OnChar: the
+        // start of the text's last cluster, so `ylP` on a char with combining marks rests on its base (#1132).
+        let last = if multiline || n == 0 {
+            1
+        } else {
+            n - motion::prev_grapheme(&text, n)
+        };
         let tail = |end: usize| match gravity {
             CaretGravity::BetweenChar => end,
-            CaretGravity::OnChar => end.saturating_sub(1),
+            CaretGravity::OnChar => end.saturating_sub(last),
         };
         if after {
             // Insert after the cursor char; cursor lands on the first pasted byte for multi-line content,

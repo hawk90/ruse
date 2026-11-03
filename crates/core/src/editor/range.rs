@@ -406,10 +406,13 @@ pub(crate) fn forced_span(
                 OpSpan::new((plain.s, plain.e, false), false)
             } else if inclusive {
                 // `dve`/`dvg_`: now exclusive — the end char is left alone.
-                exclusive_op_span(b, s0, prev_boundary(b, e0).max(s0))
+                exclusive_op_span(b, s0, motion::prev_grapheme(b, e0).max(s0))
             } else {
                 // `dvb`/`dvt`: now inclusive — the end char is taken too.
-                OpSpan::new((s0, next_boundary(b, e0).min(b.len()), false), false)
+                OpSpan::new(
+                    (s0, motion::next_grapheme(b, e0).min(b.len()), false),
+                    false,
+                )
             }
         }
         // Blockwise force never reaches here — the `OpForced` arm routes it to `block_op` (a rectangle is

@@ -5867,6 +5867,28 @@ mod search_tests {
     }
 
     #[test]
+    fn search_offsets_step_whole_grapheme_clusters() {
+        // nvim v0.12.6 (#1132): `/ab/s-1` on "x e\u{301}ab z" lands on the `e`, not on its mark.
+        let mv = |text: &str, pat: &str, off| {
+            run(text, &[soff(SearchOp::Move, 1, pat, false, off)]).cursor()
+        };
+        assert_eq!(mv("x e\u{301}ab z", "ab", SearchOffset::Start(-1)), 2);
+        assert_eq!(mv("x a\u{301}b z", "b", SearchOffset::Start(-1)), 2);
+        assert_eq!(mv("x 👍🏽ab z", "ab", SearchOffset::Start(-1)), 2);
+        // `/ae\u{301} /e-1`: the match's last char is the space, one cluster back is `e`+mark.
+        assert_eq!(mv("x ae\u{301} z", "ae\u{301} ", SearchOffset::End(-1)), 3);
+        // Forward over a flag (two code points) and a ZWJ family.
+        assert_eq!(mv("x ab🇰🇷y z", "ab", SearchOffset::End(2)), 12);
+        assert_eq!(mv("x ab👨‍👩‍👧y z", "ab", SearchOffset::End(2)), 22);
+        // `d/ab/e+2` takes the whole `e`+mark.
+        let st = run(
+            "x ab e\u{301}y z",
+            &[soff(SearchOp::Delete, 1, "ab", false, SearchOffset::End(2))],
+        );
+        assert_eq!(st.doc.bytes(), b"y z");
+    }
+
+    #[test]
     fn search_offset_start_moves_relative_to_match_start() {
         // /foo/s == /foo/b -> first char of the match (nvim [1,12]).
         assert_eq!(
