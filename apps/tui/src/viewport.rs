@@ -363,10 +363,81 @@ pub fn update_topline(
     so: usize,
     min_scroll: usize,
 ) -> usize {
+    update_topline_sms(lines, top, cursor, height, so, min_scroll, None).0
+}
+
+/// nvim's `scroll_cursor_halfway` with 'smoothscroll' (#615): the cursor line in the middle of the
+/// window to the row, the line above it cut by skipped columns (`width` cells a row). Returns the top
+/// line and its skipped columns.
+fn halfway_sms(lines: &impl Lines, cursor: usize, height: usize, width: usize) -> (usize, usize) {
+    let (lo, hi) = lines.fold(cursor).unwrap_or((cursor, cursor));
+    let mut loff = LineOff {
+        lnum: lo as isize,
+        height: 0,
+    };
+    let mut boff = LineOff {
+        lnum: hi as isize,
+        height: 0,
+    };
+    let mut used = rows_of(lines, lo, height);
+    let mut topline = lo;
+    let mut skipcol = 0;
+    while topline > 0 {
+        // The line above at its full height.
+        loff.lnum -= 1;
+        if loff.lnum < 0 {
+            break;
+        }
+        loff.height = match lines.fold(loff.lnum as usize) {
+            Some((s, _)) => {
+                loff.lnum = s as isize;
+                1
+            }
+            None => lines.height(loff.lnum as usize).max(1),
+        };
+        used += loff.height;
+        if (boff.lnum as usize) + 1 < lines.count() {
+            botline_forw(lines, &mut boff, height);
+            used += boff.height;
+        }
+        if used > height {
+            if used - loff.height < height {
+                topline = loff.lnum as usize;
+                // nvim's `skipcol_from_plines`.
+                let off = used - height;
+                skipcol = width * off;
+            }
+            break;
+        }
+        topline = loff.lnum as usize;
+    }
+    (fold_start(lines, topline), skipcol)
+}
+
+/// [`update_topline`] with 'smoothscroll' when `sms` holds the text width: a far jump then centres the
+/// cursor to the row (the top line's skipped columns come back as the second value, `None` when the
+/// top line starts whole as before).
+#[must_use]
+pub fn update_topline_sms(
+    lines: &impl Lines,
+    top: usize,
+    cursor: usize,
+    height: usize,
+    so: usize,
+    min_scroll: usize,
+    sms: Option<usize>,
+) -> (usize, Option<usize>) {
+    let half = |prefer_above: bool| match sms {
+        Some(w) => {
+            let (t, s) = halfway_sms(lines, cursor, height, w);
+            (t, Some(s))
+        }
+        None => (halfway(lines, cursor, height, prefer_above), None),
+    };
     let count = lines.count().max(1);
     let cursor = cursor.min(count - 1);
     if height == 0 {
-        return cursor;
+        return (cursor, None);
     }
     let mut top = top.min(count - 1);
     let check_topline =
@@ -389,7 +460,7 @@ pub fn update_topline(
         };
         if n >= halfheight {
             // Far above: centred, and nvim checks nothing below.
-            return halfway(lines, cursor, height, false);
+            return half(false);
         }
         top = scroll_cursor_top(lines, top, cursor, height, so, min_scroll);
     } else {
@@ -433,14 +504,14 @@ pub fn update_topline(
             } else {
                 cursor as isize - botline as isize + 1 + so as isize
             };
-            top = if line_count <= height as isize + 1 {
-                scroll_cursor_bot(lines, top, cursor, height, so, min_scroll)
+            if line_count <= height as isize + 1 {
+                top = scroll_cursor_bot(lines, top, cursor, height, so, min_scroll);
             } else {
-                halfway(lines, cursor, height, false)
-            };
+                return half(false);
+            }
         }
     }
-    top
+    (top, None)
 }
 
 /// Where a recenter command (`z`) places the cursor's line in the window.
@@ -501,133 +572,6 @@ pub fn screen_line(
         }
     };
     row.clamp(top, bottom)
-}
-
-/// `C-e` (down) / `C-y` (up) scroll the view `count` lines while keeping the cursor inside the `scrolloff`
-/// band. Returns `(new_top, new_cursor_row)`; the caller sets the top and, if the cursor row changed,
-/// moves the cursor to keep it on screen. Pure and saturating.
-pub fn scroll_lines(
-    top: usize,
-    cursor_row: usize,
-    height: usize,
-    scrolloff: usize,
-    count: usize,
-    down: bool,
-    last_line: usize,
-) -> (usize, usize) {
-    let margin = scrolloff.min(height.saturating_sub(1) / 2);
-    let new_top = if down {
-        (top + count).min(last_line)
-    } else {
-        top.saturating_sub(count)
-    };
-    let lo = new_top + margin;
-    let hi = (new_top + height.saturating_sub(1))
-        .saturating_sub(margin)
-        .min(last_line);
-    let new_cursor = cursor_row.clamp(lo, hi.max(lo)).min(last_line);
-    (new_top, new_cursor)
-}
-
-/// The cursor row a scroll command leaves behind once Vim's 'scrolloff' correction moves it into the
-/// window: at least `margin` rows below `top` (unless `top` is the buffer start) and above the bottom edge
-/// (unless the bottom edge is past the buffer end). Moving the cursor, not the view, is what keeps the
-/// per-frame [`scroll_top`] pass from undoing the scroll.
-fn correct_cursor(row: usize, top: usize, height: usize, margin: usize, last_line: usize) -> usize {
-    let margin = margin.min(height.saturating_sub(1) / 2);
-    let bottom = top + height.saturating_sub(1);
-    let mut row = row.min(last_line);
-    if bottom < last_line {
-        row = row.min(bottom.saturating_sub(margin));
-    }
-    if top > 0 {
-        row = row.max((top + margin).min(last_line));
-    }
-    row
-}
-
-/// Vim's page scroll (`CTRL-F` / `CTRL-B`, `<PageDown>` / `<PageUp>`, `<S-Down>` / `<S-Up>`): scroll
-/// `count` pages, then put the cursor on the new top line (forward) or bottom line (backward), corrected by
-/// 'scrolloff'. A page keeps two lines of overlap, fewer when the buffer edge leaves no lines to overlap
-/// (nvim v0.12.6 `get_scroll_overlap`, unwrapped lines). Returns `(new_top, cursor_row)`, or `None` when the
-/// window cannot scroll that way (nvim beeps and leaves the cursor): `CTRL-B` at the buffer start, `CTRL-F`
-/// once the last line is the top line. Rows are 0-based.
-pub fn page_scroll(
-    top: usize,
-    height: usize,
-    scrolloff: usize,
-    count: u32,
-    forward: bool,
-    last_line: usize,
-) -> Option<(usize, usize)> {
-    let h = height.max(1);
-    let min = h.saturating_sub(2);
-    let page = if forward {
-        if top >= last_line {
-            return None;
-        }
-        if top + h > last_line || min < 2 {
-            h // the last line is already in view: no overlap
-        } else if min < 3 {
-            h - 1
-        } else {
-            h - 2
-        }
-    } else {
-        if top == 0 {
-            return None;
-        }
-        if min < 2 || top >= last_line {
-            h
-        } else if min < 3 || top + 2 > last_line {
-            h - 1
-        } else {
-            h - 2
-        }
-    };
-    let n = page.saturating_mul(count.max(1) as usize);
-    let new_top = if forward {
-        (top + n).min(last_line)
-    } else {
-        top.saturating_sub(n)
-    };
-    let row = if forward { new_top } else { new_top + h - 1 };
-    Some((
-        new_top,
-        correct_cursor(row, new_top, h, scrolloff, last_line),
-    ))
-}
-
-/// Vim's half-page scroll (`CTRL-D` / `CTRL-U`) by `amount` lines (the window's 'scroll'): the view scrolls
-/// `amount` lines, never revealing past the buffer end, and the cursor moves `amount` lines the same way
-/// (nvim v0.12.6 `pagescroll` with `half`). Returns `(new_top, cursor_row)`; the cursor then gets the
-/// 'scrolloff' correction. Rows are 0-based.
-pub fn half_page_scroll(
-    top: usize,
-    cursor_row: usize,
-    height: usize,
-    scrolloff: usize,
-    amount: usize,
-    forward: bool,
-    last_line: usize,
-) -> (usize, usize) {
-    let h = height.max(1);
-    let amount = amount.min(h);
-    let (new_top, row) = if forward {
-        // Lines from the top line to the buffer end; scroll only as far as keeps the window full.
-        let below = last_line + 1 - top.min(last_line);
-        let scroll = amount.min(below.saturating_sub(h));
-        (top + scroll, (cursor_row + amount).min(last_line))
-    } else {
-        (
-            top.saturating_sub(amount),
-            cursor_row.saturating_sub(amount),
-        )
-    };
-    (
-        new_top,
-        correct_cursor(row, new_top, h, scrolloff, last_line),
-    )
 }
 
 #[cfg(test)]
@@ -731,48 +675,6 @@ mod tests {
         );
     }
 
-    /// Ground truth from nvim v0.12.6 (headless, a 23-row window over 100 lines, `scrolloff=3`; rows here are
-    /// 0-based, nvim's 1-based).
-    #[test]
-    fn page_scroll_matches_nvim() {
-        let ps = |top, count, fwd| page_scroll(top, 23, 3, count, fwd, 99);
-        // `<C-f>` from the top: top 1 -> 22, cursor 25. `2<C-f>`: top 43, cursor 46.
-        assert_eq!(ps(0, 1, true), Some((21, 24)));
-        assert_eq!(ps(0, 2, true), Some((42, 45)));
-        // Top 77 -> 98 (bottom 99 not yet the last line); top 78 shows the last line -> top 100.
-        assert_eq!(ps(76, 1, true), Some((97, 99)));
-        assert_eq!(ps(77, 1, true), Some((99, 99)));
-        // The last line at the top: no scroll.
-        assert_eq!(ps(99, 1, true), None);
-        // `<C-b>`: top 39 -> 18, cursor 37 (bottom 40 minus scrolloff). `3<C-b>` from top 78: top 15, cur 34.
-        assert_eq!(ps(38, 1, false), Some((17, 36)));
-        assert_eq!(ps(77, 3, false), Some((14, 33)));
-        // From top 10 back to the start: cursor 20. At the start: no scroll.
-        assert_eq!(ps(9, 1, false), Some((0, 19)));
-        assert_eq!(ps(0, 1, false), None);
-        // From the last line at the top: no overlap left, top 100 -> 77 (scrolloff 0 in nvim: cursor 99).
-        assert_eq!(page_scroll(99, 23, 0, 1, false, 99), Some((76, 98)));
-        // A buffer shorter than the window: `<C-f>` puts the last line at the top.
-        assert_eq!(page_scroll(0, 23, 3, 1, true, 9), Some((9, 9)));
-    }
-
-    /// Ground truth from nvim v0.12.6 (23-row window, 100 lines, `scrolloff=3`).
-    #[test]
-    fn half_page_scroll_matches_nvim() {
-        let hp = |top, cur, amount, fwd| half_page_scroll(top, cur, 23, 3, amount, fwd, 99);
-        // `<C-d>` (scroll=11) from the top: top 12, cursor 15. `2<C-d>`: top 3, cursor 6.
-        assert_eq!(hp(0, 0, 11, true), (11, 14));
-        assert_eq!(hp(0, 0, 2, true), (2, 5));
-        // `<C-u>` from top 39 / line 50: top 28, cursor 39.
-        assert_eq!(hp(38, 49, 11, false), (27, 38));
-        // Near the end the view stops with the last line on the bottom row; the cursor still moves.
-        assert_eq!(hp(86, 89, 11, true), (86, 99));
-        assert_eq!(hp(77, 80, 11, true), (77, 91));
-        // At the start `<C-u>` only moves the cursor.
-        assert_eq!(hp(8, 11, 11, false), (0, 0));
-        assert_eq!(hp(0, 4, 11, false), (0, 0));
-    }
-
     #[test]
     fn screen_line_targets_are_scrolloff_aware() {
         // Window rows 10..=29 (top=10, height=20), scrolloff 3, big buffer.
@@ -806,20 +708,6 @@ mod tests {
         // The bare cursor-motion (scrolloff=3) DOES keep the margin: H -> line 22 (row 21), L -> line 25 (24).
         assert_eq!(screen_line(18, 10, 3, ScreenTo::High, 1, 39), 21);
         assert_eq!(screen_line(18, 10, 3, ScreenTo::Low, 1, 39), 24);
-    }
-
-    #[test]
-    fn scroll_lines_moves_view_and_keeps_cursor_in_band() {
-        // C-e by 1 from top=0, cursor at row 0 (top edge): view moves to 1, cursor pulled to margin.
-        let (nt, nr) = scroll_lines(0, 0, 20, 3, 1, true, 999);
-        assert_eq!(nt, 1);
-        assert_eq!(nr, 1 + 3); // new_top + scrolloff
-                               // Cursor comfortably mid-screen doesn't move.
-        let (nt, nr) = scroll_lines(10, 20, 20, 3, 1, true, 999);
-        assert_eq!((nt, nr), (11, 20));
-        // C-y up saturates at 0.
-        let (nt, _) = scroll_lines(2, 10, 20, 3, 5, false, 999);
-        assert_eq!(nt, 0);
     }
 
     #[test]

@@ -97,7 +97,7 @@ pub enum Opt {
     ColorColumn,
     CursorColumn,
     CursorLine,
-    CursorLineOpt,
+    CursorLineOptions,
     FillChars,
     FoldColumn,
     Scroll,
@@ -378,7 +378,7 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Local,
     ),
     def(
-        Opt::CursorLineOpt,
+        Opt::CursorLineOptions,
         "cursorlineopt",
         "culopt",
         OptKind::Text {

@@ -36,6 +36,8 @@ pub mod line_index;
 pub mod org;
 pub mod persist;
 pub mod screen;
+// nvim's scroll commands over screen rows (#615).
+pub(crate) mod scroll;
 pub mod shell;
 
 pub(crate) mod app;

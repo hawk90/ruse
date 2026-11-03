@@ -566,14 +566,11 @@ mod tests {
             h.s.pane_idx.get(other, rev).map(|ix| ix.builds())
         };
         assert_eq!(builds(&h), Some(1));
-        let start = std::time::Instant::now();
         h.keys("ihello<Esc>").keys(&"hl".repeat(100));
-        let per_frame = start.elapsed() / 206;
         assert_eq!(builds(&h), Some(1), "no rebuild over 206 frames");
         // An edit there, made from the other window, is one rebuild when it is shown unfocused again.
         h.keys("<C-w>wx<C-w>w").keys("hlhl");
         assert_eq!(builds(&h), Some(1));
-        eprintln!("frame time with a 200k-line buffer beside: {per_frame:?}");
     }
 
     #[test]

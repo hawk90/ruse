@@ -103,8 +103,6 @@ pub(crate) struct WinView {
     pub fold_w: usize,
     /// `'smoothscroll'`.
     pub smoothscroll: bool,
-    /// The virtual columns of the top line hidden above the window (nvim's `w_skipcol`).
-    pub skipcol: usize,
 }
 
 /// The deepest fold nesting in `folds` (nvim's `getDeepestNesting`), for `'foldcolumn'` `auto`.
@@ -308,7 +306,6 @@ impl WinView {
             foldcolumn,
             fold_w,
             smoothscroll: o.smoothscroll,
-            skipcol: view.skipcol(),
         }
     }
 
@@ -355,7 +352,6 @@ impl WinView {
             foldcolumn: FoldColumn::Fixed(0),
             fold_w: 0,
             smoothscroll: false,
-            skipcol: 0,
         }
     }
 
@@ -591,7 +587,7 @@ pub(crate) enum Resolved {
 
 /// nvim's `coladvance(wcol)` on `layout`: the line byte of the char holding virtual column `wcol` (the
 /// last char past the end; 0 on an empty line).
-fn coladvance(l: &LineLayout<'_>, wcol: usize, one_more: bool) -> usize {
+pub(crate) fn coladvance(l: &LineLayout<'_>, wcol: usize, one_more: bool) -> usize {
     if one_more && wcol >= l.total {
         // Visual mode may stop past the last char, on the line's end.
         return l.chars.last().map_or(0, |c| c.byte + c.len);
@@ -749,7 +745,7 @@ fn row_span(linelen: usize, width1: usize, width2: usize) -> usize {
 
 /// nvim's `nv_screengo`: `gj` / `gk` `dist` screen rows, keeping the wanted column within the row.
 #[allow(clippy::too_many_arguments)]
-fn screengo(
+pub(crate) fn screengo(
     text: PaneText<'_>,
     win: &WinView,
     folds: &[Fold],
