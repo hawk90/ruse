@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ruse_core::{DocumentId, Mode, Revision, TransactionOrigin, Workspace};
+use ruse_core::{BytePos, DocumentId, Mode, Revision, TransactionOrigin, Workspace};
 use serde_json::Value;
 
 use crate::app::dispatch::{is_ctrl, open_file_into_buffer, Files, Highlighters};
@@ -95,7 +95,7 @@ pub(crate) struct LspCoordinator {
     pending_resolve: Option<usize>,
     // Deferred results — set while polling (inside the frame's `spans` borrow) and drained AFTER render.
     goto_jump: Option<(String, u32, u32)>,
-    pending_edits: Vec<(usize, usize, String)>,
+    pending_edits: Vec<(BytePos, BytePos, String)>,
     pending_rename: Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
     pending_refs: Option<Vec<(String, u32, u32)>>,
     pending_actions: Option<Vec<lsp::protocol::CodeAction>>,
@@ -325,8 +325,8 @@ impl LspCoordinator {
                             .into_iter()
                             .map(|((sl, sc), (el, ec), text)| {
                                 (
-                                    lsp::model::lsp_pos_to_byte(snapshot, sl, sc),
-                                    lsp::model::lsp_pos_to_byte(snapshot, el, ec),
+                                    BytePos(lsp::model::lsp_pos_to_byte(snapshot, sl, sc)),
+                                    BytePos(lsp::model::lsp_pos_to_byte(snapshot, el, ec)),
                                     text,
                                 )
                             })
@@ -602,7 +602,7 @@ impl LspCoordinator {
             // CURRENT bytes and combined with the main insert into ONE Lsp-origin transaction. Cross-file
             // edits (uri != focused) are dropped this slice. The caret is shifted by imports landing before it.
             let bytes = ws.focused().doc.bytes().to_vec();
-            let mut edits = vec![(start, cursor, text)];
+            let mut edits = vec![(BytePos(start), BytePos(cursor), text)];
             let mut shift: isize = 0;
             for (uri, ledits) in &item.additional {
                 if !uri.is_empty() {
@@ -614,7 +614,7 @@ impl LspCoordinator {
                     if e <= start {
                         shift += t.len() as isize - (e as isize - s as isize);
                     }
-                    edits.push((s, e, t.clone()));
+                    edits.push((BytePos(s), BytePos(e), t.clone()));
                 }
             }
             ws.apply_edits(&edits, TransactionOrigin::Lsp);
@@ -848,12 +848,12 @@ fn apply_workspace_edit(
             continue;
         }
         let bytes = ws.focused().doc.bytes().to_vec();
-        let byte_edits: Vec<(usize, usize, String)> = ledits
+        let byte_edits: Vec<(BytePos, BytePos, String)> = ledits
             .into_iter()
             .map(|((sl, sc), (el, ec), text)| {
                 (
-                    lsp::model::lsp_pos_to_byte(&bytes, sl, sc),
-                    lsp::model::lsp_pos_to_byte(&bytes, el, ec),
+                    BytePos(lsp::model::lsp_pos_to_byte(&bytes, sl, sc)),
+                    BytePos(lsp::model::lsp_pos_to_byte(&bytes, el, ec)),
                     text,
                 )
             })

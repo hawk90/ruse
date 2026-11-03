@@ -429,6 +429,30 @@ mod tests {
         KeyEvent::new(code, mods)
     }
 
+    /// A macro replay's edits are recorded as `Macro`, typed ones, `.` and `:normal` as `UserInput`
+    /// (INV-ORIGIN, #880), and the origin goes back to `UserInput` after the replay.
+    #[test]
+    fn macro_replay_edits_carry_the_macro_origin() {
+        use ruse_core::TransactionOrigin::{Macro, UserInput};
+        let mut h = Headless::vim("abcdefgh\n");
+        h.keys("qaxq@a.:normal x<CR>2@a");
+        assert_eq!(h.text(), "gh\n");
+        let origins: Vec<_> = h
+            .workspace()
+            .focused()
+            .doc
+            .history()
+            .creation_order()
+            .into_iter()
+            .filter_map(|(_, o, _)| o)
+            .collect();
+        assert_eq!(
+            origins,
+            [UserInput, Macro, UserInput, UserInput, Macro, Macro]
+        );
+        assert_eq!(h.workspace().origin(), UserInput);
+    }
+
     #[test]
     fn emsg_code_reads_only_a_numbered_error() {
         assert_eq!(emsg_code("E486: pattern not found: x"), Some("E486"));

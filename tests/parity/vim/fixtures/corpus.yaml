@@ -36893,6 +36893,320 @@
       }
     },
     {
+      "name": "jump_ex_delete",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "jj:4d<CR><C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "e"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "jump_ex_shift_right",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "jj:4><CR><C-o>",
+      "setup": "set shiftwidth=4 expandtab | let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "    d",
+          "e"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "jump_ex_shift_left",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "  d",
+        "e"
+      ],
+      "keys": "jj:4<<CR><C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "jump_ex_substitute_confirm",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "jj:4s/d/y/c<CR>y<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "y",
+          "e"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "jump_ex_substitute_confirm_quit",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "jj:4s/d/y/c<CR>q<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "jump_ex_substitute_confirm_no_match",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "jjG:4s/zz/y/c<CR>k<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "jump_normal_amp",
+      "lines": [
+        "a",
+        "xb",
+        "c",
+        "xd",
+        "xe"
+      ],
+      "keys": "jj:s/x/y/<CR>Gk&k<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "xb",
+          "c",
+          "yd",
+          "xe"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "jump_normal_amp_last_line",
+      "lines": [
+        "a",
+        "xb",
+        "c",
+        "xd",
+        "xe"
+      ],
+      "keys": "jj:s/x/y/<CR>G&k<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "xb",
+          "c",
+          "xd",
+          "ye"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "jump_normal_g_amp",
+      "lines": [
+        "a",
+        "xb",
+        "c",
+        "xd",
+        "xe"
+      ],
+      "keys": "jj:s/x/y/<CR>kg&<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "yb",
+          "c",
+          "yd",
+          "ye"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
       "name": "i_ctrl_u_entered",
       "lines": [
         "abc def",

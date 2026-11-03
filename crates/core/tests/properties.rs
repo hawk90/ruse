@@ -8,9 +8,9 @@
 
 use proptest::prelude::*;
 use ruse_core::{
-    anchor::map_byte, apply_command, AnchorId, AnchorPolicy, Bias, Command, Document, DocumentId,
-    Edit, EditList, EditorState, LineGravity, LineMap, Motion, Revision, SelectKind, Trace, Track,
-    Transaction, TransactionOrigin,
+    anchor::map_byte, apply_command, AnchorId, AnchorPolicy, Bias, BytePos, Command, Document,
+    DocumentId, Edit, EditList, EditorState, LineGravity, LineMap, Motion, Revision, SelectKind,
+    Trace, Track, Transaction, TransactionOrigin,
 };
 
 /// An arbitrary buffer: any sequence of Unicode scalars (incl. newlines / control chars) as UTF-8 bytes.
@@ -307,7 +307,7 @@ proptest! {
         let mut doc = Document::new(DocumentId(1), init);
         let ids: Vec<_> = specs
             .into_iter()
-            .map(|(off, b, p)| doc.create_anchor(off.min(doc.len()), b, p))
+            .map(|(off, b, p)| doc.create_anchor(BytePos(off.min(doc.len())), b, p))
             .collect();
 
         let Ok(list) = EditList::new(raw) else { return Ok(()); };
@@ -365,8 +365,8 @@ proptest! {
             .map(|(off, t)| {
                 let off = off.min(doc.len());
                 let id = match t {
-                    Track::Byte(b) => doc.create_anchor(off, b, AnchorPolicy::Clamp),
-                    Track::Line(g) => doc.create_line_anchor(off, g),
+                    Track::Byte(b) => doc.create_anchor(BytePos(off), b, AnchorPolicy::Clamp),
+                    Track::Line(g) => doc.create_line_anchor(BytePos(off), g),
                 };
                 (id, off, t, false)
             })

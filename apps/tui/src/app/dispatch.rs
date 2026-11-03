@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{Command, DocumentId, Effect, SubRange, TransactionOrigin, Workspace};
+use ruse_core::{BytePos, Command, DocumentId, Effect, SubRange, TransactionOrigin, Workspace};
 
 use crate::highlight;
 use crate::persist;
@@ -123,7 +123,10 @@ pub(crate) fn open_file_with(
             match String::from_utf8(rec) {
                 Ok(text) => {
                     let len = ws.focused().doc.bytes().len();
-                    ws.apply_edits(&[(0, len, text)], TransactionOrigin::UserInput);
+                    ws.apply_edits(
+                        &[(BytePos(0), BytePos(len), text)],
+                        TransactionOrigin::UserInput,
+                    );
                 }
                 Err(e) => ws.reload_focused(e.into_bytes()),
             }

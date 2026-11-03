@@ -4,7 +4,7 @@
 //! the kernel design end-to-end in code — the "prove the design in code" step, not a UI.
 
 use ruse_core::{
-    pos, AnchorPolicy, Bias, Document, DocumentId, Edit, EditList, GroupHint, Revision,
+    pos, AnchorPolicy, Bias, BytePos, Document, DocumentId, Edit, EditList, GroupHint, Revision,
     Transaction, TransactionOrigin, TxnError,
 };
 
@@ -145,7 +145,7 @@ fn f001_undo_restores_byte_identical_document() {
 fn f002_anchor_survives_edits_via_not_raw_offsets() {
     let mut doc = opened("cursor here");
     // A cursor anchored just before "here" (byte 7).
-    let cursor = doc.create_anchor(7, Bias::After, AnchorPolicy::Clamp);
+    let cursor = doc.create_anchor(BytePos(7), Bias::After, AnchorPolicy::Clamp);
     // Insert at the start; a raw offset would now point at the wrong text, an anchor tracks the edit.
     doc.apply(txn(
         &doc,
@@ -165,8 +165,8 @@ fn f002_anchor_survives_edits_via_not_raw_offsets() {
 fn f002_anchor_gravity_at_exact_edit_point() {
     // Two anchors at the same offset with opposite gravity behave differently on an insertion there.
     let mut doc = opened("ab");
-    let left = doc.create_anchor(1, Bias::Before, AnchorPolicy::Clamp);
-    let right = doc.create_anchor(1, Bias::After, AnchorPolicy::Clamp);
+    let left = doc.create_anchor(BytePos(1), Bias::Before, AnchorPolicy::Clamp);
+    let right = doc.create_anchor(BytePos(1), Bias::After, AnchorPolicy::Clamp);
     doc.apply(txn(
         &doc,
         Edit::insert(1, b"XYZ".to_vec()),
@@ -197,7 +197,7 @@ fn f002_byte_and_char_coordinates_are_distinct() {
 
     // An anchor tracks BYTES; a wide multi-byte insertion elsewhere shifts it by byte length, and the
     // char coordinate is a correct derivation, never desynced.
-    let tail = doc.create_anchor(5, Bias::After, AnchorPolicy::Clamp); // end of document
+    let tail = doc.create_anchor(BytePos(5), Bias::After, AnchorPolicy::Clamp); // end of document
     doc.apply(txn(
         &doc,
         Edit::insert(0, "🎉".as_bytes().to_vec()),
@@ -383,7 +383,7 @@ fn f005_join_prev_merges_across_the_boundary() {
 #[test]
 fn snapshot_is_immutable_under_later_edits() {
     let mut doc = opened("v1");
-    let mark = doc.create_anchor(2, Bias::After, AnchorPolicy::Clamp); // end of "v1"
+    let mark = doc.create_anchor(BytePos(2), Bias::After, AnchorPolicy::Clamp); // end of "v1"
     let snap = doc.snapshot();
     assert_eq!(snap.revision(), Revision::ZERO);
 
@@ -419,7 +419,7 @@ fn snapshot_is_immutable_under_later_edits() {
 #[test]
 fn golden_scenario_transcript() {
     let mut doc = opened("hello");
-    let cursor = doc.create_anchor(5, Bias::After, AnchorPolicy::Clamp);
+    let cursor = doc.create_anchor(BytePos(5), Bias::After, AnchorPolicy::Clamp);
     let mut log = String::new();
     let step = |doc: &Document, label: &str, log: &mut String| {
         log.push_str(&format!(

@@ -18,6 +18,7 @@ use crate::motion::{
     prev_grapheme, snap, Motion,
 };
 use crate::pattern::RegexError;
+use crate::pos::BytePos;
 use crate::register::{Register, RegisterStore};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 
@@ -118,6 +119,75 @@ struct IndentConfig {
 struct SearchCase {
     ignore: bool,
     smart: bool,
+}
+
+/// The option values a [`View`] carries (indent, `'textwidth'`, search case, caret gravity), grouped so the
+/// Workspace can keep the GLOBAL values Vim's `:set` also writes and hand them to every View it creates
+/// (`:enew`, `:e`, `:bd`'s replacement), as Vim copies global options into a new buffer (#754).
+#[derive(Clone, Copy)]
+pub(crate) struct ViewOptions {
+    indent: IndentConfig,
+    text_width: usize,
+    search_case: SearchCase,
+    caret: CaretGravity,
+}
+
+impl ViewOptions {
+    /// Vim's factory values (`spec/config-schema.yaml` for the indent: `editor.tab_width=4`,
+    /// `editor.indent_style=space`), on-character caret.
+    pub(crate) const DEFAULT: ViewOptions = ViewOptions {
+        indent: IndentConfig {
+            tab_width: 4,
+            shift_width: 4,
+            style: IndentStyle::Space,
+        },
+        text_width: 0,
+        search_case: SearchCase {
+            ignore: false,
+            smart: false,
+        },
+        caret: CaretGravity::OnChar,
+    };
+
+    /// Set one `:set` option, clamped as [`EditorState::set_option`] documents.
+    pub(crate) fn set(&mut self, opt: EditorOption) {
+        match opt {
+            EditorOption::IgnoreCase(v) => self.search_case.ignore = v,
+            EditorOption::SmartCase(v) => self.search_case.smart = v,
+            // Clamped to nvim's bounds (a C `int`; `'tabstop'` 1..=9999), so an API caller cannot make
+            // `>>` or a `<Tab>` allocate without limit (#684); `:set` rejects a value past them first.
+            EditorOption::ShiftWidth(n) => self.indent.shift_width = n.min(MAX_OPTION_INT),
+            EditorOption::TabStop(n) => self.indent.tab_width = n.clamp(1, MAX_TABSTOP),
+            EditorOption::ExpandTab(v) => {
+                self.indent.style = if v {
+                    IndentStyle::Space
+                } else {
+                    IndentStyle::Tab
+                }
+            }
+            EditorOption::TextWidth(n) => self.text_width = n.min(MAX_OPTION_INT),
+        }
+    }
+
+    /// Set the tabstop AND the shiftwidth to `tab_width`, and the indent style ([`EditorState::set_indent`]).
+    pub(crate) fn set_indent(&mut self, tab_width: usize, style: IndentStyle) {
+        let tab_width = tab_width.clamp(1, MAX_TABSTOP);
+        self.indent = IndentConfig {
+            tab_width,
+            shift_width: tab_width,
+            style,
+        };
+    }
+
+    /// Set `'ignorecase'` and `'smartcase'`.
+    pub(crate) fn set_search_case(&mut self, ignore: bool, smart: bool) {
+        self.search_case = SearchCase { ignore, smart };
+    }
+
+    /// Set the caret gravity (D-050).
+    pub(crate) fn set_caret(&mut self, caret: CaretGravity) {
+        self.caret = caret;
+    }
 }
 
 impl IndentConfig {
@@ -347,6 +417,11 @@ const TRACKED_FIXED: usize = 57;
 pub struct EditorState {
     pub doc: Document,
     view: View,
+    /// Who causes the edits this state makes (INV-ORIGIN): [`TransactionOrigin::UserInput`] unless the
+    /// Workspace lends it under another origin, as for a macro replay ([`Workspace::set_origin`], #880).
+    ///
+    /// [`Workspace::set_origin`]: crate::Workspace::set_origin
+    origin: TransactionOrigin,
 }
 
 impl View {
@@ -472,19 +547,12 @@ impl View {
             last_block_geom: None,
             last_visual_op: None,
             auto_indent_pending: false,
-            indent: IndentConfig {
-                tab_width: 4,
-                shift_width: 4,
-                style: IndentStyle::Space,
-            },
-            text_width: 0,
+            indent: ViewOptions::DEFAULT.indent,
+            text_width: ViewOptions::DEFAULT.text_width,
             curswant: 0,
             keep_jumps: false,
-            search_case: SearchCase {
-                ignore: false,
-                smart: false,
-            },
-            caret: CaretGravity::OnChar,
+            search_case: ViewOptions::DEFAULT.search_case,
+            caret: ViewOptions::DEFAULT.caret,
             changes: Vec::new(),
             new_change: false,
             change_idx: 0,
@@ -742,6 +810,37 @@ impl View {
     /// edits are not Vim-clamped; Vim/Neovim keep the `OnChar` default. The Workspace profile-init seam.
     pub fn set_caret_gravity(&mut self, gravity: CaretGravity) {
         self.caret = gravity;
+    }
+
+    /// This View's caret gravity (D-050).
+    #[must_use]
+    pub fn caret_gravity(&self) -> CaretGravity {
+        self.caret
+    }
+
+    /// This View's option values ([`ViewOptions`]).
+    pub(crate) fn options(&self) -> ViewOptions {
+        ViewOptions {
+            indent: self.indent,
+            text_width: self.text_width,
+            search_case: self.search_case,
+            caret: self.caret,
+        }
+    }
+
+    /// Replace this View's option values, as a new View takes the Workspace's global ones (#754).
+    pub(crate) fn set_options(&mut self, o: ViewOptions) {
+        self.indent = o.indent;
+        self.text_width = o.text_width;
+        self.search_case = o.search_case;
+        self.caret = o.caret;
+    }
+
+    /// Change this View's option values through `f`.
+    pub(crate) fn update_options(&mut self, f: impl FnOnce(&mut ViewOptions)) {
+        let mut o = self.options();
+        f(&mut o);
+        self.set_options(o);
     }
 
     /// This View's mode — view-local (two Views of one buffer can be in different modes).
@@ -1087,7 +1186,11 @@ impl EditorState {
         let mut doc = Document::new(DocumentId(1), initial);
         doc.mark_saved();
         let view = View::fresh(doc.id());
-        let mut st = EditorState { doc, view };
+        let mut st = EditorState {
+            doc,
+            view,
+            origin: TransactionOrigin::UserInput,
+        };
         // A caret on a leading `<Tab>` wants the tab's last cell (#1090).
         st.view.curswant = st.wanted_col();
         st
@@ -1110,13 +1213,22 @@ impl EditorState {
         r
     }
 
+    /// Make the edits that follow carry `origin` (INV-ORIGIN, #880).
+    pub(crate) fn set_origin(&mut self, origin: TransactionOrigin) {
+        self.origin = origin;
+    }
+
     /// Reconstitute an editing context from a Document and a View taken out of a Workspace arena — the
     /// inverse of [`EditorState::into_parts`]. The [`crate::workspace::Workspace`] swaps the focused
     /// `(Document, View)` into an `EditorState` to run the UNCHANGED `plan`/`commit` pipeline, then
     /// swaps them back; this keeps the single-window path byte-identical (F-007 step (b)).
     #[must_use]
     pub(crate) fn from_parts(doc: Document, view: View) -> EditorState {
-        EditorState { doc, view }
+        EditorState {
+            doc,
+            view,
+            origin: TransactionOrigin::UserInput,
+        }
     }
 
     /// Split an editing context back into its owned Document and View, to return them to the arena.
@@ -1137,38 +1249,21 @@ impl EditorState {
     /// `editor.indent_style`. Sets the tabstop AND the shiftwidth to `tab_width` (the common `ts=sw` case);
     /// `:set shiftwidth`/`:set tabstop` ([`EditorState::set_option`]) set them apart.
     pub fn set_indent(&mut self, tab_width: usize, indent_style: IndentStyle) {
-        let tab_width = tab_width.clamp(1, MAX_TABSTOP);
-        self.view.indent.tab_width = tab_width;
-        self.view.indent.shift_width = tab_width;
-        self.view.indent.style = indent_style;
+        self.view
+            .update_options(|o| o.set_indent(tab_width, indent_style));
     }
 
     /// Set the search case config (`'ignorecase'` / `'smartcase'`, F-009 #1). The seam a config loader
     /// (or a test) uses until runtime config lands; the default is Vim's factory case-sensitive search.
     pub fn set_search_case(&mut self, ignore_case: bool, smart_case: bool) {
-        self.view.search_case.ignore = ignore_case;
-        self.view.search_case.smart = smart_case;
+        self.view
+            .update_options(|o| o.set_search_case(ignore_case, smart_case));
     }
 
     /// Set one editor option (`:set`) on the focused view, leaving the others untouched. Maps the
     /// runtime `:set` surface onto the existing indent/search-case config (no new schema keys).
     pub fn set_option(&mut self, opt: EditorOption) {
-        match opt {
-            EditorOption::IgnoreCase(v) => self.view.search_case.ignore = v,
-            EditorOption::SmartCase(v) => self.view.search_case.smart = v,
-            // Clamped to nvim's bounds (a C `int`; `'tabstop'` 1..=9999), so an API caller cannot make
-            // `>>` or a `<Tab>` allocate without limit (#684); `:set` rejects a value past them first.
-            EditorOption::ShiftWidth(n) => self.view.indent.shift_width = n.min(MAX_OPTION_INT),
-            EditorOption::TabStop(n) => self.view.indent.tab_width = n.clamp(1, MAX_TABSTOP),
-            EditorOption::ExpandTab(v) => {
-                self.view.indent.style = if v {
-                    IndentStyle::Space
-                } else {
-                    IndentStyle::Tab
-                }
-            }
-            EditorOption::TextWidth(n) => self.view.text_width = n.min(MAX_OPTION_INT),
-        }
+        self.view.update_options(|o| o.set(opt));
     }
 
     /// Execute `:[range]s/pattern/replacement/flags` (F-009 #2). Every substitution across the range is
@@ -1221,7 +1316,7 @@ impl EditorState {
             .collect();
         let cursor = lines[first + seams].0 - seams;
         let list = EditList::new(edits).expect("line breaks are disjoint and ordered");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn)
             .expect("join substitute applies cleanly");
@@ -1341,7 +1436,7 @@ impl EditorState {
         });
         // Disjoint + ordered by construction; `new` re-validates (a bad accepted set is a caller bug).
         let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn)
             .expect("substitute transaction applies cleanly");
@@ -1509,7 +1604,7 @@ impl EditorState {
                 }
                 let list =
                     EditList::new(edits).expect("whole-line deletes are disjoint and ordered");
-                let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+                let txn = Transaction::new(self.doc.revision(), list, self.origin)
                     .with_hint(GroupHint::BreakBefore);
                 self.apply_txn(txn).expect("global-delete applies cleanly");
                 self.view.last_was_edit = true;
@@ -1605,7 +1700,7 @@ impl EditorState {
         // where `u` puts it back (nvim 0.12.6: `4l:3d<CR>u` -> line 3, column 4).
         let col = self.view.cursor - line_start(bytes, self.view.cursor);
         let undo_at = snap(bytes, (fs + col).min(lines[first].1));
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore)
             .with_cursor(undo_at);
         self.apply_txn(txn)
@@ -1825,7 +1920,7 @@ impl EditorState {
 
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn).expect("line relocate applies cleanly");
         self.view.last_was_edit = true;
@@ -1907,7 +2002,7 @@ impl EditorState {
             .sum();
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn).expect("line put applies cleanly");
         self.view.last_was_edit = true;
@@ -1986,7 +2081,7 @@ impl EditorState {
             .sum();
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn).expect("line read applies cleanly");
         self.view.last_was_edit = true;
@@ -2076,7 +2171,7 @@ impl EditorState {
             .sum();
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn).expect("line filter applies cleanly");
         self.view.last_was_edit = true;
@@ -2134,7 +2229,7 @@ impl EditorState {
         }
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), out)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn).expect("retab applies cleanly");
         self.view.last_was_edit = true;
@@ -2256,7 +2351,7 @@ impl EditorState {
             .min(new_bytes.len());
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore);
         self.apply_txn(txn).expect("sort applies cleanly");
         self.view.last_was_edit = true;
@@ -2271,13 +2366,14 @@ impl EditorState {
     /// `origin` — a separate undo unit from user edits (F-005). This is a PROVENANCE-AGNOSTIC batch-edit
     /// primitive: the CORE provides the mechanism, the CALLER states the policy (the LSP frontend passes
     /// [`TransactionOrigin::Lsp`]; a snippet/macro/AI batch would pass its own origin). Each edit is
-    /// `(start, end, replacement)`. The batch is atomic (#716): if any edit is reversed, out of range, splits
-    /// a UTF-8 character or overlaps another, NOTHING is applied and this returns `false`. The cursor is
-    /// carried through the edits as a byte anchor that follows the text after it, so an edit above it
-    /// moves it with its text.
+    /// `(start, end, replacement)` in [`BytePos`] (INV-POS-TYPED: a caller holding UTF-16 or char columns,
+    /// as an LSP client does, converts at its side of this boundary). The batch is atomic (#716): if any edit
+    /// is reversed, out of range, splits a UTF-8 character or overlaps another, NOTHING is applied and this
+    /// returns `false`. The cursor is carried through the edits as a byte anchor that follows the text after
+    /// it, so an edit above it moves it with its text.
     pub fn apply_edits(
         &mut self,
-        edits: &[(usize, usize, String)],
+        edits: &[(BytePos, BytePos, String)],
         origin: TransactionOrigin,
     ) -> bool {
         let b = self.doc.bytes();
@@ -2285,13 +2381,13 @@ impl EditorState {
         if edits.is_empty()
             || !edits
                 .iter()
-                .all(|(s, e, _)| s <= e && *e <= b.len() && boundary(*s) && boundary(*e))
+                .all(|(s, e, _)| s <= e && e.0 <= b.len() && boundary(s.0) && boundary(e.0))
         {
             return false;
         }
         let es: Vec<Edit> = edits
             .iter()
-            .map(|(s, e, t)| Edit::replace(*s, e - s, t.clone().into_bytes()))
+            .map(|(s, e, t)| Edit::replace(s.0, e.0 - s.0, t.clone().into_bytes()))
             .collect();
         let Ok(list) = EditList::new(es) else {
             return false; // overlapping edits — refuse rather than corrupt the buffer
@@ -3003,7 +3099,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 entry_anchor,
                 &edits,
             );
-            let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
+            let txn = Transaction::new(st.doc.revision(), edits, st.origin)
                 .with_hint(hint)
                 .with_cursor(start);
             // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
@@ -3025,7 +3121,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 entry_anchor,
                 &edits,
             );
-            let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
+            let txn = Transaction::new(st.doc.revision(), edits, st.origin)
                 .with_hint(hint)
                 .with_cursor(start);
             st.apply_txn(txn)
@@ -3050,7 +3146,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
         }
         Action::LineUndo => {
-            nav_target = st.with_tracked(|d, t| d.line_undo_tracked(entry_cursor, t));
+            let origin = st.origin;
+            nav_target = st.with_tracked(|d, t| d.line_undo_tracked(entry_cursor, origin, t));
         }
         Action::JumpChange { older } => {
             nav_target = st.view.nav_change(older);
@@ -3091,7 +3188,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                     entry_anchor,
                     &edits,
                 );
-                let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
+                let txn = Transaction::new(st.doc.revision(), edits, st.origin)
                     .with_hint(hint)
                     .with_cursor(start);
                 st.apply_txn(txn)

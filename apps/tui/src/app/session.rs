@@ -11,7 +11,10 @@ use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal as ct_terminal;
 
-use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Trace, Workspace};
+use ruse_core::{
+    CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Trace, TransactionOrigin,
+    Workspace,
+};
 
 use crate::app::dispatch::{
     buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, match_count_message, may_quit,
@@ -895,7 +898,8 @@ impl Session {
             self.end_macro_undo();
             self.sync_undo_before_typed();
         }
-        self.route(raw_key, from_replay, frame);
+        // A replayed key's edits are the macro's (INV-ORIGIN, #880).
+        self.route_as(raw_key, from_replay, frame);
         if !from_replay && !self.emacs_profile {
             // A typed `@{reg}` (or `@:`, `Q`) queued its replay: one undo step for all of it (#939).
             if self.macros.replay_pending() && !self.ws.focused().doc.in_undo_block() {
@@ -1824,7 +1828,14 @@ impl Session {
             *status = match &last_substitute {
                 Some(_) if last > lines.max(1) => "E16: Invalid range".to_string(),
                 Some((pat, rep, flags)) => {
-                    match ws.substitute(ruse_core::SubRange::Lines(first, last), pat, rep, *flags) {
+                    let from = ws.focused().view.cursor();
+                    let result =
+                        ws.substitute(ruse_core::SubRange::Lines(first, last), pat, rep, *flags);
+                    // A repeat that matched is a jump, as `:s` is (nvim 0.12.6, #1119).
+                    if matches!(result, Ok(out) if out.lines > 0) {
+                        ws.push_focused_jump(from);
+                    }
+                    match result {
                         Ok(out) if out.replacements == 0 => {
                             format!("E486: pattern not found: {pat}")
                         }
@@ -2178,7 +2189,13 @@ impl Session {
         if matches!(cmd, Command::RepeatSubstituteGlobal) {
             *status = match &last_substitute {
                 Some((pat, rep, flags)) => {
-                    match ws.substitute(ruse_core::SubRange::WholeFile, pat, rep, *flags) {
+                    let from = ws.focused().view.cursor();
+                    let result = ws.substitute(ruse_core::SubRange::WholeFile, pat, rep, *flags);
+                    // A repeat that matched is a jump, as `:s` is (nvim 0.12.6, #1119).
+                    if matches!(result, Ok(out) if out.lines > 0) {
+                        ws.push_focused_jump(from);
+                    }
+                    match result {
                         Ok(out) if out.replacements == 0 => {
                             format!("E486: pattern not found: {pat}")
                         }
@@ -2198,12 +2215,17 @@ impl Session {
         if matches!(cmd, Command::RepeatSubstituteLine) {
             *status = match &last_substitute {
                 Some((pat, rep, _flags)) => {
-                    match ws.substitute(
+                    let from = ws.focused().view.cursor();
+                    let result = ws.substitute(
                         ruse_core::SubRange::CurrentLine,
                         pat,
                         rep,
                         ruse_core::SubFlags::default(),
-                    ) {
+                    );
+                    if matches!(result, Ok(out) if out.lines > 0) {
+                        ws.push_focused_jump(from);
+                    }
+                    match result {
                         Ok(out) if out.replacements == 0 => {
                             format!("E486: pattern not found: {pat}")
                         }
@@ -3048,7 +3070,12 @@ impl Session {
                         Ok(subs) if subs.is_empty() => {
                             *status = format!("E486: pattern not found: {}", spec.pattern);
                         }
-                        Ok(subs) => *confirm = Some(Confirm::new(subs)),
+                        Ok(subs) => {
+                            // A match is a jump before the first prompt (nvim's `do_sub`, #1119).
+                            let from = ws.focused().view.cursor();
+                            ws.push_focused_jump(from);
+                            *confirm = Some(Confirm::new(subs));
+                        }
                         Err(e) => *status = crate::app::dispatch::invalid_command_msg(&e),
                     }
                 } else {
@@ -3183,7 +3210,10 @@ impl Session {
                 }
             }
             // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
+            // `:d`, `:>` and `:<` are jumps from where the cursor stood (nvim's `ex_operators`, #1119).
             Ex::Delete(range, reg) => {
+                let from = ws.focused().view.cursor();
+                ws.push_focused_jump(from);
                 let n = ws.delete_lines_into(range, reg);
                 *status = if n == 1 {
                     "1 line deleted".into()
@@ -3237,6 +3267,8 @@ impl Session {
                 left,
                 levels,
             } => {
+                let from = ws.focused().view.cursor();
+                ws.push_focused_jump(from);
                 let n = ws.shift_lines(range, left, levels);
                 *status = if n == 1 {
                     String::new()
@@ -3622,13 +3654,24 @@ impl Session {
             };
             let f = self.nested_frame(frame);
             let status_before = self.status.clone();
-            self.route(k, true, &f);
+            self.route_as(k, true, &f);
             if self.failed_since(&status_before) {
                 self.macros.flush_replay();
                 return true;
             }
         }
         false
+    }
+
+    /// [`Session::route`] a key, its edits recorded under [`TransactionOrigin::Macro`] when it came from a
+    /// macro replay's queue (`@{reg}`, `@:`, `Q`), else under the current origin (INV-ORIGIN, #880).
+    fn route_as(&mut self, key: KeyEvent, from_macro: bool, frame: &FrameCtx) {
+        let origin = self.ws.origin();
+        if from_macro {
+            self.ws.set_origin(TransactionOrigin::Macro);
+        }
+        self.route(key, from_macro, frame);
+        self.ws.set_origin(origin);
     }
 
     /// Whether the key just routed failed (Vim beeps or gives an error), clearing the beep: nvim's
@@ -3798,7 +3841,7 @@ impl Session {
         keys: &str,
         frame: &FrameCtx,
     ) {
-        use ruse_core::{AnchorPolicy, Bias};
+        use ruse_core::{AnchorPolicy, Bias, BytePos};
         let marks = match self.ws.global_marks(range, pattern, negate) {
             Ok(m) => m,
             Err(e) => {
@@ -3829,8 +3872,8 @@ impl Session {
             // One index rebuild for all of them, not one per anchor.
             let ids = doc.create_anchors(spans.iter().flat_map(|&(s, e)| {
                 [
-                    (s, Bias::After, AnchorPolicy::Clamp),
-                    (e, Bias::Before, AnchorPolicy::Clamp),
+                    (BytePos(s), Bias::After, AnchorPolicy::Clamp),
+                    (BytePos(e), Bias::Before, AnchorPolicy::Clamp),
                 ]
             }));
             spans

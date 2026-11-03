@@ -30,7 +30,7 @@ use crate::command::Command;
 use crate::document::{Document, DocumentId};
 use crate::editor::{
     apply_command, CaretGravity, EditorState, GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange,
-    Substitution, View,
+    Substitution, View, ViewOptions,
 };
 use crate::effect::Effect;
 use crate::pattern::RegexError;
@@ -112,13 +112,11 @@ pub struct Workspace {
     /// The alternate buffer (Vim `#`): the buffer focus last left, so `:b#` toggles back. `None` until
     /// the first switch.
     alt: Option<DocumentId>,
-    /// The workspace's DEFAULT search-case (`'ignorecase'`/`'smartcase'`), applied to every View it creates
-    /// so a shipped-profile default (which the app turns ON) reaches new buffers and splits, not just the
-    /// first one. The engine/`EditorState::new` default stays vanilla-off (the differential parity oracle
-    /// drives `EditorState` directly), so this Workspace-level seam is where ruse's better-than-Vim default
-    /// lives without the oracle ever seeing it. `(false, false)` = Vim factory until the frontend sets it.
-    default_ignore_case: bool,
-    default_smart_case: bool,
+    /// The GLOBAL option values (Vim's global copy of each option), given to every View the workspace
+    /// creates so a setting reaches new buffers, not just the first one (#754): the shipped search-case
+    /// default (which the app turns ON; the engine/`EditorState::new` default stays vanilla-off for the
+    /// differential parity oracle), the profile's caret gravity, the indent config, and every `:set`.
+    defaults: ViewOptions,
     /// The injected OS-clipboard provider behind the `"+`/`"*` registers (`:help quoteplus`). Defaults to
     /// [`NoClipboard`] (a no-op) so core stays pure and CI — which has no clipboard — is deterministic; the
     /// frontend installs a real shell-out provider at startup via [`Workspace::set_clipboard`], and unit
@@ -132,6 +130,9 @@ pub struct Workspace {
     /// The positions the views at rest pinned in the lent document ([`Workspace::lend`]), read back and
     /// removed by [`Workspace::reclaim`]. Empty between the two.
     pins: Vec<(ViewId, std::ops::Range<usize>)>,
+    /// Who causes the edits commands make (INV-ORIGIN): [`TransactionOrigin::UserInput`] unless the
+    /// frontend says otherwise ([`Workspace::set_origin`], #880).
+    origin: TransactionOrigin,
 }
 
 impl Workspace {
@@ -151,12 +152,12 @@ impl Workspace {
             names: vec![None],
             buffer_order: vec![id],
             alt: None,
-            default_ignore_case: false,
-            default_smart_case: false,
+            defaults: ViewOptions::DEFAULT,
             clipboard: Box::new(NoClipboard),
             beeped: false,
             registers: RegisterStore::new(),
             pins: Vec::new(),
+            origin: TransactionOrigin::UserInput,
         }
     }
 
@@ -177,7 +178,21 @@ impl Workspace {
         }
         let mut st = EditorState::from_parts(doc, view);
         st.swap_registers(&mut self.registers);
+        st.set_origin(self.origin);
         st
+    }
+
+    /// Set who causes the edits the commands applied from now on make (INV-ORIGIN, #880): the frontend
+    /// sets [`TransactionOrigin::Macro`] while it replays a register's keys (`@{reg}`, `@:`, `Q`) and puts
+    /// [`TransactionOrigin::UserInput`] back after. [`Workspace::apply_edits`] takes its origin directly.
+    pub fn set_origin(&mut self, origin: TransactionOrigin) {
+        self.origin = origin;
+    }
+
+    /// The origin the commands applied now are recorded under ([`Workspace::set_origin`]).
+    #[must_use]
+    pub fn origin(&self) -> TransactionOrigin {
+        self.origin
     }
 
     /// The swap-trick's second half: take the register store back from `st` and split it into parts.
@@ -225,30 +240,23 @@ impl Workspace {
     }
 
     /// Set the workspace default search-case and apply it to EVERY live view (existing and, via
-    /// [`Self::apply_default_search_case`], any created afterward). The frontend calls this once at startup
+    /// [`Self::push_view`], any created afterward). The frontend calls this once at startup
     /// to install ruse's shipped default (ignorecase + smartcase ON) so it holds across `:e`/`:split`/reload
     /// — without touching `EditorState::new`, which the parity oracle drives at the Vim factory default.
     pub fn set_default_search_case(&mut self, ignore_case: bool, smart_case: bool) {
-        self.default_ignore_case = ignore_case;
-        self.default_smart_case = smart_case;
-        for vid in 0..self.views.len() {
-            if self.views[vid].is_some() {
-                self.apply_default_search_case(ViewId(vid));
-            }
+        self.defaults.set_search_case(ignore_case, smart_case);
+        for v in self.views.iter_mut().flatten() {
+            v.update_options(|o| o.set_search_case(ignore_case, smart_case));
         }
     }
 
-    /// Apply the stored default search-case to one view (the [`EditorState::from_parts`] round-trip the other
-    /// per-view mutations use). Called for every newly created view so the default propagates to new buffers.
-    fn apply_default_search_case(&mut self, vid: ViewId) {
-        let view = self.views[vid.0].take().expect("view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("doc live");
-        let mut st = self.lend(doc, view);
-        st.set_search_case(self.default_ignore_case, self.default_smart_case);
-        let (doc, view) = self.reclaim(st);
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
+    /// Append a fresh View onto `doc` carrying the global option values ([`Workspace::defaults`]), and
+    /// return its id. Every View the workspace creates (other than a split's clone) comes from here.
+    fn push_view(&mut self, doc: DocumentId) -> ViewId {
+        let mut view = View::fresh(doc);
+        view.set_options(self.defaults);
+        self.views.push(Some(view));
+        ViewId(self.views.len() - 1)
     }
 
     /// The arena slot index for a `DocumentId` (ids are 1-based, assigned monotonically, never reused).
@@ -345,6 +353,7 @@ impl Workspace {
     /// startup with `BetweenChar` when the Emacs profile is active, so its edits rest on Emacs point rather
     /// than being Vim-clamped. Splits clone the focused View, so a later `:split` inherits the gravity.
     pub fn set_caret_gravity(&mut self, gravity: CaretGravity) {
+        self.defaults.set_caret(gravity);
         for v in self.views.iter_mut().flatten() {
             v.set_caret_gravity(gravity);
         }
@@ -748,7 +757,7 @@ impl Workspace {
     /// [`EditorState::apply_edits`]: all or nothing, `false` when refused.
     pub fn apply_edits(
         &mut self,
-        edits: &[(usize, usize, String)],
+        edits: &[(crate::pos::BytePos, crate::pos::BytePos, String)],
         origin: TransactionOrigin,
     ) -> bool {
         let vid = self.windows[self.focus].view;
@@ -1176,8 +1185,7 @@ impl Workspace {
         doc.mark_saved();
         self.docs.push(Some(doc));
         self.names.push(name);
-        self.views.push(Some(View::fresh(id)));
-        self.apply_default_search_case(ViewId(self.views.len() - 1));
+        self.push_view(id);
         self.buffer_order.push(id);
         id
     }
@@ -1199,12 +1207,7 @@ impl Workspace {
                 _ => None,
             }
         });
-        reusable.unwrap_or_else(|| {
-            let vid = ViewId(self.views.len());
-            self.views.push(Some(View::fresh(id)));
-            self.apply_default_search_case(vid);
-            vid
-        })
+        reusable.unwrap_or_else(|| self.push_view(id))
     }
 
     /// Show buffer `id` in the FOCUSED window (Vim `:buffer`). Records the buffer being left as the
@@ -1300,9 +1303,7 @@ impl Workspace {
         for i in 0..self.windows.len() {
             let vid = self.windows[i].view;
             if self.views[vid.0].as_ref().map(View::doc) == Some(id) {
-                let nv = ViewId(self.views.len());
-                self.views.push(Some(View::fresh(replacement)));
-                self.apply_default_search_case(nv);
+                let nv = self.push_view(replacement);
                 self.windows[i].view = nv;
             }
         }
@@ -1322,20 +1323,15 @@ impl Workspace {
         true
     }
 
-    /// Set the focused View's indent config (`>>`/`<<`) — the seam a config loader/test uses; mirrors
+    /// Set the indent config (`>>`/`<<`) of the focused View and of every View created afterward (the
+    /// global value, as `:set` writes) — the seam a config loader/test uses; mirrors
     /// [`EditorState::set_indent`]. No new schema key (editor.tab_width / editor.indent_style).
     pub fn set_indent(&mut self, tab_width: usize, indent_style: crate::editor::IndentStyle) {
-        // Round-trip through EditorState so the single set_indent implementation stays authoritative.
+        self.defaults.set_indent(tab_width, indent_style);
         let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let did = view.doc();
-        let slot = Self::doc_slot(did);
-        let doc = self.docs[slot].take().expect("focused doc live");
-        let mut st = self.lend(doc, view);
-        st.set_indent(tab_width, indent_style);
-        let (doc, view) = self.reclaim(st);
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.update_options(|o| o.set_indent(tab_width, indent_style));
+        }
     }
 
     /// The 0-based inclusive line range a `=`/`Reindent` motion covers on the focused buffer (its op-span's
@@ -1473,17 +1469,14 @@ impl Workspace {
         crate::motion::line_completions(b, cur)
     }
 
-    /// Set one `:set` option on the focused view (swap-trick, like [`Workspace::set_indent`]).
+    /// Set one `:set` option on the focused view and as the global value every View created afterward
+    /// takes (Vim's `:set` writes both the local and the global value, #754).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
+        self.defaults.set(opt);
         let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-        let mut st = self.lend(doc, view);
-        st.set_option(opt);
-        let (doc, view) = self.reclaim(st);
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.update_options(|o| o.set(opt));
+        }
     }
 }
 
@@ -2456,6 +2449,68 @@ mod tests {
             "smartcase: 'Baz' matches only the capitalized one"
         );
         assert_eq!(w.focused().doc.bytes(), b"baz Z\n");
+    }
+
+    /// The workspace origin reaches every transaction a command makes, `U` included, so a macro replay's
+    /// edits are recorded as `Macro` (INV-ORIGIN, #880).
+    #[test]
+    fn commands_record_the_workspace_origin() {
+        let mut w = Workspace::new(b"ab\ncd\n".to_vec());
+        w.apply(&Command::Delete(1, Motion::Right));
+        w.focused_doc_mut().sync_undo();
+        w.set_origin(TransactionOrigin::Macro);
+        w.apply(&Command::Delete(1, Motion::Right));
+        w.focused_doc_mut().sync_undo();
+        w.apply(&Command::LineUndo);
+        w.set_origin(TransactionOrigin::UserInput);
+        w.apply(&Command::Delete(1, Motion::Right));
+        let origins: Vec<_> = w
+            .focused()
+            .doc
+            .history()
+            .creation_order()
+            .into_iter()
+            .filter_map(|(_, o, _)| o)
+            .collect();
+        assert_eq!(
+            origins,
+            [
+                TransactionOrigin::UserInput,
+                TransactionOrigin::Macro,
+                TransactionOrigin::Macro,
+                TransactionOrigin::UserInput,
+            ]
+        );
+    }
+
+    /// The caret gravity, the indent config and every `:set` reach buffers created afterward (Vim copies the
+    /// global option values into a new buffer; nvim 0.12.6 `:set ts=2 sw=3 noet tw=50 ic | enew` keeps all
+    /// five), including `:bd`'s replacement scratch (#754).
+    #[test]
+    fn options_and_caret_gravity_propagate_to_new_buffers() {
+        use crate::editor::{EditorOption, IndentStyle};
+        let mut w = Workspace::new(b"ab\n".to_vec());
+        w.set_caret_gravity(CaretGravity::BetweenChar);
+        w.set_indent(2, IndentStyle::Space);
+        w.set_option(EditorOption::ShiftWidth(3));
+        let b2 = w.add_buffer(b"cd\n".to_vec(), None);
+        w.focus_buffer(b2);
+        let v = w.focused().view;
+        assert_eq!(v.caret_gravity(), CaretGravity::BetweenChar);
+        assert_eq!((v.tab_width(), v.shift_width()), (2, 3));
+        // A `:set` in one buffer sets the global value but leaves the other buffer's local value alone.
+        w.set_option(EditorOption::TabStop(5));
+        let b1 = w.buffers()[0].id;
+        w.focus_buffer(b1);
+        assert_eq!(
+            w.focused().view.tab_width(),
+            2,
+            "b1 keeps its local tabstop"
+        );
+        assert!(w.remove_buffer(b1) && w.remove_buffer(b2));
+        let v = w.focused().view;
+        assert_eq!(v.caret_gravity(), CaretGravity::BetweenChar, "the scratch");
+        assert_eq!((v.tab_width(), v.shift_width()), (5, 3));
     }
 
     /// `:bd` retires a buffer and repoints the window to the alternate; deleting the last buffer opens a

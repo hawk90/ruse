@@ -2824,8 +2824,8 @@ mod insert_entry_tests {
         let mut st = EditorState::new(b"hello world".to_vec());
         st.apply_edits(
             &[
-                (0, 5, "Hi".to_string()),     // "hello" → "Hi"
-                (6, 11, "there".to_string()), // "world" → "there"
+                (crate::BytePos(0), crate::BytePos(5), "Hi".to_string()), // "hello" → "Hi"
+                (crate::BytePos(6), crate::BytePos(11), "there".to_string()), // "world" → "there"
             ],
             crate::TransactionOrigin::Lsp,
         );
@@ -2843,10 +2843,13 @@ mod insert_entry_tests {
         // prior edits as a distinct, still-undoable unit.
         let mut st = EditorState::new(b"abc".to_vec());
         st.apply_edits(
-            &[(3, 3, "X".to_string())],
+            &[(crate::BytePos(3), crate::BytePos(3), "X".to_string())],
             crate::TransactionOrigin::UserInput,
         ); // "abcX"
-        st.apply_edits(&[(0, 0, "Y".to_string())], crate::TransactionOrigin::Lsp); // "YabcX"
+        st.apply_edits(
+            &[(crate::BytePos(0), crate::BytePos(0), "Y".to_string())],
+            crate::TransactionOrigin::Lsp,
+        ); // "YabcX"
         assert_eq!(text(&st), "YabcX");
         apply_command(&mut st, &Command::Undo); // undoes ONLY the LSP batch
         assert_eq!(text(&st), "abcX");
@@ -2858,9 +2861,18 @@ mod insert_entry_tests {
     fn apply_edits_skips_overlapping_and_out_of_range() {
         let mut st = EditorState::new(b"abcdef".to_vec());
         let lsp = crate::TransactionOrigin::Lsp;
-        st.apply_edits(&[(0, 3, "X".to_string()), (2, 5, "Y".to_string())], lsp); // overlap → refused
+        st.apply_edits(
+            &[
+                (crate::BytePos(0), crate::BytePos(3), "X".to_string()),
+                (crate::BytePos(2), crate::BytePos(5), "Y".to_string()),
+            ],
+            lsp,
+        ); // overlap → refused
         assert_eq!(text(&st), "abcdef");
-        st.apply_edits(&[(0, 99, "Z".to_string())], lsp); // out of range → skipped
+        st.apply_edits(
+            &[(crate::BytePos(0), crate::BytePos(99), "Z".to_string())],
+            lsp,
+        ); // out of range → skipped
         assert_eq!(text(&st), "abcdef");
     }
 
@@ -2871,16 +2883,29 @@ mod insert_entry_tests {
         let lsp = crate::TransactionOrigin::Lsp;
         let mut st = EditorState::new(b"abcdef".to_vec());
         assert!(!st.apply_edits(
-            &[(0, 1, "X".to_string()), (1000, 1001, "Y".to_string())],
+            &[
+                (crate::BytePos(0), crate::BytePos(1), "X".to_string()),
+                (crate::BytePos(1000), crate::BytePos(1001), "Y".to_string())
+            ],
             lsp
         ));
         assert_eq!(text(&st), "abcdef");
         let mut st = EditorState::new("한글".as_bytes().to_vec());
-        assert!(!st.apply_edits(&[(1, 2, "X".to_string())], lsp));
+        assert!(!st.apply_edits(
+            &[(crate::BytePos(1), crate::BytePos(2), "X".to_string())],
+            lsp
+        ));
         assert_eq!(text(&st), "한글");
         let mut st = EditorState::new(b"one\ntwo\n".to_vec());
         st.set_cursor(5);
-        assert!(st.apply_edits(&[(0, 0, "AAAAAAA\n".to_string())], lsp));
+        assert!(st.apply_edits(
+            &[(
+                crate::BytePos(0),
+                crate::BytePos(0),
+                "AAAAAAA\n".to_string()
+            )],
+            lsp
+        ));
         assert_eq!(st.cursor(), 13);
         assert_eq!(&text(&st)[13..14], "w");
     }

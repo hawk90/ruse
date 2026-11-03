@@ -1652,6 +1652,16 @@ FIXTURES: list[dict] = [
     {"name": "jump_ex_substitute", "lines": ["a", "b", "c", "d"], "keys": "jj:2s/b/y/<CR><C-o>", "setup": UNDO_SETUP},
     {"name": "jump_ex_substitute_from_below", "lines": ["a", "b", "c", "d"], "keys": "G:2s/b/y/<CR><C-o>", "setup": UNDO_SETUP},
     {"name": "jump_ex_substitute_no_match", "lines": ["a", "b", "cx", "d"], "keys": "jG:3s/zz/y/<CR>k<C-o>", "setup": UNDO_SETUP},
+    # --- #1119 `:d`, `:>`, `:<`, a `:s///c` that matched, and Normal `&`/`g&` that matched are jumps. ---------
+    {"name": "jump_ex_delete", "lines": ["a", "b", "c", "d", "e"], "keys": "jj:4d<CR><C-o>", "setup": UNDO_SETUP},
+    {"name": "jump_ex_shift_right", "lines": ["a", "b", "c", "d", "e"], "keys": "jj:4><CR><C-o>", "setup": "set shiftwidth=4 expandtab | " + UNDO_SETUP},
+    {"name": "jump_ex_shift_left", "lines": ["a", "b", "c", "  d", "e"], "keys": "jj:4<<CR><C-o>", "setup": UNDO_SETUP},
+    {"name": "jump_ex_substitute_confirm", "lines": ["a", "b", "c", "d", "e"], "keys": "jj:4s/d/y/c<CR>y<C-o>", "setup": UNDO_SETUP},
+    {"name": "jump_ex_substitute_confirm_quit", "lines": ["a", "b", "c", "d", "e"], "keys": "jj:4s/d/y/c<CR>q<C-o>", "setup": UNDO_SETUP},
+    {"name": "jump_ex_substitute_confirm_no_match", "lines": ["a", "b", "c", "d", "e"], "keys": "jjG:4s/zz/y/c<CR>k<C-o>", "setup": UNDO_SETUP},
+    {"name": "jump_normal_amp", "lines": ["a", "xb", "c", "xd", "xe"], "keys": "jj:s/x/y/<CR>Gk&k<C-o>", "setup": UNDO_SETUP},
+    {"name": "jump_normal_amp_last_line", "lines": ["a", "xb", "c", "xd", "xe"], "keys": "jj:s/x/y/<CR>G&k<C-o>", "setup": UNDO_SETUP},
+    {"name": "jump_normal_g_amp", "lines": ["a", "xb", "c", "xd", "xe"], "keys": "jj:s/x/y/<CR>kg&<C-o>", "setup": UNDO_SETUP},
     # --- #607 i_CTRL-U: delete the text entered before the caret on this line; with none, back to the first
     #     non-blank, then the indent; at the line start join with the line above ('backspace' "eol"). -----
     {"name": "i_ctrl_u_entered", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<C-u><Esc>"},

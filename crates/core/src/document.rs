@@ -16,7 +16,7 @@ use crate::anchor::{
 };
 use crate::edit::{Edit, EditError, EditList};
 use crate::line_undo::LineUndo;
-use crate::pos::Revision;
+use crate::pos::{BytePos, Revision};
 use crate::snapshot::{AnchorIndex, DocumentSnapshot};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 use crate::undo::{MonotonicSeq, UndoHistory, UndoStep};
@@ -142,15 +142,15 @@ impl Document {
 
     /// Create a LINE anchor at `offset` that follows line inserts and deletes as a Vim mark does
     /// (anchor-store §3.1).
-    pub fn create_line_anchor(&mut self, offset: usize, gravity: LineGravity) -> AnchorId {
-        let id = self.anchors.insert_line(offset, gravity);
+    pub fn create_line_anchor(&mut self, offset: BytePos, gravity: LineGravity) -> AnchorId {
+        let id = self.anchors.insert_line(offset.0, gravity);
         self.rebuild_index();
         id
     }
 
     /// Create a long-lived anchor at `offset` with the given [`Bias`] and span-delete [`AnchorPolicy`].
-    pub fn create_anchor(&mut self, offset: usize, bias: Bias, policy: AnchorPolicy) -> AnchorId {
-        let id = self.anchors.insert(offset, bias, policy);
+    pub fn create_anchor(&mut self, offset: BytePos, bias: Bias, policy: AnchorPolicy) -> AnchorId {
+        let id = self.anchors.insert(offset.0, bias, policy);
         self.rebuild_index();
         id
     }
@@ -159,11 +159,11 @@ impl Document {
     /// over many lines marks two per line; one by one that was quadratic).
     pub fn create_anchors(
         &mut self,
-        specs: impl IntoIterator<Item = (usize, Bias, AnchorPolicy)>,
+        specs: impl IntoIterator<Item = (BytePos, Bias, AnchorPolicy)>,
     ) -> Vec<AnchorId> {
         let ids = specs
             .into_iter()
-            .map(|(offset, bias, policy)| self.anchors.insert(offset, bias, policy))
+            .map(|(offset, bias, policy)| self.anchors.insert(offset.0, bias, policy))
             .collect();
         self.rebuild_index();
         ids
@@ -481,16 +481,21 @@ impl Document {
     /// change (so `u` undoes it), keeping the current text so the next `U` redoes. Returns the caret
     /// (the column the line was saved with), or `None` when there is nothing to restore.
     pub fn line_undo(&mut self, cursor: usize) -> Option<usize> {
-        self.line_undo_tracked(cursor, &mut [])
+        self.line_undo_tracked(cursor, TransactionOrigin::UserInput, &mut [])
     }
 
-    /// [`Document::line_undo`] carrying `tracked` through the change.
-    pub fn line_undo_tracked(&mut self, cursor: usize, tracked: &mut [Tracked]) -> Option<usize> {
+    /// [`Document::line_undo`] made by `origin`, carrying `tracked` through the change.
+    pub fn line_undo_tracked(
+        &mut self,
+        cursor: usize,
+        origin: TransactionOrigin,
+        tracked: &mut [Tracked],
+    ) -> Option<usize> {
         let (s, e, text, col) = self.line_undo.swap(&self.text, cursor)?;
         let len = text.len();
         let list =
             EditList::new(vec![Edit::replace(s, e - s, text)]).expect("one edit is disjoint");
-        let txn = Transaction::new(self.revision, list, TransactionOrigin::UserInput)
+        let txn = Transaction::new(self.revision, list, origin)
             .with_hint(GroupHint::BreakBefore)
             .with_cursor(cursor);
         self.apply_inner(txn, false, tracked)

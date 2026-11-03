@@ -9,7 +9,7 @@
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use ruse_core::{
-    AnchorPolicy, AnchorStore, Bias, Document, DocumentId, Edit, EditList, Transaction,
+    AnchorPolicy, AnchorStore, Bias, BytePos, Document, DocumentId, Edit, EditList, Transaction,
     TransactionOrigin,
 };
 
@@ -37,8 +37,8 @@ fn bench_g_normal(c: &mut Criterion) {
         let mut doc = Document::new(DocumentId(1), line.repeat(lines));
         for l in 0..lines {
             let s = l * line.len();
-            doc.create_anchor(s, Bias::After, AnchorPolicy::Clamp);
-            doc.create_anchor(s + line.len(), Bias::Before, AnchorPolicy::Clamp);
+            doc.create_anchor(BytePos(s), Bias::After, AnchorPolicy::Clamp);
+            doc.create_anchor(BytePos(s + line.len()), Bias::Before, AnchorPolicy::Clamp);
         }
         let mid = (lines / 2) * line.len();
         g.bench_with_input(BenchmarkId::from_parameter(lines), &lines, |b, _| {
