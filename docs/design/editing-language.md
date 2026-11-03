@@ -60,7 +60,9 @@ the current line with the next on a single space, dropping the next line's leadi
 Beyond `i`/`a`, the common insert entries ship as their own semantic commands (so a trace records the intent):
 `o`/`O` open a new line below/above and enter Insert (an edit — insert `\n` at the line end / start), `A`
 appends at the line end, `I` inserts before the first non-blank. The frontend supplies tree-aware indent
-(`apps/tui/src/indent.rs`), and Visual `o` / block `I`/`A` swap ends and block-insert.
+(`apps/tui/src/indent.rs`), and Visual `o` / block `I`/`A` swap ends and block-insert. Without a syntax tree
+the core applies nvim's `'autoindent'` / `'smartindent'` / `'copyindent'` rules to the opened line, and
+`'softtabstop'` / `'smarttab'` to an Insert `<Tab>` and `<BS>` (`crates/core/src/editor/indent.rs`, #617).
 
 ## v0 — small-word vs WORD motions (SHIPPED)
 

@@ -9273,4 +9273,34 @@ mod cluster_tests {
         );
         assert_eq!(st.cursor(), 0);
     }
+
+    /// #617: `'autoindent'` and the `'smarttab'` `<BS>` are Vim-profile rules; an Emacs `newline` and
+    /// `delete-backward-char` keep their plain behaviour under the same (default) options.
+    #[test]
+    fn emacs_newline_and_backspace_ignore_vim_indent_rules() {
+        let mut st = EditorState::new(b"    foo".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        apply_command(&mut st, &Command::MoveLineEnd);
+        apply_command(&mut st, &Command::InsertNewline);
+        assert_eq!(st.doc.bytes(), b"    foo\n");
+        let mut st = EditorState::new(b"    foo".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        apply_command(&mut st, &Command::EnterInsert);
+        st.view.cursor = 4;
+        apply_command(&mut st, &Command::DeleteBack);
+        assert_eq!(st.doc.bytes(), b"   foo");
+    }
+
+    /// #617: the options a trace header writes include the indent options, so replay does not depend
+    /// on the replaying machine's config.
+    #[test]
+    fn editing_options_carry_the_indent_options() {
+        let mut st = EditorState::new(b"x".to_vec());
+        st.set_option(EditorOption::SoftTabStop(-1));
+        st.set_option(EditorOption::AutoIndent(false));
+        let opts = st.view.editing_options();
+        assert!(opts.contains(&EditorOption::SoftTabStop(-1)));
+        assert!(opts.contains(&EditorOption::AutoIndent(false)));
+        assert!(opts.contains(&EditorOption::SmartTab(true)));
+    }
 }

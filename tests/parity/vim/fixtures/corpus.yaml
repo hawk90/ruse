@@ -83327,6 +83327,2144 @@
           ]
         ]
       }
+    },
+    {
+      "name": "ai_o_copies_indent",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>oX<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "  X"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_O_copies_indent",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>OX<Esc>",
+      "expect": {
+        "text": [
+          "  X",
+          "  foo"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_cr_copies_indent",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>A<CR>X<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "  X"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_o_esc_removes_indent",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>o<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_cr_cr_empties_indent_line",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>A<CR><CR>X<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "",
+          "  X"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_typed_blank_keeps_indent",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>o <Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "   "
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_typed_blank_then_cr",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>A<CR>  <CR>X<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "    ",
+          "    X"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_ctrl_t_keeps_did_ai",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>o<C-t><CR>X<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "",
+          "    X"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_bs_deletes_indent",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>o<BS>X<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "X"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_off_o_column_zero",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set noai<CR>oX<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "X"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_dot_repeat_reindents",
+      "lines": [
+        "  foo",
+        "bar"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>oX<Esc>j.",
+      "expect": {
+        "text": [
+          "  foo",
+          "  X",
+          "bar",
+          "X"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_split_in_indent",
+      "lines": [
+        "    foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>0li<CR><Esc>",
+      "expect": {
+        "text": [
+          " ",
+          " foo"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_split_drops_blanks_after",
+      "lines": [
+        "    foo  bar"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>fbhi<CR><Esc>",
+      "expect": {
+        "text": [
+          "    foo ",
+          "    bar"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_split_at_column_zero",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>0i<CR><Esc>",
+      "expect": {
+        "text": [
+          "",
+          "foo"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_noet_rebuilds_indent",
+      "lines": [
+        "\t  foo"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>oX<Esc>",
+      "expect": {
+        "text": [
+          "\t  foo",
+          "          X"
+        ],
+        "cursor": [
+          2,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_noet_tabs_indent",
+      "lines": [
+        "\t  foo"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>oX<Esc>",
+      "expect": {
+        "text": [
+          "\t  foo",
+          "\t  X"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_S_esc_empties_line",
+      "lines": [
+        "  foo",
+        "  bar"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>jS<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  bar\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_cc_keeps_indent",
+      "lines": [
+        "  foo",
+        "  bar"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>jccX<Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "  X"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  bar\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_off_cc_drops_indent",
+      "lines": [
+        "  foo"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set noai<CR>ccX<Esc>",
+      "expect": {
+        "text": [
+          "X"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  foo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_cc_keeps_tab_under_et",
+      "lines": [
+        "\tfoo"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>ccX<Esc>",
+      "expect": {
+        "text": [
+          "\tX"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\tfoo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_up_removes_indent",
+      "lines": [
+        "  foo",
+        "bar"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>o<Up><Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ci_copies_indent_chars",
+      "lines": [
+        "\t  foo"
+      ],
+      "keys": ":set ts=8 sw=4 et ci<CR>oX<Esc>",
+      "expect": {
+        "text": [
+          "\t  foo",
+          "\t  X"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ci_with_si_fills_spaces",
+      "lines": [
+        "\t x"
+      ],
+      "keys": ":set ts=8 sw=4 et ci si<CR>A {<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "\t x {",
+          "\t     y"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ci_noet_keeps_mixed",
+      "lines": [
+        " \tx"
+      ],
+      "keys": ":set ts=8 sw=4 noet ci<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          " \tx",
+          " \ty"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_shift_keeps_tabs_et",
+      "lines": [
+        "\t\tx"
+      ],
+      "keys": ":set ts=8 sw=4 et pi<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "\t\t    x"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_unshift_keeps_first_tab",
+      "lines": [
+        "\t\tx"
+      ],
+      "keys": ":set ts=8 sw=4 noet pi<CR><<",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "\t    x"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_shift_keeps_spaces_tab",
+      "lines": [
+        "  \tx"
+      ],
+      "keys": ":set ts=8 sw=4 noet pi<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "  \t    x"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_off_shift_rebuilds",
+      "lines": [
+        "  \tx"
+      ],
+      "keys": ":set ts=8 sw=4 noet nopi<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "\t    x"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_unshift_tab_cannot_fit",
+      "lines": [
+        "\t  x"
+      ],
+      "keys": ":set ts=8 sw=4 et pi<CR><<",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "      x"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_ctrl_t_keeps_tab",
+      "lines": [
+        "\t  x"
+      ],
+      "keys": ":set ts=8 sw=4 et pi<CR>A<C-t><Esc>",
+      "expect": {
+        "text": [
+          "\t    x"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_ctrl_d_keeps_tab",
+      "lines": [
+        "\t  x"
+      ],
+      "keys": ":set ts=8 sw=4 et pi<CR>A<C-d><Esc>",
+      "expect": {
+        "text": [
+          "\tx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sr_shift_right_rounds",
+      "lines": [
+        "   x"
+      ],
+      "keys": ":set ts=8 sw=4 et sr<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "    x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sr_shift_left_rounds",
+      "lines": [
+        "   x"
+      ],
+      "keys": ":set ts=8 sw=4 et sr<CR><<",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sr_off_shift_right",
+      "lines": [
+        "   x"
+      ],
+      "keys": ":set ts=8 sw=4 et nosr<CR>>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "       x"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sr_visual_count_shift",
+      "lines": [
+        "      x"
+      ],
+      "keys": ":set ts=8 sw=4 et sr<CR>V2>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "            x"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sr_ex_shift",
+      "lines": [
+        "      x"
+      ],
+      "keys": ":set ts=8 sw=4 et sr<CR>:><CR>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "        x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_bs_in_indent_steps_sw",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>i<Tab><Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "    yx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_bs_typed_blanks_steps_sw",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>i     <BS>y<Esc>",
+      "expect": {
+        "text": [
+          "    yx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_bs_after_tab_to_zero",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>i  <Tab><BS><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "yx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_bs_I_in_indent",
+      "lines": [
+        "    x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>I<BS>y<Esc>",
+      "expect": {
+        "text": [
+          "yx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_off_bs_one_char",
+      "lines": [
+        "    x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set nosta<CR>I<BS>y<Esc>",
+      "expect": {
+        "text": [
+          "   yx"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_bs_after_text_one_char",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>A<Tab><Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "x      y"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_tab_sw_in_indent",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=2 et sta<CR>i<Tab>y<Esc>",
+      "expect": {
+        "text": [
+          "  yx"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_off_tab_uses_ts",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=2 et nosta<CR>i<Tab>y<Esc>",
+      "expect": {
+        "text": [
+          "        yx"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_ts8_bs_steps_sw",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=2 et sta<CR>i<Tab><Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "  yx"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sta_noet_bs_tabs",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>i<Tab><Tab><Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "\tyx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_tab_noet_mixes",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 noet sts=4 nosta<CR>A<Tab><Tab><Tab>y<Esc>",
+      "expect": {
+        "text": [
+          "x\t    y"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_bs_noet_back_to_tab",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 noet sts=4 nosta<CR>A<Tab><Tab><Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "x\ty"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_bs_et_back_one_stop",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et sts=4 nosta<CR>A<Tab><Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "x   y"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_negative_follows_sw",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=2 et sts=-1 nosta<CR>A<Tab><Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "x y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_bs_stops_at_text",
+      "lines": [
+        "a   x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set sts=4<CR>fxi<BS>y<Esc>",
+      "expect": {
+        "text": [
+          "ayx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_bs_one_space_to_stop",
+      "lines": [
+        "a    x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set sts=4<CR>fxi<BS>y<Esc>",
+      "expect": {
+        "text": [
+          "a   yx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_bs_splits_tab",
+      "lines": [
+        "ab\tx"
+      ],
+      "keys": ":set ts=4 sw=4 noet sts=2<CR>fxi<BS>y<Esc>",
+      "expect": {
+        "text": [
+          "abyx"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_bs_noet_twice",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 noet sts=4<CR>A<Tab><Tab><BS><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_typed_space_bs_one",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set sts=4<CR>A    <BS>y<Esc>",
+      "expect": {
+        "text": [
+          "x   y"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_tab_bs_whole_stop",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set sts=4<CR>A<Tab><BS>y<Esc>",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sts_in_indent_sta_wins",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=4 et sts=2<CR>i<Tab><Tab>y<Esc>",
+      "expect": {
+        "text": [
+          "        yx"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_after_brace",
+      "lines": [
+        "  if (x) {"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  if (x) {",
+          "      y"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_after_cinword",
+      "lines": [
+        "  if (x)"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  if (x)",
+          "      y"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_statement_after_cinword",
+      "lines": [
+        "  if (x) foo;"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  if (x) foo;",
+          "  y"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_not_a_cinword",
+      "lines": [
+        "  iffy"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  iffy",
+          "  y"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_cinword_colon",
+      "lines": [
+        "  switch:"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  switch:",
+          "      y"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_brace_then_comment",
+      "lines": [
+        "  x { // c"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  x { // c",
+          "  y"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_close_brace_aligns",
+      "lines": [
+        "  x {",
+        "      y"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>jo}<Esc>",
+      "expect": {
+        "text": [
+          "  x {",
+          "      y",
+          "  }"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_close_brace_after_cr",
+      "lines": [
+        "  x {",
+        "      y"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>jA<CR>}<Esc>",
+      "expect": {
+        "text": [
+          "  x {",
+          "      y",
+          "  }"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_close_brace_after_blank",
+      "lines": [
+        "  x {",
+        "      y"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>jo  }<Esc>",
+      "expect": {
+        "text": [
+          "  x {",
+          "      y",
+          "        }"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_O_above_close_brace",
+      "lines": [
+        "  }"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>Oy<Esc>",
+      "expect": {
+        "text": [
+          "      y",
+          "  }"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_O_above_open_line",
+      "lines": [
+        "  if (x) {"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>Oy<Esc>",
+      "expect": {
+        "text": [
+          "  y",
+          "  if (x) {"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_hash_to_column_zero",
+      "lines": [
+        "  x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>o#y<CR>z<Esc>",
+      "expect": {
+        "text": [
+          "  x",
+          "#y",
+          "  z"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_O_hash_line",
+      "lines": [
+        "  a",
+        "#if X",
+        "b"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>jOz<Esc>",
+      "expect": {
+        "text": [
+          "  a",
+          "z",
+          "#if X",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_open_brace_after_cinword",
+      "lines": [
+        "  if (x)"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>o{<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "  if (x)",
+          "  {",
+          "      y"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_open_brace_after_brace",
+      "lines": [
+        "  x {"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>o{<Esc>",
+      "expect": {
+        "text": [
+          "  x {",
+          "      {"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_split_condition",
+      "lines": [
+        "  if (a &&",
+        "      b) {"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>joy<Esc>",
+      "expect": {
+        "text": [
+          "  if (a &&",
+          "      b) {",
+          "      y"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_close_brace_split_condition",
+      "lines": [
+        "  if (a &&",
+        "      b) {",
+        "  z"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>jjo}<Esc>",
+      "expect": {
+        "text": [
+          "  if (a &&",
+          "      b) {",
+          "  z",
+          "  }"
+        ],
+        "cursor": [
+          4,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_O_open_brace_dedent_limited",
+      "lines": [
+        "  x;",
+        "    y"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>jO{<Esc>",
+      "expect": {
+        "text": [
+          "  x;",
+          "{",
+          "    y"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_O_open_brace_first_line",
+      "lines": [
+        "      y"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>O{<Esc>",
+      "expect": {
+        "text": [
+          "  {",
+          "      y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_shiftround",
+      "lines": [
+        "  x {"
+      ],
+      "keys": ":set ts=4 sw=3 et si sr<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  x {",
+          "   y"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_noai_still_indents",
+      "lines": [
+        "  x {"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si noai<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  x {",
+          "      y"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "si_o_esc_cleans",
+      "lines": [
+        "  x {"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>:set si<CR>o<Esc>",
+      "expect": {
+        "text": [
+          "  x {",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

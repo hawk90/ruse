@@ -91,6 +91,25 @@ pub enum EditorOption {
     ExpandTab(bool),
     /// `'textwidth'` (`tw`) — the width `gq`/`gw` wrap to; `0` means use the 79-column fallback.
     TextWidth(usize),
+    /// `'softtabstop'` (`sts`) — the columns a `<Tab>` / `<BS>` in Insert counts as while editing; `0` is
+    /// off, a negative value follows the effective `'shiftwidth'` (#617).
+    SoftTabStop(i64),
+    /// `'autoindent'` (`ai`) — a line opened with `o`/`O`/`<CR>` takes the indent of the line it opens from,
+    /// and `cc`/`S` keep the line's indent (#617).
+    AutoIndent(bool),
+    /// `'smartindent'` (`si`) — C-like extra indent after `{` or a `'cinwords'` keyword, and `{`/`}`/`#`
+    /// realigned when typed first on a new line (#617).
+    SmartIndent(bool),
+    /// `'copyindent'` (`ci`) — an autoindent copies the source line's indent characters as far as they fit
+    /// (#617).
+    CopyIndent(bool),
+    /// `'preserveindent'` (`pi`) — changing a line's indent (`>>`, `<<`, `i_CTRL-T`, `i_CTRL-D`) keeps as
+    /// much of its existing indent characters as fit (#617).
+    PreserveIndent(bool),
+    /// `'smarttab'` (`sta`, Vim-global) — `<Tab>`/`<BS>` in a line's indent step by `'shiftwidth'` (#617).
+    SmartTab(bool),
+    /// `'shiftround'` (`sr`, Vim-global) — `>`/`<` round the indent to a multiple of `'shiftwidth'` (#617).
+    ShiftRound(bool),
 }
 
 impl EditorOption {
@@ -101,7 +120,10 @@ impl EditorOption {
     pub fn is_global(self) -> bool {
         matches!(
             self,
-            EditorOption::IgnoreCase(_) | EditorOption::SmartCase(_)
+            EditorOption::IgnoreCase(_)
+                | EditorOption::SmartCase(_)
+                | EditorOption::SmartTab(_)
+                | EditorOption::ShiftRound(_)
         )
     }
 }
@@ -124,6 +146,20 @@ struct IndentConfig {
     shift_width: usize,
     /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
     style: IndentStyle,
+    /// `'softtabstop'`: `0` off, negative follows the effective shiftwidth (`editor.softtabstop`).
+    soft_tab: i64,
+    /// `'autoindent'` (`editor.autoindent`, default on as in nvim).
+    autoindent: bool,
+    /// `'smartindent'` (`editor.smartindent`).
+    smartindent: bool,
+    /// `'copyindent'` (`editor.copyindent`).
+    copyindent: bool,
+    /// `'preserveindent'` (`editor.preserveindent`).
+    preserveindent: bool,
+    /// `'smarttab'` (`editor.smarttab`, default on as in nvim). Vim-global.
+    smarttab: bool,
+    /// `'shiftround'` (`editor.shiftround`). Vim-global.
+    shiftround: bool,
 }
 
 /// The search-case config: `'ignorecase'` and `'smartcase'` (F-009). Default off — the factory Vim
@@ -153,6 +189,13 @@ impl ViewOptions {
             tab_width: 4,
             shift_width: 4,
             style: IndentStyle::Space,
+            soft_tab: 0,
+            autoindent: true,
+            smartindent: false,
+            copyindent: false,
+            preserveindent: false,
+            smarttab: true,
+            shiftround: false,
         },
         text_width: 0,
         search_case: SearchCase {
@@ -179,6 +222,15 @@ impl ViewOptions {
                 }
             }
             EditorOption::TextWidth(n) => self.text_width = n.min(MAX_OPTION_INT),
+            EditorOption::SoftTabStop(n) => {
+                self.indent.soft_tab = n.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
+            }
+            EditorOption::AutoIndent(v) => self.indent.autoindent = v,
+            EditorOption::SmartIndent(v) => self.indent.smartindent = v,
+            EditorOption::CopyIndent(v) => self.indent.copyindent = v,
+            EditorOption::PreserveIndent(v) => self.indent.preserveindent = v,
+            EditorOption::SmartTab(v) => self.indent.smarttab = v,
+            EditorOption::ShiftRound(v) => self.indent.shiftround = v,
         }
     }
 
@@ -192,6 +244,13 @@ impl ViewOptions {
             EditorOption::ShiftWidth(self.indent.shift_width),
             EditorOption::ExpandTab(self.indent.style == IndentStyle::Space),
             EditorOption::TextWidth(self.text_width),
+            EditorOption::SoftTabStop(self.indent.soft_tab),
+            EditorOption::AutoIndent(self.indent.autoindent),
+            EditorOption::SmartIndent(self.indent.smartindent),
+            EditorOption::CopyIndent(self.indent.copyindent),
+            EditorOption::PreserveIndent(self.indent.preserveindent),
+            EditorOption::SmartTab(self.indent.smarttab),
+            EditorOption::ShiftRound(self.indent.shiftround),
         ]
     }
 
@@ -202,6 +261,7 @@ impl ViewOptions {
             tab_width,
             shift_width: tab_width,
             style,
+            ..self.indent
         };
     }
 
@@ -349,6 +409,11 @@ pub struct View {
     /// (which sees the `Command`); read by the `EnterNormal` planner arm. Cleared on any non-blank insert
     /// and on every Insert entry/exit, so it never survives to a later line.
     auto_indent_pending: bool,
+    /// The `'smartindent'` rules armed on a line just opened, until the first key typed on it (#617).
+    si_state: indent::SiState,
+    /// Whether the character before the caret is a space typed in this Insert (nvim's `inserted_space`),
+    /// which a `'softtabstop'` `<BS>` deletes alone (#617).
+    typed_space: bool,
     /// The indent config (`editor.tab_width` + `editor.indent_style`).
     indent: IndentConfig,
     /// `'textwidth'` (`tw`): the column `gq`/`gw` wrap to; `0` = use the 79-column fallback (Vim).
@@ -614,6 +679,8 @@ impl View {
             last_block_geom: None,
             last_visual_op: None,
             auto_indent_pending: false,
+            si_state: indent::SiState::default(),
+            typed_space: false,
             indent: ViewOptions::DEFAULT.indent,
             text_width: ViewOptions::DEFAULT.text_width,
             curswant: 0,
@@ -2555,11 +2622,6 @@ impl EditorState {
             .whitespace(level * self.view.indent.shift_width())
     }
 
-    /// The leading whitespace spanning `cols` columns in the configured style.
-    fn indent_whitespace(&self, cols: usize) -> Vec<u8> {
-        self.view.indent.whitespace(cols)
-    }
-
     /// The effective shiftwidth in columns (see [`View::shift_width`]).
     fn shift_width(&self) -> usize {
         self.view.indent.shift_width()
@@ -3073,6 +3135,7 @@ mod ex_cmd;
 pub(crate) use ex_cmd::samples as ex_cmd_samples;
 pub use ex_cmd::{ExCmd, ExOutcome, GroupKind, MAX_SHIFT_LEVELS};
 
+mod indent;
 mod planner;
 pub use planner::plan;
 pub(crate) use planner::word_search;
@@ -3585,7 +3648,14 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         let b = st.doc.bytes();
         col_of(b, line_start(b, entry_cursor), entry_cursor)
     };
+    // The smartindent state a line opened by this command arms (read from the buffer before the edit).
+    let opened_si = opened_si_state(st, cmd);
     let mut p = plan(st, cmd);
+    // A linewise change (`cc`, `S`, `Vc`) leaves its line with the kept indent and nothing typed: the
+    // same autoindent cleanup an opened line gets applies (nvim's `op_change` sets `did_ai`).
+    let linewise_change = entry_mode != Mode::Insert
+        && p.mode == Mode::Insert
+        && matches!(&p.set_register, Some(RegWrite::Edit(r) | RegWrite::EditRingOne(r)) if r.is_linewise());
     if uses_reg_one(cmd) {
         if let Some(RegWrite::Edit(reg)) = p.set_register.take() {
             p.set_register = Some(RegWrite::EditRingOne(reg));
@@ -3625,19 +3695,60 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     // never leaks to a later line. Done here (not in the pure planner) because it depends on the Command.
     match cmd {
         Command::OpenLineIndent { level, .. } => st.view.auto_indent_pending = *level > 0,
-        Command::InsertChar(c) if *c != ' ' && *c != '\t' => st.view.auto_indent_pending = false,
-        Command::EnterNormal
+        Command::OpenBelow | Command::OpenAbove | Command::InsertNewline => {
+            st.view.auto_indent_pending =
+                st.view.mode == Mode::Insert && only_indent_before_caret(st);
+        }
+        _ if linewise_change => st.view.auto_indent_pending = only_indent_before_caret(st),
+        // Typing anything keeps the indent (nvim clears `did_ai` on a typed blank too).
+        Command::InsertChar(_)
+        | Command::InsertTab
+        | Command::InsertPaste(_)
+        | Command::InsertRegister(_)
+        | Command::InsertEval(_)
+        | Command::EnterNormal
         | Command::EnterInsert
         | Command::EnterInsertAfter
         | Command::InsertLineStart
         | Command::InsertColumnZero
-        | Command::AppendLineEnd
-        | Command::OpenBelow
-        | Command::OpenAbove => st.view.auto_indent_pending = false,
+        | Command::AppendLineEnd => st.view.auto_indent_pending = false,
         _ => {}
     }
+    st.view.si_state = opened_si;
+    st.view.typed_space = match cmd {
+        Command::InsertChar(' ') => true,
+        Command::InsertChar(_) | Command::DeleteBack => st.view.typed_space,
+        _ => false,
+    };
     update_curswant(st, cmd, entry_mode);
     effects
+}
+
+/// Whether the caret sits after nothing but a non-empty indent on its line (an autoindent's leftover).
+fn only_indent_before_caret(st: &EditorState) -> bool {
+    let b = st.doc.bytes();
+    let cur = st.view.cursor;
+    let ls = line_start(b, cur);
+    cur > ls && b[ls..cur].iter().all(|&c| c == b' ' || c == b'\t')
+}
+
+/// The `'smartindent'` rules a line opened by `cmd` arms (#617): computed from the line it opens from,
+/// before the edit. Every other command disarms them (nvim clears them on the first typed key).
+fn opened_si_state(st: &EditorState, cmd: &Command) -> indent::SiState {
+    let si = st.view.indent.smartindent && st.view.caret == CaretGravity::OnChar;
+    let b = st.doc.bytes();
+    let cur = st.view.cursor;
+    let ls = line_start(b, cur);
+    match cmd {
+        Command::OpenBelow | Command::OpenAbove if si => {
+            let below = matches!(cmd, Command::OpenBelow);
+            st.view.indent.open_indent(b, ls, line_end(b, cur), below).1
+        }
+        Command::InsertNewline if si && st.view.mode == Mode::Insert => {
+            st.view.indent.open_indent(b, ls, cur, true).1
+        }
+        _ => indent::SiState::default(),
+    }
 }
 
 /// Whether `cmd` deletes or changes over a motion that always fills `"1` (nvim's `use_reg_one`: `%`, `(`,

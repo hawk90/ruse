@@ -294,6 +294,14 @@ features:
     # replays an insert that <Insert> toggled into Replace. CTRL-U deletes the text entered before the caret
     # on the line, then back to the first non-blank, then the indent, and joins lines at the line start
     # (nvim's default 'backspace' indent,eol,start).
+    # #617 (oracle-verified vs nvim v0.12.6): the insert-time indent options. 'autoindent' (on, as nvim)
+    # gives o/O/<CR> the source line's indent, drops the blanks after a split, empties a line holding only
+    # an untouched indent on <Esc>/<CR>, and keeps the indent through cc/S; 'smartindent' adds nvim's
+    # C-like rules (extra shiftwidth after `{` or a default 'cinwords' keyword, `}`/`{`/`#` typed first
+    # realigned); 'copyindent'/'preserveindent' reuse existing indent characters; 'shiftround' rounds
+    # >/</:>/:<; 'softtabstop' and 'smarttab' (on) step <Tab> and <BS>. Vim profile only. Open: <Up>/<Down>
+    # off an untouched autoindent keeps it, `^ CTRL-D` does not restore the indent, 'cinwords' is not
+    # settable, and cindent/lisp/indentkeys/vartabstop/equalprg are not implemented.
     status: done
     depends_on: [C-INPUT, C-UNDO]
     summary: The open/insert namespace — a printable key is text — with one-shot return and undo-group ownership.

@@ -357,14 +357,23 @@ fn bool_token(b: bool) -> &'static str {
     }
 }
 
-fn option_name(opt: EditorOption) -> (&'static str, usize) {
+/// An option's trace name and value token (a boolean is `0`/`1`; `'softtabstop'` may be negative).
+fn option_name(opt: EditorOption) -> (&'static str, String) {
+    let flag = |v: bool| bool_token(v).to_string();
     match opt {
-        EditorOption::IgnoreCase(v) => ("ignorecase", usize::from(v)),
-        EditorOption::SmartCase(v) => ("smartcase", usize::from(v)),
-        EditorOption::TabStop(n) => ("tabstop", n),
-        EditorOption::ShiftWidth(n) => ("shiftwidth", n),
-        EditorOption::ExpandTab(v) => ("expandtab", usize::from(v)),
-        EditorOption::TextWidth(n) => ("textwidth", n),
+        EditorOption::IgnoreCase(v) => ("ignorecase", flag(v)),
+        EditorOption::SmartCase(v) => ("smartcase", flag(v)),
+        EditorOption::TabStop(n) => ("tabstop", n.to_string()),
+        EditorOption::ShiftWidth(n) => ("shiftwidth", n.to_string()),
+        EditorOption::ExpandTab(v) => ("expandtab", flag(v)),
+        EditorOption::TextWidth(n) => ("textwidth", n.to_string()),
+        EditorOption::SoftTabStop(n) => ("softtabstop", n.to_string()),
+        EditorOption::AutoIndent(v) => ("autoindent", flag(v)),
+        EditorOption::SmartIndent(v) => ("smartindent", flag(v)),
+        EditorOption::CopyIndent(v) => ("copyindent", flag(v)),
+        EditorOption::PreserveIndent(v) => ("preserveindent", flag(v)),
+        EditorOption::SmartTab(v) => ("smarttab", flag(v)),
+        EditorOption::ShiftRound(v) => ("shiftround", flag(v)),
     }
 }
 
@@ -631,28 +640,43 @@ impl ExCmd {
             }
             "ex_set" => {
                 let name = a.tok()?;
-                let value = a.num()?;
-                let flag = |v: usize| match v {
-                    0 => Some(false),
-                    1 => Some(true),
-                    _ => None,
-                };
-                let opt = match name {
-                    "ignorecase" => flag(value).map(EditorOption::IgnoreCase),
-                    "smartcase" => flag(value).map(EditorOption::SmartCase),
-                    "expandtab" => flag(value).map(EditorOption::ExpandTab),
-                    "tabstop" => (1..=MAX_TABSTOP)
-                        .contains(&value)
-                        .then_some(EditorOption::TabStop(value)),
-                    "shiftwidth" => {
-                        (value <= MAX_OPTION_INT).then_some(EditorOption::ShiftWidth(value))
+                if name == "softtabstop" {
+                    let n: i64 = a.tok()?.parse().map_err(|_| a.bad())?;
+                    let ok = (i64::from(i32::MIN)..=i64::from(i32::MAX)).contains(&n);
+                    if !ok {
+                        return Err(a.bad());
                     }
-                    "textwidth" => {
-                        (value <= MAX_OPTION_INT).then_some(EditorOption::TextWidth(value))
-                    }
-                    _ => None,
-                };
-                ExCmd::Set(opt.ok_or_else(|| a.bad())?)
+                    ExCmd::Set(EditorOption::SoftTabStop(n))
+                } else {
+                    let value = a.num()?;
+                    let flag = |v: usize| match v {
+                        0 => Some(false),
+                        1 => Some(true),
+                        _ => None,
+                    };
+                    let opt = match name {
+                        "autoindent" => flag(value).map(EditorOption::AutoIndent),
+                        "smartindent" => flag(value).map(EditorOption::SmartIndent),
+                        "copyindent" => flag(value).map(EditorOption::CopyIndent),
+                        "preserveindent" => flag(value).map(EditorOption::PreserveIndent),
+                        "smarttab" => flag(value).map(EditorOption::SmartTab),
+                        "shiftround" => flag(value).map(EditorOption::ShiftRound),
+                        "ignorecase" => flag(value).map(EditorOption::IgnoreCase),
+                        "smartcase" => flag(value).map(EditorOption::SmartCase),
+                        "expandtab" => flag(value).map(EditorOption::ExpandTab),
+                        "tabstop" => (1..=MAX_TABSTOP)
+                            .contains(&value)
+                            .then_some(EditorOption::TabStop(value)),
+                        "shiftwidth" => {
+                            (value <= MAX_OPTION_INT).then_some(EditorOption::ShiftWidth(value))
+                        }
+                        "textwidth" => {
+                            (value <= MAX_OPTION_INT).then_some(EditorOption::TextWidth(value))
+                        }
+                        _ => None,
+                    };
+                    ExCmd::Set(opt.ok_or_else(|| a.bad())?)
+                }
             }
             "ex_place" => ExCmd::Place(a.num()?),
             "ex_undo_sync" => ExCmd::UndoSync,
@@ -941,6 +965,14 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::ShiftWidth(0)),
         ExCmd::Set(EditorOption::ExpandTab(false)),
         ExCmd::Set(EditorOption::TextWidth(79)),
+        ExCmd::Set(EditorOption::SoftTabStop(-1)),
+        ExCmd::Set(EditorOption::SoftTabStop(4)),
+        ExCmd::Set(EditorOption::AutoIndent(false)),
+        ExCmd::Set(EditorOption::SmartIndent(true)),
+        ExCmd::Set(EditorOption::CopyIndent(true)),
+        ExCmd::Set(EditorOption::PreserveIndent(true)),
+        ExCmd::Set(EditorOption::SmartTab(false)),
+        ExCmd::Set(EditorOption::ShiftRound(true)),
         ExCmd::Place(17),
         ExCmd::UndoSync,
         ExCmd::Begin(GroupKind::Normal),

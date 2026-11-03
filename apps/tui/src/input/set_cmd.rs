@@ -30,6 +30,13 @@ use super::nvim_options::{NVIM_BOOLEAN_OPTIONS, NVIM_OPTIONS};
 /// An option ruse honours.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Opt {
+    AutoIndent,
+    CopyIndent,
+    PreserveIndent,
+    ShiftRound,
+    SmartIndent,
+    SmartTab,
+    SoftTabStop,
     IgnoreCase,
     SmartCase,
     TabStop,
@@ -130,6 +137,24 @@ const NUM0: OptKind = OptKind::Num {
 /// Every option ruse honours, in name order.
 pub const OPTIONS: &[OptDef] = &[
     def(
+        Opt::AutoIndent,
+        "autoindent",
+        "ai",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::Local,
+    ),
+    def(
+        Opt::CopyIndent,
+        "copyindent",
+        "ci",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
         Opt::ExpandTab,
         "expandtab",
         "et",
@@ -205,6 +230,15 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Global,
     ),
     def(
+        Opt::PreserveIndent,
+        "preserveindent",
+        "pi",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
         Opt::ScrollOff,
         "scrolloff",
         "so",
@@ -214,6 +248,15 @@ pub const OPTIONS: &[OptDef] = &[
         },
         OptVal::Num(0),
         OptVal::Num(3),
+        Locality::Global,
+    ),
+    def(
+        Opt::ShiftRound,
+        "shiftround",
+        "sr",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
         Locality::Global,
     ),
     def(
@@ -233,6 +276,36 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(true),
         Locality::Global,
+    ),
+    def(
+        Opt::SmartIndent,
+        "smartindent",
+        "si",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::SmartTab,
+        "smarttab",
+        "sta",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::Global,
+    ),
+    def(
+        Opt::SoftTabStop,
+        "softtabstop",
+        "sts",
+        OptKind::Num {
+            min: INT_MIN,
+            max: INT_MAX,
+        },
+        OptVal::Num(0),
+        OptVal::Num(0),
+        Locality::Local,
     ),
     def(
         Opt::TabStop,

@@ -130,7 +130,7 @@ fn plan_selection_span(
     // delete-then-Insert path below.
     if line && op == OpKind::Change && s < e {
         let content_end = if e > s && b[e - 1] == b'\n' { e - 1 } else { e };
-        return plan_linewise_change(b, s, content_end, hint);
+        return plan_linewise_change(b, s, content_end, st.view.indent.autoindent, hint);
     }
     // A charwise Visual `d`/`c` cannot take the final newline: Vim has no line after the last one to join,
     // so `v}d` at the end of `a\nb\n` leaves one empty line rather than an empty buffer (#677).
@@ -294,8 +294,19 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
 /// (indent + trailing newline included), and enters Insert at the end of the kept indent. Shared by
 /// `cc`/`S`, the paragraph objects, the linewise inner block ([`plan_change`]), AND visual-linewise change
 /// (`V…c` — [`Command::ChangeSelection`] over a linewise selection), so all four agree with nvim.
-fn plan_linewise_change(b: &[u8], ls: usize, content_end: usize, hint: GroupHint) -> Plan {
-    let indent_end = motion::first_non_blank(b, ls).min(content_end);
+fn plan_linewise_change(
+    b: &[u8],
+    ls: usize,
+    content_end: usize,
+    keep_indent: bool,
+    hint: GroupHint,
+) -> Plan {
+    // Without `'autoindent'` the indent goes too (nvim `op_change`).
+    let indent_end = if keep_indent {
+        motion::first_non_blank(b, ls).min(content_end)
+    } else {
+        ls
+    };
     // Register span: whole lines including the terminating newline where one is present.
     let reg_end = if content_end < b.len() && b[content_end] == b'\n' {
         content_end + 1
@@ -874,7 +885,7 @@ fn apply_op(
         MarkOp::Change if linewise && failed => nop(cur, Mode::Normal),
         MarkOp::Change if linewise => {
             let content_end = if e > s && b[e - 1] == b'\n' { e - 1 } else { e };
-            plan_linewise_change(b, s, content_end, hint)
+            plan_linewise_change(b, s, content_end, st.view.indent.autoindent, hint)
         }
         MarkOp::Change if s >= e => nop(s, Mode::Insert),
         MarkOp::Change => {
@@ -2068,6 +2079,44 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `gI` — insert at byte column 0 (line start), BEFORE all indentation, unlike `I` (first non-blank).
         Command::InsertColumnZero => nop(line_start(b, cur), Mode::Insert),
         Command::AppendLineEnd => nop(line_end(b, cur), Mode::Insert),
+        // `o`/`O` under `'autoindent'`/`'smartindent'` (Vim profile): the new line takes the indent nvim's
+        // `open_line` gives it ([`IndentConfig::open_indent`]).
+        Command::OpenBelow | Command::OpenAbove if auto_indents(st) => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, cur);
+            let below = matches!(cmd, Command::OpenBelow);
+            let (pad, _) = st.view.indent.open_indent(b, ls, le, below);
+            let mut ins = Vec::with_capacity(pad.len() + 1);
+            if below && le == ls && le < b.len() {
+                // An empty line: the new line goes in after its `\n`, so marks stay on it (#1125).
+                ins.extend_from_slice(&pad);
+                ins.push(b'\n');
+                edit(
+                    one(Edit::insert(le + 1, ins)),
+                    le + 1 + pad.len(),
+                    Mode::Insert,
+                    hint,
+                )
+            } else if below {
+                ins.push(b'\n');
+                ins.extend_from_slice(&pad);
+                edit(
+                    one(Edit::insert(le, ins)),
+                    le + 1 + pad.len(),
+                    Mode::Insert,
+                    hint,
+                )
+            } else {
+                ins.extend_from_slice(&pad);
+                ins.push(b'\n');
+                edit(
+                    one(Edit::insert(ls, ins)),
+                    ls + pad.len(),
+                    Mode::Insert,
+                    hint,
+                )
+            }
+        }
         Command::OpenBelow => {
             let le = line_end(b, cur);
             // On an empty line the new line goes in after its `\n`, the same bytes as before it, so its
@@ -2203,6 +2252,27 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let mut buf = [0u8; 4];
             let bytes = c.encode_utf8(&mut buf).as_bytes().to_vec();
             let n = bytes.len();
+            // `'smartindent'`: a `{`, `}` or `#` typed first on a line just opened realigns it.
+            let ls = line_start(b, cur);
+            let si = st.view.si_state;
+            if auto_indents(st)
+                && st.view.indent.smartindent
+                && si.armed()
+                && st.view.mode == Mode::Insert
+                && b[ls..cur].iter().all(|&x| x == b' ' || x == b'\t')
+            {
+                if let Some(pad) = st.view.indent.typed_indent(b, ls, cur, si, *c) {
+                    let cursor = ls + pad.len() + n;
+                    let mut repl = pad;
+                    repl.extend_from_slice(&bytes);
+                    return edit(
+                        one(Edit::replace(ls, cur - ls, repl)),
+                        cursor,
+                        Mode::Insert,
+                        hint,
+                    );
+                }
+            }
             edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
         }
         // `i_CTRL-R{reg}` — splice the named register's raw bytes at the caret, staying in Insert with the
@@ -2363,7 +2433,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let le = line_end(b, ls);
             let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
             let sw = st.shift_width();
-            let want = st.indent_whitespace((cols / sw + 1) * sw);
+            let want = st
+                .view
+                .indent
+                .rebuilt(&b[ls..ls + ws], (cols / sw + 1) * sw);
             let cursor = reindented_caret(cur, ls, ws, want.len());
             edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
         }
@@ -2378,7 +2451,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             // Down to the PREVIOUS multiple of the shiftwidth (Vim rounds: 6 cols at sw=4 → 4).
             let sw = st.shift_width();
-            let want = st.indent_whitespace(cols.saturating_sub(1) / sw * sw);
+            let want = st
+                .view
+                .indent
+                .rebuilt(&b[ls..ls + ws], cols.saturating_sub(1) / sw * sw);
             let cursor = reindented_caret(cur, ls, ws, want.len());
             edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
         }
@@ -2434,34 +2510,42 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // at the new width. With `ts == sw` both rules agree. Unlike `i_CTRL-T` this is caret-relative.
         Command::InsertTab => {
             let ls = line_start(b, cur);
-            let ts = st.view.indent.tab_width.max(1);
-            let sw = st.shift_width();
-            let in_indent = b[ls..cur].iter().all(|&x| x == b' ' || x == b'\t');
-            let vcol = crate::motion::vcol_of(b, ls, cur, ts);
-            match st.view.indent.style {
-                IndentStyle::Tab if in_indent && sw != ts => {
-                    let want = st.indent_whitespace(vcol + sw - (vcol % sw));
-                    let cursor = ls + want.len();
-                    edit(
-                        one(Edit::replace(ls, cur - ls, want)),
-                        cursor,
-                        Mode::Insert,
-                        hint,
-                    )
-                }
-                IndentStyle::Tab => edit(
-                    one(Edit::insert(cur, vec![b'\t'])),
-                    cur + 1,
-                    Mode::Insert,
-                    hint,
-                ),
-                IndentStyle::Space => {
-                    let stop = if in_indent { sw } else { ts };
-                    let ins = vec![b' '; stop - (vcol % stop)];
-                    let cursor = cur + ins.len();
-                    edit(one(Edit::insert(cur, ins)), cursor, Mode::Insert, hint)
+            let (from, run) = st.view.indent.tab(b, ls, cur);
+            let cursor = from + run.len();
+            edit(
+                one(Edit::replace(from, cur - from, run)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
+        }
+        // An Insert `<CR>` under `'autoindent'`/`'smartindent'` (Vim profile): the blanks after the caret
+        // go, the new line takes the indent of the text before it, and a line holding only the indent the
+        // last open gave it is emptied (nvim's `open_line` with `did_ai`).
+        Command::InsertNewline if auto_indents(st) && st.view.mode == Mode::Insert => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, cur);
+            let (pad, _) = st.view.indent.open_indent(b, ls, cur, true);
+            let mut cut = cur;
+            if st.view.auto_indent_pending {
+                while cut > ls && matches!(b[cut - 1], b' ' | b'\t') {
+                    cut -= 1;
                 }
             }
+            let mut after = cur;
+            while after < le && matches!(b[after], b' ' | b'\t') {
+                after += 1;
+            }
+            let mut ins = Vec::with_capacity(pad.len() + 1);
+            ins.push(b'\n');
+            ins.extend_from_slice(&pad);
+            let cursor = cut + ins.len();
+            edit(
+                one(Edit::replace(cut, after - cut, ins)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
         }
         Command::InsertNewline => edit(
             one(Edit::insert(cur, b"\n".to_vec())),
@@ -2533,6 +2617,19 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::DeleteBack => {
+            let ls = line_start(b, cur);
+            let stepped = (st.view.caret == CaretGravity::OnChar && st.view.mode == Mode::Insert)
+                .then(|| st.view.indent.backspace(b, ls, cur, st.view.typed_space))
+                .flatten();
+            if let Some((from, pad)) = stepped {
+                // `'smarttab'` in the indent / `'softtabstop'`: back to the previous stop (nvim's `ins_bs`).
+                return edit(
+                    one(Edit::replace(from, cur - from, vec![b' '; pad])),
+                    from + pad,
+                    Mode::Insert,
+                    hint,
+                );
+            }
             if cur == 0 {
                 nop(cur, st.view.mode)
             } else {
@@ -4180,7 +4277,6 @@ fn plan_shift_times(
     let b = st.bytes();
     let first_ls = line_start(b, cur);
     let first_le = line_end(b, first_ls);
-    let sw = st.shift_width();
 
     // Each line's leading whitespace is REBUILT at its new width (`cols ± sw`, floored at 0) in the
     // configured style — Vim's `shift_line` → `set_indent`: under `noexpandtab` the result is tabs at the
@@ -4192,10 +4288,12 @@ fn plan_shift_times(
         let le = line_end(b, ls);
         let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
         // Vim indents a whitespace-only line but never a truly EMPTY one (`ls == le`).
+        let ind = st.view.indent;
+        let old = &b[ls..ls + ws];
         let want = if right {
-            (ls < le).then(|| st.indent_whitespace(cols + sw * times as usize))
+            (ls < le).then(|| ind.rebuilt(old, ind.shifted(cols, times as usize, false)))
         } else {
-            Some(st.indent_whitespace(cols.saturating_sub(sw * times as usize)))
+            Some(ind.rebuilt(old, ind.shifted(cols, times as usize, true)))
         };
         if let Some(want) = want {
             if i == 0 {
@@ -4612,6 +4710,13 @@ fn paste_block(
     }
 }
 
+/// Whether `o`/`O`/`<CR>` indent the line they open: `'autoindent'` or `'smartindent'`, under the Vim
+/// profile (an Emacs `newline` never indents).
+fn auto_indents(st: &EditorState) -> bool {
+    st.view.caret == CaretGravity::OnChar
+        && (st.view.indent.autoindent || st.view.indent.smartindent)
+}
+
 /// Where an Insert caret at `cur` lands after its line's leading whitespace (`old_ws` bytes from `ls`) is
 /// rebuilt as `new_ws` bytes: it moves by the change in length (riding with the text, nvim also inside the
 /// indent), never before the line start.
@@ -4619,26 +4724,7 @@ fn reindented_caret(cur: usize, ls: usize, old_ws: usize, new_ws: usize) -> usiz
     (cur + new_ws).saturating_sub(old_ws).max(ls)
 }
 
-/// Leading-whitespace measure of a single line (no trailing `\n`): its indent width in display COLUMNS
-/// (a tab advances to the next `tab_width` multiple) and the BYTE length of that leading whitespace.
-fn indent_cols(line: &[u8], tab_width: usize) -> (usize, usize) {
-    let tw = tab_width.max(1);
-    let (mut cols, mut n) = (0usize, 0usize);
-    for &c in line {
-        match c {
-            b' ' => {
-                cols += 1;
-                n += 1;
-            }
-            b'\t' => {
-                cols += tw - (cols % tw);
-                n += 1;
-            }
-            _ => break,
-        }
-    }
-    (cols, n)
-}
+use super::indent::indent_cols;
 
 /// Re-indent a linewise register's bytes for `]p`/`[p`: the first line takes `target_cols` of indent and
 /// every other line shifts by the same column delta (Vim). Indent is rebuilt in the editor's style (spaces,

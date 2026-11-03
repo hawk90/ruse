@@ -2,8 +2,8 @@
 //! session and the core hold, and the provenance each value carries (`:verbose set opt?`).
 //!
 //! The grammar and the option table are `input/set_cmd.rs`; this module owns where each value lives:
-//! the core's View options (`ic`, `scs`, `ts`, `sw`, `et`, `tw`, local per View plus the Workspace's global
-//! copy), the session's render and write preferences (`hls`, `is`, `fixeol`, `so`), the input engine's
+//! the core's View options (`ic`, `scs`, `ts`, `sw`, `et`, `tw`, `sts`, `ai`, `si`, `ci`, `pi`, `sta`, `sr`,
+//! local per View plus the Workspace's global copy), the session's render and write preferences (`hls`, `is`, `fixeol`, `so`), the input engine's
 //! `'tildeop'`, and the per-buffer fold state (`fen`, `fdm`, `fdl`).
 
 use std::collections::HashMap;
@@ -69,6 +69,16 @@ fn core_option(opt: Opt, val: OptVal) -> Option<EditorOption> {
         Opt::ShiftWidth => EditorOption::ShiftWidth(n(val)),
         Opt::ExpandTab => EditorOption::ExpandTab(b(val)),
         Opt::TextWidth => EditorOption::TextWidth(n(val)),
+        Opt::SoftTabStop => EditorOption::SoftTabStop(match val {
+            OptVal::Num(n) => n,
+            _ => 0,
+        }),
+        Opt::AutoIndent => EditorOption::AutoIndent(b(val)),
+        Opt::SmartIndent => EditorOption::SmartIndent(b(val)),
+        Opt::CopyIndent => EditorOption::CopyIndent(b(val)),
+        Opt::PreserveIndent => EditorOption::PreserveIndent(b(val)),
+        Opt::SmartTab => EditorOption::SmartTab(b(val)),
+        Opt::ShiftRound => EditorOption::ShiftRound(b(val)),
         _ => return None,
     })
 }
@@ -77,7 +87,14 @@ fn core_value(opts: &[EditorOption], opt: Opt) -> Option<OptVal> {
     opts.iter().find_map(|o| match (opt, *o) {
         (Opt::IgnoreCase, EditorOption::IgnoreCase(v))
         | (Opt::SmartCase, EditorOption::SmartCase(v))
-        | (Opt::ExpandTab, EditorOption::ExpandTab(v)) => Some(OptVal::Bool(v)),
+        | (Opt::ExpandTab, EditorOption::ExpandTab(v))
+        | (Opt::AutoIndent, EditorOption::AutoIndent(v))
+        | (Opt::SmartIndent, EditorOption::SmartIndent(v))
+        | (Opt::CopyIndent, EditorOption::CopyIndent(v))
+        | (Opt::PreserveIndent, EditorOption::PreserveIndent(v))
+        | (Opt::SmartTab, EditorOption::SmartTab(v))
+        | (Opt::ShiftRound, EditorOption::ShiftRound(v)) => Some(OptVal::Bool(v)),
+        (Opt::SoftTabStop, EditorOption::SoftTabStop(n)) => Some(OptVal::Num(n)),
         (Opt::TabStop, EditorOption::TabStop(n))
         | (Opt::ShiftWidth, EditorOption::ShiftWidth(n))
         | (Opt::TextWidth, EditorOption::TextWidth(n)) => {
@@ -315,6 +332,13 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::IncSearch => "editor.incsearch",
         Opt::TildeOp => "editor.tildeop",
         Opt::FixEol => "editor.fixeol",
+        Opt::AutoIndent => "editor.autoindent",
+        Opt::SmartIndent => "editor.smartindent",
+        Opt::CopyIndent => "editor.copyindent",
+        Opt::PreserveIndent => "editor.preserveindent",
+        Opt::SoftTabStop => "editor.softtabstop",
+        Opt::SmartTab => "editor.smarttab",
+        Opt::ShiftRound => "editor.shiftround",
         _ => return None,
     })
 }

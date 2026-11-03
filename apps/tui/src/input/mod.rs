@@ -2912,8 +2912,8 @@ impl InputEngine {
         }
         // `0 CTRL-D` / `^ CTRL-D` (the `0`/`^` typed just before): delete the typed char and ALL indent of the
         // line. The two edits travel in a `Replay`, which bypasses the recorder, so fold them in by hand.
-        // (`^ CTRL-D` also restores the indent on the next line under 'autoindent'; ruse's plain `<CR>` does
-        // not autoindent, so there is nothing to restore.)
+        // (`^ CTRL-D` also restores the indent on the next line under 'autoindent'; ruse does not restore it
+        // yet, so `^ CTRL-D` behaves as `0 CTRL-D`, #617 follow-up.)
         if ctrl && key.code == KeyCode::Char('d') {
             if matches!(last_typed, Some('0' | '^')) {
                 self.reset();
