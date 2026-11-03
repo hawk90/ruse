@@ -86,6 +86,47 @@ impl Scroll<'_> {
         }
     }
 
+    /// The cursor line's rows (up to `cap`) from the cursor's virtual column when the rest of the line
+    /// is printable ASCII under options that add nothing to a row: only the text after the cursor is
+    /// read, so a frame on a huge line (a macro typing into it, one frame per key) scans no more than
+    /// the window shows.
+    fn rows_past_cursor(&self, p: &ViewPos, vcol: usize, cap: usize) -> Option<usize> {
+        let win = self.lines.win;
+        let simple = win.wrap
+            && !win.linebreak
+            && win.showbreak.is_empty()
+            && win.breakindent.is_none()
+            && win.list.is_none()
+            && self.fold(p.line).is_none();
+        if !simple {
+            return None;
+        }
+        let text = self.lines.text;
+        let s = text.start(p.line);
+        let e = text.start(p.line + 1).max(s);
+        let bytes = &text.bytes[s..e];
+        let len = bytes.len() - usize::from(bytes.last() == Some(&b'\n'));
+        let plain = |b: &u8| (0x20..0x7f).contains(b);
+        // The cursor's own char, one cell, then the rest of the line.
+        let from = if p.byte < len {
+            plain(&bytes[p.byte]).then_some(p.byte + 1)?
+        } else {
+            len
+        };
+        let w = self.width();
+        let crow = vcol / w;
+        let more = cap.saturating_sub(crow);
+        let probe = len.min(from + more.saturating_mul(w));
+        if !bytes[from..probe].iter().all(plain) {
+            return None;
+        }
+        if probe < len {
+            return Some(cap);
+        }
+        let total = vcol + usize::from(p.byte < len) + (len - from);
+        Some(total.div_ceil(w).clamp(1, cap.max(1)))
+    }
+
     /// [`Scroll::rows_upto`] without laying out a long plain line (a huge count insert is one line the
     /// frame would otherwise lay out to the cursor every time): printable ASCII under options that add
     /// nothing to a row is `width` bytes a row.
@@ -757,7 +798,12 @@ impl Scroll<'_> {
         let wrow = self.wrow(p);
         let cap = vcol / w + so + height.saturating_mul(2) + 2;
         let rows = std::cell::OnceCell::new();
-        let plines = || *rows.get_or_init(|| self.rows_capped(p.line, cap));
+        let plines = || {
+            *rows.get_or_init(|| {
+                self.rows_past_cursor(p, vcol, cap)
+                    .unwrap_or_else(|| self.rows_capped(p.line, cap))
+            })
+        };
         let tall = p.line == p.top
             && height > 0
             && (wrow >= height || ((prev > 0 || wrow + so >= height) && plines() > height));

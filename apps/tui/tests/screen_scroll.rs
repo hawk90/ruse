@@ -508,3 +508,34 @@ fn the_616_options_check_their_values_like_nvim() {
     // 'statuscolumn' is an expression ('%l', '%{...}' Vimscript): not supported (see the PR).
     assert_eq!(status(":set stc=%l<CR>"), "option not supported: stc=%l");
 }
+
+/// nvim v0.12.6: a 300-cell line (15 rows of 20) in the 8-row window shows the rows around the cursor
+/// (nvim's `curs_columns` `w_skipcol`), with and without `'scrolloff'`.
+#[test]
+fn a_line_taller_than_the_window_shows_the_cursors_rows_like_nvim() {
+    let text = format!("top\n{}\nend\n", "a".repeat(300));
+    let steps: [(&str, (usize, usize), usize, [usize; 2]); 9] = [
+        ("j", (2, 0), 2, [0, 0]),
+        ("$", (2, 299), 2, [140, 140]),
+        ("0", (2, 0), 2, [0, 0]),
+        ("150|", (2, 149), 2, [0, 60]),
+        ("200|", (2, 199), 2, [40, 60]),
+        ("k", (1, 2), 1, [0, 0]),
+        ("j$", (2, 299), 2, [140, 140]),
+        ("j", (3, 2), 3, [0, 0]),
+        ("k", (2, 299), 2, [140, 140]),
+    ];
+    for (i, so) in ["0", "3"].iter().enumerate() {
+        let mut h = Headless::with_size(Profile::Vim, &text, 20, 9);
+        h.keys(&format!(":set so={so}<CR>"));
+        for (keys, at, top, skip) in steps {
+            h.keys(keys);
+            let view = &h.workspace().focused().view;
+            assert_eq!(
+                (h.cursor_row_col(), view.top() + 1, view.skipcol()),
+                (at, top, skip[i]),
+                "so={so} after {keys}"
+            );
+        }
+    }
+}

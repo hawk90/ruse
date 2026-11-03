@@ -1111,13 +1111,23 @@ impl Session {
                     height,
                 };
                 let so = scrolloff_for(p.view, global_so);
+                // The cursor's line laid out up to the cursor (a huge line costs no more), once: the
+                // scroll rules below read the same column.
+                let line_byte = cursor - text.start(cline);
+                let (start, end, vcol) = crate::ui::window_view::cursor_place(
+                    &win,
+                    text,
+                    cline,
+                    line_byte,
+                    win.tab_end(p.view.mode()),
+                );
                 let sc = crate::scroll::Scroll {
                     lines: &lines,
                     height,
                     so,
                     sms: win.smoothscroll,
                     tab_end: win.tab_end(p.view.mode()),
-                    memo: Default::default(),
+                    memo: std::cell::Cell::new(Some((cline, line_byte, vcol))),
                 };
                 // The top line's skipped columns (#615): the cursor moved into them shows them again,
                 // and a new top line starts unskipped.
@@ -1173,14 +1183,6 @@ impl Session {
                 pos.skipcol = sc.frame_skipcol(&pos);
                 let skip = sc.skipped_rows(pos.skipcol);
                 let skipcol = pos.skipcol;
-                // The cursor's line laid out up to the cursor (a huge line costs no more).
-                let (start, end, vcol) = crate::ui::window_view::cursor_place(
-                    &win,
-                    text,
-                    cline,
-                    cursor - text.start(cline),
-                    win.tab_end(p.view.mode()),
-                );
                 let leftcol = if win.wrap {
                     0
                 } else {
