@@ -422,7 +422,8 @@ impl View {
     }
 
     /// The byte offset of named mark `c` (`a`–`z`), or `None` if unset / not a lowercase letter.
-    fn named_mark(&self, c: char) -> Option<usize> {
+    #[must_use]
+    pub fn named_mark(&self, c: char) -> Option<usize> {
         let i = (c as usize).checked_sub('a' as usize)?;
         self.named_marks.get(i).copied().flatten()
     }
@@ -567,6 +568,12 @@ impl View {
     #[must_use]
     pub fn mark(&self) -> Option<usize> {
         self.mark
+    }
+
+    /// The one-shot register a `"x` selected for the next command, or `None` for the unnamed one.
+    #[must_use]
+    pub fn pending_register(&self) -> Option<char> {
+        self.pending_register
     }
 
     /// Place the cursor at byte offset `pos` (the frontend uses this to follow a `:s///c` match; the

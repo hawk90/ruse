@@ -39,6 +39,8 @@ pub struct Headless {
     stale: bool,
     cols: u16,
     rows: u16,
+    /// The E-number of the last error message a key put on the status line (`"E486"`), or empty.
+    emsg: String,
 }
 
 impl Headless {
@@ -86,6 +88,7 @@ impl Headless {
             stale: false,
             cols,
             rows,
+            emsg: String::new(),
         }
     }
 
@@ -117,12 +120,14 @@ impl Headless {
         }
         let mut flow = self.s.on_key(key, false, &self.frame);
         self.frame = Headless::settle(&mut self.s, self.cols, self.rows);
+        self.note_emsg();
         while flow == Flow::Continue {
             let Some((k, from_replay)) = self.s.next_queued() else {
                 break;
             };
             flow = self.s.on_key(k, from_replay, &self.frame);
             self.frame = Headless::settle(&mut self.s, self.cols, self.rows);
+            self.note_emsg();
         }
         flow == Flow::Continue
     }
@@ -193,6 +198,22 @@ impl Headless {
         &self.s.status
     }
 
+    /// The E-number of the last error message any key so far raised (`"E486"`), or `""` — Vim's
+    /// `v:errmsg` reduced to its number, which is what the parity oracle records (#901).
+    #[must_use]
+    pub fn emsg(&self) -> &str {
+        &self.emsg
+    }
+
+    /// Remember the status line's E-number, if it now shows an error message.
+    fn note_emsg(&mut self) {
+        if let Some(code) = emsg_code(&self.s.status) {
+            if code != self.emsg {
+                self.emsg = code.to_string();
+            }
+        }
+    }
+
     /// Whether the session has quit (`:q`, `C-w q` on the last window, …).
     #[must_use]
     pub fn quit(&self) -> bool {
@@ -243,6 +264,13 @@ impl Headless {
     pub fn engine(&self) -> &InputEngine {
         &self.s.engine
     }
+}
+
+/// The `E123` that opens an error message, as Vim numbers its errors.
+fn emsg_code(status: &str) -> Option<&str> {
+    let digits = status.strip_prefix('E')?;
+    let n = digits.bytes().take_while(u8::is_ascii_digit).count();
+    (n > 0 && digits[n..].starts_with(':')).then(|| &status[..=n])
 }
 
 /// Parse Vim key notation into the key events a legacy terminal delivers through crossterm.
@@ -390,6 +418,15 @@ mod tests {
 
     fn k(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, mods)
+    }
+
+    #[test]
+    fn emsg_code_reads_only_a_numbered_error() {
+        assert_eq!(emsg_code("E486: pattern not found: x"), Some("E486"));
+        assert_eq!(emsg_code("E: bad pattern"), None);
+        assert_eq!(emsg_code("Error"), None);
+        assert_eq!(emsg_code("E12 no colon"), None);
+        assert_eq!(emsg_code(""), None);
     }
 
     #[test]

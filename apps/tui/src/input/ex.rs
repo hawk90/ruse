@@ -276,6 +276,8 @@ pub struct SubSpec {
     /// `n`: report-only — count the matches and echo `N matches on M lines` WITHOUT editing the buffer,
     /// moving the cursor, or adding an undo entry (Vim's `:s///n`). Takes priority over `c` (like Vim).
     pub count_only: bool,
+    /// `e`: no `E486` when the pattern matches nothing (`:help :s_e`).
+    pub quiet: bool,
 }
 
 /// Parse `:earlier [N]` / `:later [N]` (or `:ea` / `:lat`) — chronological undo time travel. The optional
@@ -473,6 +475,7 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
         ignore_case,
         confirm: flags.contains('c'),
         count_only: flags.contains('n'),
+        quiet: flags.contains('e'),
     })
 }
 
@@ -1322,6 +1325,7 @@ mod reuse_last_search_tests {
             ignore_case: None,
             confirm: false,
             count_only: false,
+            quiet: false,
         })
     }
 

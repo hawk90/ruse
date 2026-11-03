@@ -3066,7 +3066,7 @@ impl InputEngine {
                 // `:` leaves Visual (setting `'<`/`'>`) and opens the command line on `'<,'>`; `!` opens it
                 // on `'<,'>!`, the filter over the selected lines (`:help v_:`, `v_!`).
                 KeyCode::Char(c @ (':' | '!')) => {
-                    let out = self.action(Command::EnterNormal);
+                    let out = self.action(Command::VisualOp(VisualOp::LeaveAtStart));
                     self.open_filter_cmdline(if c == ':' { "'<,'>" } else { "'<,'>!" });
                     return out;
                 }

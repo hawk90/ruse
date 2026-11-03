@@ -70,6 +70,8 @@ pub enum Step {
     /// `q:` / `q/` / `q?` — NOT a macro recording: the `q`-prefixed `:`/`/`/`?` opens the command-line window
     /// (`:help cmdwin`) for that history ring. The caller calls `engine.open_cmdwin(char)`.
     OpenCmdWin(char),
+    /// `@@` before any register was played: Vim's `E748` (`:help E748`); nothing runs.
+    NoPreviousRegister,
 }
 
 /// `key` is the plain char `c`. `SHIFT` is allowed: a terminal reports an uppercase letter with it (crossterm
@@ -218,7 +220,11 @@ impl MacroState {
                 // `@:` — repeat the last-executed Ex command-line (`:help @:`). Carried as the pseudo
                 // register `:` so a following `@@` (which re-plays `last_played`) repeats it too.
                 KeyCode::Char(':') => Some(':'),
-                KeyCode::Char('@') => self.last_played, // `@@` — repeat the last-played macro
+                // `@@` — repeat the last-played macro.
+                KeyCode::Char('@') if self.last_played.is_none() => {
+                    return Step::NoPreviousRegister
+                }
+                KeyCode::Char('@') => self.last_played,
                 _ => None,
             };
             return match target {
@@ -819,12 +825,12 @@ mod tests {
     }
 
     #[test]
-    fn at_at_before_any_play_is_a_noop() {
+    fn at_at_before_any_play_is_e748() {
         let mut m = MacroState::new();
         m.step(ch('@'), false, true);
         assert_eq!(
             m.step(ch('@'), false, true),
-            Step::Consumed,
+            Step::NoPreviousRegister,
             "nothing to repeat yet"
         );
     }
