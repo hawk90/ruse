@@ -111,7 +111,30 @@ pub struct Regex {
     /// `re_multiline`. Only such a pattern can match across lines, so `:s` and `:g` search the whole
     /// buffer for it instead of one line at a time.
     multiline: bool,
+    /// The pattern opens with `\<`, dropped from `inner` and checked on each candidate's start with
+    /// Vim's class rule instead (#745, [`crate::charclass::at_word_start`]).
+    bow: bool,
+    /// The pattern closes with `\>`, dropped from `inner` and checked on each candidate's end
+    /// ([`crate::charclass::at_word_end`]).
+    eow: bool,
+    /// For a closing `\>` on a pattern whose end can vary and that holds no other zero-width
+    /// assertion: `^(?:inner)\z`, run on a slice `[start, end)` to try the other ends at a start whose
+    /// first end failed the `\>` check. Without assertions a slice match is exact, since nothing in the
+    /// pattern looks outside the slice.
+    retry: Option<RawRegex>,
 }
+
+/// A candidate match: the whole span (before `\zs`/`\ze`) and the reported one.
+#[derive(Clone, Copy)]
+struct Hit {
+    whole: (usize, usize),
+    rep: Match,
+}
+
+/// How many other ends a failed `\>` check tries at one start, and how far (in characters) it looks
+/// for them on each side of the first end. Past these bounds the start is given up (a documented gap).
+const RETRY_ENDS: usize = 64;
+const RETRY_SCAN: usize = 1024;
 
 impl Regex {
     /// Compile a Vim `pattern` under `opts`. Lowers the magic levels, case flags and `\zs`/`\ze` to Rust
@@ -137,14 +160,25 @@ impl Regex {
         // No `(?i)`: under 'ignorecase' the lowering already spelled each literal as its nvim fold class
         // (#1112), since the engine's own Unicode folding is not Vim's (`ß` / `ẞ`, the iota-subscript
         // letters, letters newer than the engine's tables).
-        let inner = regex::RegexBuilder::new(&low.rust)
-            .build()
-            .map_err(|e| RegexError::Syntax(e.to_string()))?;
+        let build = |src: &str| {
+            regex::RegexBuilder::new(src)
+                .build()
+                .map_err(|e| RegexError::Syntax(e.to_string()))
+        };
+        let inner = build(&low.rust)?;
+        let retry = if low.eow && low.variable && low.asserts == 0 {
+            Some(build(&format!(r"^(?:{})\z", low.rust))?)
+        } else {
+            None
+        };
         Ok(Regex {
             inner,
             zs: low.zs,
             ze: low.ze,
             multiline: low.has_nl,
+            bow: low.bow,
+            eow: low.eow,
+            retry,
         })
     }
 
@@ -159,25 +193,22 @@ impl Regex {
     /// starts on, even when a `\zs` after a `\n` reports a start on a later line.
     #[must_use]
     pub fn find_whole_at(&self, hay: &str, from: usize) -> Option<(usize, Match)> {
-        let from = from.min(hay.len());
-        let caps = self.inner.captures_at(hay, from)?;
-        if phantom_line(hay, &caps) {
+        let hit = self.next(hay, from)?;
+        if phantom_line(hay, hit) {
             return None;
         }
-        let whole = caps.get(0).expect("group 0 always present").start();
-        Some((whole, self.report(&caps)))
+        Some((hit.whole.0, hit.rep))
     }
 
     /// The first match at a byte offset `>= from`, honoring the `\zs`/`\ze` reported span. `None` if
     /// there is no match from `from` to the end (the caller wraps for `/`-search).
     #[must_use]
     pub fn find_at(&self, hay: &str, from: usize) -> Option<Match> {
-        let from = from.min(hay.len());
-        let caps = self.inner.captures_at(hay, from)?;
-        if phantom_line(hay, &caps) {
+        let hit = self.next(hay, from)?;
+        if phantom_line(hay, hit) {
             return None; // the only thing left to match is the slot past the last line
         }
-        Some(self.report(&caps))
+        Some(hit.rep)
     }
 
     /// Every match `:s///g` replaces in each line of `hay`, left to right (also `hlsearch`). This is the
@@ -221,19 +252,19 @@ impl Regex {
             let mut col = ls;
             let mut prev_end: Option<usize> = None;
             loop {
-                let Some(caps) = self.inner.captures_at(hay, col) else {
+                let Some(hit) = self.next(hay, col) else {
                     return out; // no match anywhere further down
                 };
-                if phantom_line(hay, &caps) {
+                if phantom_line(hay, hit) {
                     return out;
                 }
-                let whole = caps.get(0).expect("group 0 always present").start();
+                let whole = hit.whole.0;
                 if whole > le {
                     // The leftmost match starts on a later line: no line before it has one.
                     next = hay[..whole].rfind('\n').map_or(0, |i| i + 1);
                     break;
                 }
-                let m = self.report(&caps);
+                let m = hit.rep;
                 let step = |at: usize| at + hay[at..].chars().next().map_or(1, char::len_utf8);
                 if substitute && prev_end == Some(col) && m.start == m.end && m.end == col {
                     // An empty match where the previous one ended does not count.
@@ -273,6 +304,106 @@ impl Regex {
         out
     }
 
+    /// The first candidate at a byte offset `>= from` whose edges pass Vim's `\<` / `\>` checks (#745).
+    /// A start that fails `\<` cannot match at all, and one whose end fails `\>` tries its other ends
+    /// ([`Regex::other_end`]); either way the search goes on from the next character.
+    fn next(&self, hay: &str, from: usize) -> Option<Hit> {
+        let mut at = from.min(hay.len());
+        if !self.bow && !self.eow {
+            let caps = self.inner.captures_at(hay, at)?;
+            return Some(self.hit(&caps, 0));
+        }
+        loop {
+            let m = self.inner.find_at(hay, at)?;
+            let (s, e) = (m.start(), m.end());
+            if !self.bow || crate::charclass::at_word_start(hay, s) {
+                if !self.eow || crate::charclass::at_word_end(hay, e) {
+                    return Some(self.resolve(hay, s, e));
+                }
+                if let Some(hit) = self.other_end(hay, s, e) {
+                    return Some(hit);
+                }
+            }
+            at = s + hay[s..].chars().next()?.len_utf8();
+        }
+    }
+
+    /// The match at `[s, e)` found by `inner`, with its reported span.
+    fn resolve(&self, hay: &str, s: usize, e: usize) -> Hit {
+        if self.zs.is_empty() && self.ze.is_empty() {
+            return Hit {
+                whole: (s, e),
+                rep: Match { start: s, end: e },
+            };
+        }
+        // The match at a start does not depend on where the search began, so this is the same one.
+        match self.inner.captures_at(hay, s) {
+            Some(caps) => self.hit(&caps, 0),
+            None => Hit {
+                whole: (s, e),
+                rep: Match { start: s, end: e },
+            },
+        }
+    }
+
+    /// At a start `s` whose preferred end `e` failed the closing `\>`, another end that passes it and
+    /// that the pattern matches exactly from `s`. Vim's engine would take the highest-priority such
+    /// path; ruse cannot rank paths, so it tries the nearer shorter ends first (right for a greedy
+    /// tail, `.*\>`), then the longer ones (right for a lazy one, `.\{-}\>`). Only patterns with a
+    /// variable end and no other zero-width assertion get here (`retry`).
+    fn other_end(&self, hay: &str, s: usize, e: usize) -> Option<Hit> {
+        let retry = self.retry.as_ref()?;
+        let limit = if self.multiline {
+            hay.len()
+        } else {
+            hay[e..].find('\n').map_or(hay.len(), |i| e + i)
+        };
+        let mut tries = 0;
+        let mut attempt = |end: usize| -> Option<Hit> {
+            if !crate::charclass::at_word_end(hay, end) || tries >= RETRY_ENDS {
+                return None;
+            }
+            tries += 1;
+            let caps = retry.captures(&hay[s..end])?;
+            Some(self.hit(&caps, s))
+        };
+        let shorter = hay[s..e]
+            .char_indices()
+            .rev()
+            .map(|(i, _)| s + i)
+            .take(RETRY_SCAN);
+        for end in shorter {
+            if let Some(hit) = attempt(end) {
+                return Some(hit);
+            }
+        }
+        let longer = hay[e..limit]
+            .char_indices()
+            .skip(1)
+            .map(|(i, _)| e + i)
+            .chain(std::iter::once(limit).filter(|&l| l > e))
+            .take(RETRY_SCAN);
+        for end in longer {
+            if let Some(hit) = attempt(end) {
+                return Some(hit);
+            }
+        }
+        None
+    }
+
+    /// A capture set (offsets relative to `base`) as a candidate.
+    fn hit(&self, caps: &regex::Captures, base: usize) -> Hit {
+        let whole = caps.get(0).expect("group 0 always present");
+        let rep = self.report(caps);
+        Hit {
+            whole: (base + whole.start(), base + whole.end()),
+            rep: Match {
+                start: base + rep.start,
+                end: base + rep.end,
+            },
+        }
+    }
+
     /// Resolve the reported span of a capture set: the rightmost participating `\zs` / `\ze` marker,
     /// else the whole match. A `\ze` left of the reported start collapses to an empty span at the start
     /// (nvim: `a\zeb\zsc` on `abc` reports `[2,2)`).
@@ -296,9 +427,8 @@ impl Regex {
 /// `/^$` on "abc\ndef\n" is E486, and `/^` wraps instead of landing past the end). A match that STARTS
 /// there can only be zero-width, so dropping it never hides a real match. A haystack that does not end
 /// in "\n" (one line, an empty buffer) is unaffected.
-fn phantom_line(hay: &str, caps: &regex::Captures) -> bool {
-    let whole = caps.get(0).expect("group 0 always present");
-    !hay.is_empty() && whole.start() == hay.len() && hay.ends_with('\n')
+fn phantom_line(hay: &str, hit: Hit) -> bool {
+    !hay.is_empty() && hit.whole.0 == hay.len() && hay.ends_with('\n')
 }
 
 /// Vim's `pat_has_uppercase` (search.c): does the pattern contain an uppercase letter for `'smartcase'`?
@@ -590,6 +720,15 @@ struct Lowered {
     case: Option<bool>,
     /// An item that matches a line break was read (Vim's `RF_HASNL`).
     has_nl: bool,
+    /// A `\<` opening the pattern was dropped from `rust` (checked after the match instead).
+    bow: bool,
+    /// A `\>` closing the pattern was dropped from `rust`.
+    eow: bool,
+    /// Zero-width assertions left in `rust` (`^`, `$`, a mid-pattern `\<` / `\>`).
+    asserts: usize,
+    /// The pattern has a multi, an alternation or a `\%[`: a match at one start can end in more than
+    /// one place.
+    variable: bool,
 }
 
 /// Lower a Vim pattern to Rust-`regex` syntax under a starting magic level. `ci` is the final
@@ -617,6 +756,9 @@ fn lower(pattern: &str, magic0: Magic, ci: bool) -> Result<Lowered, RegexError> 
         saw_noic: false,
         ci,
         has_nl: false,
+        edges: (false, false),
+        asserts: 0,
+        variable: false,
     };
     let rust = p.reg(Paren::Top)?;
     let case = if p.saw_ic {
@@ -632,6 +774,10 @@ fn lower(pattern: &str, magic0: Magic, ci: bool) -> Result<Lowered, RegexError> 
         ze: p.ze,
         case,
         has_nl: p.has_nl,
+        bow: p.edges.0,
+        eow: p.edges.1,
+        asserts: p.asserts,
+        variable: p.variable,
     })
 }
 
@@ -654,12 +800,20 @@ struct Parser<'a> {
     ci: bool,
     /// An item that matches a line break was read (Vim's `RF_HASNL`).
     has_nl: bool,
+    /// The top-level `\<` / `\>` at the pattern's edges that were dropped (see [`Lowered::bow`]).
+    edges: (bool, bool),
+    /// See [`Lowered::asserts`].
+    asserts: usize,
+    /// See [`Lowered::variable`].
+    variable: bool,
 }
 
-/// One parsed atom and whether it is a `\zs`/`\ze` marker (which cannot take a multi).
+/// One parsed atom, whether it is a `\zs`/`\ze` marker (which cannot take a multi), and the `<` / `>`
+/// of a word-edge atom.
 struct Atom {
     rust: String,
     marker: bool,
+    edge: Option<char>,
 }
 
 impl Atom {
@@ -667,19 +821,50 @@ impl Atom {
         Atom {
             rust: rust.into(),
             marker: false,
+            edge: None,
         }
     }
 }
 
+/// One parsed piece: its Rust syntax and, for a bare `\<` / `\>` (no multi), which one.
+struct Piece {
+    rust: String,
+    edge: Option<char>,
+}
+
+fn join(pieces: &[Piece]) -> String {
+    pieces.iter().map(|p| p.rust.as_str()).collect()
+}
+
 impl Parser<'_> {
     /// `pattern ::= branch ( \| branch )*`, then the group terminator.
+    ///
+    /// At the top, a pattern of one branch that opens with `\<` or closes with `\>` drops that atom:
+    /// Vim's word edge is a change of character class (`utf_class`), which the wrapped engine cannot
+    /// see, so [`Regex`] checks it on each candidate instead (#745). Anywhere else the atom stays
+    /// approximated by Rust's Unicode `\b{start}` / `\b{end}`.
     fn reg(&mut self, paren: Paren) -> Result<String, RegexError> {
-        let mut out = self.branch()?;
+        let mut pieces = self.branch()?;
+        let mut alternatives = String::new();
         while self.lx.peek() == Tok::Op('|') {
             self.lx.skip();
-            out.push('|');
-            out.push_str(&self.branch()?);
+            self.variable = true;
+            alternatives.push('|');
+            alternatives.push_str(&join(&self.branch()?));
         }
+        if paren == Paren::Top && alternatives.is_empty() {
+            if pieces.first().is_some_and(|p| p.edge == Some('<')) {
+                pieces.remove(0);
+                self.edges.0 = true;
+                self.asserts -= 1;
+            }
+            if pieces.last().is_some_and(|p| p.edge == Some('>')) {
+                pieces.pop();
+                self.edges.1 = true;
+                self.asserts -= 1;
+            }
+        }
+        let out = join(&pieces) + &alternatives;
         if paren == Paren::Top {
             match self.lx.peek() {
                 Tok::End => {}
@@ -697,7 +882,7 @@ impl Parser<'_> {
     }
 
     /// `branch ::= concat ( \& concat )*` — `\&` needs lookahead, so it is rejected.
-    fn branch(&mut self) -> Result<String, RegexError> {
+    fn branch(&mut self) -> Result<Vec<Piece>, RegexError> {
         let out = self.concat()?;
         if self.lx.peek() == Tok::Op('&') {
             return Err(RegexError::Unsupported(
@@ -708,8 +893,8 @@ impl Parser<'_> {
     }
 
     /// `concat ::= piece*`, folding the case flags and magic switches in as they appear.
-    fn concat(&mut self) -> Result<String, RegexError> {
-        let mut out = String::new();
+    fn concat(&mut self) -> Result<Vec<Piece>, RegexError> {
+        let mut out = Vec::new();
         loop {
             match self.lx.peek() {
                 Tok::End | Tok::Op('|' | '&' | ')') => break,
@@ -735,19 +920,23 @@ impl Parser<'_> {
                         "\\Z ignore-combining-characters (owned engine is post-MVP)",
                     ))
                 }
-                _ => out.push_str(&self.piece()?),
+                _ => out.push(self.piece()?),
             }
         }
         Ok(out)
     }
 
     /// `piece ::= atom multi?`.
-    fn piece(&mut self) -> Result<String, RegexError> {
+    fn piece(&mut self) -> Result<Piece, RegexError> {
         let atom = self.atom()?;
         let op = self.lx.peek();
         if !is_multi(op) {
-            return Ok(atom.rust);
+            return Ok(Piece {
+                rust: atom.rust,
+                edge: atom.edge,
+            });
         }
+        self.variable = true;
         // Vim's `re_mult_next` refuses only the REPEATING multis (`*` `+` `\{`) on `\zs`/`\ze`; `\=`
         // `\?` (and `\@`) are accepted.
         if atom.marker && matches!(op, Tok::Op('*' | '+' | '{')) {
@@ -764,7 +953,10 @@ impl Parser<'_> {
         if is_multi(self.lx.peek()) {
             return Err(syntax("E871: Can't have a multi follow a multi"));
         }
-        Ok(format!("(?:{}){quant}", atom.rust))
+        Ok(Piece {
+            rust: format!("(?:{}){quant}", atom.rust),
+            edge: None,
+        })
     }
 
     /// `\@=` `\@!` `\@<=` `\@<!` `\@>` (with an optional byte limit): all need lookaround.
@@ -853,19 +1045,30 @@ impl Parser<'_> {
     /// Vim's `nfa_regatom`.
     fn atom(&mut self) -> Result<Atom, RegexError> {
         let t = self.lx.get();
+        if matches!(t, Tok::Op('^' | '$' | '<' | '>'))
+            || (t == Tok::Op('_') && matches!(self.lx.peek().ch(), Some('^' | '$')))
+        {
+            self.asserts += 1;
+        }
         Ok(Atom::of(match t {
             Tok::End => return Err(syntax("E865: Regexp end encountered prematurely")),
             Tok::Op('^') => "(?m:^)".to_string(),
             Tok::Op('$') => "(?m:$)".to_string(),
-            // Start/end of word — an APPROXIMATION, knowingly kept. Rust's Unicode word boundary
-            // agrees with Vim between a word and a non-word character for ASCII and Latin letters.
-            // It does NOT see Vim's other boundary: a change of `utf_class` between two word
-            // characters (Latin to Hangul/CJK/kana/emoji), so `\<한` on "abc한글" is nvim (3,6) but
-            // ruse no match. It also differs on Latin-1 × ÷ (keyword characters in Vim, not in
-            // Unicode `\w`). Expressing the class change needs a look-behind at the previous
-            // character, which the wrapped engine lacks; the owned engine is post-MVP.
-            Tok::Op('<') => r"\b{start}".to_string(),
-            Tok::Op('>') => r"\b{end}".to_string(),
+            // Start/end of word. At the pattern's edges `reg` drops the atom and `Regex` checks Vim's
+            // class rule on each candidate (#745). Anywhere else it is an APPROXIMATION, knowingly
+            // kept: Rust's Unicode word boundary agrees with Vim between a word and a non-word
+            // character for ASCII and Latin letters, but does NOT see Vim's other boundary, a change
+            // of `utf_class` between two word characters (Latin to Hangul/CJK/kana/emoji: `x\<한`
+            // on "x한" is nvim (0,4), ruse no match), and differs on Latin-1 × ÷ (keyword characters
+            // in Vim, not in Unicode `\w`). Expressing it needs a look-behind at the previous
+            // character, which the wrapped engine lacks; the owned engine (#1128) will.
+            Tok::Op(c @ ('<' | '>')) => {
+                return Ok(Atom {
+                    rust: if c == '<' { r"\b{start}" } else { r"\b{end}" }.to_string(),
+                    marker: false,
+                    edge: Some(c),
+                })
+            }
             Tok::Op('_') => match self.lx.get().ch() {
                 None => return Err(syntax("E865: Regexp end encountered prematurely")),
                 Some('^') => "(?m:^)".to_string(),
@@ -935,6 +1138,7 @@ impl Parser<'_> {
         Ok(Atom {
             rust: "()".to_string(),
             marker: true,
+            edge: None,
         })
     }
 
@@ -982,6 +1186,7 @@ impl Parser<'_> {
     /// `\%[abc]`: a sequence of optionally matched atoms, lowered to nested optionals
     /// `(?:a(?:b(?:c)?)?)?` (design §3).
     fn optional_sequence(&mut self) -> Result<String, RegexError> {
+        self.variable = true;
         let mut atoms = Vec::new();
         loop {
             match self.lx.peek() {
@@ -1614,6 +1819,47 @@ mod tests {
         for &(s, delim, magic, want) in cases {
             assert_eq!(skip_regexp(s, delim, magic), want, "{s:?}");
         }
+    }
+
+    /// #745: every `\<word\>` match `*` steps through and `hlsearch` paints follows Vim's class edges,
+    /// including the ones a failed candidate skips over; `:s///g` replaces the same ones.
+    #[test]
+    fn edge_word_boundaries_scan_every_match() {
+        let spans = |pat: &str, hay: &str, sub: bool| -> Vec<(usize, usize)> {
+            let re = Regex::compile(pat, Options::default()).expect("compiles");
+            let all = if sub {
+                re.find_all(hay)
+            } else {
+                re.search_all(hay)
+            };
+            all.iter().map(|m| (m.start, m.end)).collect()
+        };
+        assert_eq!(
+            spans(r"\<API\>", "x API를 API\nxAPI API", false),
+            [(2, 5), (9, 12), (18, 21)]
+        );
+        assert_eq!(spans(r"\<한", "abc한글 한", false), [(3, 6), (10, 13)]);
+        assert_eq!(spans(r"\<", "ab한 c", false), [(0, 0), (2, 2), (6, 6)]);
+        assert_eq!(spans(r"\>", "ab한 c", true), [(2, 2), (5, 5), (7, 7)]);
+        assert_eq!(spans(r"\<\(a\|ab\)\>", "ab a", true), [(0, 2), (3, 4)]);
+        assert_eq!(find(r"\<API\zs를", "API를"), Some((3, 6)));
+    }
+
+    /// The edge check sees only the pattern's top-level first and last pieces of a single branch.
+    #[test]
+    fn only_edge_word_boundaries_are_dropped() {
+        let low = |p: &str| lower(p, Magic::Magic, false).expect("lowers");
+        let l = low(r"\<foo\>");
+        assert!(l.bow && l.eow && l.asserts == 0 && !l.variable);
+        assert_eq!(l.rust, "foo");
+        let l = low(r"\<a\|b\>");
+        assert!(!l.bow && !l.eow && l.asserts == 2);
+        let l = low(r"\(\<a\)");
+        assert!(!l.bow && l.asserts == 1);
+        let l = low(r"\<\<a");
+        assert!(l.bow && l.asserts == 1);
+        let l = low(r"^\<a.*\>");
+        assert!(!l.bow && l.eow && l.asserts == 2 && l.variable);
     }
 
     /// Only a pattern with a line-break item is multi-line (Vim's `RF_HASNL`).

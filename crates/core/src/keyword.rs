@@ -3,9 +3,10 @@
 //! (no buffer mutation); the frontend resolves the keyword (like `*`/`gd`) and renders the echo / list.
 //!
 //! Scope is the current buffer only. Vim's `#include`-following forms (`:checkpath`, searching included
-//! files) are OUT (they need a cross-file include graph). ruse has no `iskeyword` option, so a "whole
-//! word" here means the keyword bounded by non-Word bytes, where Word = alnum + `_` + non-ASCII — the
-//! same class `*`/`#`/`gd`/word-motions use (a documented divergence from Vim's `iskeyword`-driven match).
+//! files) are OUT (they need a cross-file include graph). A "whole word" is what nvim's `\<word\>` finds:
+//! the occurrence starts and ends where Vim's character class changes ([`crate::charclass`], #745), the
+//! same classes `*`/`#`/`gd` resolve the keyword with. ruse has no `iskeyword` option; the classes use
+//! Vim's default.
 //!
 //! Semantics VERIFIED against nvim v0.12.4 (headless):
 //!   - `[i` / `N[i` — the N-th (default 1) whole-word match scanning from the TOP of the file. If that
@@ -26,10 +27,17 @@ fn is_keyword_byte(c: u8) -> bool {
     c == b'_' || c.is_ascii_alphanumeric() || c >= 0x80
 }
 
-/// Whether `line` contains `kw` as a whole word — an occurrence bounded on BOTH sides by a non-Word byte
-/// (or the line edge). `kw` is the raw keyword bytes; it is itself a Word run (resolved from the buffer),
-/// so this is a byte substring search with keyword-boundary guards.
+/// Whether `line` contains `kw` as a whole word: an occurrence where Vim's `\<` and `\>` hold
+/// ([`crate::charclass::at_word_start`] / [`crate::charclass::at_word_end`]). A line that is not UTF-8
+/// falls back to byte guards (alnum, `_` and non-ASCII bytes are word bytes).
 fn line_has_keyword(line: &[u8], kw: &[u8]) -> bool {
+    if let (Ok(line), Ok(kw)) = (std::str::from_utf8(line), std::str::from_utf8(kw)) {
+        return !kw.is_empty()
+            && line.match_indices(kw).any(|(i, m)| {
+                crate::charclass::at_word_start(line, i)
+                    && crate::charclass::at_word_end(line, i + m.len())
+            });
+    }
     if kw.is_empty() || kw.len() > line.len() {
         return false;
     }
@@ -180,6 +188,11 @@ mod tests {
         assert_eq!(keyword_line_numbers(b"foo_bar\nfoo\n", "foo"), vec![2]);
         // Non-ASCII (Hangul) is a Word byte: `가` inside `가나` is not a whole-word `가`.
         assert_eq!(keyword_line_numbers("가나\n가\n".as_bytes(), "가"), vec![2]);
+        // #745: a change of script is a word edge, as for nvim's `\<API\>`.
+        assert_eq!(
+            keyword_line_numbers("x API를\nxAPI\n漢API\n".as_bytes(), "API"),
+            vec![1, 3]
+        );
     }
 
     #[test]

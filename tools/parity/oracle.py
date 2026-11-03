@@ -1468,6 +1468,21 @@ FIXTURES: list[dict] = [
     {"name": "hash_count", "lines": ["foo bar foo foo"], "keys": "$2#"},
     {"name": "star_before_keyword", "lines": ["  foo bar foo"], "keys": "*"},
     {"name": "hash_mid_word", "lines": ["foo bar foo"], "keys": "ll#"},
+    #     `*`/`#`/`g*`/`gd` ON MIXED-SCRIPT TEXT (#745): the keyword is a run of one Vim character class
+    #     (`find_ident_at_pos`), and `\<word\>` ends where the class changes, so a Latin word followed by
+    #     a Korean particle is its own word, and Hangul after ASCII starts one.
+    {"name": "star_latin_before_particle", "lines": ["x API를 API"], "keys": "w*"},
+    {"name": "star_latin_particle_wraps", "lines": ["x API를 API"], "keys": "$b*"},
+    {"name": "hash_latin_particle", "lines": ["x API를 API"], "keys": "$b#"},
+    {"name": "star_hangul_after_ascii", "lines": ["abc한글 한글 abc"], "keys": "3l*"},
+    {"name": "star_ascii_before_hangul", "lines": ["abc한글 abc"], "keys": "*"},
+    {"name": "star_hangul_particle_n", "lines": ["API를 x API가 API"], "keys": "**"},
+    {"name": "star_kana_classes", "lines": ["かなカナ かな"], "keys": "*"},
+    {"name": "star_latin1_times", "lines": ["a×b b a×b"], "keys": "*"},
+    {"name": "star_latin1_divide_word", "lines": ["b÷a b"], "keys": "*"},
+    {"name": "g_star_latin_particle", "lines": ["API를 xAPI"], "keys": "g*"},
+    {"name": "star_under_d_particle", "lines": ["API를 x API"], "keys": "d*"},
+    {"name": "gd_latin_particle", "lines": ["x API를", "API"], "keys": "jgd"},
     #     `gq` AFTER THE EXCLUSIVE-LINEWISE RULE ADJUSTED THE END (nvim `end_adjusted`, #1071): the cursor
     #     lands on the line below the formatted block; `gw` and an inclusive `e` offset do not.
     {"name": "search_under_format_pulled_back", "lines": ["aa bb", "cc", "end", "zz"], "keys": "wgq/end<CR>"},

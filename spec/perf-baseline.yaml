@@ -39,6 +39,14 @@ benches:
     long_line/dollar: "330 us"
     long_line/j_k_at_end: "35 ms"
     long_line/visual_block_yank: "69 ms"
+  word_search:                      # #745 `*`/`#`/hlsearch: compile + scan of `\<word\>` over mixed Latin/Hangul/
+                                    # CJK lines, edges checked with Vim's classes. DEV-PROFILE (2026-11-03, no
+                                    # release build). Before (Unicode \b{start}/\b{end} in the engine), same
+                                    # profile: latin/10000 357 ms, hangul/10000 431 ms.
+    word_search/latin/1000: "3.3 ms"
+    word_search/hangul/1000: "4.5 ms"
+    word_search/latin/10000: "32 ms"
+    word_search/hangul/10000: "31 ms"
 
   # apps/tui
   highlight_parse:                  # #2 syntax cost — full reparse vs incremental+viewport (F-015 #3)

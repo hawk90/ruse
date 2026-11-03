@@ -44,3 +44,7 @@ harness = false
 [[bench]]
 name = "long_line"
 harness = false
+
+[[bench]]
+name = "word_search"
+harness = false

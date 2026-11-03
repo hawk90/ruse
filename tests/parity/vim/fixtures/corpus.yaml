@@ -31922,6 +31922,320 @@
       }
     },
     {
+      "name": "star_latin_before_particle",
+      "lines": [
+        "x API를 API"
+      ],
+      "keys": "w*",
+      "expect": {
+        "text": [
+          "x API를 API"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_latin_particle_wraps",
+      "lines": [
+        "x API를 API"
+      ],
+      "keys": "$b*",
+      "expect": {
+        "text": [
+          "x API를 API"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "hash_latin_particle",
+      "lines": [
+        "x API를 API"
+      ],
+      "keys": "$b#",
+      "expect": {
+        "text": [
+          "x API를 API"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_hangul_after_ascii",
+      "lines": [
+        "abc한글 한글 abc"
+      ],
+      "keys": "3l*",
+      "expect": {
+        "text": [
+          "abc한글 한글 abc"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_ascii_before_hangul",
+      "lines": [
+        "abc한글 abc"
+      ],
+      "keys": "*",
+      "expect": {
+        "text": [
+          "abc한글 abc"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_hangul_particle_n",
+      "lines": [
+        "API를 x API가 API"
+      ],
+      "keys": "**",
+      "expect": {
+        "text": [
+          "API를 x API가 API"
+        ],
+        "cursor": [
+          1,
+          16
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_kana_classes",
+      "lines": [
+        "かなカナ かな"
+      ],
+      "keys": "*",
+      "expect": {
+        "text": [
+          "かなカナ かな"
+        ],
+        "cursor": [
+          1,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_latin1_times",
+      "lines": [
+        "a×b b a×b"
+      ],
+      "keys": "*",
+      "expect": {
+        "text": [
+          "a×b b a×b"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_latin1_divide_word",
+      "lines": [
+        "b÷a b"
+      ],
+      "keys": "*",
+      "expect": {
+        "text": [
+          "b÷a b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_star_latin_particle",
+      "lines": [
+        "API를 xAPI"
+      ],
+      "keys": "g*",
+      "expect": {
+        "text": [
+          "API를 xAPI"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "star_under_d_particle",
+      "lines": [
+        "API를 x API"
+      ],
+      "keys": "d*",
+      "expect": {
+        "text": [
+          "API"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "API를 x ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gd_latin_particle",
+      "lines": [
+        "x API를",
+        "API"
+      ],
+      "keys": "jgd",
+      "expect": {
+        "text": [
+          "x API를",
+          "API"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "search_under_format_pulled_back",
       "lines": [
         "aa bb",

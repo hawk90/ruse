@@ -57,7 +57,7 @@ today is the first half, and the amendment records it.
 - **Engine.** The wrapped `regex` crate is the only engine; it runs every pattern the front-end accepts. Which
   shapes agree with nvim is certified by the differential oracle, `tools/parity/pattern_oracle.py`, which
   captures nvim's first match for each row into `crates/core/tests/pattern_oracle/cases.rs`; `crates/core/tests/pattern_oracle.rs` replays every row.
-  The per-class table (`cargo test -p ruse-core --test pattern_oracle -- --nocapture`, at `87d7ca4`):
+  The per-class table (`cargo test -p ruse-core --test pattern_oracle -- --nocapture`, after #745):
 
   | class | rows | agree | unsupported | known |
   |---|---:|---:|---:|---:|
@@ -70,13 +70,13 @@ today is the first half, and the amendment records it.
   | case and smartcase | 75 | 73 | 2 | 0 |
   | line breaks | 27 | 27 | 0 | 0 |
   | character classes | 57 | 57 | 0 | 0 |
-  | word boundaries | 16 | 12 | 0 | 4 |
+  | word boundaries | 50 | 46 | 0 | 4 |
   | \zs and \ze | 28 | 28 | 0 | 0 |
   | alternation and groups | 10 | 10 | 0 | 0 |
   | multibyte and case folding | 59 | 59 | 0 | 0 |
   | position atoms | 8 | 0 | 8 | 0 |
   | rejected | 14 | 1 | 13 | 0 |
-  | **total** | **553** | **522** | **27** | **4** |
+  | **total** | **587** | **556** | **27** | **4** |
 
   This table **is** §7's fast-path allow-list, grown by tests rather than starting empty: with no owned engine
   to fall back to, a shape ruse claims to match like nvim is one with agreeing oracle rows. A Vim atom the
@@ -86,20 +86,31 @@ today is the first half, and the amendment records it.
   position atoms (`\%V` `\%23l` `\%23c` `\%23v` `\%'m` `\%#` `\%^` `\%$` …), `\Z` and equivalence classes
   `[=a=]` return `RegexError::Unsupported`; an oracle row marked `Unsupported` fails if ruse ever returns a
   match for it.
-- **One knowing approximation.** `\<` and `\>` lower to Rust's `\b{start}`/`\b{end}`. They agree with Vim between a
-  word and a non-word character for ASCII and Latin, and miss Vim's other boundary, a change of `utf_class`
-  between two word characters (Latin to Hangul/CJK/kana), and Latin-1 `×`/`÷`. The four `known` rows are these
-  (#745); a `known` row that starts agreeing fails until it is promoted, the same ratchet as
-  `tests/parity/vim/known-divergences.txt`.
-- **Interim fix for `\<`/`\>` at the pattern edges (#745).** When `\<` opens the pattern or `\>` closes it, the
-  lowering drops it from the Rust pattern and checks the match boundary afterwards with Vim's rule
-  (`nfa_regmatch` `NFA_BOW`/`NFA_EOW` over `utf_class`): at the start, the character at the boundary is a word
-  character (class 2 or more) and the previous character has a different class; at the end, the character before
-  the boundary is a word character and the one after has a different class. A candidate that fails the check is
-  discarded and the search retries from the next character position. A `\>` failure retries from the next
-  start, so a pattern whose end can vary (`\w\+\>`) may still miss a shorter match nvim finds at the same
-  start; such rows stay `known`. Mid-pattern `\<`/`\>` keep today's `\b{start}`/`\b{end}` lowering and its
-  `known` rows until the owned engine (#1128).
+- **`\<`/`\>` at the pattern edges: Vim's rule (#745, built).** When `\<` opens a one-branch pattern or `\>`
+  closes it (after any `\c`/`\v`-style flags; `\%#=` is dropped first), the lowering drops it from the Rust
+  pattern and `Regex` checks each candidate afterwards with Vim's rule (`nfa_regmatch` `NFA_BOW`/`NFA_EOW` over
+  `mb_get_class`): at the start, the character at the boundary is a word character (class 2 or more) and the
+  previous character on the line has a different class; at the end, the character before the boundary is a word
+  character and the one after (a line end counts as blank) has a different class. The classes come from
+  `crates/core/src/char_class_table.rs`, captured from the pinned nvim's `charclass()` for every code point by
+  `tools/parity/char_classes.py` (default `'iskeyword'`, so Latin-1 `×`/`÷` are word characters); the same
+  classes split the keyword `*`/`#`/`g*`/`gd` pick up (nvim's `find_ident_at_pos`), so `*` on `API` in
+  `API를` searches `\<API\>`. A start that fails `\<` is skipped (no end can rescue it).
+  A start whose first end fails `\>` tries its other ends: when the pattern's end can vary (a multi, `\|`,
+  `\%[`) and it has no other zero-width assertion, `^(?:pattern)\z` is matched on the slice up to each end that
+  passes `\>`, nearer shorter ends first (right for a greedy tail: `.*\>` on `ab cd+` is `(0,5)`), then longer
+  ones (right for a lazy tail: `.\{-}\>` on `ab cd` is `(0,2)`). At most 64 such ends, within 1024 characters
+  on each side, are tried per start; then the search moves to the next start. The limit is ranking: Vim takes
+  the highest-priority path that passes, ruse cannot rank paths, so `\(a.\|a.b\|a\)\>` on `a b` is nvim `(0,3)`
+  but ruse `(0,1)` (a `known(1128)` row). A pattern with another assertion (`^`, `$`, a mid-pattern `\<`) tries
+  no other ends. `*` got faster, not slower: the Unicode `\b` assertions kept the engine off its fastest path
+  (`word_search` bench, `spec/perf-baseline.yaml`).
+- **One knowing approximation left: mid-pattern `\<`/`\>`.** Anywhere else (inside a group, in one of several
+  branches, between other atoms) they lower to Rust's `\b{start}`/`\b{end}`. Those agree with Vim between a word
+  and a non-word character for ASCII and Latin, and miss Vim's other boundary, a change of class between two
+  word characters (Latin to Hangul/CJK/kana: `x\<한` on `x한`), and Latin-1 `×`/`÷`. The `known(1128)` rows are
+  these and the ranking limit above; a `known` row that starts agreeing fails until it is promoted, the same
+  ratchet as `tests/parity/vim/known-divergences.txt`. The owned engine (#1128) fixes both.
 - **Owned engine: still the plan, scheduled later (#1128, v0.3.2).** The Pike VM and bounded backtracker of §3 are for the
   residual: lookaround, backrefs, position atoms, mid-pattern `\<`/`\>`, `\&` and `~`. When it lands, the IR and
   router of §1 and §7 arrive with it, and the oracle classes above become the router's allow-list for

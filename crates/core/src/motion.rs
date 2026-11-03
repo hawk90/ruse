@@ -608,14 +608,48 @@ fn inner_word_span(b: &[u8], cur: usize, big: bool) -> (usize, usize) {
     (s, e)
 }
 
-/// The keyword span under (or, failing that, forward on the current line from) the cursor — Vim `*`/`#`.
-/// A keyword is a Word-class run (alnum + `_` + non-ASCII). Returns `None` when the current line has no
-/// keyword at or after the cursor. Char-boundary safe (spans are built from equal-class runs).
+/// The keyword span under (or, failing that, forward on the current line from) the cursor — Vim `*`/`#`/
+/// `gd` (nvim's `find_ident_at_pos`). A keyword is a run of characters of one Vim class of 2 or more
+/// ([`crate::charclass::vim_class`]), so "API를" holds two keywords, "API" and "를", as for nvim (#745).
+/// Returns `None` when the current line has no keyword at or after the cursor.
 pub(crate) fn word_under_cursor(b: &[u8], cur: usize) -> Option<(usize, usize)> {
+    use crate::charclass::{vim_class, WORD};
     if b.is_empty() {
         return None;
     }
-    let mut i = cur.min(b.len() - 1);
+    let i = cur.min(b.len() - 1);
+    let (ls, le) = (line_start(b, i), line_end(b, i));
+    let Ok(line) = std::str::from_utf8(&b[ls..le]) else {
+        return byte_word_under_cursor(b, i);
+    };
+    let mut col = (i - ls).min(line.len());
+    while !line.is_char_boundary(col) {
+        col -= 1;
+    }
+    // 1. The first keyword character at or after the cursor.
+    let (off, c) = line[col..]
+        .char_indices()
+        .find(|&(_, c)| vim_class(c) >= WORD)?;
+    let this = vim_class(c);
+    let at = col + off;
+    // 2. Back to the start of the run of that class, 3. on to its end.
+    let start = line[..at]
+        .char_indices()
+        .rev()
+        .take_while(|&(_, c)| vim_class(c) == this)
+        .last()
+        .map_or(at, |(j, _)| j);
+    let end = line[at..]
+        .char_indices()
+        .find(|&(_, c)| vim_class(c) != this)
+        .map_or(line.len(), |(j, _)| at + j);
+    Some((ls + start, ls + end))
+}
+
+/// [`word_under_cursor`] on a line that is not UTF-8: a keyword is a run of alnum, `_` and non-ASCII
+/// bytes.
+fn byte_word_under_cursor(b: &[u8], cur: usize) -> Option<(usize, usize)> {
+    let mut i = cur;
     if class(b[i]) != Class::Word {
         // Not on a keyword — scan forward on the current line for the next one (Vim `*`).
         let le = line_end(b, i);

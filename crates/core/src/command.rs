@@ -710,8 +710,8 @@ pub enum Command {
     /// list forms). Purely a display command (no buffer mutation): the input engine has no buffer, so the
     /// FRONTEND resolves the keyword and scans the lines (like [`SearchWordUnder`]/[`GotoDeclaration`])
     /// and never plans it. The `#include`-following forms (`:checkpath`, searching included files) are
-    /// OUT (cross-file); ruse has no `iskeyword`, so word boundaries follow the Word class (alnum/`_`/
-    /// non-ASCII) — a documented divergence. Formats verified against nvim v0.12.4.
+    /// OUT (cross-file); ruse has no `iskeyword`, so word boundaries follow Vim's character classes with
+    /// the default `iskeyword` (`crate::charclass`, #745). Formats verified against nvim v0.12.4.
     ShowKeywordLines {
         above: bool,
         list: bool,

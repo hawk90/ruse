@@ -540,12 +540,51 @@ CASES: list[str | tuple[str, str | list[str], str, str]] = [
     (r"\<é", "xé é", "", ""),
     (r"\<1", "a1 1", "", ""),
     # Vim also starts a word where the character class changes between two word characters
-    # (Latin to Hangul, CJK); Rust's Unicode `\b` does not, and the wrapped engine has no look-behind
-    # to express it.
-    (r"\<API\>", "x API를 API", "", known(745)),
-    (r"\<한", "abc한글", "", known(745)),
-    (r"글\>", "한글abc", "", known(745)),
-    (r"\<b", "a×b", "", known(745)),
+    # (Latin to Hangul, CJK, kana, emoji). Rust's Unicode `\b` does not; a `\<` opening the pattern and
+    # a `\>` closing it are checked after the match with Vim's class rule instead (#745).
+    (r"\<API\>", "x API를 API", "", ""),
+    (r"\<한", "abc한글", "", ""),
+    (r"글\>", "한글abc", "", ""),
+    (r"\<b", "a×b", "", ""),
+    (r"\<b", "a÷b b", "", ""),
+    (r"\<×", "a ×", "", ""),
+    (r"a\<", "ab", "", ""),
+    (r"\>a", "ab", "", ""),
+    (r"\<\>", "a한", "", ""),
+    (r"\<\>", "한a", "", ""),
+    (r"\<", " 한글", "", ""),
+    (r"\>", "API를", "", ""),
+    (r"\<글", "한글 글", "", ""),
+    (r"\<か\>", "漢かカ か", "", ""),
+    (r"\<カ", "かカ", "", ""),
+    (r"\<😀", "a😀", "", ""),
+    (r"\<a", "😀a", "", ""),
+    (r"\<,", "a ,", "", ""),
+    (r"\<x", "　x", "", ""),
+    (r"\<API\>", "API를", "ic", ""),
+    (r"\v<API>", "x API를", "", ""),
+    (r"\c\<api\>", "x API를", "", ""),
+    (r"\<API\zs를", "API를", "", ""),
+    (r"\<API\ze를", "API를", "", ""),
+    (r"\<a\|b\>", "ab b", "", ""),
+    (r"\<\w\+", "abc한글", "", ""),
+    (r"\<\k\+\>", "x 한글abc", "", ""),
+    (r"\<API\>", ["xAPI", "API를"], "", ""),
+    # A closing `\>` whose first end fails: the other ends at the same start are tried, nearer shorter
+    # ones first, then longer ones.
+    (r".*\>", "ab cd+", "", ""),
+    (r".\{-}\>", "ab cd", "", ""),
+    (r"\(a\|ab\)\>", "ab", "", ""),
+    (r"\w\+\>", "abc한", "", ""),
+    (r"\k\+\>", "API를,", "", ""),
+    (r"a.\{-}\>", "ab한 x", "", ""),
+    # ... but ruse cannot rank the paths as Vim's engine does: here Vim takes the second alternative
+    # (the longer end), ruse the nearer shorter one. The owned engine (#1128) fixes it.
+    (r"\(a.\|a.b\|a\)\>", "a b", "", known(1128)),
+    # Mid-pattern `\<` / `\>` keep the Unicode `\b{start}` / `\b{end}` approximation until #1128.
+    (r"x\<한", "x한", "", known(1128)),
+    (r"API\>를", "API를", "", known(1128)),
+    (r"\(\<한\)", "abc한", "", known(1128)),
     "\\zs and \\ze",
     (r"\v(ab)\zeab", "ababab", "", ""),
     (r"foo\zs", "xx foo bar", "", ""),
