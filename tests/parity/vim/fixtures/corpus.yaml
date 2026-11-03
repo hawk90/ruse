@@ -48633,6 +48633,3498 @@
       }
     },
     {
+      "name": "exa_pattern_forward",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_backward_wraps",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":?b?d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "a5"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_forward_wraps",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "G:/b/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_own_line_last",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/a1/d<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_semicolon",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/;/b/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_comma_from_cursor",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/,/b/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_chained",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b//a/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_offset",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/+1d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_bare_minus",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/-d<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_to_dollar",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/,$d<CR>",
+      "expect": {
+        "text": [
+          "a1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\nb4\na5\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_from_line",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":3;/b/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_space_before_command",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/ d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_escaped_delimiter",
+      "lines": [
+        "a/1",
+        "b2",
+        "a/3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/a\\/3/d<CR>",
+      "expect": {
+        "text": [
+          "a/1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a/3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_bar_is_pattern",
+      "lines": [
+        "a|1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "G:/a|1/d<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a|1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_goto_keeps_column",
+      "lines": [
+        "a1x",
+        "b2x",
+        "a3x",
+        "b4x",
+        "a5x"
+      ],
+      "keys": "ll:/b/<CR>",
+      "expect": {
+        "text": [
+          "a1x",
+          "b2x",
+          "a3x",
+          "b4x",
+          "a5x"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_unclosed_goto",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_sets_last_search",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/d<CR>n",
+      "expect": {
+        "text": [
+          "a1",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_N_after_address",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/d<CR>N",
+      "expect": {
+        "text": [
+          "a1",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_backward_sets_direction",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "G:?b?d<CR>n",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_empty_is_previous",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/;//d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_then_substitute",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/s/b/X/<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "X2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_then_sort",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/,/a5/sort!<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b4",
+          "b2",
+          "a5",
+          "a3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_pattern_s_range",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/a3/,$s/a/Z/<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "Z3",
+          "b4",
+          "Z5"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_last_search_forward",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "/a3<CR>gg:\\/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_last_search_backward",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "G?a3<CR>G:\\?d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_last_search_wraps",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "?a<CR>G:\\/d<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_last_search_keeps_direction",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "/a<CR>gg:\\/d<CR>N",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_last_substitute",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":s/b/X/<CR>:\\&d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_pattern_not_found",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/zz/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_pattern_not_found_goto",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/zz/<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_pattern_after_semicolon",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":/b/;/zz/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_no_previous_search",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":\\/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_no_previous_search_backward",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":\\?d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_no_previous_substitute",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":\\&d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E33",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_mark_offsets",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jjmx:'x-1,'x+1d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_mark_goto",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "Gmaggjmb:'a,'b<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_mark_change_marks",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jyyjp:'[,']d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_mark_last_change",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jjxgg:'.d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_mark_context",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "3GG:''d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_err_mark_context_unset",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":''d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_mark_unset_goto",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":'z<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_mark_file",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":'Zd<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_star_is_visual",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jVj<Esc>gg:*d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_visual_colon",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jVj:d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_leading_comma",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jj:,d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_leading_semicolon",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jj:;+1d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_comma_offset",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jj:,+1d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_chained_offsets",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2+3-2d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_semicolon_cursor_kept_on_error",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2;99d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_semicolon_cursor_after_yank",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "l:3;+1y<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a3\nb4\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_yes",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":3,2d<CR>y",
+      "expect": {
+        "text": [
+          "a1",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_no",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":3,2d<CR>n",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_esc",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":4,2d<CR><Esc>x",
+      "expect": {
+        "text": [
+          "1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_other_key_ignored",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":4,2d<CR>xy",
+      "expect": {
+        "text": [
+          "a1",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_then_keys",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":4,2d<CR>yx",
+      "expect": {
+        "text": [
+          "a1",
+          "5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_marks",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jmajjmb:'b,'ad<CR>y",
+      "expect": {
+        "text": [
+          "a1",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_rest_of_line",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":4,2d|1d<CR>y",
+      "expect": {
+        "text": [
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_no_drops_line",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":4,2d|1d<CR>n",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_goto_no_prompt",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":3,2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_past_end_e16",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":9,2d<CR>y",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_backwards_semicolon",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":$;-2d<CR>n",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_pattern",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":5,/b/d<CR>n",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_join",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":4,2j<CR>y",
+      "expect": {
+        "text": [
+          "a1",
+          "b2 a3 b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_substitute",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":3,2s/a/X/<CR>y",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "X3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_backwards_in_macro",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "qa:4,2d<CR>yq",
+      "expect": {
+        "text": [
+          "a1",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_d",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":d 3<CR>",
+      "expect": {
+        "text": [
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\nb2\na3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_after_line",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2d 2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_after_range",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2,3d 2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\nb4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_with_register",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":d a 2<CR>",
+      "expect": {
+        "text": [
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\nb2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_clamps",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":4d 9<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b4\na5\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_after_percent",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":%d 2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a5\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_y",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":y 2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\nb2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a1\nb2\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_j",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":j 3<CR>",
+      "expect": {
+        "text": [
+          "a1 b2 a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_j_bang",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":j! 2<CR>",
+      "expect": {
+        "text": [
+          "a1b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_count_shift",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":> 2<CR>",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a1",
+          "    b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_register_d",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":d a<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_register_blackhole",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":d _<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_register_append",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":y a|2y A<CR>G\"ap",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5",
+          "a1",
+          "b2"
+        ],
+        "cursor": [
+          6,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\nb2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_err_count_zero",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":d 0<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E939",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_trailing_y",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":y a b<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_trailing_j",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":j x<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_trailing_shift",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":> x<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_abbrev_de",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":de<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_abbrev_yan",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2yan<CR>P",
+      "expect": {
+        "text": [
+          "b2",
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_m_onto_itself",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2m2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_m_onto_itself_keeps_column",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": "jl:2m2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_m_before_itself",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2m1<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_m_range_before_itself",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2,3m1<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_m_range_after_itself",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":2,3m3<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_err_m_into_itself",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":1,3m2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E134",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_m_no_destination",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":m<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_t_no_destination",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":t<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_r_bang_no_space",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":r!echo hi<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "hi",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_r_bang_no_space_line_zero",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":0r!echo hi<CR>",
+      "expect": {
+        "text": [
+          "hi",
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_err_filter_past_end",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":99!tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_y_past_end",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":99y<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_t_from_past_end",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":99t0<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_m_from_past_end",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":99m0<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_d_range_past_end",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":99,100d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_sign",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":sign<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E471",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_norm_bang",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":norm!<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E471",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_set_number_required",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":set sw=x<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E521",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_set_no_on_number",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":set nosw<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_err_set_unknown_with_value",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":set foo=1<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E518",
+        "failed": true
+      }
+    },
+    {
+      "name": "exa_set_unsupported_is_quiet",
+      "lines": [
+        "a1",
+        "b2",
+        "a3",
+        "b4",
+        "a5"
+      ],
+      "keys": ":set number<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3",
+          "b4",
+          "a5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "sc_err_p_empty_unnamed",
       "lines": [
         "abc"

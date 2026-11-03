@@ -60,10 +60,12 @@ pub enum Ex {
     /// `:ascii`/`:as` — print the numeric value of the character under the cursor to the status line (the
     /// ex synonym of Normal-mode `ga`). View-only; no buffer mutation.
     Ascii,
-    /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
-    Delete(SubRange),
-    /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
-    Yank(SubRange),
+    /// `:[range]d [x]`/`:delete` — delete the range's lines (no range = the current line) into register `x`
+    /// (`None` = the unnamed one), like a linewise `dd`. A count after it (`:d 3`) is folded into the range
+    /// before parsing (`app::ex_range`).
+    Delete(SubRange, Option<char>),
+    /// `:[range]y [x]`/`:yank` — yank the range's lines linewise into register `x` (like `yy`).
+    Yank(SubRange, Option<char>),
     /// `:[range]j[oin][!]` — join the range's lines into one (no range = the current line, which joins with
     /// the next). `bang` is the `!` (raw `gJ`) form that concatenates without adjusting whitespace; without
     /// it, whitespace is collapsed to a single space exactly like normal-mode `J`.
@@ -200,6 +202,9 @@ pub enum Ex {
     /// `:!{cmd}` — run `{cmd}` through the shell and show its output on the status line; NO buffer change.
     /// Handled in the run loop (unix `sh -c` only).
     Shell(String),
+    /// A known command whose argument is wrong or missing (`:normal` with no keys, `:m` with no address,
+    /// `:set nosuchoption`): the status is nvim's error, and nothing runs.
+    Fail(String),
     Unknown(String),
 }
 
@@ -299,12 +304,48 @@ fn parse_time_travel(line: &str) -> Option<Ex> {
 /// Parse `:set {option}` for the options this MVP honors: `ignorecase`/`ic`, `smartcase`/`scs`,
 /// `expandtab`/`et` (each with a `no` prefix to turn off), and `shiftwidth`/`sw`, `tabstop`/`ts` and
 /// `textwidth`/`tw` `=N`. `tabstop` and `shiftwidth` are distinct options (#601); `sw=0` follows `ts`.
-/// An unknown option returns `None` (→ `Unknown`); a bare `:set` (no option) is not handled here.
+/// Any other option is [`Ex::Fail`]: `E518` for a name nvim does not know either, `E521` for a number
+/// option given something else, and a plain notice for an nvim option ruse does not implement. A bare
+/// `:set` (no option) is not handled here.
 fn parse_set(line: &str) -> Option<Ex> {
     let opt = line
         .strip_prefix("set ")
         .or_else(|| line.strip_prefix("se "))?
         .trim();
+    Some(parse_set_option(opt).unwrap_or_else(|| Ex::Fail(set_error(opt))))
+}
+
+/// Why `:set {opt}` cannot be honoured (see [`parse_set`]).
+fn set_error(opt: &str) -> String {
+    use super::nvim_options::{NVIM_BOOLEAN_OPTIONS, NVIM_OPTIONS};
+    let token = opt.split_whitespace().next().unwrap_or(opt);
+    let name_end = token
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or(token.len());
+    let name = &token[..name_end];
+    let known = |n: &str| NVIM_OPTIONS.split(' ').any(|o| o == n);
+    let boolean = |n: &str| NVIM_BOOLEAN_OPTIONS.split(' ').any(|o| o == n);
+    let negated = |prefix: &str| name.strip_prefix(prefix).is_some_and(boolean);
+    if name.is_empty() || !(known(name) || negated("no") || negated("inv")) {
+        // `no`/`inv` before an option that is not a boolean is E474 (`:set nosw`).
+        let misused = |prefix: &str| name.strip_prefix(prefix).is_some_and(known);
+        if misused("no") || misused("inv") {
+            return format!("E474: Invalid argument: {token}");
+        }
+        return format!("E518: Unknown option: {token}");
+    }
+    let numeric = matches!(
+        name,
+        "shiftwidth" | "sw" | "tabstop" | "ts" | "textwidth" | "tw" | "foldlevel" | "fdl"
+    );
+    if numeric && token[name_end..].starts_with('=') {
+        return format!("E521: Number required after =: {token}");
+    }
+    format!("option not supported: {opt}")
+}
+
+/// The options [`parse_set`] honours, or `None`.
+fn parse_set_option(opt: &str) -> Option<Ex> {
     // hlsearch/incsearch are frontend render preferences, not core options — return their own Ex variants.
     match opt {
         "hlsearch" | "hls" => return Some(Ex::SetHlSearch(true)),
@@ -716,8 +757,17 @@ fn split_first_command(cmd: &str) -> (&str, Option<&str>) {
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
-            b'0'..=b'9' | b',' | b';' | b'%' | b'.' | b'$' | b'+' | b'-' | b' ' | b'\t' => i += 1,
-            b'\'' if i + 1 < bytes.len() => i += 2,
+            b'0'..=b'9' | b',' | b';' | b'%' | b'*' | b'.' | b'$' | b'+' | b'-' | b' ' | b'\t' => {
+                i += 1
+            }
+            b'\'' | b'\\' if i + 1 < bytes.len() => {
+                i += 1;
+                i += cmd[i..].chars().next().map_or(0, char::len_utf8);
+            }
+            // A pattern address (`:/a|b/d`): its `|` is part of the pattern.
+            delim @ (b'/' | b'?') => {
+                i = skip_unescaped(cmd, i + 1, delim as char, 1).unwrap_or(bytes.len());
+            }
             _ => break,
         }
     }
@@ -860,6 +910,11 @@ pub fn expand_filename(
     Ok(out)
 }
 
+/// nvim's error for a command that needs an argument (`:normal`, `:sign`).
+const ARGUMENT_REQUIRED: &str = "E471: Argument required";
+/// nvim's error for a missing or out-of-range address (`:m` with no destination).
+const INVALID_RANGE: &str = "E16: Invalid range";
+
 /// Parse the text typed after `:` (without the leading colon).
 #[must_use]
 pub fn parse_ex(line: &str) -> Ex {
@@ -906,6 +961,9 @@ pub fn parse_ex(line: &str) -> Ex {
         "bd" | "bdelete" => Ex::BufferDelete { force: false },
         "bd!" | "bdelete!" => Ex::BufferDelete { force: true },
         "b#" | "buffer#" => Ex::Buffer(BufTarget::Alternate),
+        // `:sign` with no argument (nvim reads `:sig` as `:sign`, not as `:s` with the `ig` flags); ruse
+        // has no signs, so every other `:sign` line stays unknown.
+        "sig" | "sign" => Ex::Fail(ARGUMENT_REQUIRED.into()),
         // `:lmap`/`:lunmap` (F-027), then `:b {n}`, `:trace save`, `:[range]s///`, `:[range]g//` — each
         // returns `None`/falls through to the next so an unrecognised line lands on `Ex::Unknown`.
         _ => {
@@ -925,16 +983,20 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
-            } else if let Some(range) = parse_range_verb(line, &["d", "delete"]) {
-                Ex::Delete(range)
-            } else if let Some(range) = parse_range_verb(line, &["y", "yank"]) {
-                Ex::Yank(range)
+            } else if let Some((range, reg)) =
+                parse_register_verb(line, &["d", "de", "del", "dele", "delet", "delete"])
+            {
+                Ex::Delete(range, reg)
+            } else if let Some((range, reg)) =
+                parse_register_verb(line, &["y", "ya", "yan", "yank"])
+            {
+                Ex::Yank(range, reg)
             } else if let Some((range, bang)) = parse_join(line) {
                 Ex::Join { range, bang }
-            } else if let Some((range, dest)) = parse_range_verb_dest(line, &["move", "m"]) {
-                Ex::Move(range, dest)
-            } else if let Some((range, dest)) = parse_range_verb_dest(line, &["copy", "co", "t"]) {
-                Ex::Copy(range, dest)
+            } else if let Some(dest) = parse_range_verb_dest(line, &["move", "m"]) {
+                dest.map_or_else(|| Ex::Fail(INVALID_RANGE.into()), |(r, d)| Ex::Move(r, d))
+            } else if let Some(dest) = parse_range_verb_dest(line, &["copy", "co", "t"]) {
+                dest.map_or_else(|| Ex::Fail(INVALID_RANGE.into()), |(r, d)| Ex::Copy(r, d))
             } else if let Some((range, left, levels)) = parse_shift(line) {
                 Ex::Shift {
                     range,
@@ -985,6 +1047,10 @@ fn parse_normal(raw: &str) -> Option<Ex> {
         Some(r) => (true, r),
         None => (false, rest),
     };
+    // No keys at all is E471, as in nvim (`:normal`, `:norm! `).
+    if rest.trim().is_empty() {
+        return Some(Ex::Fail(ARGUMENT_REQUIRED.into()));
+    }
     // The single delimiting space is mandatory and consumed; the rest is the literal key payload.
     let keys = rest.strip_prefix(' ')?;
     let range = if range_str.is_empty() {
@@ -1024,17 +1090,21 @@ fn parse_rename(line: &str) -> Option<String> {
 }
 
 /// Parse a `:[range]<verb> {addr}` line (`:m`/`:move`, `:t`/`:copy`/`:co`) into `(range, dest)`. The verb
-/// (after the range prefix) must be one of `verbs` (longest-first), and a destination address is required.
-fn parse_range_verb_dest(line: &str, verbs: &[&str]) -> Option<(SubRange, LineAddr)> {
+/// (after the range prefix) must be one of `verbs` (longest-first). A missing destination is `Some(None)`,
+/// which nvim reports as E16 (`:m`, `:t`).
+fn parse_range_verb_dest(line: &str, verbs: &[&str]) -> Option<Option<(SubRange, LineAddr)>> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
         .unwrap_or(line.len());
     let (range_str, rest) = line.split_at(split);
     // Strip the verb (longest match first so `move` beats `m`), leaving the destination address.
     let addr_str = verbs.iter().find_map(|v| rest.strip_prefix(v))?;
-    let dest = parse_line_addr(addr_str.trim())?;
     let range = parse_sub_range(range_str)?;
-    Some((range, dest))
+    if addr_str.trim().is_empty() {
+        return Some(None);
+    }
+    let dest = parse_line_addr(addr_str.trim())?;
+    Some(Some((range, dest)))
 }
 
 /// Parse a `:m`/`:t` destination address (`:help {address}`): a base of `N` (after line N, 0 = top), `$`
@@ -1084,11 +1154,9 @@ fn parse_line_addr(s: &str) -> Option<LineAddr> {
     })
 }
 
-/// Split a `:[range]<verb>` line into its parsed [`SubRange`] and the trimmed verb, if the verb (after the
-/// leading `[0-9,%.$]` range prefix) is exactly one of `verbs`. Shared by the line-range ops (`:d`/`:y`/…).
 /// Parse `:[range]j[oin][!]` into `(range, bang)`. The verb is `j`/`jo`/`joi`/`join` (Vim's abbreviations)
 /// after an optional `[0-9,%.$]` range prefix and an optional trailing `!`. A `[count]` argument (Vim's
-/// `:j 3`) is a documented follow-up — the shared range-verb parser has no count seam yet.
+/// `:j 3`) was already folded into the range (`app::ex_range`).
 fn parse_join(line: &str) -> Option<(SubRange, bool)> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -1160,16 +1228,28 @@ fn parse_put(line: &str) -> Option<(LineAddr, Option<char>)> {
     Some((addr, reg))
 }
 
-fn parse_range_verb(line: &str, verbs: &[&str]) -> Option<SubRange> {
+/// Parse `:[range]{verb} [x]` (`:d`, `:y`) into the range and the register `x`, a single char after
+/// whitespace (`:d a`, `:3y A`). A count after the register was already folded into the range.
+fn parse_register_verb(line: &str, verbs: &[&str]) -> Option<(SubRange, Option<char>)> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
         .unwrap_or(line.len());
-    let (range_str, verb) = line.split_at(split);
-    if verbs.contains(&verb.trim()) {
-        parse_sub_range(range_str)
-    } else {
-        None
+    let (range_str, rest) = line.split_at(split);
+    let rest = rest.trim_start();
+    let verb_len = rest
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(rest.len());
+    let (verb, arg) = rest.split_at(verb_len);
+    if !verbs.contains(&verb) {
+        return None;
     }
+    let arg = arg.trim();
+    let reg = if arg.is_empty() {
+        None
+    } else {
+        Some(single_char(arg)?)
+    };
+    Some((parse_sub_range(range_str)?, reg))
 }
 
 /// Parse `:e {file}` / `:edit {file}` (open a file into a new buffer). Requires a whitespace-separated,
@@ -1202,9 +1282,9 @@ fn parse_read(line: &str) -> Option<Ex> {
     let rest = ["read", "re", "r"]
         .into_iter()
         .find_map(|v| rest.strip_prefix(v))?;
-    // A verb must be followed by whitespace + an argument (a bare `:r` — re-read the current file — is a
-    // documented non-goal and falls through).
-    if !rest.starts_with(char::is_whitespace) {
+    // A verb must be followed by whitespace + an argument, or directly by the `!` of a command read
+    // (#809). A bare `:r` (re-read the current file) is a documented non-goal and falls through.
+    if !rest.starts_with(|c: char| c.is_whitespace() || c == '!') {
         return None;
     }
     let arg = rest.trim();
@@ -1464,9 +1544,11 @@ mod normal_parse_tests {
     fn non_normal_and_bare_normal_fall_through() {
         // `:normalx` is not the `:normal` verb.
         assert!(matches!(parse_ex("normalx"), Ex::Unknown(_)));
-        // A bare `:normal` (no delimiting space / keys) is not a valid invocation.
-        assert!(matches!(parse_ex("normal"), Ex::Unknown(_)));
-        assert!(matches!(parse_ex("normal!"), Ex::Unknown(_)));
+        // A bare `:normal` (no keys) is E471, as in nvim.
+        let e471 = Ex::Fail("E471: Argument required".into());
+        assert_eq!(parse_ex("normal"), e471);
+        assert_eq!(parse_ex("normal!"), e471);
+        assert_eq!(parse_ex("norm "), e471);
     }
 }
 
@@ -1705,6 +1787,44 @@ mod read_filter_parse_tests {
                 source: ReadSource::Command("ls -la".into())
             }
         );
+        // The `!` may follow the verb directly (#809).
+        for line in ["r!echo hi", "read!echo hi", "r! echo hi"] {
+            assert_eq!(
+                parse_ex(line),
+                Ex::Read {
+                    addr: LineAddr::Current,
+                    source: ReadSource::Command("echo hi".into())
+                },
+                "{line}"
+            );
+        }
+        assert_eq!(
+            parse_ex("0r!echo hi"),
+            Ex::Read {
+                addr: LineAddr::Line(0),
+                source: ReadSource::Command("echo hi".into())
+            }
+        );
+    }
+
+    /// `:d`/`:y` take a register after the verb, and every abbreviation of the verb (#608).
+    #[test]
+    fn delete_and_yank_take_a_register() {
+        assert_eq!(
+            parse_ex("d a"),
+            Ex::Delete(SubRange::CurrentLine, Some('a'))
+        );
+        assert_eq!(
+            parse_ex("2,3del _"),
+            Ex::Delete(SubRange::Lines(2, 3), Some('_'))
+        );
+        assert_eq!(parse_ex("de"), Ex::Delete(SubRange::CurrentLine, None));
+        assert_eq!(
+            parse_ex("yan A"),
+            Ex::Yank(SubRange::CurrentLine, Some('A'))
+        );
+        assert!(matches!(parse_ex("d ab"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("dx"), Ex::Unknown(_)));
     }
 
     #[test]
@@ -1789,8 +1909,12 @@ mod set_hlsearch_incsearch_tests {
             parse_ex("set fdm=manual"),
             Ex::SetFoldMethod(FoldMethod::Manual)
         );
-        assert!(matches!(parse_ex("set foldmethod=expr"), Ex::Unknown(_)));
-        assert!(matches!(parse_ex("set fdm=marker"), Ex::Unknown(_)));
+        // nvim's other fold methods are known options ruse does not implement: a notice, not an error.
+        assert_eq!(
+            parse_ex("set foldmethod=expr"),
+            Ex::Fail("option not supported: foldmethod=expr".into())
+        );
+        assert!(matches!(parse_ex("set fdm=marker"), Ex::Fail(_)));
         // foldlevel (fdl) = N.
         assert_eq!(parse_ex("set foldlevel=2"), Ex::SetFoldLevel(2));
         assert_eq!(parse_ex("set fdl=0"), Ex::SetFoldLevel(0));
@@ -1851,7 +1975,7 @@ mod bar_and_expansion_tests {
     #[test]
     fn sig_is_not_a_repeat_substitute() {
         // nvim reads `:sig` as `:sign` (E471), `:sil`/`:sim` as `:silent`/`:simalt`.
-        assert!(matches!(parse_ex("sig"), Ex::Unknown(_)));
+        assert_eq!(parse_ex("sig"), Ex::Fail("E471: Argument required".into()));
         // The other `:s` + flag shorthands still repeat.
         for line in ["si", "sg", "sgi", "sI", "s ig"] {
             assert!(

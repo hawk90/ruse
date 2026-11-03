@@ -618,13 +618,18 @@ impl Workspace {
     /// Run `:[range]d` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): delete the
     /// range's lines as one undo group. Returns the number of lines deleted.
     pub fn delete_lines(&mut self, range: SubRange) -> usize {
+        self.delete_lines_into(range, None)
+    }
+
+    /// [`Workspace::delete_lines`] into register `reg` (`None` = the unnamed one), for `:d {x}` / `:y {x}`.
+    pub fn delete_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
         let mut st = EditorState::from_parts(doc, view);
-        let n = st.delete_lines(range);
+        let n = st.delete_lines_into(range, reg);
         let (doc, view) = st.into_parts();
 
         self.docs[slot] = Some(doc);
@@ -653,13 +658,18 @@ impl Workspace {
     /// Run `:[range]y` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): yank the
     /// range's lines linewise into the unnamed register (and `"0`). Returns the number of lines yanked.
     pub fn yank_lines(&mut self, range: SubRange) -> usize {
+        self.yank_lines_into(range, None)
+    }
+
+    /// [`Workspace::yank_lines`] into register `reg` (`None` = the unnamed one), for `:d {x}` / `:y {x}`.
+    pub fn yank_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
         let mut st = EditorState::from_parts(doc, view);
-        let n = st.yank_lines(range);
+        let n = st.yank_lines_into(range, reg);
         let (doc, view) = st.into_parts();
 
         self.docs[slot] = Some(doc);

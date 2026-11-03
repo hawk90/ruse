@@ -542,11 +542,11 @@ mod tests {
     #[test]
     fn parse_delete_ranges() {
         use ruse_core::SubRange;
-        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine));
-        assert_eq!(parse_ex("delete"), Ex::Delete(SubRange::CurrentLine));
-        assert_eq!(parse_ex("2,5d"), Ex::Delete(SubRange::Lines(2, 5)));
-        assert_eq!(parse_ex("%d"), Ex::Delete(SubRange::WholeFile));
-        assert_eq!(parse_ex("3delete"), Ex::Delete(SubRange::Lines(3, 3)));
+        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine, None));
+        assert_eq!(parse_ex("delete"), Ex::Delete(SubRange::CurrentLine, None));
+        assert_eq!(parse_ex("2,5d"), Ex::Delete(SubRange::Lines(2, 5), None));
+        assert_eq!(parse_ex("%d"), Ex::Delete(SubRange::WholeFile, None));
+        assert_eq!(parse_ex("3delete"), Ex::Delete(SubRange::Lines(3, 3), None));
         // Not a delete verb → falls through (Unknown), not a spurious Delete.
         assert!(matches!(parse_ex("diffthis"), Ex::Unknown(_)));
     }
@@ -554,10 +554,10 @@ mod tests {
     #[test]
     fn parse_yank_ranges() {
         use ruse_core::SubRange;
-        assert_eq!(parse_ex("y"), Ex::Yank(SubRange::CurrentLine));
-        assert_eq!(parse_ex("yank"), Ex::Yank(SubRange::CurrentLine));
-        assert_eq!(parse_ex("1,3y"), Ex::Yank(SubRange::Lines(1, 3)));
-        assert_eq!(parse_ex("%yank"), Ex::Yank(SubRange::WholeFile));
+        assert_eq!(parse_ex("y"), Ex::Yank(SubRange::CurrentLine, None));
+        assert_eq!(parse_ex("yank"), Ex::Yank(SubRange::CurrentLine, None));
+        assert_eq!(parse_ex("1,3y"), Ex::Yank(SubRange::Lines(1, 3), None));
+        assert_eq!(parse_ex("%yank"), Ex::Yank(SubRange::WholeFile, None));
     }
 
     #[test]
@@ -591,8 +591,9 @@ mod tests {
             parse_ex("t5"),
             Ex::Copy(SubRange::CurrentLine, LineAddr::Line(5))
         );
-        // A move/copy with no destination is not a valid command → Unknown.
-        assert!(matches!(parse_ex("m"), Ex::Unknown(_)));
+        // A move/copy with no destination is E16, as in nvim.
+        assert_eq!(parse_ex("m"), Ex::Fail("E16: Invalid range".into()));
+        assert_eq!(parse_ex("t"), Ex::Fail("E16: Invalid range".into()));
     }
 
     #[test]
@@ -718,8 +719,27 @@ mod tests {
         // `tabstop` is its own option, not an alias of `shiftwidth` (#601).
         assert_eq!(parse_ex("set ts=8"), Ex::Set(EditorOption::TabStop(8)));
         assert_eq!(parse_ex("set tabstop=2"), Ex::Set(EditorOption::TabStop(2)));
-        // Unknown option → not a Set (falls through to Unknown).
-        assert!(matches!(parse_ex("set bogus"), Ex::Unknown(_)));
+        // An option nvim does not know is E518 (#1087); a misused or mistyped one E474/E521; one nvim
+        // knows but ruse does not implement only says so.
+        let fail = |s: &str| Ex::Fail(s.into());
+        assert_eq!(parse_ex("set bogus"), fail("E518: Unknown option: bogus"));
+        assert_eq!(
+            parse_ex("set nobogus"),
+            fail("E518: Unknown option: nobogus")
+        );
+        assert_eq!(parse_ex("set nosw"), fail("E474: Invalid argument: nosw"));
+        assert_eq!(
+            parse_ex("set sw=x"),
+            fail("E521: Number required after =: sw=x")
+        );
+        assert_eq!(
+            parse_ex("set nonumber"),
+            fail("option not supported: nonumber")
+        );
+        assert_eq!(
+            parse_ex("set invwrap"),
+            fail("option not supported: invwrap")
+        );
         assert!(matches!(parse_ex("set"), Ex::Unknown(_)));
     }
 
@@ -3624,7 +3644,7 @@ mod tests {
         assert_eq!(parse_ex("marks"), Ex::Marks);
         assert_eq!(parse_ex("jumps"), Ex::Jumps);
         assert_eq!(parse_ex("changes"), Ex::Changes);
-        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine));
+        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine, None));
     }
 
     /// F-007 multi-buffer ex commands parse: `:enew`, `:ls`, `:bn`/`:bp`, `:b {n}` (with/without space),

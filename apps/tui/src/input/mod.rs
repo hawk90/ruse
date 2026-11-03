@@ -495,6 +495,9 @@ pub struct SuspendedCmdline(Option<CmdLine>);
 pub struct InputEngine {
     /// Which input profile is active — Vim (modal grammar) or Emacs (non-modal). Chosen at construction.
     input_profile: InputProfile,
+    /// The error the last key failed with, when the engine alone can tell (`n` before any search is E35),
+    /// for the frontend's status line. Taken with [`InputEngine::take_error`].
+    error: Option<&'static str>,
     /// The active profile's layers. Built once — resolution must not allocate per keystroke.
     profile: VimProfile,
     /// The Normal-family grammar layer's owned transient state (count / operator / awaiting / forced
@@ -636,6 +639,7 @@ impl InputEngine {
     fn with_profile(input_profile: InputProfile) -> InputEngine {
         InputEngine {
             input_profile,
+            error: None,
             profile: VimProfile::new(),
             normal: NormalState::default(),
             last_find: None,
@@ -663,6 +667,12 @@ impl InputEngine {
             emacs: EmacsProfile::new(),
             leader: false,
         }
+    }
+
+    /// The error the last fed key failed with, if the engine raised one (nvim's message), cleared by the
+    /// read.
+    pub fn take_error(&mut self) -> Option<&'static str> {
+        self.error.take()
     }
 
     /// Whether a one-shot command borrowed from another layer is in flight (`i_CTRL-O`): keys resolve
@@ -1219,7 +1229,10 @@ impl InputEngine {
                     offset,
                 })
             }
-            None => self.unmatched(Ns::Normal, key),
+            None => {
+                self.error = Some("E35: No previous regular expression");
+                self.unmatched(Ns::Normal, key)
+            }
         }
     }
 
@@ -2836,6 +2849,14 @@ impl InputEngine {
         if let Some(p) = self.normal.op {
             // `{count}<Del>` edits the count being typed (`d23<Del>w` = `d2w`), so it continues too.
             let count_edit = key.code == KeyCode::Delete && self.normal.count > 0;
+            // `dp`/`do` are `:diffput`/`:diffget`; ruse has no diff mode, so they fail as nvim does outside
+            // one (#1087).
+            if p.op == Op::Delete
+                && key.modifiers.is_empty()
+                && matches!(key.code, KeyCode::Char('p' | 'o'))
+            {
+                self.error = Some("E99: Current buffer is not in diff mode");
+            }
             if !is_chord(key) && !count_edit && !continues_op(p.op, key) {
                 return self.unmatched(Ns::OperatorPending, key);
             }
@@ -3965,6 +3986,7 @@ mod repeat;
 use repeat::{change_kind, ChangeIntent, ChangeKind};
 
 mod ex;
+mod nvim_options;
 pub(crate) use ex::reuse_last_search;
 // `GlobalPayload` is referenced by the non-test dispatch/run-loop (routing `:g/pat/normal` vs `d`/`s`) and
 // by the integration scenarios that drive `:g` directly, so it is part of the input surface like `Ex`.

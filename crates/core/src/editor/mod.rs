@@ -1286,6 +1286,11 @@ impl EditorState {
     /// like a linewise `dd` over the span. No range = the cursor's line. Returns the number of lines
     /// deleted (0 on an empty buffer). The cursor lands at the start of the line that took their place.
     pub fn delete_lines(&mut self, range: SubRange) -> usize {
+        self.delete_lines_into(range, None)
+    }
+
+    /// `:[range]d {x}` — [`EditorState::delete_lines`] into register `reg` (`None` = the unnamed one).
+    pub fn delete_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let bytes = self.doc.bytes();
         let Ok(hay) = std::str::from_utf8(bytes) else {
             return 0;
@@ -1313,7 +1318,7 @@ impl EditorState {
         let lines_text = bytes[fs..le].to_vec();
         self.view
             .registers
-            .delete(None, Register::linewise(lines_text));
+            .delete(reg, Register::linewise(lines_text));
         let list = EditList::new(vec![Edit::delete(start, end - start)])
             .expect("a single line-range delete is well-formed");
         // Vim moves the cursor to the range's first line (keeping its column) before deleting, so that is
@@ -1340,6 +1345,11 @@ impl EditorState {
     /// the span (no range = the cursor's line). Returns the number of lines yanked. Non-destructive: the
     /// buffer and cursor are unchanged (Vim moves the cursor to the range's last line; deferred).
     pub fn yank_lines(&mut self, range: SubRange) -> usize {
+        self.yank_lines_into(range, None)
+    }
+
+    /// `:[range]y {x}` — [`EditorState::yank_lines`] into register `reg` (`None` = the unnamed one).
+    pub fn yank_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let bytes = self.doc.bytes();
         let Ok(hay) = std::str::from_utf8(bytes) else {
             return 0;
@@ -1352,7 +1362,7 @@ impl EditorState {
         let end = if le < hay.len() { le + 1 } else { le };
         // `Register::linewise` normalizes to end with `\n`, so an unterminated last line still yanks clean.
         let text = bytes[fs..end].to_vec();
-        self.view.registers.yank(None, Register::linewise(text));
+        self.view.registers.yank(reg, Register::linewise(text));
         last - first + 1
     }
 
@@ -1450,6 +1460,23 @@ impl EditorState {
         self.relocate_lines(range, dest, true)
     }
 
+    /// Where `:m`/`:t` leave the cursor on the line starting at `ls` of `bytes`: the wanted column (Vim
+    /// `ex_copymove` → `beginline(BL_SOL | BL_FIX)`, which with 'nostartofline' keeps `curswant`; nvim
+    /// v0.12.6), on a character of the line.
+    fn relocated_cursor(&self, bytes: &[u8], ls: usize) -> usize {
+        let le = line_end(bytes, ls);
+        let cursor = if self.view.curswant == range::MAXCOL {
+            motion::prev_boundary(bytes, le).max(ls)
+        } else {
+            motion::at_col(bytes, ls, self.view.curswant)
+        };
+        if cursor >= le && le > ls {
+            motion::prev_boundary(bytes, le)
+        } else {
+            cursor
+        }
+    }
+
     /// Shared engine for `:m` (move) and `:t`/`:copy` (`copy = true` keeps the source). Rebuilds the line
     /// list and replaces the whole buffer in one transaction — simple and always correct for these
     /// non-hot ex commands (a surgical minimal-region edit is a possible later optimisation).
@@ -1479,9 +1506,15 @@ impl EditorState {
         let first = first.min(last);
         // Destination as a 0-based insert index in `0..=nlines`; a relative one off the buffer declines.
         let ins = dest.insert_index(cursor_line, nlines)?;
-        // A move whose destination is inside/adjacent to the source is a no-op (Vim errors; we decline).
-        if !copy && ins >= first && ins <= last + 1 {
+        // A move INTO the block is E134 (declined); a move to just before or just after it changes nothing
+        // but still puts the cursor on the block's last line, as Vim's `do_move` does (`:2m2`, #724).
+        if !copy && ins > first && ins <= last {
             return None;
+        }
+        if !copy && (ins == first || ins == last + 1) {
+            let ls = crate::pos::nth_line_start(bytes, last).min(bytes.len());
+            self.view.cursor = self.relocated_cursor(bytes, ls);
+            return Some(0);
         }
         let block: Vec<String> = lines[first..=last].to_vec();
         let count = block.len();
@@ -1503,20 +1536,8 @@ impl EditorState {
             text.push('\n');
         }
         let new_bytes = text.into_bytes();
-        // Cursor: onto the LAST relocated line, at the wanted column (Vim `ex_copymove` →
-        // `beginline(BL_SOL | BL_FIX)`, which with 'nostartofline' keeps `curswant`; nvim v0.12.6).
         let ls = crate::pos::nth_line_start(&new_bytes, adj + count - 1).min(new_bytes.len());
-        let le = line_end(&new_bytes, ls);
-        let cursor = if self.view.curswant == range::MAXCOL {
-            motion::prev_boundary(&new_bytes, le).max(ls)
-        } else {
-            motion::at_col(&new_bytes, ls, self.view.curswant)
-        };
-        let cursor = if cursor >= le && le > ls {
-            motion::prev_boundary(&new_bytes, le)
-        } else {
-            cursor
-        };
+        let cursor = self.relocated_cursor(&new_bytes, ls);
 
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");

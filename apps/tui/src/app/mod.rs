@@ -3,5 +3,6 @@
 
 pub(crate) mod cli;
 pub(crate) mod dispatch;
+pub(crate) mod ex_range;
 pub(crate) mod lsp_coordinator;
 pub(crate) mod session;

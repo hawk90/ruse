@@ -17,6 +17,7 @@ use crate::app::dispatch::{
     buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, match_count_message, may_quit,
     open_file_into_buffer, quit_window, regex_error_msg, run_cmd, save, BufferFile, Files,
 };
+use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
 use crate::input::{parse_ex, BufTarget, Ex, Feed, InputEngine, Pending, ReadSource};
 use crate::terminal::guard::TermGuard;
@@ -314,6 +315,36 @@ pub(crate) struct SessionInit {
     pub(crate) rescue: bool,
 }
 
+/// Put the cursor on 1-based `line` for an Ex range: Vim `beginline(BL_SOL | BL_FIX)` under
+/// 'nostartofline' keeps the wanted column, so this is `j`/`k` by the distance (nvim v0.12.6 `ll:3` stays
+/// in column 2).
+fn goto_line(
+    line: usize,
+    ws: &mut Workspace,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    let b = ws.focused().doc.bytes();
+    let here = ruse_core::pos::line_of(b, ws.focused().view.cursor()) + 1;
+    let (n, motion) = if line >= here {
+        (line - here, ruse_core::Motion::Down)
+    } else {
+        (here - line, ruse_core::Motion::Up)
+    };
+    if n > 0 {
+        let cmd = Command::Move(n as u32, motion);
+        crate::app::dispatch::run_cmd(cmd, ws, files, recorded, status, quit);
+    }
+}
+
+/// A `:` line stopped at a backwards range (#1093): the command with its range swapped, then the
+/// commands after it on the line, run in order once the prompt is answered `y`.
+struct SwapPrompt {
+    pending: Vec<String>,
+}
+
 /// The editor state the event loop owns (#878): everything `run` used to keep in locals except the
 /// terminal (guard, output, previous frame, graphics placements). `run` drives it with
 /// [`Session::pre_frame`] → render → [`Session::post_render`] → read a key → [`Session::on_key`]; the
@@ -363,6 +394,10 @@ pub(crate) struct Session {
     macros: crate::keys::MacroState,
     /// A `:s///c` interactive confirm loop, when active (F-009).
     pub(crate) confirm: Option<Confirm>,
+    /// A backwards Ex range waiting for its `y`/`n` (`Backwards range given, OK to swap (y/n)?`, #1093).
+    swap: Option<SwapPrompt>,
+    /// The key that answered [`Session::swap`], handed from the key routing to [`Session::answer_swap`].
+    swap_answer: Option<KeyEvent>,
     /// The hlsearch pattern (last `/`-search), until `:noh`.
     pub(crate) search_hl: Option<String>,
     /// hlsearch/incsearch render preferences (`:set (no)hlsearch/incsearch`); ON by default (better-than-Vim,
@@ -501,6 +536,8 @@ impl Session {
             meta_tail: None,
             macros: crate::keys::MacroState::new(),
             confirm: None,
+            swap: None,
+            swap_answer: None,
             search_hl: None,
             hlsearch_on: true,
             incsearch_on: true,
@@ -762,6 +799,11 @@ impl Session {
         frame: &FrameCtx,
     ) -> Flow {
         self.route(raw_key, from_replay, frame);
+        if let Some(key) = self.swap_answer.take() {
+            if let Some(prompt) = self.swap.take() {
+                self.answer_swap(prompt, key, frame);
+            }
+        }
         if self.quit {
             Flow::Quit
         } else {
@@ -848,6 +890,7 @@ impl Session {
     /// layer must not take its `q`/`@` (#851).
     fn overlay_open(&self) -> bool {
         self.confirm.is_some()
+            || self.swap.is_some()
             || self.palette.is_some()
             || self.line_picker.is_some()
             || self.buffer_picker.is_some()
@@ -880,6 +923,8 @@ impl Session {
             foldenable,
             macros,
             confirm,
+            swap,
+            swap_answer,
             search_hl,
             last_substitute,
             last_ex_line,
@@ -1032,6 +1077,11 @@ impl Session {
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
             confirm_key(confirm, key, ws, status);
+            return;
+        }
+        // A backwards-range prompt owns the next key; [`Session::on_key`] answers it once routing is done.
+        if swap.is_some() {
+            *swap_answer = Some(key);
             return;
         }
         // A picker owns the keystream while open (F-004 / F-013 NAT-3): its transient keymap filters/moves,
@@ -1831,7 +1881,11 @@ impl Session {
         }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
         // namespace owns its buffer, so the frontend no longer special-cases `:`/`/` typing.
-        match engine.feed(key, ws.focused().view.mode()) {
+        let fed = engine.feed(key, ws.focused().view.mode());
+        if let Some(e) = engine.take_error() {
+            *status = e.to_string();
+        }
+        match fed {
             // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
             // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
             Feed::ExecuteEx(text) => {
@@ -2067,12 +2121,43 @@ impl Session {
         // Record the executed command-line for Vim's `":` register (`:help quote_:`), without the
         // leading `:` (the engine already strips it). Read by `C-r :` / `":p` / `@:`.
         self.last_ex_line = Some(text.clone());
-        for cmd in crate::input::split_bar(&text) {
+        self.run_ex_pieces(crate::input::split_bar(&text), frame);
+    }
+
+    /// Run the `|`-separated commands of one line in turn (see [`Session::execute_ex`]). A backwards range
+    /// stops the line at its prompt; the commands after it wait in the prompt for its answer.
+    fn run_ex_pieces(&mut self, pieces: Vec<String>, frame: &FrameCtx) {
+        let mut pieces = pieces.into_iter();
+        while let Some(cmd) = pieces.next() {
             self.status.clear();
             self.execute_ex_one(cmd, frame);
+            if let Some(prompt) = &mut self.swap {
+                prompt.pending.extend(pieces);
+                return;
+            }
             if self.quit || self.confirm.is_some() || is_ex_error(&self.status) {
                 break;
             }
+        }
+    }
+
+    /// The key that answered a backwards-range prompt (`ask_yesno` in nvim): `y` swaps the range and runs
+    /// the rest of the line, `n`, `<Esc>` or `CTRL-C` drop the whole line, and any other key is ignored
+    /// while the prompt stays up.
+    fn answer_swap(&mut self, prompt: SwapPrompt, key: KeyEvent, frame: &FrameCtx) {
+        let plain = !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        match key.code {
+            KeyCode::Char('y') if plain => {
+                self.status.clear();
+                self.run_ex_pieces(prompt.pending, frame);
+            }
+            KeyCode::Char('n') | KeyCode::Esc if plain => self.status.clear(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.status.clear()
+            }
+            _ => self.swap = Some(prompt),
         }
     }
 
@@ -2097,6 +2182,7 @@ impl Session {
             foldenable,
             fold_rev,
             confirm,
+            swap,
             search_hl,
             hlsearch_on,
             incsearch_on,
@@ -2134,24 +2220,34 @@ impl Session {
             *last_shell = Some(cmd.clone());
             Ok(cmd)
         };
-        // The leading range (`.`, `$`, offsets, `'<,'>` from Visual `:`) resolves to line numbers; one past
-        // the buffer is E16 (#1079), and a range with no command goes to its line (`:5`, `:$`).
-        let text = match crate::app::dispatch::resolve_ex_range(&text, ws) {
-            Ok(crate::app::dispatch::ExRange::Line(text)) => text,
-            Ok(crate::app::dispatch::ExRange::Goto(line)) => {
-                // Vim `beginline(BL_SOL | BL_FIX)` under 'nostartofline': the wanted column is kept, so
-                // this is `j`/`k` by the distance (nvim v0.12.6 `ll:3` stays in column 2).
-                let b = ws.focused().doc.bytes();
-                let here = ruse_core::pos::line_of(b, ws.focused().view.cursor()) + 1;
-                let (n, motion) = if line >= here {
-                    (line - here, ruse_core::Motion::Down)
-                } else {
-                    (here - line, ruse_core::Motion::Up)
-                };
-                if n > 0 {
-                    let cmd = Command::Move(n as u32, motion);
-                    crate::app::dispatch::run_cmd(cmd, ws, files, recorded, status, quit);
-                }
+        // The leading range (`.`, `$`, offsets, marks, `/pat/`, `'<,'>` from Visual `:`) resolves to line
+        // numbers (`app::ex_range`); one past the buffer is E16 (#1079), a range with no command goes to its
+        // line (`:5`, `:$`), and a backwards one asks before it is swapped.
+        let pats = crate::app::ex_range::AddrPatterns {
+            search: engine.last_search(),
+            substitute: last_substitute.as_ref().map(|(p, _, _)| p.as_str()),
+        };
+        let resolved = crate::app::ex_range::resolve_ex_range(&text, ws, pats);
+        // A `/pat/` or `?pat?` address becomes the last search, as in Vim (`:/foo/d` then `n`).
+        if let Some((pat, forward)) = resolved.search {
+            engine.set_last_search(pat.clone(), forward);
+            *search_hl = Some(pat);
+        }
+        // A `;` in the range moved the cursor, and it stays moved whatever the command does (`:5;-2d`).
+        if let Some(line) = resolved.cursor {
+            goto_line(line, ws, files, recorded, status, quit);
+        }
+        let text = match resolved.range {
+            Ok(ExRange::Line(text)) => text,
+            Ok(ExRange::Backwards(swapped)) => {
+                *status = "Backwards range given, OK to swap (y/n)?".into();
+                *swap = Some(SwapPrompt {
+                    pending: vec![swapped],
+                });
+                return;
+            }
+            Ok(ExRange::Goto(line)) => {
+                goto_line(line, ws, files, recorded, status, quit);
                 return;
             }
             Err(e) => {
@@ -2614,8 +2710,8 @@ impl Session {
                 }
             }
             // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
-            Ex::Delete(range) => {
-                let n = ws.delete_lines(range);
+            Ex::Delete(range, reg) => {
+                let n = ws.delete_lines_into(range, reg);
                 *status = if n == 1 {
                     "1 line deleted".into()
                 } else {
@@ -2623,8 +2719,8 @@ impl Session {
                 };
             }
             // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
-            Ex::Yank(range) => {
-                let n = ws.yank_lines(range);
+            Ex::Yank(range, reg) => {
+                let n = ws.yank_lines_into(range, reg);
                 *status = if n == 1 {
                     "1 line yanked".into()
                 } else {
@@ -2647,6 +2743,7 @@ impl Session {
             }
             Ex::Move(range, dest) => {
                 *status = match ws.move_lines(range, dest) {
+                    Some(0) => String::new(), // moved onto itself (`:2m2`): nothing to report
                     Some(1) => "1 line moved".into(),
                     Some(n) => format!("{n} lines moved"),
                     None => "E134: Cannot move a range of lines into itself".into(),
@@ -2727,6 +2824,7 @@ impl Session {
                     None => *status = "E23: no alternate buffer".into(),
                 }
             }
+            Ex::Fail(msg) => *status = msg,
             Ex::Unknown(s) => *status = format!("E492: Not an editor command: {s}"),
         }
     }
