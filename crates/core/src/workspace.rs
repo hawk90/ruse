@@ -214,6 +214,31 @@ impl Workspace {
         (doc, view)
     }
 
+    /// The swap-trick in one place (#769): take view `vid` and its document out of their arena slots, lend
+    /// them to `f` as an [`EditorState`] (with the clipboard provider, for the `"+`/`"*` sync), then reclaim
+    /// them and put them back. The only caller of [`Workspace::lend`] / [`Workspace::reclaim`], so no path
+    /// can forget the register store or the other views' pinned marks.
+    fn with_view<R>(
+        &mut self,
+        vid: ViewId,
+        f: impl FnOnce(&mut EditorState, &mut dyn Clipboard) -> R,
+    ) -> R {
+        let view = self.views[vid.0].take().expect("view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("doc live");
+        let mut st = self.lend(doc, view);
+        let out = f(&mut st, self.clipboard.as_mut());
+        let (doc, view) = self.reclaim(st);
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
+    }
+
+    /// [`Workspace::with_view`] on the FOCUSED window.
+    fn with_focused<R>(&mut self, f: impl FnOnce(&mut EditorState) -> R) -> R {
+        self.with_view(self.windows[self.focus].view, |st, _| f(st))
+    }
+
     /// The editor-global register store (read-only).
     #[must_use]
     pub fn registers(&self) -> &RegisterStore {
@@ -390,43 +415,35 @@ impl Workspace {
     /// `apply_command` pipeline, swaps them back, and returns the [`Effect`]s for the frontend.
     pub fn apply(&mut self, cmd: &Command) -> Vec<Effect> {
         let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let did = view.doc();
-        let slot = Self::doc_slot(did);
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-
-        // `"+`/`"*` (`:help quoteplus`): this command touches the system clipboard when the one-shot pending
-        // register is `+`/`*` (a `"+y`/`"+p`/`"+d`), or it is an `i_CTRL-R` insert directly from `+`/`*`. The
-        // OS clipboard is an impure side effect, so it is synced HERE (the orchestration boundary), never in
-        // the pure planner: PULL the external clipboard into the mirror slot before the command so a paste
-        // reflects what another app copied, then PUSH the mirror slot out after so a yank/delete propagates.
-        let touches_clipboard = crate::register::RegisterStore::is_clipboard(st.pending_register())
-            || matches!(
-                cmd,
-                Command::InsertRegister('+') | Command::InsertRegister('*')
-            );
-        if touches_clipboard {
-            if let Some(text) = self.clipboard.get() {
-                st.sync_clipboard_in(text.into_bytes());
+        let effects = self.with_view(vid, |st, clipboard| {
+            // `"+`/`"*` (`:help quoteplus`): this command touches the system clipboard when the one-shot
+            // pending register is `+`/`*` (a `"+y`/`"+p`/`"+d`), or it is an `i_CTRL-R` insert directly from
+            // `+`/`*`. The OS clipboard is an impure side effect, so it is synced HERE (the orchestration
+            // boundary), never in the pure planner: PULL the external clipboard into the mirror slot before
+            // the command so a paste reflects what another app copied, then PUSH the mirror slot out after so
+            // a yank/delete propagates.
+            let touches_clipboard =
+                crate::register::RegisterStore::is_clipboard(st.pending_register())
+                    || matches!(
+                        cmd,
+                        Command::InsertRegister('+') | Command::InsertRegister('*')
+                    );
+            if touches_clipboard {
+                if let Some(text) = clipboard.get() {
+                    st.sync_clipboard_in(text.into_bytes());
+                }
             }
-        }
-
-        let effects = apply_command(&mut st, cmd);
+            let effects = apply_command(st, cmd);
+            if touches_clipboard {
+                // The mirror slot now holds the yanked/deleted bytes (a paste leaves it unchanged, so the
+                // push is idempotent). `String::from_utf8_lossy` keeps a non-UTF-8 buffer from ever
+                // panicking the write.
+                let bytes = st.registers().clipboard().text().to_vec();
+                clipboard.set(&String::from_utf8_lossy(&bytes));
+            }
+            effects
+        });
         self.beeped |= effects.contains(&Effect::Beep);
-
-        if touches_clipboard {
-            // The mirror slot now holds the yanked/deleted bytes (a paste leaves it unchanged, so the push is
-            // idempotent). `String::from_utf8_lossy` keeps a non-UTF-8 buffer from ever panicking the write.
-            let bytes = st.registers().clipboard().text().to_vec();
-            self.clipboard.set(&String::from_utf8_lossy(&bytes));
-        }
-
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
         effects
     }
 
@@ -435,33 +452,13 @@ impl Workspace {
     /// aims at `pos`'s column (the swap-trick). For homing a test fixture's start point;
     /// [`Workspace::place_focused_cursor`] leaves the sticky column alone.
     pub fn set_focused_cursor(&mut self, pos: usize) {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        st.set_cursor(pos);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
+        self.with_focused(|st| st.set_cursor(pos));
     }
 
     /// Store raw macro bytes into a named register of the FOCUSED view (D-055; the swap-trick). Shares the
     /// a-z slots with yank/paste, so a recorded macro pastes as text and yanked text runs as a macro.
     pub fn set_register_raw(&mut self, name: Option<char>, bytes: Vec<u8>) {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        st.set_register_raw(name, bytes);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
+        self.with_focused(|st| st.set_register_raw(name, bytes));
     }
 
     /// Sync the four read-only special registers `"/ ": ". "%` of the FOCUSED view from frontend state
@@ -475,17 +472,7 @@ impl Workspace {
         inserted: Option<String>,
         file: Option<String>,
     ) {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        st.set_special_registers(search, last_ex, inserted, file);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
+        self.with_focused(|st| st.set_special_registers(search, last_ex, inserted, file));
     }
 
     /// Sync `"#`, the alternate file name (`:help quote#`); `None` when there is no alternate file.
@@ -493,34 +480,19 @@ impl Workspace {
         self.registers.set_alternate(name);
     }
 
-    /// The raw bytes of a named register of the FOCUSED view (D-055 macro replay; the swap-trick). Empty
+    /// The raw bytes of a named register of the FOCUSED view (D-055 macro replay). Empty
     /// when the register is unset.
-    pub fn register_bytes(&mut self, name: Option<char>) -> Vec<u8> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let bytes = st.registers().get(name).text().to_vec();
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        bytes
+    #[must_use]
+    pub fn register_bytes(&self, name: Option<char>) -> Vec<u8> {
+        self.registers.get(name).text().to_vec()
     }
 
     /// A snapshot of the FOCUSED view's NON-EMPTY registers as `(name, kind, bytes)` — the unnamed slot
-    /// (`"`), the yank register (`0`), and the named `a`-`z` — for `:registers` (the swap-trick). Order: `"`,
+    /// (`"`), the yank register (`0`), and the named `a`-`z` — for `:registers`. Order: `"`,
     /// `0`, a..z. The [`RegKind`] drives the frontend's Type column (`c`/`l`/`b`, per Vim's `:reg` layout).
-    pub fn register_snapshot(&mut self) -> Vec<(char, RegKind, Vec<u8>)> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let regs = st.registers();
+    #[must_use]
+    pub fn register_snapshot(&self) -> Vec<(char, RegKind, Vec<u8>)> {
+        let regs = &self.registers;
         let mut out = Vec::new();
         // Vim `:reg` order: unnamed, the yank register "0, the numbered delete-ring "1–"9, the small-delete
         // register "-, then the named slots "a–"z. Empty slots are omitted.
@@ -534,55 +506,22 @@ impl Workspace {
                 out.push((name, r.kind(), r.text().to_vec()));
             }
         }
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
         out
     }
 
     /// The FOCUSED view's set marks (`a`-`z`, `.`, `^`) as `(name, byte offset)` for `:marks` (swap-trick).
     pub fn marks_snapshot(&mut self) -> Vec<(char, usize)> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let marks = st.marks_snapshot();
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        marks
+        self.with_focused(|st| st.marks_snapshot())
     }
 
     /// The FOCUSED view's jumplist positions for `:jumps` (swap-trick).
     pub fn jumps_snapshot(&mut self) -> Vec<usize> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-        let st = self.lend(doc, view);
-        let out = st.jumps_snapshot();
-        let (doc, view) = self.reclaim(st);
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        out
+        self.with_focused(|st| st.jumps_snapshot())
     }
 
     /// The FOCUSED view's change-list positions for `:changes` (swap-trick).
     pub fn changes_snapshot(&mut self) -> Vec<usize> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-        let st = self.lend(doc, view);
-        let out = st.changes_snapshot();
-        let (doc, view) = self.reclaim(st);
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        out
+        self.with_focused(|st| st.changes_snapshot())
     }
 
     /// Run `:[range]s/pat/rep/flags` against the FOCUSED Window (the swap-trick, like [`Workspace::apply`]),
@@ -594,19 +533,7 @@ impl Workspace {
         replacement: &str,
         flags: SubFlags,
     ) -> Result<SubOutcome, RegexError> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let did = view.doc();
-        let slot = Self::doc_slot(did);
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let result = st.substitute(range, pattern, replacement, flags);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        result
+        self.with_focused(|st| st.substitute(range, pattern, replacement, flags))
     }
 
     /// Compute (do NOT apply) the substitutions `:s///c` would offer on the focused window — the
@@ -622,18 +549,7 @@ impl Workspace {
         // `substitute_preview` reads only, but `EditorState` owns its parts and `Document` is not
         // `Clone`, so swap the focused (Document, View) out, compute, and swap them back unchanged
         // (like `apply`, but the document is never mutated). Runs once per `:s///c`, not per keystroke.
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let out = st.substitute_preview(range, pattern, replacement, flags);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        out
+        self.with_focused(|st| st.substitute_preview(range, pattern, replacement, flags))
     }
 
     /// Count — WITHOUT editing — the matches `:[range]s/pat//n` (the `n` report-only flag) would act on
@@ -645,35 +561,13 @@ impl Workspace {
         pattern: &str,
         flags: SubFlags,
     ) -> Result<SubOutcome, RegexError> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let out = st.substitute_count(range, pattern, flags);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        out
+        self.with_focused(|st| st.substitute_count(range, pattern, flags))
     }
 
     /// Apply an accepted set of [`Substitution`]s to the focused window as one undo group (the tail of
     /// the `:s///c` confirm loop). Swap-trick like [`Workspace::apply`].
     pub fn apply_substitutions(&mut self, subs: &[Substitution]) -> SubOutcome {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let out = st.apply_substitutions(subs);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        out
+        self.with_focused(|st| st.apply_substitutions(subs))
     }
 
     /// Run `:[range]g/pat/cmd` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]):
@@ -685,18 +579,7 @@ impl Workspace {
         negate: bool,
         cmd: &GlobalCmd,
     ) -> Result<usize, RegexError> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let result = st.global(range, pattern, negate, cmd);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        result
+        self.with_focused(|st| st.global(range, pattern, negate, cmd))
     }
 
     /// PASS 1 of `:g` against the FOCUSED window: the 1-based line numbers the pattern marks (or, with
@@ -715,17 +598,7 @@ impl Workspace {
     ) -> Result<Vec<usize>, RegexError> {
         // The swap-trick (like [`Workspace::global`]): move the focused parts into an [`EditorState`] to
         // reuse its single marking rule, then swap them back untouched (marking is read-only).
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let result = st.global_marks(range, pattern, negate);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
+        let result = self.with_focused(|st| st.global_marks(range, pattern, negate));
         Ok(result?.into_iter().map(|li| li + 1).collect())
     }
 
@@ -737,18 +610,7 @@ impl Workspace {
 
     /// [`Workspace::delete_lines`] into register `reg` (`None` = the unnamed one), for `:d {x}` / `:y {x}`.
     pub fn delete_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.delete_lines_into(range, reg);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.delete_lines_into(range, reg))
     }
 
     /// Apply a disjoint `(start, end, text)` batch edit to the FOCUSED window (the swap-trick, like
@@ -760,18 +622,7 @@ impl Workspace {
         edits: &[(crate::pos::BytePos, crate::pos::BytePos, String)],
         origin: TransactionOrigin,
     ) -> bool {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let applied = st.apply_edits(edits, origin);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        applied
+        self.with_focused(|st| st.apply_edits(edits, origin))
     }
 
     /// Run `:[range]y` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): yank the
@@ -782,88 +633,33 @@ impl Workspace {
 
     /// [`Workspace::yank_lines`] into register `reg` (`None` = the unnamed one), for `:d {x}` / `:y {x}`.
     pub fn yank_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.yank_lines_into(range, reg);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.yank_lines_into(range, reg))
     }
 
     /// Run `:[range]j[oin][!]` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): join
     /// the range's lines, reusing the same core join `J`/`gJ` emit. `no_space` is the `!` (raw `gJ`) form.
     /// Returns the number of lines joined.
     pub fn join_lines(&mut self, range: SubRange, no_space: bool) -> usize {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.join_lines(range, no_space);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.join_lines(range, no_space))
     }
 
     /// Run `:[range]>` / `:[range]<` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]):
     /// shift the range's lines `levels` indent levels right (`left = false`) or left (`left = true`), reusing
     /// the core `>>`/`<<` shift. Returns the number of lines in the range.
     pub fn shift_lines(&mut self, range: SubRange, left: bool, levels: u32) -> usize {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.shift_lines(range, left, levels);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.shift_lines(range, left, levels))
     }
 
     /// Run `:[range]m {addr}` against the FOCUSED window (swap-trick): move the range's lines to after the
     /// destination. Returns the lines moved, or `None` if the destination is inside the source.
     pub fn move_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.move_lines(range, dest);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.move_lines(range, dest))
     }
 
     /// Run `:[range]t {addr}` / `:copy` against the FOCUSED window (swap-trick): copy the range's lines to
     /// after the destination. Returns the lines copied.
     pub fn copy_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.copy_lines(range, dest);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.copy_lines(range, dest))
     }
 
     /// Run `:[line]put [reg]` against the FOCUSED window (swap-trick): put the register's text LINEWISE as
@@ -873,22 +669,14 @@ impl Workspace {
     /// another app copied. A put only READS a register, so nothing is pushed back out.
     pub fn put_lines(&mut self, addr: LineAddr, reg: Option<char>) -> usize {
         let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        if crate::register::RegisterStore::is_clipboard(reg) {
-            if let Some(text) = self.clipboard.get() {
-                st.sync_clipboard_in(text.into_bytes());
+        self.with_view(vid, |st, clipboard| {
+            if crate::register::RegisterStore::is_clipboard(reg) {
+                if let Some(text) = clipboard.get() {
+                    st.sync_clipboard_in(text.into_bytes());
+                }
             }
-        }
-        let n = st.put_lines(addr, reg);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+            st.put_lines(addr, reg)
+        })
     }
 
     /// Run `:[addr]r {file}` / `:[addr]r !{cmd}` against the FOCUSED window (swap-trick): insert `text` (a
@@ -896,18 +684,7 @@ impl Workspace {
     /// `cursor_on_last` picks the cursor's landing line (last inserted for a command read, first otherwise —
     /// nvim's quirk). Returns the number of lines inserted.
     pub fn read_lines(&mut self, addr: LineAddr, text: &[u8], cursor_on_last: bool) -> usize {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.read_lines(addr, text, cursor_on_last);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.read_lines(addr, text, cursor_on_last))
     }
 
     /// The text of the FOCUSED window's lines in `range` (each with a trailing `\n`), as the frontend feeds a
@@ -915,52 +692,19 @@ impl Workspace {
     /// takes `&mut self` to reuse the swap-trick that reconstitutes the [`EditorState`] (which owns the
     /// resolver).
     pub fn range_text(&mut self, range: SubRange) -> Option<Vec<u8>> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let out = st.range_text(range);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        out
+        self.with_focused(|st| st.range_text(range))
     }
 
     /// Run `:{range}!{cmd}` against the FOCUSED window (swap-trick): replace the range's lines with `text`
     /// (the filter command's stdout, captured by the frontend). Returns the number of input lines filtered.
     pub fn filter_lines(&mut self, range: SubRange, text: &[u8]) -> usize {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.filter_lines(range, text);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.filter_lines(range, text))
     }
 
     /// Run `:[range]retab[!] [N]` against the FOCUSED window (swap-trick; see [`EditorState::retab`]).
     /// Returns whether any line changed.
     pub fn retab(&mut self, range: SubRange, bang: bool, new_tabstop: Option<usize>) -> bool {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let changed = st.retab(range, bang, new_tabstop);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        changed
+        self.with_focused(|st| st.retab(range, bang, new_tabstop))
     }
 
     /// `:keepjumps` (#609): while `on`, no view records a jumplist or change-list entry (so `''`, `` `. ``,
@@ -1005,18 +749,7 @@ impl Workspace {
         range: SubRange,
         opts: &crate::SortOptions,
     ) -> Result<usize, RegexError> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let mut st = self.lend(doc, view);
-        let n = st.sort_lines(range, opts);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        n
+        self.with_focused(|st| st.sort_lines(range, opts))
     }
 
     /// Move focus to the next Window in tile order, wrapping (Vim `C-w w`). No-op with one Window.
@@ -1352,18 +1085,7 @@ impl Workspace {
     /// search, `n`/`N`, `*`/`#`, a `gn` match or a mark), or `None` when it has no target. See
     /// [`EditorState::span_lines`]; the frontend numbers the `!{motion}` filter's `:{range}!` line from it.
     pub fn span_lines(&mut self, cmd: &crate::Command) -> Option<(usize, usize)> {
-        let vid = self.windows[self.focus].view;
-        let view = self.views[vid.0].take().expect("focused view live");
-        let slot = Self::doc_slot(view.doc());
-        let doc = self.docs[slot].take().expect("focused doc live");
-
-        let st = self.lend(doc, view);
-        let lines = st.span_lines(cmd);
-        let (doc, view) = self.reclaim(st);
-
-        self.docs[slot] = Some(doc);
-        self.views[vid.0] = Some(view);
-        lines
+        self.with_focused(|st| st.span_lines(cmd))
     }
 
     /// The search pattern `*`/`#` (`whole_word`, `\<word\>`) or `g*`/`g#` (the bare word) builds from the
