@@ -813,23 +813,29 @@ pub(crate) fn draw_separators(
     split: SplitDir,
     cols: u16,
     text_rows: u16,
+    wins: &[WinView],
 ) {
     use crossterm::style::Color;
-    for pair in rects.windows(2) {
+    for (i, pair) in rects.windows(2).enumerate() {
+        // The window before the divider owns it: its 'fillchars' `vert` / `horiz` (#616).
+        let fill = wins.get(i).map(|w| &w.fill);
+        let mut buf = [0u8; 4];
         match split {
             SplitDir::Horizontal => {
+                let ch: &str = fill.map_or('\u{2500}', |f| f.horiz).encode_utf8(&mut buf);
                 let y = pair[0].y + pair[0].h;
                 if y < text_rows {
                     for x in 0..cols {
-                        cur.put(y, x, "─", Color::Reset, false);
+                        cur.put(y, x, ch, Color::Reset, false);
                     }
                 }
             }
             SplitDir::Vertical => {
+                let ch: &str = fill.map_or('\u{2502}', |f| f.vert).encode_utf8(&mut buf);
                 let x = pair[0].x + pair[0].w;
                 if x < cols {
                     for y in 0..text_rows {
-                        cur.put(y, x, "│", Color::Reset, false);
+                        cur.put(y, x, ch, Color::Reset, false);
                     }
                 }
             }
@@ -1144,7 +1150,7 @@ pub(crate) fn render(
         };
         paint_window(&mut cur, rect, &input, &mut images);
     }
-    draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
+    draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows, wins);
 
     // The command palette (F-004): paint its match rows just above the status line, newest selection
     // in reverse video. Rows beyond the available height are dropped (the list scrolls with selection

@@ -1127,6 +1127,11 @@ impl Session {
                     curswant: 0,
                 };
                 pos.skipcol = sc.uncover_cursor(&pos);
+                if !win.smoothscroll {
+                    // Without 'smoothscroll' a scroll's leftover skipped columns are gone once the
+                    // cursor has moved (nvim's `curs_columns` runs before the top line is checked).
+                    pos.skipcol = sc.frame_skipcol(&pos);
+                }
                 let skipped = crate::scroll::TopSkipped {
                     lines: &lines,
                     top: pos.top,

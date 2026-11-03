@@ -278,6 +278,124 @@ const CASES: &[(&str, &[Step])] = &[
             ("30G", (30, 0), 28, 0, 0),
         ],
     ),
+    // s2_nowrap: `:set so=0 nowrap<CR>`
+    (
+        ":set so=0 nowrap<CR>",
+        &[
+            ("<C-d>", (5, 0), 5, 0, 0),
+            ("<C-d>", (9, 0), 9, 0, 0),
+            ("<C-u>", (5, 0), 5, 0, 0),
+            ("<C-f>", (11, 0), 11, 0, 0),
+            ("<C-b>", (12, 0), 5, 0, 0),
+            ("<C-e>", (12, 0), 6, 0, 0),
+            ("<C-e>", (12, 0), 7, 0, 0),
+            ("<C-y>", (12, 0), 6, 0, 0),
+            ("G", (40, 0), 33, 0, 0),
+            ("<C-u>", (36, 0), 29, 0, 0),
+            ("<C-b>", (30, 0), 23, 0, 0),
+            ("gg", (1, 0), 1, 0, 0),
+        ],
+    ),
+    // s2_fold: `:set so=0<CR>:normal 4Gzf8jgg<CR>`
+    (
+        ":set so=0<CR>:normal 4Gzf8jgg<CR>",
+        &[
+            ("<C-e>", (2, 0), 2, 0, 0),
+            ("<C-e>", (3, 0), 3, 0, 0),
+            ("<C-e>", (4, 0), 4, 0, 0),
+            ("<C-y>", (4, 0), 3, 0, 0),
+            ("<C-y>", (4, 0), 2, 0, 0),
+            ("<C-y>", (4, 0), 1, 0, 0),
+            ("<C-d>", (15, 0), 4, 0, 0),
+            ("<C-u>", (3, 40), 2, 0, 40),
+            ("<C-f>", (14, 2), 14, 0, 40),
+            ("<C-b>", (14, 2), 2, 0, 40),
+            ("gg", (1, 1), 1, 0, 40),
+        ],
+    ),
+    // s2_fold3: `:set so=3<CR>:normal 4Gzf8jgg<CR>`
+    (
+        ":set so=3<CR>:normal 4Gzf8jgg<CR>",
+        &[
+            ("<C-e>", (3, 0), 2, 0, 0),
+            ("<C-e>", (3, 0), 3, 0, 0),
+            ("<C-e>", (14, 0), 4, 0, 0),
+            ("<C-y>", (3, 0), 3, 0, 0),
+            ("<C-y>", (3, 0), 2, 0, 0),
+            ("<C-y>", (3, 0), 1, 0, 0),
+            ("<C-d>", (4, 0), 3, 0, 0),
+            ("<C-u>", (2, 0), 1, 0, 0),
+            ("<C-f>", (15, 0), 13, 0, 0),
+            ("<C-b>", (3, 0), 1, 0, 0),
+        ],
+    ),
+    // s2_scr: `:set so=0 scroll=2<CR>`
+    (
+        ":set so=0 scroll=2<CR>",
+        &[
+            ("<C-d>", (3, 0), 3, 0, 0),
+            ("<C-d>", (4, 0), 4, 0, 0),
+            ("<C-u>", (3, 0), 3, 0, 0),
+            ("5<C-d>", (6, 0), 6, 0, 0),
+            ("<C-d>", (9, 0), 9, 0, 0),
+            ("<C-u>", (6, 0), 6, 0, 0),
+        ],
+    ),
+    // s2_vis: `:set so=0<CR>`
+    (
+        ":set so=0<CR>",
+        &[
+            ("v<C-d>", (3, 20), 3, 0, 20),
+            ("<C-d>", (6, 0), 5, 0, 0),
+            ("<C-u>", (3, 20), 3, 0, 20),
+            ("<Esc>", (3, 20), 3, 0, 20),
+        ],
+    ),
+    // s2_nu: `:set so=0 nu<CR>`
+    (
+        ":set so=0 nu<CR>",
+        &[
+            ("<C-d>", (3, 16), 3, 0, 16),
+            ("<C-d>", (6, 0), 5, 0, 0),
+            ("<C-e>", (6, 0), 6, 0, 0),
+            ("<C-e>", (7, 0), 7, 0, 0),
+            ("<C-u>", (5, 0), 5, 0, 0),
+            ("<C-y>", (5, 0), 4, 0, 0),
+            ("<C-f>", (8, 0), 8, 0, 0),
+            ("<C-b>", (8, 0), 4, 0, 0),
+        ],
+    ),
+    // s2_smsnu: `:set so=0 sms nu<CR>`
+    (
+        ":set so=0 sms nu<CR>",
+        &[
+            ("<C-e>", (2, 0), 2, 0, 0),
+            ("<C-e>", (3, 0), 3, 0, 0),
+            ("<C-e>", (3, 16), 3, 16, 16),
+            ("<C-e>", (3, 32), 3, 32, 32),
+            ("<C-y>", (3, 32), 3, 16, 32),
+            ("<C-d>", (6, 16), 6, 0, 16),
+            ("<C-u>", (3, 32), 3, 16, 32),
+            ("<C-f>", (6, 32), 6, 32, 32),
+            ("<C-b>", (7, 1), 3, 16, 32),
+        ],
+    ),
+    // s2_endsms: `:set so=0 sms<CR>`
+    (
+        ":set so=0 sms<CR>",
+        &[
+            ("G", (40, 0), 36, 20, 0),
+            ("<C-e>", (40, 0), 36, 40, 0),
+            ("<C-e>", (40, 0), 37, 0, 0),
+            ("<C-e>", (40, 0), 38, 0, 0),
+            ("<C-e>", (40, 0), 39, 0, 0),
+            ("<C-e>", (40, 0), 39, 20, 0),
+            ("<C-y>", (40, 0), 39, 0, 0),
+            ("<C-y>", (40, 0), 38, 0, 0),
+            ("<C-d>", (40, 0), 38, 0, 0),
+            ("<C-f>", (40, 0), 40, 0, 0),
+        ],
+    ),
 ];
 
 /// Where only the cursor's column differs, and why: nvim keeps a `CTRL-U`'s screen column (19) as the
@@ -313,4 +431,80 @@ fn scroll_keys_count_screen_rows_like_nvim() {
         }
     }
     assert!(bad.is_empty(), "{} differ:\n{}", bad.len(), bad.join("\n"));
+}
+
+/// The status line after `keys` in an 8-row window.
+fn status(keys: &str) -> String {
+    let mut h = Headless::with_size(Profile::Vim, &probe(), 20, 9);
+    h.keys(keys);
+    h.status().to_string()
+}
+
+/// nvim v0.12.6 (`nvim_exec2`, a 10-row window): `'scroll'` is the window's half height until set, a
+/// count to `CTRL-D` sets it, 0 is the half again, more than the height or negative is `E49`.
+#[test]
+fn the_scroll_option_reads_sets_and_checks_like_nvim() {
+    assert_eq!(status(":set scr?<CR>"), "  scroll=4");
+    assert_eq!(status(":set scr=3<CR>:set scr?<CR>"), "  scroll=3");
+    assert_eq!(
+        status(":set scr=3<CR>:set scr=0<CR>:set scr?<CR>"),
+        "  scroll=4"
+    );
+    assert_eq!(status(":set scr=8<CR>:set scr?<CR>"), "  scroll=8");
+    assert_eq!(status(":set scr=9<CR>"), "E49: Invalid scroll size: scr=9");
+    assert_eq!(
+        status(":set scr=-1<CR>"),
+        "E49: Invalid scroll size: scr=-1"
+    );
+    assert_eq!(status("2<C-d>:set scroll?<CR>"), "  scroll=2");
+}
+
+/// nvim v0.12.6's `:set` checks of the #616 options, and `'statuscolumn'`, which ruse leaves out.
+#[test]
+fn the_616_options_check_their_values_like_nvim() {
+    assert_eq!(status(":set cul?<CR>"), "nocursorline");
+    assert_eq!(status(":set cul cuc<CR>:set cuc?<CR>"), "  cursorcolumn");
+    assert_eq!(status(":set culopt?<CR>"), "  cursorlineopt=both");
+    assert_eq!(
+        status(":set culopt=line,screenline<CR>"),
+        "E474: Invalid argument: culopt=line,screenline"
+    );
+    assert_eq!(
+        status(":set culopt=number,line<CR>:set culopt?<CR>"),
+        "  cursorlineopt=number,line"
+    );
+    assert_eq!(
+        status(":set cc=1,+2,-3<CR>:set cc?<CR>"),
+        "  colorcolumn=1,+2,-3"
+    );
+    assert_eq!(
+        status(":set cc=1,,2<CR>"),
+        "E474: Invalid argument: cc=1,,2"
+    );
+    assert_eq!(
+        status(":set fdc=auto:9<CR>:set fdc?<CR>"),
+        "  foldcolumn=auto:9"
+    );
+    assert_eq!(status(":set fdc=10<CR>"), "E474: Invalid argument: fdc=10");
+    assert_eq!(status(":set fcs?<CR>"), "  fillchars=");
+    assert_eq!(
+        status(":set fcs=eob:xy<CR>"),
+        r#"E1511: Wrong number of characters for field "eob": fcs=eob:xy"#
+    );
+    assert_eq!(
+        status(":set fcs=bad:x<CR>"),
+        "E474: Invalid argument: fcs=bad:x"
+    );
+    // Global-local, as nvim: `:setlocal` gives the window its own value.
+    assert_eq!(
+        status(":setlocal fcs=eob:q<CR>:setglobal fcs?<CR>"),
+        "  fillchars="
+    );
+    assert_eq!(
+        status(":setlocal fcs=eob:q<CR>:set fcs?<CR>"),
+        "  fillchars=eob:q"
+    );
+    assert_eq!(status(":set sms?<CR>"), "nosmoothscroll");
+    // 'statuscolumn' is an expression ('%l', '%{...}' Vimscript): not supported (see the PR).
+    assert_eq!(status(":set stc=%l<CR>"), "option not supported: stc=%l");
 }

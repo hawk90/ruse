@@ -23,6 +23,8 @@ struct Win<'a> {
     folds: Vec<crate::folds::Fold>,
     textwidth: usize,
     leftcol: usize,
+    /// Rows of the top line scrolled out (`'smoothscroll'`).
+    skip: usize,
 }
 
 impl<'a> Win<'a> {
@@ -37,6 +39,7 @@ impl<'a> Win<'a> {
             folds: Vec::new(),
             textwidth: 0,
             leftcol: 0,
+            skip: 0,
         }
     }
 
@@ -66,6 +69,7 @@ impl<'a> Win<'a> {
         )
         .with_folds(&self.folds);
         win.leftcol = self.leftcol;
+        win.skip = self.skip;
         let cline = idx.line_of(self.cursor);
         win.cursor = Some((
             self.cursor,
@@ -547,4 +551,81 @@ fn fillchars_draws_eob_fold_and_fold_column_marks() {
     let mut w = Win::new(&long, 20, 2);
     w.globals.fillchars = "lastline:#".into();
     assert_eq!(w.rows(|_| {})[1], "bbbbbbbbbbbbbbbbb###");
+}
+
+// ---- #615: 'smoothscroll' ----
+
+#[test]
+fn smoothscroll_marks_a_scrolled_top_line_like_nvim() {
+    let text = format!("L3 {}\nL4\nL5\n", "w".repeat(45));
+    // `set sms nu`, three `CTRL-E`: the top line one row in, `<<<` over the number column.
+    let mut w = Win::new(&text, 20, 4);
+    w.skip = 1;
+    let rows = w.rows(|o| {
+        o.smoothscroll = true;
+        o.number = true;
+    });
+    assert_eq!(
+        rows,
+        [
+            "<<< wwwwwwwwwwwwwwww",
+            "    wwwwwwwwwwwwwwww",
+            "  2 L4",
+            "  3 L5"
+        ]
+    );
+    // Without a gutter it covers the text's first cells.
+    let rows = w.rows(|o| o.smoothscroll = true);
+    assert_eq!(rows[..2], ["<<<wwwwwwwwwwwwwwwww", "wwwwwwww"]);
+    // 'showbreak' leaves no marker, and neither does a window without 'smoothscroll'.
+    w.globals.showbreak = ">>".into();
+    assert!(w.rows(|o| o.smoothscroll = true)[0].starts_with(">>"));
+    w.globals.showbreak = String::new();
+    assert!(w.rows(|_| {})[0].starts_with("www"));
+}
+
+#[test]
+fn fillchars_vert_and_horiz_draw_the_split_dividers() {
+    let mut win = WinView::plain(10, 8);
+    win.fill.vert = '*';
+    win.fill.horiz = '=';
+    let wins = [win.clone(), win];
+    let rects = [
+        Rect {
+            x: 0,
+            y: 0,
+            w: 4,
+            h: 3,
+        },
+        Rect {
+            x: 5,
+            y: 0,
+            w: 4,
+            h: 3,
+        },
+    ];
+    let mut scr = screen::Screen::new(10, 4);
+    draw_separators(&mut scr, &rects, SplitDir::Vertical, 10, 3, &wins);
+    assert_eq!(row_text(&scr, 0, 10), "    *");
+    let rects = [
+        Rect {
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 1,
+        },
+        Rect {
+            x: 0,
+            y: 2,
+            w: 10,
+            h: 1,
+        },
+    ];
+    let mut scr = screen::Screen::new(10, 4);
+    draw_separators(&mut scr, &rects, SplitDir::Horizontal, 10, 3, &wins);
+    assert_eq!(row_text(&scr, 1, 10), "==========");
+    // Without a window's options the defaults, as nvim's.
+    let mut scr = screen::Screen::new(10, 4);
+    draw_separators(&mut scr, &rects, SplitDir::Horizontal, 10, 3, &[]);
+    assert_eq!(row_text(&scr, 1, 10), "\u{2500}".repeat(10));
 }
