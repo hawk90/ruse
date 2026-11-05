@@ -225,6 +225,11 @@ disk file. Compaction is skipped for these documents; a save starts a new journa
   the process start time matches);
 - `Unreplayable { reason }`, as in §5 or when the stream is from an unknown major version.
 
+As built (#1210), `InUse` also carries the best journal a second session that is gone left beside the live
+one's (`<name>.<pid>.rj`), and the note of one that cannot be offered. The in-use prompt names that work and
+adds `[r] recover its changes`, which asks the recovery prompt above for that journal; whatever is opened
+then edits beside the live session, as `e` does.
+
 The outcomes map to the design doc's `RecoveryOutcome`: `r` is `RecoverChanges`, `k` is `KeepDiskFile`, and
 `e` is `KeepInMemory`. A recovered buffer is opened with the disk text as its undo root and the recovered
 text applied as one change, so `[+]` is set, `:q` gives E37, and `u` goes back to the disk text (#863). The

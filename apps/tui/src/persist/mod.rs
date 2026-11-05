@@ -35,6 +35,11 @@ pub enum Recovery {
     InUse {
         owner: rj01::Owner,
         journal: PathBuf,
+        /// Unsaved work a second session that is gone left beside the live one's journal (#1210): the
+        /// in-use prompt offers it too, so it need not wait until the live session ends.
+        crashed: Option<Box<Available>>,
+        /// A journal beside it that could not be offered: why (the status line, after the answer).
+        note: Option<String>,
     },
     /// A journal exists but cannot be offered: from a newer major version (kept), not readable (kept), or a
     /// large-file journal whose disk text changed (archived, RFC-0023 §5). `reason` is the status line.

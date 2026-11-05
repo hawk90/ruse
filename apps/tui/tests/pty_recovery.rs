@@ -250,6 +250,64 @@ fn a_second_live_session_gets_the_in_use_prompt() {
     assert!(!journal.exists());
 }
 
+/// #1210: a second session that crashed while a live one edits the file left its journal beside the live
+/// one's. The in-use prompt names that work and offers `r`, which asks the recovery prompt for it; `r`
+/// there recovers it into this session, which then edits beside the live one. The gone session's journal
+/// is archived, the live one's is untouched.
+#[test]
+fn the_in_use_prompt_offers_a_gone_second_sessions_work() {
+    let dir = Scratch::new();
+    let (mut a, file) = first_session(&dir);
+    let journal = dir.journals().path_for(&file);
+    let theirs = std::fs::read(&journal).unwrap();
+    let beside = dir
+        .journals()
+        .write_crashed_beside(&file, b"gone work\n")
+        .unwrap();
+
+    // `q` still opens nothing and keeps both journals.
+    let mut b = Editor::start(&dir, &[f_txt()]);
+    let screen = b.screen_bytes();
+    assert!(screen.contains(IN_USE), "{screen:?}");
+    assert!(
+        screen.contains("Another session that is gone (ruse pid "),
+        "{screen:?}"
+    );
+    assert!(screen.contains("[r] recover its changes"), "{screen:?}");
+    b.keys("q");
+    assert_eq!(b.exit_status(), 0);
+    assert!(beside.exists());
+
+    // `r`, then the recovery prompt's `r`.
+    let mut b = Editor::start(&dir, &[f_txt()]);
+    let before = b.screen_bytes().len();
+    b.keys("r");
+    let prompt = since(&b, before);
+    assert!(
+        prompt.contains(PROMPT) && prompt.contains(KEYS),
+        "{prompt:?}"
+    );
+    let before = b.screen_bytes().len();
+    b.keys("r");
+    let after = since(&b, before);
+    assert!(
+        after.contains("gone work") && after.contains("· also open in"),
+        "{after:?}"
+    );
+    assert!(!beside.exists(), "the gone session's journal is archived");
+    assert_eq!(archived(&dir), 1);
+    assert_eq!(
+        std::fs::read(&journal).unwrap(),
+        theirs,
+        "A's journal untouched"
+    );
+    b.keys(":w\r:q\r");
+    assert_eq!(b.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"gone work\n");
+    a.keys(":q!\r");
+    assert_eq!(a.exit_status(), 0);
+}
+
 /// #1194: a recovery whose change is not UTF-8 still opens as the disk text plus one undoable change: `:q`
 /// refuses, a saved trace replays from the disk text to the recovered bytes, and `u` goes back to the disk
 /// text.

@@ -636,7 +636,9 @@ features:
     # [k] discard (both archive the journal, never delete) / [q] quit, no other key. A journal whose owner
     # is still running on this host (pid + start time) gives E325's [o] read-only (E45 on `:w`) / [e] edit
     # anyway / [q] quit; a second session journals beside it as `<name>.<pid>.rj` and never deletes another
-    # session's journal. A save removes temp files a crashed save left (`.<name>.ruse-tmp-<pid>-<hex>`).
+    # session's journal. #1210: when such a second session crashed, the in-use prompt names its work and
+    # adds [r] recover its changes (the recovery prompt for that journal). A save removes temp files a
+    # crashed save left (`.<name>.ruse-tmp-<pid>-<hex>`).
     # #938 (RFC-0023 slice 4, first part): `[journal!]` after `[+]` while the last journal write failed;
     # the first failure's E303 names the journal.
     # v0.1.5 (#610; app/ex_more.rs): the alternate file name a `:w {file}`, `:sav` or `:file {name}` leaves
