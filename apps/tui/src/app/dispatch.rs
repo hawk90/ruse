@@ -772,8 +772,9 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
     }
     // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
     let bytes = bf.fmt.to_disk(&source);
-    match persist::atomic::save(&bf.path, &bytes) {
-        Ok(()) => {
+    // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is.
+    match persist::atomic::write(&bf.path, &bytes, false) {
+        Ok(_) => {
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());
@@ -793,8 +794,10 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
         }
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
+            // Not saved: the buffer stays modified and keeps its journal (an fsync that failed after the
+            // rename is `E667`, never "written", #936).
             tracing::warn!(event = "save.failed", path = %bf.path.display(), error = %e);
-            *status = format!("write failed: {e}");
+            *status = e.to_string();
             false
         }
     }
@@ -1257,6 +1260,73 @@ mod dispatch_tests {
             !needs_final_newline(b"", true),
             "empty buffer stays empty (Vim writes no newline into one)"
         );
+    }
+
+    /// A workspace whose focused buffer is the (new) file `name` in a fresh temp dir, edited once.
+    fn ws_on_temp_file(name: &str, text: &[u8]) -> (Workspace, Files, PathBuf) {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ruse-dispatch-save-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, text).unwrap();
+        let mut ws = Workspace::new(text.to_vec());
+        ws.apply(&Command::EnterInsert);
+        ws.apply(&Command::InsertChar('x'));
+        ws.apply(&Command::EnterNormal);
+        let (mut files, mut hl): (Files, Highlighters) = (HashMap::new(), HashMap::new());
+        let fmt = persist::encoding::FileFormat::detect(text);
+        attach_file(&mut files, &mut hl, ws.focused_buffer(), path.clone(), fmt);
+        (ws, files, path)
+    }
+
+    /// #936: when the directory fsync fails after the rename, `:w` does not report "written" and the buffer
+    /// stays modified (it was "written" and clean before).
+    #[cfg(unix)]
+    #[test]
+    fn save_with_a_failed_directory_fsync_is_not_saved() {
+        let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
+        let mut status = String::new();
+        persist::atomic::inject(Some(persist::atomic::Step::SyncDir));
+        let ok = save(&mut ws, &files, &mut status, false);
+        persist::atomic::inject(None);
+        assert!(!ok);
+        assert!(status.starts_with("E667: Fsync failed"), "{status}");
+        assert!(!status.ends_with("B written"), "{status}");
+        assert!(ws.focused().doc.is_modified(), "not saved: still modified");
+        assert_eq!(std::fs::read(&path).unwrap(), b"xa\n");
+        // A later save that succeeds clears it.
+        assert!(save(&mut ws, &files, &mut status, false));
+        assert!(status.ends_with("written"), "{status}");
+        assert!(!ws.focused().doc.is_modified());
+    }
+
+    /// #872: `:set fixeol` adds the newline to the written file only, the buffer stays as typed and is clean,
+    /// as in nvim v0.12.6 (`'eol'` stays off, `&modified` 0; a reload then reads the newline). ruse's buffer
+    /// bytes play nvim's lines + `'eol'`, so a later `:set nofixeol` write omits the newline again, as nvim's.
+    #[test]
+    fn fixeol_writes_the_newline_without_changing_the_buffer() {
+        let (mut ws, files, path) = ws_on_temp_file("n.txt", b"a");
+        let mut status = String::new();
+        assert!(save(&mut ws, &files, &mut status, true));
+        assert_eq!(status, format!("\"{}\" 1L, 3B written", path.display()));
+        assert_eq!(std::fs::read(&path).unwrap(), b"xa\n");
+        assert_eq!(ws.focused().doc.bytes(), b"xa", "the buffer is not edited");
+        assert!(!ws.focused().doc.is_modified(), "and is clean");
+        ws.apply(&Command::EnterInsert);
+        ws.apply(&Command::InsertChar('y'));
+        ws.apply(&Command::EnterNormal);
+        assert!(save(&mut ws, &files, &mut status, false));
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"yxa",
+            "nofixeol: no newline"
+        );
+        assert!(status.contains("[noeol]"), "{status}");
     }
 
     /// Drive the ex executor END TO END for `:[range]j[oin][!]`: parse the raw line with `parse_ex` and run

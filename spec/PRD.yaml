@@ -615,6 +615,9 @@ features:
     # `:x[!]`, `:sav[!] {file}`, `:wa`/`:wqa`/`:xa`, `:e[!] [++ff] [+cmd] [file]` (a missing file opens as
     # a new buffer), and `%`/`#`/`#n` with the `:p :~ :. :h :t :r :e` modifiers. Replacing writes keep the
     # atomic save and its non-regular-file refusal; E13/E17/E139/E140/E141/E172/E212/E502 as nvim.
+    # v0.1.8 (#864/#865/#868/#935/#936): every fsync counts (E667 keeps the buffer modified), unique temp
+    # names, in-place write for hard links / unreproducible owner or xattrs / non-writable directory (nvim's
+    # backupcopy=auto; E514 on a partial write), E505 for a read-only file without `!`.
     # v0.1.5 (#610; app/ex_more.rs): the alternate file name a `:w {file}`, `:sav` or `:file {name}` leaves
     # (`#`, `"#`, `:e #`, `:b#`), `:f[ile] [{name}]`/`:0file`, `:fin[d]`/`:sf[ind]` over the default
     # `'path'` (`.,,`), `:dr[op]`, `:vi[sual]`, `:pw[d]`, `:cd`/`:chd[ir]` (`-`, `~`; buffer paths follow).

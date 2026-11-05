@@ -303,24 +303,44 @@ directory), not a returned `write()`.
 **POSIX algorithm:**
 
 ```
-1. dir ← parent dir of target; open dir fd.
-2. stat target → capture mode, uid/gid, ACL/xattr, and EOL/encoding decision (from Meta / open-time detection).
+1. dir ← parent dir of target (`.` for a bare relative name).
+2. stat target → refuse a non-regular file (FIFO, socket, device, directory); refuse a file the user cannot
+      write with E505 unless forced (`:w!`); a file with more than one hard link is written IN PLACE (below).
 3. create temp in the SAME directory (same filesystem so rename is atomic): ".<name>.ruse-tmp-<rand>"
-      O_WRONLY|O_CREAT|O_EXCL, mode 0600 initially.
+      (<name> shortened to keep the whole within NAME_MAX), O_WRONLY|O_CREAT|O_EXCL, mode 0600 initially,
+      a fresh <rand> on EEXIST; a user's file of any name is never removed. EACCES/EROFS on an existing
+      target → IN PLACE.
 4. write encoded bytes (apply fileencoding + fileformat/EOL + optional BOM — TEXT-19, VIM-STATE); handle
       no-trailing-newline ('binary'/'noeol') exactly.
-5. fdatasync(temp)                          # data durable before it becomes the file
-6. fchmod/fchown temp to captured mode/owner; copy xattr/ACL. (best-effort ownership; see platform notes)
+5. fchown temp to the captured uid/gid when they differ (EPERM → IN PLACE); fchmod to the captured mode;
+      copy every xattr (on Linux this includes the POSIX ACL; a value that cannot be set → IN PLACE).
+6. fsync(temp)                              # data and metadata durable before it becomes the file
 7. rename(temp, target)                     # atomic replace on POSIX
-8. fsync(dir fd)                            # make the rename itself durable
+8. open + fsync(dir)                        # make the rename itself durable; a failure here is E667
 9. close dir fd.
 10. On success: saved_revision ← document_revision; saved_node ← current_undo_node.seq; disk_observed ← OurSave{revision, new hash/stat};
       append a Meta(save-point) record; only THEN surface "Saved".
 ```
 
-If any step fails the temp file is unlinked and the original is untouched (INV-FAIL-BOUNDED, INV-ERR-CLASS);
-"Saved" is never shown. `saved_revision`/`disk_observed` advance **only after step 8**, so a crash between
-`rename` and `fsync(dir)` cannot leave us believing we saved when the directory entry might not survive.
+If any step before 7 fails the temp file is unlinked and the original is untouched (INV-FAIL-BOUNDED,
+INV-ERR-CLASS); "Saved" is never shown. `saved_revision`/`disk_observed` advance **only after step 8**, so a
+crash between `rename` and `fsync(dir)` cannot leave us believing we saved when the directory entry might not
+survive: a failed step 8 reports `E667` ("written but not proven durable"), the buffer stays modified and its
+journal stays.
+
+**In place** (Neovim's `'backupcopy'` `auto`, Emacs's `backup-by-copying-when-linked`): when a rename would
+change the file's identity — other hard links would keep the old bytes, the owner/group or an xattr/ACL
+cannot be reproduced on a new inode — or the directory is not writable, the existing file is opened without
+truncation, overwritten, truncated to the new length and fsynced. This keeps links, owner, ACLs and xattrs
+and is durable, but not atomic: an error after the first byte is reported as `E514` ("may be partly
+written"), never as "written", and the buffer stays modified. A crash during the write can leave a partial
+file; the recovery journal (when its directory is writable) is the safety net, and a `'writebackup'`-style
+backup copy is not implemented yet (#619). With `:w!`, a file the owner has made read-only gets owner write
+permission for the duration of an in-place write, then its mode back.
+
+Known gap: macOS ACLs are not visible as xattrs, so the rename path does not carry them over.
+`com.apple.provenance` is attached by the kernel to every file a process creates, so it is neither copied
+nor a reason to write in place.
 
 **Preservation:** permissions, ownership (best-effort), ACL/xattr, encoding (`fileencoding`), line endings
 (`fileformat` unix/dos/mac), BOM (`bomb`), and trailing-newline policy are captured at open and re-applied on
@@ -336,11 +356,12 @@ write — kept separate from document data ([TEXT-19 / VIM-STATE](../parity/vim.
 | Ownership | `fchown` (often needs privilege; best-effort, warn) | preserve owner/ACL via `ReplaceFileW`; SIDs not uid/gid |
 | Symlinks | write through the link target, don't replace the symlink itself (unless configured) | reparse points; resolve before replace |
 | Case / normalization | case-sensitive (usually) | case-insensitive; also macOS NFD normalization (XPLAT §13) |
-| Special files (`/dev`, FIFO, network FS) | detect; temp+rename may be impossible → fall back to in-place careful write, warn, and never claim durability we don't have |
+| Special files (`/dev`, FIFO, socket) | detect and refuse (`is not a regular file`, #907): never replaced by a regular file, never written into | n/a |
 
 Cross-device / same-directory: the temp **must** be in the target's directory (a `/tmp` temp cannot be
-`rename`d across filesystems atomically). If the directory isn't writable (read-only mount, permission), save
-fails cleanly rather than falling back to a non-atomic path silently.
+`rename`d across filesystems atomically). If the directory isn't writable (permission), an existing writable
+file is written in place as above (as Neovim does), and a new file fails cleanly; on a read-only mount both
+fail cleanly.
 
 ### 4. Three-way crash recovery
 

@@ -352,12 +352,16 @@ items:
     evidence:
       - apps/tui/src/persist/atomic.rs::save
       - apps/tui/tests/persist_roundtrip.rs::atomic_save_preserves_crlf_and_is_durable
+      - apps/tui/tests/fs_faults.rs::write_keeps_a_hard_link
+      - apps/tui/tests/fs_faults.rs::read_only_file_needs_a_bang
     legacy_ids:
       - DR-PERSIST-6
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
-    notes: 'Atomic + durable done. Permission bits are carried over and a symlink is followed to its target
-      (apps/tui/src/persist/atomic.rs). Ownership and other metadata are not preserved, and hard links break (#864).'
+    notes: 'Atomic + durable done; a failed directory fsync is E667, not "written" (#936), and a bare name fsyncs
+      `.` (#865). Unique O_EXCL temp names (#868). Mode, owner and xattrs (Linux ACLs) are carried to the new
+      inode; a hard-linked file, one whose owner or xattrs cannot be reproduced, or one in a non-writable
+      directory is written in place, as nvim backupcopy=auto (#864, #935). Gap: macOS ACLs on the rename path.'
   - id: PERSIST-007
     title: Large files use an incremental journal
     area: persist

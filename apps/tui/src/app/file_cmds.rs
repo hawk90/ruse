@@ -1,7 +1,8 @@
 //! The Ex file commands (#610): the `:w` family (`:[range]w[!] [file]`, `:w >>`, `:w !cmd`, `:up`, `:wq`,
 //! `:x`), `:sav`, `:wa` and `:e[!] [++ff] [+cmd] [file]`. Every replacing write goes through
-//! [`persist::atomic::save`] (temp file, fsync, rename; a FIFO or device is refused, #907); only `:w >>`
-//! appends in place, as Vim does. Errors carry nvim's E-numbers so a `|` chain stops on them.
+//! [`persist::atomic::write`] (temp file, fsync, rename, directory fsync; in place for a hard-linked file or
+//! one a rename would strip; a FIFO or device is refused, #907; a read-only file needs `!`, E505); only
+//! `:w >>` appends, as Vim does. Errors carry nvim's E-numbers so a `|` chain stops on them.
 
 use std::fs;
 use std::io::{self, Write as _};
@@ -69,8 +70,8 @@ pub(crate) fn write_report(
 /// Why a write could not be made. `Display` is the status line: nvim's message where it has one.
 #[derive(Debug)]
 pub(crate) enum FileError {
-    /// The atomic write itself failed (`write failed: …`, the message `:w` has always shown).
-    Write(io::Error),
+    /// The durable write itself failed (`write failed: …`, `E505`, `E514`, `E667`).
+    Write(persist::atomic::SaveError),
     /// `E139`: another buffer holds the target file.
     LoadedElsewhere,
     /// `E17` (no `!`; `shown` is the absolute path) or `E502` (with `!`; the name as typed).
@@ -82,7 +83,7 @@ pub(crate) enum FileError {
 impl std::fmt::Display for FileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FileError::Write(e) => write!(f, "write failed: {e}"),
+            FileError::Write(e) => write!(f, "{e}"),
             FileError::LoadedElsewhere => f.write_str("E139: File is loaded in another buffer"),
             FileError::Directory { shown, bang: true } => {
                 write!(f, "E502: \"{shown}\" is a directory")
@@ -102,7 +103,9 @@ fn covers_whole(ws: &Workspace, range: SubRange) -> bool {
     resolve_normal_range(ws, range) == (1, total)
 }
 
-/// Write `disk` to the buffer `id`'s own file and mark it saved; the status is the write report.
+/// Write `disk` to the buffer `id`'s own file and mark it saved; the status is the write report. `force`
+/// (`:w!`) writes a read-only file.
+#[allow(clippy::too_many_arguments)]
 fn write_own(
     ws: &mut Workspace,
     id: DocumentId,
@@ -110,9 +113,10 @@ fn write_own(
     source: &[u8],
     disk: &[u8],
     mark_saved: bool,
+    force: bool,
 ) -> Result<String, FileError> {
-    match persist::atomic::save(path, disk) {
-        Ok(()) => {
+    match persist::atomic::write(path, disk, force) {
+        Ok(_) => {
             if mark_saved {
                 if let Some(doc) = ws.document_mut(id) {
                     doc.mark_saved();
@@ -271,17 +275,16 @@ pub(crate) fn ex_write(
                     Some(_) if !whole && !spec.bang => {
                         Err("E140: Use ! to write partial buffer".to_string())
                     }
-                    Some((path, _)) => {
-                        write_own(ws, id, path, &source, &disk, whole).map_err(|e| e.to_string())
-                    }
+                    Some((path, _)) => write_own(ws, id, path, &source, &disk, whole, spec.bang)
+                        .map_err(|e| e.to_string()),
                 }
             } else {
                 let name = name.as_deref().expect("a write to another file names it");
                 let target = PathBuf::from(name);
                 match check_other_target(files, id, &target, name, spec.bang) {
                     Err(e) => Err(e.to_string()),
-                    Ok(new) => match persist::atomic::save(&target, &disk) {
-                        Ok(()) => {
+                    Ok(new) => match persist::atomic::write(&target, &disk, spec.bang) {
+                        Ok(_) => {
                             // A buffer with no file takes the name it is first written to (Vim's
                             // 'cpoptions' `F`); written whole, it is then saved.
                             if own.is_none() {
@@ -293,7 +296,7 @@ pub(crate) fn ex_write(
                             }
                             Ok(write_report(name, new, &source, disk.len(), "written"))
                         }
-                        Err(e) => Err(format!("write failed: {e}")),
+                        Err(e) => Err(e.to_string()),
                     },
                 }
             }
@@ -348,8 +351,8 @@ pub(crate) fn ex_saveas(
     };
     let fmt = with_ff(own.as_ref().map(|o| o.1).unwrap_or_default(), opts);
     let (source, disk) = encode(ws.focused().doc.bytes(), fmt, fixeol);
-    match persist::atomic::save(&target, &disk) {
-        Ok(()) => {
+    match persist::atomic::write(&target, &disk, bang) {
+        Ok(_) => {
             if let Some((old, _)) = &own {
                 persist::journal::clear(Some(old)); // the changes are on disk under the new name
             }
@@ -360,7 +363,7 @@ pub(crate) fn ex_saveas(
             true
         }
         Err(e) => {
-            *status = format!("write failed: {e}");
+            *status = e.to_string();
             false
         }
     }
@@ -390,7 +393,7 @@ pub(crate) fn ex_write_all(
             continue;
         };
         let (source, disk) = encode(&text, bf.fmt, fixeol);
-        match write_own(ws, b.id, &bf.path, &source, &disk, true) {
+        match write_own(ws, b.id, &bf.path, &source, &disk, true, false) {
             Ok(msg) => last = Some(msg),
             Err(e) => error = Some(e.to_string()),
         }

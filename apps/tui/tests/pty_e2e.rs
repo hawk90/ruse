@@ -76,7 +76,8 @@ fn quit_restores_the_terminal() {
     );
 }
 
-/// #842: a failed write must keep the editor, and the unsaved edit, alive.
+/// #842: a failed write must keep the editor, and the unsaved edit, alive. The write is of a NEW file in a
+/// read-only directory (an existing writable file there is written in place, #864).
 #[test]
 fn wq_stays_open_when_the_write_fails() {
     use std::os::unix::fs::PermissionsExt;
@@ -88,7 +89,6 @@ fn wq_stays_open_when_the_write_fails() {
     let locked = dir.path("locked");
     std::fs::create_dir(&locked).unwrap();
     let file = locked.join("f.txt");
-    std::fs::write(&file, b"orig\n").unwrap();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
 
     let mut ed = Editor::start(&dir, &[&file]);
@@ -97,7 +97,7 @@ fn wq_stays_open_when_the_write_fails() {
     drop(ed);
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
     assert!(running, ":wq must not exit after a failed write");
-    assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
+    assert!(!file.exists());
 }
 
 /// #843: a file that exists but cannot be read must not open as an empty buffer that `:w` then overwrites.

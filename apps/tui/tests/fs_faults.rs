@@ -55,10 +55,11 @@ fn write_only_file_refuses_to_open() {
     assert_eq!(std::fs::read(&file).unwrap(), b"secret\n");
 }
 
-/// `:w` into a read-only directory fails visibly and keeps the edit: the buffer stays modified (`:q`
-/// refuses) and the file on disk is untouched.
+/// `:w` of a writable file in a read-only directory writes it in place, as Neovim v0.12.6 does (#864;
+/// before, the save failed because the temp could not be created). A NEW file there still fails visibly
+/// and keeps the edit: the buffer stays modified (`:q` refuses).
 #[test]
-fn write_into_a_read_only_directory_fails_visibly() {
+fn write_into_a_read_only_directory() {
     if is_root() {
         return;
     }
@@ -70,14 +71,71 @@ fn write_into_a_read_only_directory_fails_visibly() {
     chmod(&locked, 0o555);
     let mut ed = Editor::start(&dir, &[Path::new("ro/f.txt")]);
     ed.keys(&format!("inew {ESC}:w\r"));
-    let shown = ed.screen_bytes();
+    let written = ed.screen_bytes();
+    ed.keys(&format!(":e ro/g.txt\rinew {ESC}:w\r"));
+    let failed = ed.screen_bytes();
     ed.keys(":q\r");
     let running = ed.is_running();
     drop(ed);
     chmod(&locked, 0o755);
-    assert!(shown.contains("write failed"), "visible error: {shown:?}");
+    assert!(
+        written.contains("\"ro/f.txt\" 1L, 9B written"),
+        "{written:?}"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), b"new orig\n");
+    assert!(failed.contains("write failed"), "visible error: {failed:?}");
     assert!(running, ":q must refuse the unsaved edit");
-    assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
+    assert!(!locked.join("g.txt").exists());
+}
+
+/// #864: `:w` on one name of a hard-linked file updates every name, as Neovim v0.12.6 does (before, the
+/// rename split the link: `f` had the edit, `g` kept the old bytes).
+#[test]
+fn write_keeps_a_hard_link() {
+    let dir = Scratch::new();
+    let f = dir.file("f.txt", b"v1\n");
+    std::fs::hard_link(&f, dir.path("g.txt")).unwrap();
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.keys(&format!("Ax{ESC}:wq\r"));
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(dir.path("g.txt")).unwrap(), b"v1x\n");
+    use std::os::unix::fs::MetadataExt;
+    assert_eq!(std::fs::metadata(&f).unwrap().nlink(), 2);
+}
+
+/// #864: a mode-0444 file is not silently overwritten: `:w` is refused with nvim's E505 and the buffer
+/// stays modified; `:w!` writes it and keeps the mode, as Neovim v0.12.6 does (nvim says E45 here because it
+/// sets 'readonly' at load; ruse has no 'readonly' yet, #619, so the write-time check reports E505).
+#[test]
+fn read_only_file_needs_a_bang() {
+    if is_root() {
+        return;
+    }
+    let dir = Scratch::new();
+    let file = dir.file("r.txt", b"ro\n");
+    chmod(&file, 0o444);
+    let mut ed = Editor::start(&dir, &[Path::new("r.txt")]);
+    ed.keys(&format!("Ax{ESC}:w\r"));
+    let refused = ed.screen_bytes();
+    assert!(
+        refused.contains("E505: \"r.txt\" is read-only (add ! to override)"),
+        "{refused:?}"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), b"ro\n");
+    ed.keys(":q\r");
+    assert!(ed.is_running(), ":q must refuse the unsaved edit");
+    ed.keys(":w!\r");
+    assert!(
+        ed.screen_bytes().contains("\"r.txt\" 1L, 4B written"),
+        "{:?}",
+        ed.screen_bytes()
+    );
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"rox\n");
+    let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+    chmod(&file, 0o644);
+    assert_eq!(mode, 0o444);
 }
 
 /// The file's directory disappears while it is open: `:w` fails visibly, the edit survives in the buffer,
