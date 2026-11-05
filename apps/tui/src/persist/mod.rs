@@ -14,6 +14,8 @@
 
 use std::path::PathBuf;
 
+use ruse_core::{BytePos, ExCmd, TransactionOrigin};
+
 pub mod atomic;
 pub mod diff;
 pub mod disk;
@@ -104,23 +106,60 @@ pub fn recovery_edit(disk: &[u8], recovered: &[u8]) -> Option<(usize, usize, Str
     Some((pre, disk.len() - suf, text))
 }
 
-/// #1194: whether replacing every line of `disk` with `recovered`, as a line filter does (`:%!`, the
-/// trace's byte-carrying `ex_filter`), gives exactly `recovered`. It is the way a recovery whose change is
-/// not UTF-8 still opens as the disk text plus one undoable change. It does not when the disk text is empty
-/// (a filter needs a line) or when the final newline differs (a filter keeps the buffer's).
-pub fn recovery_by_lines(disk: &[u8], recovered: &[u8]) -> bool {
-    if disk.is_empty() {
-        return false;
+/// The recorded Ex commands that turn the disk text into the recovered text as one change (#863, #1194):
+/// they run as one undo step ([`ruse_core::ExCmd::Begin`]/`End` when there are two), so `u` goes back to the
+/// disk text and a saved trace starts from it.
+///
+/// * The span that differs as one text edit ([`recovery_edit`]) when it is UTF-8.
+/// * Otherwise the bytes as lines: a filter of every line (`ex_filter`, which carries bytes), or, for an empty
+///   disk text, which has no line to filter, a read above line 1 (`ex_read 0`). Both keep the buffer's final
+///   newline (an empty buffer has none), so when the recovered text's differs, a one-character text edit at
+///   the end adds or removes it.
+pub fn recovery_commands(disk: &[u8], recovered: &[u8]) -> Vec<ExCmd> {
+    if let Some((start, end, text)) = recovery_edit(disk, recovered) {
+        return vec![edit(start, end, text)];
     }
-    let mut lines: Vec<&[u8]> = recovered.split(|&b| b == b'\n').collect();
-    if recovered.last() == Some(&b'\n') || recovered.is_empty() {
-        lines.pop();
+    let (first, got) = if disk.is_empty() {
+        let read = ExCmd::ReadText {
+            dest: 0,
+            cursor_on_last: false,
+            bytes: recovered.to_vec(),
+        };
+        (read, as_lines(recovered, false))
+    } else {
+        let filter = ExCmd::FilterReplace {
+            first: 1,
+            last: line_count(disk),
+            bytes: recovered.to_vec(),
+        };
+        (filter, as_lines(recovered, disk.ends_with(b"\n")))
+    };
+    let mut cmds = vec![first];
+    if got.len() < recovered.len() {
+        // `got` is `recovered` without its final `\n`.
+        cmds.push(edit(got.len(), got.len(), "\n".into()));
+    } else if got.len() > recovered.len() {
+        // `got` is `recovered` with a `\n` added.
+        cmds.push(edit(recovered.len(), got.len(), String::new()));
     }
-    let mut out = lines.join(&b'\n');
-    if disk.ends_with(b"\n") && !out.is_empty() {
+    cmds
+}
+
+fn edit(start: usize, end: usize, text: String) -> ExCmd {
+    ExCmd::Edits {
+        origin: TransactionOrigin::UserInput,
+        edits: vec![(BytePos(start), BytePos(end), text)],
+    }
+}
+
+/// What replacing a buffer's lines with `text` gives (a filter, or a read into an empty buffer): `text`'s
+/// lines, ending in `\n` when `final_newline` (the buffer's) and there is a line.
+fn as_lines(text: &[u8], final_newline: bool) -> Vec<u8> {
+    let mut out = text.strip_suffix(b"\n").unwrap_or(text).to_vec();
+    if final_newline && !out.is_empty() {
         out.push(b'\n');
     }
-    out == recovered
+    out
 }
 
 /// The number of lines of `text`, as a line range counts them (a final line without `\n` counts).
@@ -307,17 +346,41 @@ mod tests {
     }
 
     #[test]
-    fn a_line_filter_reproduces_most_recoveries() {
-        assert!(recovery_by_lines(b"caf\xe9\n", b"caf\xe9 au lait\n"));
-        assert!(recovery_by_lines(b"a", b"b\xff"));
-        assert!(recovery_by_lines(b"a\n", b""));
-        assert!(recovery_by_lines(b"a\nb\n", b"\nx\n"));
-        assert!(!recovery_by_lines(b"", b"\xff\n"), "a filter needs a line");
-        assert!(
-            !recovery_by_lines(b"a\n", b"\xff"),
-            "the final newline is the buffer's"
+    fn recovery_commands_follow_the_bytes() {
+        let filter = |last, bytes: &[u8]| ExCmd::FilterReplace {
+            first: 1,
+            last,
+            bytes: bytes.to_vec(),
+        };
+        assert_eq!(
+            recovery_commands(b"caf\xe9\n", b"caf\xe9 au lait\n"),
+            [edit(4, 4, " au lait".into())]
         );
-        assert!(!recovery_by_lines(b"a\n", b"\n"));
+        assert_eq!(
+            recovery_commands(b"x\ny\n", b"\xff\n"),
+            [filter(2, b"\xff\n")]
+        );
+        // The disk text has no line: a read above line 1, then the final newline the read leaves out.
+        assert_eq!(
+            recovery_commands(b"", b"\xff\n"),
+            [
+                ExCmd::ReadText {
+                    dest: 0,
+                    cursor_on_last: false,
+                    bytes: b"\xff\n".to_vec()
+                },
+                edit(1, 1, "\n".into())
+            ]
+        );
+        // The final newline differs: the filter keeps the buffer's, a one-character edit fixes it.
+        assert_eq!(
+            recovery_commands(b"a\n", b"\xff"),
+            [filter(1, b"\xff"), edit(1, 2, String::new())]
+        );
+        assert_eq!(
+            recovery_commands(b"a", b"\xff\n"),
+            [filter(1, b"\xff\n"), edit(1, 1, "\n".into())]
+        );
         assert_eq!(line_count(b""), 0);
         assert_eq!(line_count(b"a\nb"), 2);
         assert_eq!(line_count(b"a\n"), 1);

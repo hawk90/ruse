@@ -242,6 +242,12 @@ text applied as one change, so `[+]` is set, `:q` gives E37, and `u` goes back t
 trace baseline is the disk text. The diff view is a line-based unified diff (Myers) in a read-only scratch
 buffer, computed in `persist`; no crate is added. Recovery never writes the original path; only `:w` does.
 
+As built (#1191, #1194; `persist::recovery_commands`): the change is the trace's existing records, so the
+trace format is unchanged. A UTF-8 span is one `ex_edits`. Otherwise the bytes go in as lines: `ex_filter`
+over every line, or `ex_read 0` when the disk text is empty. Both keep the buffer's final newline, so when
+the recovered text's differs, a one-character `ex_edits` follows. Two records are wrapped in an
+`ex_begin macro` / `ex_end` group, which replays as one undo step, as it runs live.
+
 ### 8. Status
 
 The status line shows a flag only when something needs attention:

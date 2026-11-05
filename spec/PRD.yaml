@@ -642,8 +642,9 @@ features:
     # 200 changes or before `:!`/filters/`:terminal`; compaction past 1 MiB; a DiskBase above 32 MiB; legacy
     # RJS0 sidecars read once and archived. Replaces the snapshot throttle.
     # v0.1.8 RFC-0023 slice 3 (#933/#1193/#1194/#1197; ui/recovery.rs, persist/diff.rs, tests/pty_recovery.rs):
-    # acceptance 3 is now three-way: [r] recover (disk text + one undoable change, also for a non-UTF-8 change
-    # through a line filter) / [d] show diff (bounded line Myers, read-only view) / [e] edit the disk file /
+    # acceptance 3 is now three-way: [r] recover (disk text + one undoable change, always: a non-UTF-8 change
+    # goes through a line filter, or a read into an empty file, plus a final-newline edit in one undo group)
+    # / [d] show diff (bounded line Myers, read-only view) / [e] edit the disk file /
     # [k] discard (both archive the journal, never delete) / [q] quit, no other key. A journal whose owner
     # is still running on this host (pid + start time) gives E325's [o] read-only (E45 on `:w`) / [e] edit
     # anyway / [q] quit; a second session journals beside it as `<name>.<pid>.rj` and never deletes another

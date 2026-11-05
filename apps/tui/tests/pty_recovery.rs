@@ -307,16 +307,13 @@ fn the_in_use_prompt_offers_a_gone_second_sessions_work() {
     assert_eq!(a.exit_status(), 0);
 }
 
-/// #1194: a recovery whose change is not UTF-8 still opens as the disk text plus one undoable change: `:q`
-/// refuses, a saved trace replays from the disk text to the recovered bytes, and `u` goes back to the disk
-/// text.
-#[test]
-fn a_non_utf8_recovery_is_undoable_and_traced_from_the_disk_text() {
+/// #1194: recover `rec` over `f.txt` holding `disk`, and check it opens as the disk text plus one undoable
+/// change: `:q` refuses, a saved trace replays from the disk text to the recovered bytes, and `u` goes back
+/// to the disk text.
+fn recovers_undoably(disk: &[u8], rec: &[u8]) {
     let dir = Scratch::new();
-    let file = dir.file("f.txt", b"caf\xe9\nend\n");
-    dir.journals()
-        .write_crashed(Some(&file), b"caf\xe9 au lait \xff\nend\n")
-        .unwrap();
+    let file = dir.file("f.txt", disk);
+    dir.journals().write_crashed(Some(&file), rec).unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
     ed.wait_for(KEYS);
     ed.keys("r");
@@ -331,12 +328,32 @@ fn a_non_utf8_recovery_is_undoable_and_traced_from_the_disk_text() {
         std::process::Stdio::piped(),
     );
     assert_eq!(out.status, 0, "replay: {}", out.stderr);
-    assert_eq!(out.stdout, b"caf\xe9 au lait \xff\nend\n");
+    assert_eq!(out.stdout, rec);
     ed.keys("u:q\r");
     assert_eq!(
         ed.exit_status(),
         0,
         "`u` reached the disk text: the buffer is clean"
     );
-    assert_eq!(std::fs::read(&file).unwrap(), b"caf\xe9\nend\n");
+    assert_eq!(std::fs::read(&file).unwrap(), disk);
+}
+
+/// #1194: a change that is not UTF-8 goes through a line filter of the bytes.
+#[test]
+fn a_non_utf8_recovery_is_undoable_and_traced_from_the_disk_text() {
+    recovers_undoably(b"caf\xe9\nend\n", b"caf\xe9 au lait \xff\nend\n");
+}
+
+/// #1194: an empty disk file has no line to filter: the bytes are read above line 1, then the final
+/// newline the read leaves out is added, in the same undo step.
+#[test]
+fn a_non_utf8_recovery_of_an_empty_file_is_undoable() {
+    recovers_undoably(b"", b"caf\xe9\n\xff\n");
+}
+
+/// #1194: a non-UTF-8 change that also drops the final newline: the filter keeps the buffer's, and a
+/// one-character edit in the same undo step removes it.
+#[test]
+fn a_non_utf8_recovery_that_drops_the_final_newline_is_undoable() {
+    recovers_undoably(b"caf\xe9\nend\n", b"caf\xe9\nend \xff");
 }
