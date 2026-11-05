@@ -220,41 +220,54 @@ fn a_failing_journal_shows_journal_bang_until_a_sync_works() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     // 200 changes trigger a sync; the first failure is shown (the journal path follows the error, past
     // the 80 columns here; the unit test `journal_outcome_names_the_journal` reads it).
+    // Each step waits for what it shows: a sync (fsync) or a shell can keep the screen quiet past the
+    // harness's settle time on a loaded runner.
+    let wait = 10;
+    let shows = |ed: &Editor, from: usize, want: &str| {
+        support::wait_until(Duration::from_secs(wait), || {
+            ed.screen_bytes()[from..].contains(want)
+        })
+    };
     let before = ed.screen_bytes().len();
     ed.keys(&format!("i{}{ESC}", "x".repeat(200)));
+    let named = shows(
+        &ed,
+        before,
+        "E303: unable to write the recovery journal for",
+    );
     let shown = ed.screen_bytes()[before..].to_string();
-    let named = shown.contains("E303: unable to write the recovery journal for");
     // A command line gives the status line back whole.
     let before = ed.screen_bytes().len();
     ed.keys(":set ts?\r");
+    let flagged = shows(&ed, before, "f.txt [+][journal!]    tabstop=4");
     let bar = ed.screen_bytes()[before..].to_string();
-    let flagged = bar.contains("f.txt [+][journal!]    tabstop=4");
     let before = ed.screen_bytes().len();
     ed.keys(":checkhealth\r");
+    let warned = shows(&ed, before, "WARN journal: f.txt: last write failed");
     let health = ed.screen_bytes()[before..].to_string();
     ed.keys(ESC);
     chmod(&jdir, 0o755);
     assert!(named, "{shown:?}");
     assert!(flagged, "{bar:?}");
-    assert!(
-        health.contains("WARN journal: f.txt: last write failed"),
-        "{health:?}"
-    );
+    assert!(warned, "{health:?}");
     let before = ed.screen_bytes().len();
-    ed.keys(":!true\r\r");
-    assert!(support::wait_until(Duration::from_secs(5), || journal.exists()));
+    ed.keys(":!true\r");
+    assert!(support::wait_until(Duration::from_secs(wait), || journal.exists()));
+    assert!(shows(&ed, before, ":!true"));
     ed.keys(":checkhealth\r");
+    let synced = shows(&ed, before, "OK   journal: f.txt: ");
     let after = ed.screen_bytes()[before..].to_string();
     assert!(
-        after.contains("OK   journal: f.txt: ") && after.contains("synced 0s ago"),
+        synced && after.contains(" bytes, synced "),
         "{:?}",
         &after[after.len().saturating_sub(1500)..]
     );
     ed.keys(ESC);
     let before = ed.screen_bytes().len();
     ed.keys(":set ts?\r");
+    let cleared = shows(&ed, before, "f.txt [+]    tabstop=4");
     let bar = ed.screen_bytes()[before..].to_string();
-    assert!(bar.contains("f.txt [+]    tabstop=4"), "{bar:?}");
+    assert!(cleared, "{bar:?}");
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
 }

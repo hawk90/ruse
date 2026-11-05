@@ -22,10 +22,17 @@ fn since(ed: &Editor, from: usize) -> String {
     ed.screen_bytes()[from..].to_string()
 }
 
-/// The status line, drawn whole: a command line gives it back whole when it ends.
+/// Whether `want` is drawn after `from` within 10 s: a shell or a save's fsync can keep the screen quiet
+/// past the harness's settle time on a loaded runner, so every check waits for what it looks for.
+fn shows(ed: &Editor, from: usize, want: &str) -> bool {
+    wait_until(Duration::from_secs(10), || since(ed, from).contains(want))
+}
+
+/// The status line, drawn whole once its `tabstop=4` is there (a command line gives it back whole).
 fn bar(ed: &mut Editor) -> String {
     let before = ed.screen_bytes().len();
     ed.keys(":set ts?\r");
+    assert!(shows(ed, before, "tabstop=4"), "{:?}", since(ed, before));
     since(ed, before)
 }
 
@@ -43,7 +50,7 @@ fn an_external_write_flags_an_unmodified_buffer() {
     );
     let before = ed.screen_bytes().len();
     ed.keys(":!printf 'two\\n' > f.txt\r");
-    assert!(since(&ed, before).contains(W11), "{:?}", since(&ed, before));
+    assert!(shows(&ed, before, W11), "{:?}", since(&ed, before));
     ed.keys("\r");
     assert!(
         bar(&mut ed).contains("f.txt [disk changed]    tabstop=4"),
@@ -68,13 +75,13 @@ fn a_save_over_an_external_change_needs_a_bang() {
     std::fs::write(&file, b"theirs\n").unwrap();
     let before = ed.screen_bytes().len();
     ed.keys(":checktime\r");
-    assert!(since(&ed, before).contains(W12), "{:?}", since(&ed, before));
+    assert!(shows(&ed, before, W12), "{:?}", since(&ed, before));
     assert!(bar(&mut ed).contains("f.txt [+][disk changed]    tabstop=4"));
     let before = ed.screen_bytes().len();
     ed.keys(":w\r");
     assert!(
         // nvim's warning, then ruse's `(add ! to write anyway)`, past the 80 columns here.
-        since(&ed, before).contains("WARNING: The fil"),
+        shows(&ed, before, "WARNING: The fil"),
         "{:?}",
         since(&ed, before)
     );
