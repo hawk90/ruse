@@ -48,7 +48,7 @@ pub(crate) fn take_screen_clobbered() -> bool {
 /// Ask what to do with recovered unsaved changes (F-008 #3). Renders a minimal full-screen prompt and
 /// blocks until a key maps to a choice. The original file is never touched here (#4). `quit_label`
 /// describes `q`: quitting the editor at startup, cancelling the open for a file opened later (#859). `note`
-/// is an extra warning line, e.g. that the file changed on disk after the journal was written (#897). A fatal
+/// is extra warning lines, e.g. that the file changed on disk after the journal was written (#897). A fatal
 /// signal (`crate::signals`) answers [`RecoveryChoice::Quit`], which keeps the journal, so the caller unwinds
 /// through the terminal guard instead of dying in raw mode (#897).
 pub(crate) fn prompt_recovery(
@@ -67,8 +67,8 @@ pub(crate) fn prompt_recovery(
             "r: recover them   d: delete them and open the on-disk file   {quit_label}"
         )),
     )?;
-    if let Some(note) = note {
-        queue!(out, cursor::MoveTo(0, 2), Print(note))?;
+    for (row, line) in note.unwrap_or_default().lines().enumerate() {
+        queue!(out, cursor::MoveTo(0, 2 + row as u16), Print(line))?;
     }
     out.flush()?;
     loop {

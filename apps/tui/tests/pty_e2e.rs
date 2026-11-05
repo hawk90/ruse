@@ -133,8 +133,10 @@ fn directory_argument_refuses_to_open() {
 /// Start on `file` with a journal of unsaved work, so the recovery prompt shows.
 fn start_with_journal(dir: &Scratch) -> (Editor, std::path::PathBuf, std::path::PathBuf) {
     let file = dir.file("f.txt", b"on disk\n");
-    ruse_tui::persist::journal::append(Some(&file), b"unsaved work\n").unwrap();
-    let journal = ruse_tui::persist::journal::journal_path(Some(&file));
+    let journal = dir
+        .journals()
+        .write_text(Some(&file), b"unsaved work\n")
+        .unwrap();
     let ed = Editor::start(dir, &[&file]);
     (ed, file, journal)
 }
@@ -341,8 +343,7 @@ fn edit_offers_recovery_for_a_journaled_file() {
     let dir = Scratch::new();
     dir.file("a.txt", b"a\n");
     let b = dir.file("b.txt", b"on disk\n");
-    ruse_tui::persist::journal::append(Some(&b), b"UNSAVED B\n").unwrap();
-    let journal = ruse_tui::persist::journal::journal_path(Some(&b));
+    let journal = dir.journals().write_text(Some(&b), b"UNSAVED B\n").unwrap();
     let mut ed = Editor::start(&dir, &[std::path::Path::new("a.txt")]);
     let before = ed.screen_bytes().len();
     ed.keys(":e b.txt\r");
@@ -376,7 +377,7 @@ fn signal_rescues_the_edit(sig: libc::c_int) {
         "leaves the alt screen on signal {sig}"
     );
     assert_eq!(
-        ruse_tui::persist::journal::replay(Some(&file)).as_deref(),
+        dir.journals().replay(Some(&file)).as_deref(),
         Some(&b"abcdeorig\n"[..]),
         "journal holds the edit after signal {sig}"
     );
@@ -404,9 +405,9 @@ fn signal_journals_every_modified_buffer() {
     ed.keys(&format!("iBB{ESC}:b 1\r"));
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
-    let replay = ruse_tui::persist::journal::replay;
-    assert_eq!(replay(Some(&a)).as_deref(), Some(&b"AAa\n"[..]));
-    assert_eq!(replay(Some(&b)).as_deref(), Some(&b"BBb\n"[..]));
+    let j = dir.journals();
+    assert_eq!(j.replay(Some(&a)).as_deref(), Some(&b"AAa\n"[..]));
+    assert_eq!(j.replay(Some(&b)).as_deref(), Some(&b"BBb\n"[..]));
 }
 
 /// #1085: an emptied buffer saves as an empty file (nvim v0.12.6 writes 0 bytes for `ggdG:w`, its

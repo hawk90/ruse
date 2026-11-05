@@ -136,11 +136,6 @@ fn next_char_start(b: &[u8], at: usize) -> usize {
     i
 }
 
-/// Append a recovery-journal frame after every Nth change (revision bump) of a file buffer — a coarse
-/// hard-kill safety net. Idle ticks never write (#858). A panic, fatal signal or I/O error journals every
-/// modified buffer's exact latest state separately (`recover`). Full incremental journaling is post-MVP.
-const JOURNAL_THROTTLE: u32 = 8;
-
 /// How often the event loop repaints while a macro replay runs (see `run`).
 const REPLAY_PAINT: std::time::Duration = std::time::Duration::from_millis(100);
 
@@ -611,8 +606,8 @@ pub(crate) struct SessionInit {
     pub(crate) term: TermInfo,
     pub(crate) cwd: PathBuf,
     pub(crate) trusted: bool,
-    /// Publish every recoverable buffer to the crash-rescue store and throttle-journal file buffers each
-    /// frame. The terminal session does; a headless test session does not touch that process-global state.
+    /// Publish every recoverable buffer to the crash-rescue store and journal file buffers each frame. The
+    /// terminal session does; a headless test session does not touch that process-global state.
     pub(crate) rescue: bool,
 }
 
@@ -667,13 +662,16 @@ pub(crate) struct Session {
     /// The registers that held a value as the session began (RFC-0020 R6): a saved trace writes them after
     /// the starting options, so a `p` of one replays the same text. Read with the starting options.
     pub(crate) start_registers: Vec<(Option<char>, ruse_core::Register)>,
-    /// Per-buffer journal throttles (#858): a frame is appended only after the buffer actually changed.
-    journal_throttle: HashMap<DocumentId, persist::journal::Throttle>,
-    /// Buffers whose last journal append failed, so the E303 warning shows once per failing run (#907).
+    /// The journal directory, when this session journals (`rescue`) and a state directory exists.
+    journals: Option<&'static persist::journal::Journals>,
+    /// Per-buffer journal writers (RFC-0023 §4): each drains its document's change log after every command
+    /// and syncs on idle, on a change count, and before a risky operation.
+    journal_writers: HashMap<DocumentId, persist::journal::Writer>,
+    /// Buffers whose last journal write failed, so the E303 warning shows once per failing run (#907).
     journal_failed: HashSet<DocumentId>,
-    /// `ruse` with no file: the start buffer has no path, but its journal (`.ruse-journal`) is what the next
-    /// pathless start replays, so a crash rescues it there (#856). Not throttle-journaled: it can never be
-    /// saved, so a periodic journal would outlive every `:q!`.
+    /// `ruse` with no file: the start buffer has no path, but a crash rescues it into this process's unnamed
+    /// journal, which the next pathless start offers (#856). Only the crash paths write it: the buffer can
+    /// never be saved, so a periodic journal would outlive every `:q!`.
     unnamed_start: Option<DocumentId>,
     rescue: bool,
     pub(crate) profile_name: &'static str,
@@ -835,7 +833,12 @@ impl Session {
             recorded: Vec::new(),
             start_options,
             start_registers,
-            journal_throttle: HashMap::new(),
+            journals: if rescue {
+                persist::journal::current()
+            } else {
+                None
+            },
+            journal_writers: HashMap::new(),
             journal_failed: HashSet::new(),
             unnamed_start: path.is_none().then_some(file_buf),
             rescue,
@@ -911,15 +914,51 @@ impl Session {
     }
 
     /// Remove the journal of every buffer this session could have journaled (#862), on a normal quit: each
-    /// file buffer's, and the unnamed start buffer's `.ruse-journal`. A journal the session could not read
-    /// is kept ([`persist::journal::discard`]).
+    /// file buffer's, and the unnamed start buffer's. A journal the session could not read is kept
+    /// ([`persist::journal::Journals::discard`]).
     pub(crate) fn discard_journals(&self) {
+        let Some(j) = self.journals else {
+            return;
+        };
         for bf in self.files.values() {
-            persist::journal::discard(Some(bf.path.as_path()));
+            j.discard(Some(bf.path.as_path()));
         }
         if self.unnamed_start.is_some() {
-            persist::journal::discard(None);
+            j.discard(None);
         }
+    }
+
+    /// Sync every buffer's pending journal records now: before a risky operation (`:!`, a filter, `:r !`,
+    /// `:w !`, `:terminal`), so a hang or a kill inside it loses nothing that was typed (RFC-0023 §4).
+    pub(crate) fn sync_journals(&mut self) {
+        let now = std::time::Instant::now();
+        let Session {
+            ws,
+            files,
+            journal_writers,
+            journal_failed,
+            status,
+            ..
+        } = self;
+        for (id, w) in journal_writers.iter_mut() {
+            let (Some(doc), Some(bf)) = (ws.document_mut(*id), files.get(id)) else {
+                continue;
+            };
+            w.absorb(doc, bf.fmt, now); // the changes made since the frame began, too
+            if w.unsynced() {
+                journal_outcome(w.flush(doc), *id, &bf.path, journal_failed, status);
+            }
+        }
+    }
+
+    /// How long until a buffered journal sync is due, for the event loop's poll timeout.
+    fn journal_wake_ms(&self) -> Option<u64> {
+        let now = std::time::Instant::now();
+        self.journal_writers
+            .values()
+            .filter_map(|w| w.wake_in(now))
+            .min()
+            .map(|d| (d.as_millis() as u64).max(1))
     }
 
     /// Panic unless the focused buffer's folds are well formed over it (in range; a manual set flat, an
@@ -955,7 +994,8 @@ impl Session {
             files,
             line_idx,
             pane_idx,
-            journal_throttle,
+            journals,
+            journal_writers,
             journal_failed,
             unnamed_start,
             rescue,
@@ -1037,54 +1077,65 @@ impl Session {
         // pathless start buffer. A scratch buffer (`:enew`) is skipped so its bytes never land in some
         // file's recovery. `save()` clears a buffer's journal by path, so this stays consistent.
         if *rescue {
+            let now = std::time::Instant::now();
             let mut entries = Vec::with_capacity(files.len() + 1);
             for (id, bf) in files.iter() {
-                let Some(doc) = ws.document(*id) else {
+                let Some(doc) = ws.document_mut(*id) else {
                     continue;
                 };
-                let (rev, dirty) = (doc.revision().0, doc.is_modified());
-                let tick =
-                    journal_throttle
-                        .entry(*id)
-                        .or_default()
-                        .tick(rev, dirty, JOURNAL_THROTTLE);
-                // Undone back to the saved text, or re-read with `:e!`: the journal holds nothing to
-                // recover any more, so a crash from here must not offer the old changes back (#862).
-                if tick == persist::journal::Tick::Discard {
-                    persist::journal::discard(Some(bf.path.as_path()));
-                }
-                if tick == persist::journal::Tick::Append {
-                    // A failed append (read-only or vanished directory, full disk) is shown once per
-                    // failing run, as Neovim's E303 is, rather than silently leaving the work unprotected.
-                    match persist::journal::append(Some(bf.path.as_path()), doc.bytes()) {
-                        Ok(()) => {
-                            journal_failed.remove(id);
-                        }
-                        Err(e) => {
-                            if journal_failed.insert(*id) {
-                                tracing::warn!(event = "journal.failed", path = %bf.path.display(), error = %e);
-                                *status = format!(
-                                    "E303: unable to write the recovery journal for \"{}\": {e}",
-                                    bf.path.display()
-                                );
-                            }
-                        }
+                let Some(j) = *journals else {
+                    // No state directory: journaling is off, and the first modified buffer says so once.
+                    if doc.is_modified() && journal_failed.insert(*id) {
+                        *status = format!(
+                            "E303: unable to write the recovery journal for \"{}\": no state directory \
+                             (set XDG_STATE_HOME or HOME)",
+                            bf.path.display()
+                        );
                     }
+                    continue;
+                };
+                let w = journal_writers
+                    .entry(*id)
+                    .or_insert_with(|| persist::journal::Writer::new(j, &bf.path, bf.fmt));
+                w.follow(j, &bf.path);
+                // Drain the change log (and drop the journal of a buffer that became clean: undone back to
+                // the saved text, saved, or re-read with `:e!`, #862), then sync if the policy says so.
+                w.absorb(doc, bf.fmt, now);
+                if w.due(now) {
+                    journal_outcome(w.flush(doc), *id, &bf.path, journal_failed, status);
                 }
                 entries.push(recover::Entry {
                     path: Some(bf.path.clone()),
-                    bytes: doc.text_arc(),
-                    modified: dirty,
-                });
-            }
-            if let Some(doc) = unnamed_start.and_then(|id| ws.document(id)) {
-                entries.push(recover::Entry {
-                    path: None,
+                    journal: w.journal().to_path_buf(),
+                    canonical: Some(w.doc().to_path_buf()),
+                    format: bf.fmt,
                     bytes: doc.text_arc(),
                     modified: doc.is_modified(),
+                    revision: doc.revision().0,
+                    node: doc.history().current_seq().0,
                 });
             }
-            journal_throttle.retain(|id, _| files.contains_key(id) && ws.doc_is_live(*id));
+            if let (Some(doc), Some(j)) = (unnamed_start.and_then(|id| ws.document(id)), *journals)
+            {
+                entries.push(recover::Entry {
+                    path: None,
+                    journal: j.unnamed(),
+                    canonical: None,
+                    format: persist::encoding::FileFormat::default(),
+                    bytes: doc.text_arc(),
+                    modified: doc.is_modified(),
+                    revision: doc.revision().0,
+                    node: doc.history().current_seq().0,
+                });
+            }
+            // A buffer that is gone or lost its file (`:bd!`) lets its changes go with its journal.
+            journal_writers.retain(|id, w| {
+                let keep = files.contains_key(id) && ws.doc_is_live(*id);
+                if !keep {
+                    w.discard();
+                }
+                keep
+            });
             recover::sync(entries);
         }
         // During a `:s///c` confirm, follow the current match so the viewport scrolls it into view.
@@ -1283,6 +1334,10 @@ impl Session {
         }
         if poll_ms.is_none() && self.lsp.has_live_client() {
             poll_ms = Some(LSP_TICK_MS);
+        }
+        // Wake for a journal sync that falls due while no key arrives (RFC-0023 §4's idle trigger).
+        if let Some(ms) = self.journal_wake_ms() {
+            poll_ms = Some(poll_ms.map_or(ms, |p| p.min(ms)));
         }
         poll_ms
     }
@@ -3094,6 +3149,9 @@ impl Session {
     /// every `Ex` variant has exactly one arm here, so a new command cannot land in a match that never sees
     /// it.
     fn execute_ex_one(&mut self, text: String, frame: &FrameCtx) {
+        if runs_external(&parse_ex(&text)) {
+            self.sync_journals();
+        }
         let Session {
             ws,
             files,
@@ -4727,6 +4785,46 @@ fn newline_offsets(b: &[u8]) -> impl Iterator<Item = usize> + '_ {
 
 /// Whether an Ex command's status reports a failure that ends a `|`-chained line (`:help :bar`): a Vim
 /// error (`E{n}: …`, an unknown command's `E492` among them).
+/// Whether an Ex command starts another program, a risky operation the journal syncs before (RFC-0023
+/// §4): `:!`, a filter, `:r !`, `:w !` and `:terminal`.
+fn runs_external(ex: &Ex) -> bool {
+    matches!(
+        ex,
+        Ex::Shell(_)
+            | Ex::Filter { .. }
+            | Ex::Terminal
+            | Ex::Read {
+                source: ReadSource::Command(_),
+                ..
+            }
+    ) || matches!(ex, Ex::Write(spec) if matches!(spec.target, WriteTarget::Command(_)))
+}
+
+/// Report a journal sync: a failure is shown once per failing run, as Neovim's E303 is, rather than
+/// silently leaving the work unprotected (#907); the records stay buffered for the next try.
+fn journal_outcome(
+    r: io::Result<()>,
+    id: DocumentId,
+    path: &std::path::Path,
+    failed: &mut HashSet<DocumentId>,
+    status: &mut String,
+) {
+    match r {
+        Ok(()) => {
+            failed.remove(&id);
+        }
+        Err(e) => {
+            if failed.insert(id) {
+                tracing::warn!(event = "journal.failed", path = %path.display(), error = %e);
+                *status = format!(
+                    "E303: unable to write the recovery journal for \"{}\": {e}",
+                    path.display()
+                );
+            }
+        }
+    }
+}
+
 fn is_ex_error(status: &str) -> bool {
     let digits = status
         .strip_prefix('E')
@@ -4738,17 +4836,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
     let fmt = persist::encoding::FileFormat::detect(&raw);
     let disk = fmt.to_buffer(&raw);
-    // A crash may have left an append-only journal of unsaved work; offer it, never auto-apply it.
-    // A journal that exists but cannot be read is reported on the status line, never silently skipped (#897).
-    let (recovered, journal_error) = match persist::journal::replay_checked(path.as_deref()) {
-        Ok(r) => (r, None),
-        Err(e) => (
-            None,
-            Some(persist::journal::unreadable_note(path.as_deref(), &e)),
-        ),
-    };
-    let recovery = persist::assess_recovery(&disk, recovered.as_deref());
-    let stale = path.as_deref().is_some_and(persist::journal::is_stale);
+    // A crash may have left a journal of unsaved work; offer it, never auto-apply it. A journal that exists
+    // but cannot be read or replayed is reported on the status line, never silently skipped (#897). The
+    // owner (and the unnamed buffer's journal name) is fixed now, at startup (#1192).
+    let _ = persist::journal::owner();
+    let offer = persist::journal::current().map_or(persist::journal::Offer::None, |j| {
+        j.offer(path.as_deref(), &disk)
+    });
 
     // hlsearch/incsearch match spans, cached on (revision, viewport, pattern) like the syntax highlighter
     // — no full-buffer regex per frame (F-009 #1).
@@ -4763,30 +4857,35 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     crate::signals::install();
 
     // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
-    let stale_note = stale.then_some(persist::journal::STALE_NOTE);
     // The buffer always starts as the disk text, which is also the trace's starting text; a recovery is
     // applied over it once the session exists, as an edit (#863).
-    let (recovered, status) = match recovery {
-        persist::Recovery::Available(rec) => {
-            match prompt_recovery(&mut out, "q: quit and keep them", stale_note)? {
+    let (recovered, status) = match offer {
+        persist::journal::Offer::Text {
+            text,
+            from,
+            legacy,
+            notes,
+        } => {
+            let notes = notes.join("\n");
+            let note = (!notes.is_empty()).then_some(notes.as_str());
+            let choice = prompt_recovery(&mut out, "q: quit and keep them", note)?;
+            if let (Some(j), true) = (persist::journal::current(), choice != RecoveryChoice::Quit) {
+                j.settle(&from, legacy, choice == RecoveryChoice::Recover);
+            }
+            match choice {
                 RecoveryChoice::Recover => (
-                    Some(rec),
+                    Some(text),
                     String::from("ruse — recovered unsaved changes (:w to save)"),
                 ),
-                RecoveryChoice::Discard => {
-                    persist::journal::clear(path.as_deref()); // discarded on the user's say-so
-                    (
-                        None,
-                        String::from("ruse — recovery discarded; opened disk version"),
-                    )
-                }
+                RecoveryChoice::Discard => (
+                    None,
+                    String::from("ruse — recovery discarded; opened disk version"),
+                ),
                 RecoveryChoice::Quit => return Ok(()), // the journal stays for the next start
             }
         }
-        persist::Recovery::None => match journal_error {
-            Some(note) => (None, format!("ruse — {note}")),
-            None => (None, String::from("ruse — :q to quit")),
-        },
+        persist::journal::Offer::Note(note) => (None, format!("ruse — {note}")),
+        persist::journal::Offer::None => (None, String::from("ruse — :q to quit")),
     };
     let initial = disk;
 

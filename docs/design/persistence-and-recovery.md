@@ -28,20 +28,22 @@ related:
 
 # ruse Persistence, Crash Recovery & the Undo Journal
 
-> **Shipped v0.** The journal is `<file>.ruse-journal`, whole-buffer snapshots in `["RJS0"][u32 len LE][u32
-> crc32 LE][payload]` frames, CRC over length and payload, with no file header or schema version. A torn tail is
-> cut off before the first append in a process, and a failed append is rolled back
-> (`apps/tui/src/persist/journal.rs`). Undo is in-memory (`crates/core/src/undo.rs`). The rest of this doc,
-> including the per-transaction `RJ01` format, is the target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008.
+> **Shipped (RFC-0023 slice 2, D-064).** The journal is the per-transaction `RJ01` stream of §2
+> (`apps/tui/src/persist/rj01.rs`) in `$XDG_STATE_HOME/ruse/journal/`, written by
+> `apps/tui/src/persist/journal.rs` after 4 s idle, 200 changes or before a risky operation; a crash path appends
+> a Checkpoint of the exact text. A legacy `<file>.ruse-journal` (`RJS0` whole-buffer snapshots) is read once and
+> archived. Undo is in-memory (`crates/core/src/undo.rs`). Still the target: the three-way recovery of §4, the
+> `InUse` owner check, archive retention and the status flags (RFC-0023 slices 3-4); the status of each save and
+> recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008.
 >
-> **v0 journal lifecycle** (#862, #863, #869, #873). A journal exists only while it holds work that differs from
+> **Journal lifecycle** (#862, #863, #869, #873, #1191). A journal exists only while it holds work that differs from
 > disk. It is deleted by a durable save; by the recovery prompt's discard; when the buffer becomes clean without a
 > save (undo back to the saved text, `:e!`); by `:bd[!]`; and on every normal exit (`:q`, `:q!`, `:qa!`, `:cq`,
 > `ZQ`), as nvim deletes its swap file on these. It is kept by a fatal signal or a panic (which write it), by the
 > prompt's quit choice, and when it could not be read (never offered, so never deleted). A recovered buffer starts
 > as the disk text with the recovery applied as one edit: it is modified, `u` returns to disk, and a saved trace
 > starts from the disk text. Only a regular file is ever opened as a journal (a FIFO or device is reported, not
-> read). A buffer over 4 GiB is refused with an error, not truncated into an unreadable frame.
+> read). A record over 4 GiB is refused with an error, not truncated into an unreadable one.
 
 > This doc **resolves [D-005](../../spec/DECISIONS.md)** (was `open`): journal format details, incremental-
 > journal thresholds for large files, and undo-grouping boundaries. It is the normative specification behind

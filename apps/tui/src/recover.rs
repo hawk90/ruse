@@ -1,6 +1,6 @@
 //! Crash recovery + panic policy (D-040 / stability §6, §8). A core panic is an invariant violation; before
-//! it unwinds we append every modified buffer to its recovery journal (`<file>.ruse-journal`) so a bug never
-//! silently loses work. A fatal signal or an I/O error that ends the session takes the same path (#857).
+//! it unwinds we write every modified buffer's exact text to its recovery journal (in the state directory,
+//! `crate::persist::journal`) so a bug never silently loses work. A fatal signal or an I/O error that ends the session takes the same path (#857).
 //! We do NOT `catch_unwind`-swallow (STAB-6) nor `panic=abort` (STAB-5): the previous hook still runs
 //! (prints + unwinds). The hook restores the terminal first, so the printed message lands on the main
 //! screen and stays visible (#866); `TermGuard`'s drop then finds nothing left to restore.
@@ -8,13 +8,21 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError, TryLockError};
 
-/// The latest state of one buffer that has somewhere to be recovered to: a file-backed buffer (keyed by
-/// its path) or the session's unnamed start buffer (`None`, the journal `ruse` with no file replays).
+/// The latest state of one buffer that has somewhere to be recovered to: a file-backed buffer or the
+/// session's unnamed start buffer (`path` `None`).
 pub struct Entry {
+    /// The buffer's file, for the log.
     pub path: Option<PathBuf>,
+    /// Its journal, and the canonical document path and file format the journal's Header names.
+    pub journal: PathBuf,
+    pub canonical: Option<PathBuf>,
+    pub format: crate::persist::encoding::FileFormat,
     /// A shared handle to the buffer's bytes (`Document::text_arc`): publishing it is a refcount bump.
     pub bytes: Arc<Vec<u8>>,
     pub modified: bool,
+    /// The buffer's revision and current undo node, for the Checkpoint.
+    pub revision: u64,
+    pub node: u64,
 }
 
 /// Every recoverable buffer's latest state (#856), refreshed by the main loop each frame. Read by the
@@ -45,12 +53,7 @@ fn rescue_all() -> Option<Vec<(Option<PathBuf>, Recovery)>> {
     Some(
         guard
             .iter()
-            .map(|e| {
-                (
-                    e.path.clone(),
-                    recover_write(e.path.as_deref(), &e.bytes, e.modified),
-                )
-            })
+            .map(|e| (e.path.clone(), recover_write(e)))
             .collect(),
     )
 }
@@ -84,18 +87,25 @@ fn log_outcome(reason: &str, path: Option<&Path>, r: &Recovery) {
     }
 }
 
-/// The recovery decision for one snapshot: append a journal frame only when the buffer is modified,
-/// and report the outcome so the caller can log a structured event. Appends to the same journal
-/// (`crate::persist::journal`, F-008) the main loop throttles into, so a crash captures the EXACT latest
-/// buffer as one more recoverable record. Uses the crash-path append, which re-checks the tail in case
-/// the failure interrupted an append. Unit-testable without installing a global hook or panicking.
-fn recover_write(path: Option<&Path>, bytes: &[u8], modified: bool) -> Recovery {
-    if !modified {
+/// The recovery decision for one snapshot: write the journal only when the buffer is modified, and report
+/// the outcome so the caller can log a structured event. Writes into the same journal the main loop syncs
+/// (`crate::persist::journal`, F-008): a Checkpoint of the EXACT latest text after its last intact record,
+/// so records the session had not synced yet are covered too. Unit-testable without installing a global
+/// hook or panicking.
+fn recover_write(e: &Entry) -> Recovery {
+    if !e.modified {
         return Recovery::Clean;
     }
-    match crate::persist::journal::append_fresh(path, bytes) {
-        Ok(()) => Recovery::Written(crate::persist::journal::journal_path(path)),
-        Err(e) => Recovery::Failed(e.to_string()),
+    match crate::persist::journal::rescue(
+        &e.journal,
+        e.canonical.as_deref(),
+        e.format,
+        &e.bytes,
+        e.revision,
+        e.node,
+    ) {
+        Ok(()) => Recovery::Written(e.journal.clone()),
+        Err(err) => Recovery::Failed(err.to_string()),
     }
 }
 
@@ -155,27 +165,55 @@ fn install_hook_with(restore: fn()) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persist::journal::Journals;
 
-    #[test]
-    fn clean_buffer_appends_nothing() {
-        // An unmodified buffer must not write a recovery frame at all.
-        assert!(matches!(recover_write(None, b"x", false), Recovery::Clean));
+    /// A journal directory of the test's own, never the user's state directory.
+    fn journals(tag: &str) -> (Journals, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("ruse-recover-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        (Journals::in_state_home(&dir.join("state")), dir)
+    }
+
+    fn entry(j: &Journals, doc: &Path, bytes: &[u8], modified: bool) -> Entry {
+        Entry {
+            path: Some(doc.to_path_buf()),
+            journal: j.path_for(doc),
+            canonical: Some(crate::persist::journal::canonical(doc)),
+            format: Default::default(),
+            bytes: Arc::new(bytes.to_vec()),
+            modified,
+            revision: 3,
+            node: 2,
+        }
     }
 
     #[test]
-    fn modified_buffer_appends_a_replayable_frame() {
-        let dir = std::env::temp_dir().join(format!("ruse-recover-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+    fn clean_buffer_appends_nothing() {
+        let (j, dir) = journals("clean");
+        let doc = dir.join("x.txt");
+        // An unmodified buffer must not write a journal at all.
+        assert!(matches!(
+            recover_write(&entry(&j, &doc, b"x", false)),
+            Recovery::Clean
+        ));
+        assert!(!j.path_for(&doc).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn modified_buffer_writes_a_replayable_journal() {
+        let (j, dir) = journals("one");
         let doc = dir.join("note.txt");
-        let _ = std::fs::remove_file(crate::persist::journal::journal_path(Some(&doc)));
-        match recover_write(Some(&doc), b"unsaved work", true) {
-            Recovery::Written(_) => {}
+        match recover_write(&entry(&j, &doc, b"unsaved work", true)) {
+            Recovery::Written(p) => assert_eq!(p, j.path_for(&doc)),
             other => panic!("expected Written, got {other:?}"),
         }
-        assert_eq!(
-            crate::persist::journal::replay(Some(&doc)).as_deref(),
-            Some(&b"unsaved work"[..])
-        );
+        assert_eq!(j.replay(Some(&doc)).as_deref(), Some(&b"unsaved work"[..]));
+        // A second rescue appends a newer Checkpoint; the exact latest text is what replays.
+        recover_write(&entry(&j, &doc, b"later work", true));
+        assert_eq!(j.replay(Some(&doc)).as_deref(), Some(&b"later work"[..]));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Serialises the tests that use the process-global store.
@@ -186,17 +224,10 @@ mod tests {
     /// panic path's coverage, below the process boundary.
     #[test]
     fn panic_hook_journals_modified_buffers_then_unwinds() {
-        use crate::persist::journal::{journal_path, replay};
         let _serial = STORE_TEST.lock().unwrap_or_else(PoisonError::into_inner);
-        let dir = std::env::temp_dir().join(format!("ruse-recover-hook-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let (j, dir) = journals("hook");
         let doc = dir.join("p.txt");
-        let _ = std::fs::remove_file(journal_path(Some(&doc)));
-        sync(vec![Entry {
-            path: Some(doc.clone()),
-            bytes: Arc::new(b"work at the panic\n".to_vec()),
-            modified: true,
-        }]);
+        sync(vec![entry(&j, &doc, b"work at the panic\n", true)]);
         install_hook();
         // A panicking thread, not `catch_unwind` (STAB-6): the hook runs, the thread unwinds, join reports it.
         let unwound = std::thread::spawn(|| panic!("injected test panic")).join();
@@ -204,7 +235,7 @@ mod tests {
         sync(Vec::new());
         assert!(unwound.is_err(), "the hook chains on and the panic unwinds");
         assert_eq!(
-            replay(Some(&doc)).as_deref(),
+            j.replay(Some(&doc)).as_deref(),
             Some(&b"work at the panic\n"[..])
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -250,32 +281,19 @@ mod tests {
     #[test]
     fn rescue_journals_every_modified_buffer() {
         let _serial = STORE_TEST.lock().unwrap_or_else(PoisonError::into_inner);
-        use crate::persist::journal::{journal_path, replay};
-        let dir = std::env::temp_dir().join(format!("ruse-recover-all-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let (j, dir) = journals("all");
         let (a, b, c) = (dir.join("a.txt"), dir.join("b.txt"), dir.join("c.txt"));
-        for p in [&a, &b, &c] {
-            let _ = std::fs::remove_file(journal_path(Some(p)));
-        }
-        let entry = |p: &PathBuf, bytes: &[u8], modified| Entry {
-            path: Some(p.clone()),
-            bytes: Arc::new(bytes.to_vec()),
-            modified,
-        };
         sync(vec![
-            entry(&a, b"edited a\n", true),
-            entry(&b, b"edited b\n", true),
-            entry(&c, b"saved c\n", false),
+            entry(&j, &a, b"edited a\n", true),
+            entry(&j, &b, b"edited b\n", true),
+            entry(&j, &c, b"saved c\n", false),
         ]);
         let outcomes = rescue_all().expect("store is free");
         sync(Vec::new());
         assert_eq!(outcomes.len(), 3);
-        assert_eq!(replay(Some(&a)).as_deref(), Some(&b"edited a\n"[..]));
-        assert_eq!(replay(Some(&b)).as_deref(), Some(&b"edited b\n"[..]));
-        assert!(
-            !journal_path(Some(&c)).exists(),
-            "a clean buffer is not journaled"
-        );
+        assert_eq!(j.replay(Some(&a)).as_deref(), Some(&b"edited a\n"[..]));
+        assert_eq!(j.replay(Some(&b)).as_deref(), Some(&b"edited b\n"[..]));
+        assert!(!j.path_for(&c).exists(), "a clean buffer is not journaled");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

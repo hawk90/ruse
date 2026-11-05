@@ -90,25 +90,36 @@ pub(crate) fn open_file_with(
     };
     let f = format(persist::encoding::FileFormat::detect(&raw));
     let disk = f.to_buffer(&raw);
-    let (journaled, journal_error) = match persist::journal::replay_checked(Some(&p)) {
-        Ok(r) => (r, None),
-        Err(e) => (None, Some(persist::journal::unreadable_note(Some(&p), &e))),
-    };
-    let recovered = match persist::assess_recovery(&disk, journaled.as_deref()) {
-        persist::Recovery::None => None,
-        persist::Recovery::Available(rec) => {
-            let note = persist::journal::is_stale(&p).then_some(persist::journal::STALE_NOTE);
+    let journals = persist::journal::current();
+    let offer = journals.map_or(persist::journal::Offer::None, |j| j.offer(Some(&p), &disk));
+    let mut journal_error = None;
+    let recovered = match offer {
+        persist::journal::Offer::None => None,
+        persist::journal::Offer::Note(note) => {
+            journal_error = Some(note);
+            None
+        }
+        persist::journal::Offer::Text {
+            text,
+            from,
+            legacy,
+            notes,
+        } => {
+            let notes = notes.join("\n");
+            let note = (!notes.is_empty()).then_some(notes.as_str());
             match prompt_recovery(&mut io::stdout(), "q: cancel the open and keep them", note) {
-                Ok(RecoveryChoice::Recover) => Some(rec),
-                Ok(RecoveryChoice::Discard) => {
-                    persist::journal::clear(Some(&p)); // discarded on the user's say-so
-                    None
+                Ok(choice @ (RecoveryChoice::Recover | RecoveryChoice::Discard)) => {
+                    let recover = choice == RecoveryChoice::Recover;
+                    if let Some(j) = journals {
+                        j.settle(&from, legacy, recover); // discarded on the user's say-so
+                    }
+                    recover.then_some(text)
                 }
                 Ok(RecoveryChoice::Quit) | Err(_) => {
                     return Opened {
                         status: format!(
                             "\"{file}\" not opened: recovery journal kept ({})",
-                            persist::journal::journal_path(Some(&p)).display()
+                            from.display()
                         ),
                         id: None,
                     }
