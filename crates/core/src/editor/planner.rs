@@ -178,7 +178,7 @@ fn plan_selection_span(
             } else if e < b.len() {
                 (
                     s,
-                    want_col(b, e, st.view.curswant, st.view.indent.tab_width) - (e - s),
+                    want_col(b, e, st.view.curswant.get(), st.view.indent.tab_width) - (e - s),
                 )
             } else if s > 0 {
                 (
@@ -186,7 +186,7 @@ fn plan_selection_span(
                     want_col(
                         b,
                         line_start(b, s - 1),
-                        st.view.curswant,
+                        st.view.curswant.get(),
                         st.view.indent.tab_width,
                     ),
                 )
@@ -406,7 +406,7 @@ fn plan_change(
         cur,
         *m,
         count,
-        st.view.curswant,
+        &st.view.curswant,
         st.view.indent.tab_width,
         false,
     );
@@ -953,7 +953,7 @@ fn apply_op(
             let at = if adjusted {
                 motion::first_non_blank(b, line)
             } else {
-                want_col(b, line, st.view.curswant, st.view.indent.tab_width)
+                want_col(b, line, st.view.curswant.get(), st.view.indent.tab_width)
             };
             edit_yank(
                 one(Edit::delete(BytePos(del_start), e - del_start)),
@@ -1380,10 +1380,16 @@ fn plan_virtual_replace_char(
     )
 }
 
-/// A Vim-profile motion that fails ([`motion::fails`]), bare in Normal or Visual or under an operator: the
+/// A Vim-profile motion that fails ([`motion::fails_with`]), bare in Normal or Visual or under an operator: the
 /// command does nothing and beeps, so the frontend flushes the keys that were not typed (#1085). The
 /// operator is cancelled whole (`dfz`, `cj` on the last line stays in Normal).
-fn failed_motion(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Option<Plan> {
+fn failed_motion(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    cmd: &Command,
+    memo: &std::cell::OnceCell<usize>,
+) -> Option<Plan> {
     if st.view.caret != CaretGravity::OnChar
         || !matches!(st.view.mode, Mode::Normal | Mode::Visual { .. })
     {
@@ -1430,7 +1436,7 @@ fn failed_motion(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Optio
     if !op && matches!(m, Motion::WordEnd | Motion::BigWordEnd) {
         return None;
     }
-    motion::fails(b, cur, m, count, op, visual).then(|| beep(cur, st.view.mode))
+    motion::fails_with(b, cur, m, count, op, visual, memo).then(|| beep(cur, st.view.mode))
 }
 
 /// A failed command: no change, the cursor at `cursor`, and a beep ([`Effect::Beep`], #1085).
@@ -2490,7 +2496,9 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
     } else {
         GroupHint::BreakBefore
     };
-    if let Some(p) = failed_motion(st, b, cur, cmd) {
+    // The bare motion's target, shared by the failure check and the `Move` arm (#1231).
+    let memo = std::cell::OnceCell::new();
+    if let Some(p) = failed_motion(st, b, cur, cmd, &memo) {
         return p;
     }
     if let Some(p) = plan_open_comment(st, b, cur, cmd, hint) {
@@ -2506,11 +2514,25 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         Command::MoveLineStart => nop(line_start(b, cur), st.view.mode),
         Command::MoveLineEnd => nop(line_end(b, cur), st.view.mode),
         Command::MoveUp => nop(
-            motion::vmove(b, cur, 1, false, st.view.curswant, st.view.indent.tab_width),
+            motion::vmove(
+                b,
+                cur,
+                1,
+                false,
+                st.view.curswant.get(),
+                st.view.indent.tab_width,
+            ),
             st.view.mode,
         ),
         Command::MoveDown => nop(
-            motion::vmove(b, cur, 1, true, st.view.curswant, st.view.indent.tab_width),
+            motion::vmove(
+                b,
+                cur,
+                1,
+                true,
+                st.view.curswant.get(),
+                st.view.indent.tab_width,
+            ),
             st.view.mode,
         ),
         Command::EnterInsert => nop(cur, Mode::Insert),
@@ -2866,11 +2888,15 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         }
         // `i_CTRL-W` — delete the word before the caret (within the current line), staying in Insert.
         Command::InsertDeleteWordBack => {
-            let ls = line_start(b, cur);
-            if cur <= ls {
+            if motion::at_bol(b, cur) {
                 return nop(cur, Mode::Insert);
             }
-            let wb = motion::target(b, cur, Motion::WordBack, 1).max(ls);
+            // Clamped to the line's start, found only when the word motion crossed a `\n` (#1231).
+            let wb = motion::target(b, cur, Motion::WordBack, 1);
+            let wb = match b[wb.min(cur)..cur].iter().rposition(|&c| c == b'\n') {
+                Some(i) => wb.max(wb.min(cur) + i + 1),
+                None => wb,
+            };
             // If the word motion did not move (e.g. only whitespace precedes), delete one grapheme instead.
             let start = if wb < cur { wb } else { prev_boundary(b, cur) };
             edit(
@@ -3583,14 +3609,14 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             // column through shorter interior lines; every other motion computes its own landing.
             let ts = st.view.indent.tab_width;
             let target = match m {
-                Motion::Up => motion::vmove(b, cur, *count, false, st.view.curswant, ts),
-                Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant, ts),
+                Motion::Up => motion::vmove(b, cur, *count, false, st.view.curswant.get(), ts),
+                Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant.get(), ts),
                 // `gg`/`G`/`{count}%` keep the wanted column too (`'nostartofline'`, nvim's
                 // `beginline(BL_SOL)`).
                 Motion::GotoLine | Motion::LastLine | Motion::GotoPercent => want_col(
                     b,
                     line_start(b, motion::target(b, cur, *m, *count)),
-                    st.view.curswant,
+                    st.view.curswant.get(),
                     ts,
                 ),
                 // In charwise Visual `$` goes just past the line's last char, so the selection takes the
@@ -3609,7 +3635,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 {
                     line_end(b, motion::target(b, cur, *m, *count))
                 }
-                _ => motion::target(b, cur, *m, *count),
+                _ => *memo.get_or_init(|| motion::target(b, cur, *m, *count)),
             };
             // Normal mode never rests on a non-empty line's trailing newline, whatever the motion: `j`/`k`
             // overshooting a short line (or `$`'s MAXCOL), `w`/`W` past the last word, `l`, `go` onto a
@@ -3617,29 +3643,31 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             // The phantom slot after the final newline is handled for every mode in `commit` (#677).
             // Visual may reach the newline (`vl` at the end selects it, as nvim does), Insert rests after the
             // last char, and the Emacs profile (between-char gravity) is never clamped.
-            let target =
-                if matches!(st.view.mode, Mode::Normal) && st.view.caret == CaretGravity::OnChar {
-                    let ls = line_start(b, target);
-                    let le = line_end(b, target);
-                    if target == le && le > ls {
-                        prev_grapheme(b, le)
-                    } else {
-                        target
-                    }
+            let target = if matches!(st.view.mode, Mode::Normal)
+                && st.view.caret == CaretGravity::OnChar
+            {
+                // On a non-empty line's NUL slot (`target == line_end`, past its start), told by
+                // the bytes around it rather than by finding the line (#1231).
+                if target <= b.len() && motion::at_nul(b, target) && !motion::at_bol(b, target) {
+                    prev_grapheme(b, target)
                 } else {
                     target
-                };
+                }
+            } else {
+                target
+            };
             // `{count}e` past the last word moves to the end and still fails (nvim's `end_word`).
             if matches!(m, Motion::WordEnd | Motion::BigWordEnd)
                 && st.view.caret == CaretGravity::OnChar
                 && matches!(st.view.mode, Mode::Normal | Mode::Visual { .. })
-                && motion::fails(
+                && motion::fails_with(
                     b,
                     cur,
                     *m,
                     *count,
                     false,
                     st.view.mode.selection().is_some(),
+                    &memo,
                 )
             {
                 return beep(target, st.view.mode);
@@ -3660,7 +3688,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 cur,
                 *m,
                 *count,
-                st.view.curswant,
+                &st.view.curswant,
                 st.view.indent.tab_width,
                 false,
             );
@@ -3674,7 +3702,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 cur,
                 *m,
                 *count,
-                st.view.curswant,
+                &st.view.curswant,
                 st.view.indent.tab_width,
                 true,
             );
@@ -3691,7 +3719,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 cur,
                 *motion,
                 *count,
-                st.view.curswant,
+                &st.view.curswant,
                 st.view.indent.tab_width,
                 false,
             );
@@ -3717,7 +3745,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 *motion,
                 *count,
                 *wise,
-                st.view.curswant,
+                &st.view.curswant,
                 st.view.indent.tab_width,
             );
             if sp.s >= sp.e && *op == OpKind::Change && !sp.linewise {
@@ -3729,7 +3757,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 cur,
                 *motion,
                 *count,
-                st.view.curswant,
+                &st.view.curswant,
                 st.view.indent.tab_width,
                 *op == OpKind::Yank,
             );
@@ -3792,7 +3820,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     cur,
                     *motion,
                     *count,
-                    st.view.curswant,
+                    &st.view.curswant,
                     st.view.indent.tab_width,
                     true,
                 );
@@ -4995,7 +5023,7 @@ fn reindented_cursor(st: &EditorState, indent: &[u8], text: &[u8]) -> usize {
     }
     let mut line = indent.to_vec();
     line.extend_from_slice(text);
-    line_col_cursor(&line, st.view.curswant, st.view.indent.tab_width)
+    line_col_cursor(&line, st.view.curswant.get(), st.view.indent.tab_width)
 }
 
 /// The byte offset in `line` (one line's bytes, no newline) of a Normal-mode cursor at the wanted column
@@ -5046,7 +5074,7 @@ pub(super) fn refused_linewise_cursor(
             Command::Delete(_, Motion::Line) | Command::Yank(_, Motion::Line) => cur,
             Command::Change(_, Motion::Line) => motion::first_non_blank(b, line_start(b, cur)),
             Command::Delete(n, m) | Command::Change(n, m) | Command::Yank(n, m) => {
-                op_landing(b, cur, m, n, st.view.curswant, ts, op == RefusedOp::Yank)
+                op_landing(b, cur, m, n, &st.view.curswant, ts, op == RefusedOp::Yank)
             }
             Command::OpToMark {
                 name,
@@ -5061,7 +5089,7 @@ pub(super) fn refused_linewise_cursor(
         return Some(start);
     }
     let ls = line_start(b, start);
-    Some(ls + line_col_cursor(&b[ls..line_end(b, ls)], st.view.curswant, ts))
+    Some(ls + line_col_cursor(&b[ls..line_end(b, ls)], st.view.curswant.get(), ts))
 }
 
 fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: GroupHint) -> Plan {
@@ -5123,7 +5151,7 @@ fn plan_shift_times(
         let (_, old_ws) = indent_cols(&b[first_ls..first_le], st.view.indent.tab_width);
         let mut line = first_new_ws;
         line.extend_from_slice(&b[first_ls + old_ws..first_le]);
-        first_ls + line_col_cursor(&line, st.view.curswant, st.view.indent.tab_width)
+        first_ls + line_col_cursor(&line, st.view.curswant.get(), st.view.indent.tab_width)
     };
 
     if edits.is_empty() {
