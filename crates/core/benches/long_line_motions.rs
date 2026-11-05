@@ -17,6 +17,14 @@ fn one_line(bytes: usize) -> Vec<u8> {
     s.into_bytes()
 }
 
+/// The start of the char holding byte `i` of the UTF-8 text `b`.
+fn char_start(b: &[u8], mut i: usize) -> usize {
+    while i > 0 && b[i] & 0xC0 == 0x80 {
+        i -= 1;
+    }
+    i
+}
+
 /// ~1 MiB of 100-column lines: the common case.
 fn normal_file() -> Vec<u8> {
     let mut line = UNIT.repeat(100 / UNIT.len() + 1);
@@ -67,6 +75,34 @@ fn bench_long_line_motions(c: &mut Criterion) {
             &[Command::Move(1, Motion::LastLine), Command::AppendLineEnd],
             Command::InsertDeleteWordBack,
         );
+    }
+    // #1237: the same `i_CTRL-W` with the 26 marks `a`-`z` spread over the line. Every edit carries each
+    // tracked position (marks, change list, `[`/`]`) through the change by line; before #1237 each one
+    // scanned its line, so this cost O(line × positions).
+    for (size, bytes, n) in &inputs {
+        g.bench_function(format!("i_ctrl_w_marks/{size}"), |b| {
+            b.iter_batched(
+                || {
+                    let mut st = EditorState::new(bytes.clone());
+                    // The content end: a long line's end, or the last line of the normal file.
+                    let end = bytes.len() - 1;
+                    for (k, c) in ('a'..='z').enumerate() {
+                        st.set_cursor(ruse_core::BytePos(char_start(bytes, end * k / 26)));
+                        apply_command(&mut st, &Command::SetNamedMark(c));
+                    }
+                    apply_command(&mut st, &Command::Move(1, Motion::LastLine));
+                    apply_command(&mut st, &Command::AppendLineEnd);
+                    st
+                },
+                |mut st| {
+                    for _ in 0..*n {
+                        apply_command(&mut st, &Command::InsertDeleteWordBack);
+                    }
+                    st
+                },
+                BatchSize::LargeInput,
+            )
+        });
     }
     // One word as long as the line (a run of digits, a base64 blob): `e`, `b` and `i_CTRL-W` cross all of it
     // in one keypress. This is the #1213 fuzz case (`i_CTRL-W` after a 64 MiB put of one char).

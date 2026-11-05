@@ -604,14 +604,47 @@ impl Tracked {
 ///
 /// A whole-line edit is one whose span starts and ends at line starts (`dd`, `O`, `:put`), or one that
 /// starts at a line's `\n` and ends at one (`dd` of the last line, `o`): with no other clue, the first
-/// reading wins. Cost per position is `O(log E)` plus the length of its line (and, for a deleted block,
-/// a scan of the change's edits for its moved copy).
+/// reading wins. The lines a position is read on are found once per change and remembered
+/// ([`Lines`]), so the cost per position is `O(log E + log L)` for `L` lines seen, plus one scan of each
+/// line the first time a position on it asks (and, for a deleted block, a scan of the change's edits for
+/// its moved copy). Before #1237 each position scanned its line, so many marks on one long line cost
+/// O(line × positions) per edit.
 pub struct LineMap<'a> {
     pub(crate) old: &'a [u8],
     pub(crate) new: &'a [u8],
     edits: &'a [Edit],
     /// `prefix[i]` = the summed delta of `edits[..i]`.
     prefix: Vec<isize>,
+    /// The lines of `old` and of `new` found so far.
+    old_lines: Lines,
+    new_lines: Lines,
+}
+
+/// The lines of one text found so far, as `(start, end)` (`end` the line's `\n` or the text's end),
+/// disjoint and sorted. A line is scanned for once; every later lookup of a position on it is a binary
+/// search (#1237).
+#[derive(Default)]
+struct Lines(std::cell::RefCell<Vec<(usize, usize)>>);
+
+impl Lines {
+    /// The line holding `p` (clamped to `text`) as `(start, end)`, the same as
+    /// `(pos::raw::line_start(text, p), pos::raw::line_end(text, p))`.
+    fn of(&self, text: &[u8], p: usize) -> (usize, usize) {
+        let p = p.min(text.len());
+        let mut lines = self.0.borrow_mut();
+        let i = lines.partition_point(|&(s, _)| s <= p);
+        if let Some(&(s, e)) = i.checked_sub(1).and_then(|j| lines.get(j)) {
+            if p <= e {
+                return (s, e);
+            }
+        }
+        let line = (
+            crate::pos::raw::line_start(text, p),
+            crate::pos::raw::line_end(text, p),
+        );
+        lines.insert(i, line);
+        line
+    }
 }
 
 impl<'a> LineMap<'a> {
@@ -631,6 +664,8 @@ impl<'a> LineMap<'a> {
             new,
             edits,
             prefix,
+            old_lines: Lines::default(),
+            new_lines: Lines::default(),
         }
     }
 
@@ -656,7 +691,7 @@ impl<'a> LineMap<'a> {
     /// The new-text offset of column `col` on the line starting at `ls` (clamped onto the line).
     fn at_col(&self, ls: usize, col: usize) -> usize {
         let ls = ls.min(self.new.len());
-        let le = crate::pos::raw::line_end(self.new, ls);
+        let le = self.new_lines.of(self.new, ls).1;
         ls + col.min(le - ls)
     }
 
@@ -667,7 +702,7 @@ impl<'a> LineMap<'a> {
         if p == self.new.len() && p > 0 && self.new[p - 1] == b'\n' {
             p -= 1;
         }
-        crate::pos::raw::line_start(self.new, p)
+        self.new_lines.of(self.new, p).0
     }
 
     /// Where the position at `o` (an old-text offset) goes, or `None` when its line was deleted and
@@ -680,7 +715,7 @@ impl<'a> LineMap<'a> {
     /// [`LineMap::map`] over a bare offset, for the store's own sweep.
     fn map_offset(&self, o: usize, gravity: LineGravity) -> Option<usize> {
         let o = o.min(self.old.len());
-        let ls = crate::pos::raw::line_start(self.old, o);
+        let (ls, le) = self.old_lines.of(self.old, o);
         let col = o - ls;
         let mut i = self.edits.partition_point(|e| e.end().0 < ls);
         let mut delta = self.prefix[i];
@@ -718,19 +753,18 @@ impl<'a> LineMap<'a> {
                 });
             } else if e.pos.0 < ls {
                 // A charwise edit runs into this line from above.
-                let le = crate::pos::raw::line_end(self.old, ls);
                 out = Some(if e.end().0 > le {
                     match gravity {
                         LineGravity::Drop => None,
                         LineGravity::Keep => Some(base + e.ins.len()),
-                        LineGravity::Cursor => Some(crate::pos::raw::line_start(self.new, base)),
+                        LineGravity::Cursor => Some(self.new_lines.of(self.new, base).0),
                     }
                 } else if e.ins.is_empty() && !self.is_join(e) {
                     // A charwise delete across lines (#1125): nvim's `op_delete` cuts both ends without
                     // moving marks, then joins with no space, which adds the kept head's length. The
                     // head is measured in the new text: an earlier edit of this change on the head's
                     // line (#1148) can have shortened or split it.
-                    let start = crate::pos::raw::line_start(self.new, base);
+                    let start = self.new_lines.of(self.new, base).0;
                     Some(self.at_col(start, base - start + col))
                 } else if o >= e.end().0 {
                     Some((o as isize + delta + e.delta()) as usize)
@@ -1299,5 +1333,50 @@ mod tests {
         store.assert_invariants(newer.len());
         assert_eq!(store.resolve(mark).offset.0, 0);
         assert_eq!(store.resolve(byte).offset.0, 3);
+    }
+
+    proptest::proptest! {
+        /// #1237: one [`LineMap`] remembers the lines it found, so mapping every position of a change
+        /// through it, in any order, gives what a fresh map (which scans each position's line, as before
+        /// #1237) gives for each, and the remembered lines are the scanned ones.
+        #[test]
+        fn line_map_with_remembered_lines_maps_as_a_fresh_one(
+            text in proptest::collection::vec(proptest::sample::select(b"ab \n".to_vec()), 0..40),
+            raw in proptest::collection::vec((0usize..48, 0usize..6, proptest::collection::vec(
+                proptest::sample::select(b"xy\n".to_vec()), 0..4)), 0..4),
+            order in proptest::collection::vec(0usize..48, 0..48),
+        ) {
+            // Disjoint, sorted edits inside the text.
+            let mut edits = Vec::new();
+            let mut at = 0;
+            let mut cuts: Vec<(usize, usize, Vec<u8>)> = raw
+                .into_iter()
+                .map(|(p, d, ins)| (p.min(text.len()), d, ins))
+                .collect();
+            cuts.sort_by_key(|c| c.0);
+            for (p, d, ins) in cuts {
+                if p < at {
+                    continue;
+                }
+                let d = d.min(text.len() - p);
+                edits.push(Edit::replace(BytePos(p), d, ins));
+                at = p + d + 1;
+            }
+            let list = EditList::new(edits).expect("disjoint and sorted");
+            let new = list.apply_to(&text);
+            let shared = LineMap::new(&text, &new, &list);
+            for &o in &order {
+                let o = o.min(text.len());
+                for g in [LineGravity::Keep, LineGravity::Drop, LineGravity::Cursor] {
+                    let fresh = LineMap::new(&text, &new, &list);
+                    proptest::prop_assert_eq!(shared.map(BytePos(o), g), fresh.map(BytePos(o), g));
+                }
+                let line = shared.old_lines.of(&text, o);
+                proptest::prop_assert_eq!(
+                    line,
+                    (crate::pos::raw::line_start(&text, o), crate::pos::raw::line_end(&text, o))
+                );
+            }
+        }
     }
 }
