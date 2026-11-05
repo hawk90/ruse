@@ -21,9 +21,22 @@ const ESC: &str = "\u{1b}";
 const LEAVE_ALT: &str = "\u{1b}[?1049l";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const PROMPT: &str = "Recovery journal for";
+/// The prompt's key line, drawn after its other lines: once it shows, the whole prompt is on screen.
+const PROMPT_KEYS: &str = "[k] discard";
 
 fn f_txt() -> &'static Path {
     Path::new("f.txt")
+}
+
+/// Wait for the whole recovery prompt.
+fn wait_for_prompt(ed: &mut Editor) -> String {
+    ed.wait_for(PROMPT_KEYS)
+}
+
+/// Wait until the editor shows `text` (the opened buffer), then check no recovery prompt came first.
+fn opened_without_offer(ed: &mut Editor, text: &str, what: &str) {
+    let screen = ed.wait_for(text);
+    assert!(!screen.contains(PROMPT), "{what}: nothing offered");
 }
 
 /// The terminal teardown is the last thing the child wrote: it left the alt screen and showed the cursor.
@@ -41,10 +54,7 @@ fn assert_restored(ed: &mut Editor, what: &str) {
 /// Restart in the same directory, expect the recovery offer, take it with `r`, save, quit; returns the file.
 fn restart_and_recover(dir: &Scratch, what: &str) -> Vec<u8> {
     let mut ed = Editor::start(dir, &[f_txt()]);
-    assert!(
-        ed.screen_bytes().contains(PROMPT),
-        "{what}: offers recovery"
-    );
+    wait_for_prompt(&mut ed);
     ed.keys("r:w\r:q\r");
     assert_eq!(ed.exit_status(), 0, "{what}: the recovered session quits");
     std::fs::read(dir.path("f.txt")).unwrap()
@@ -56,6 +66,7 @@ fn edit_kill_restart(kill: impl FnOnce(&mut Editor), want_status: i32, what: &st
     dir.file("f.txt", b"orig\n");
     let mut ed = Editor::start(&dir, &[f_txt()]);
     ed.keys(&format!("iabcde{ESC}"));
+    ed.sync(); // the edit is applied before the signal
     kill(&mut ed);
     assert_eq!(ed.exit_status(), want_status, "{what}: exit status");
     if what != "master close" {
@@ -101,6 +112,7 @@ fn ctrl_c_in_normal_mode_does_not_end_the_session() {
     let file = dir.file("f.txt", b"orig\n");
     let mut ed = Editor::start(&dir, &[f_txt()]);
     ed.keys(&format!("iabc{ESC}\u{3}\u{3}"));
+    ed.sync();
     assert!(ed.is_running(), "Ctrl-C does not end the session");
     ed.keys(":w\r:q\r");
     assert_eq!(ed.exit_status(), 0);
@@ -134,19 +146,15 @@ fn sigkill_after_an_idle_sync_recovers_the_synced_edits() {
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
 
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    assert!(ed.screen_bytes().contains(PROMPT), "offers recovery");
+    wait_for_prompt(&mut ed);
     ed.keys("r:w copy.txt\r");
     assert_eq!(
         support::wait_for_file(&dir.path("copy.txt"), b"abcorig\n"),
         b"abcorig\n",
         "the synced text, without the later `x`"
     );
-    let before = ed.screen_bytes().len();
-    ed.keys(":q\r");
-    assert!(
-        ed.screen_bytes()[before..].contains("E37"),
-        "the recovery is a change"
-    );
+    // The recovery is a change: `:q` refuses it.
+    ed.keys_then_wait_for(":q\r", "E37");
     ed.keys("u:q\r");
     assert_eq!(ed.exit_status(), 0, "`u` returns to the disk text: clean");
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
@@ -161,12 +169,13 @@ fn sigkill_after_one_edit_loses_it() {
     let file = dir.file("f.txt", b"orig\n");
     let mut ed = Editor::start(&dir, &[f_txt()]);
     ed.keys(&format!("ix{ESC}"));
+    ed.sync(); // the edit is applied, and still inside the idle window
     ed.signal(libc::SIGKILL);
     assert_eq!(ed.exit_status(), -libc::SIGKILL);
     drop(ed);
     assert!(!dir.journals().path_for(&file).exists());
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    assert!(!ed.screen_bytes().contains(PROMPT));
+    opened_without_offer(&mut ed, "orig", "after SIGKILL");
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
 }
@@ -182,7 +191,7 @@ fn signal_during_the_startup_recovery_prompt_restores_the_terminal() {
             .write_crashed(Some(&file), b"unsaved work\n")
             .unwrap();
         let mut ed = Editor::start(&dir, &[f_txt()]);
-        assert!(ed.screen_bytes().contains(PROMPT));
+        wait_for_prompt(&mut ed);
         ed.signal(sig);
         assert_eq!(ed.exit_status(), -sig, "signal {sig}");
         assert_restored(&mut ed, "signal at the prompt");
@@ -204,8 +213,9 @@ fn signal_during_the_edit_recovery_prompt_journals_open_buffers() {
     let j = dir.journals();
     j.write_crashed(Some(&b), b"UNSAVED B\n").unwrap();
     let mut ed = Editor::start(&dir, &[Path::new("a.txt")]);
+    let before = ed.mark();
     ed.keys(&format!("iAA{ESC}:e b.txt\r"));
-    assert!(ed.screen_bytes().contains(PROMPT));
+    ed.wait_for_after(before, PROMPT_KEYS);
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     assert_restored(&mut ed, "signal at the :e prompt");
@@ -221,19 +231,15 @@ fn two_journals_are_each_offered_and_recovered() {
     let b = dir.file("b.txt", b"b\n");
     let mut ed = Editor::start(&dir, &[Path::new("a.txt")]);
     ed.keys(&format!("iAA{ESC}:e b.txt\riBB{ESC}"));
+    ed.sync();
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     drop(ed);
 
     let mut ed = Editor::start(&dir, &[Path::new("a.txt")]);
-    assert!(ed.screen_bytes().contains(PROMPT), "a.txt is offered");
+    wait_for_prompt(&mut ed); // a.txt is offered
     ed.keys("r:w\r");
-    let before = ed.screen_bytes().len();
-    ed.keys(":e b.txt\r");
-    assert!(
-        ed.screen_bytes()[before..].contains(PROMPT),
-        "b.txt is offered"
-    );
+    ed.keys_then_wait_for(":e b.txt\r", PROMPT_KEYS); // and b.txt
     ed.keys("r:w\r:q\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&a).unwrap(), b"AAa\n");
@@ -259,8 +265,7 @@ fn stale_journal_is_offered_with_a_warning() {
         .set_modified(later)
         .unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    let screen = ed.screen_bytes();
-    assert!(screen.contains(PROMPT));
+    let screen = wait_for_prompt(&mut ed);
     assert!(screen.contains("NEWER"), "warns that the file changed");
     ed.keys("k:q\r");
     assert_eq!(ed.exit_status(), 0);
@@ -279,9 +284,8 @@ fn stale_journal_is_offered_with_a_warning() {
     dir.journals()
         .write_crashed(Some(&file), b"unsaved\n")
         .unwrap();
-    let ed = Editor::start(&dir, &[f_txt()]);
-    assert!(ed.screen_bytes().contains(PROMPT));
-    assert!(!ed.screen_bytes().contains("NEWER"));
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    assert!(!wait_for_prompt(&mut ed).contains("NEWER"));
 }
 
 /// A journal that cannot be read (mode 000) is named on the status line, not skipped silently, and the file
@@ -301,12 +305,8 @@ fn unreadable_journal_is_reported_and_kept() {
         .unwrap();
     std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o000)).unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    let screen = ed.screen_bytes();
-    assert!(!screen.contains(PROMPT));
-    assert!(
-        screen.contains("unreadable"),
-        "names the unreadable journal"
-    );
+    // Names the unreadable journal, and offers nothing.
+    opened_without_offer(&mut ed, "unreadable", "unreadable journal");
     // An edit synced (`:!` syncs first) goes beside the unreadable journal, never over it.
     let bytes_mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
     ed.keys(&format!("iNEW {ESC}:!true\r\r"));
@@ -335,8 +335,9 @@ fn empty_journal_opens_the_file_and_journaling_resumes() {
     journals.ensure_dir().unwrap();
     std::fs::write(journals.path_for(&file), b"").unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    assert!(!ed.screen_bytes().contains(PROMPT));
+    opened_without_offer(&mut ed, "orig", "empty journal");
     ed.keys(&format!("iabc{ESC}"));
+    ed.sync();
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     drop(ed);
@@ -377,10 +378,7 @@ fn a_normal_exit_leaves_no_journal_to_offer() {
         drop(ed);
         assert!(!journal.exists(), "{quit:?}: the journal is gone");
         let mut ed = Editor::start(&dir, &[f_txt()]);
-        assert!(
-            !ed.screen_bytes().contains(PROMPT),
-            "{quit:?}: nothing offered"
-        );
+        opened_without_offer(&mut ed, "orig", &format!("{quit:?}"));
         ed.keys(":q\r");
         assert_eq!(ed.exit_status(), 0);
         assert_eq!(std::fs::read(&file).unwrap(), b"orig\n", "{quit:?}");
@@ -397,12 +395,13 @@ fn undo_back_to_the_saved_text_drops_the_journal() {
     let journal = dir.journals().path_for(&file);
     assert!(support::wait_until(Duration::from_secs(5), || journal.exists()));
     ed.keys("u");
+    ed.sync();
     assert!(!journal.exists());
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     drop(ed);
-    let ed = Editor::start(&dir, &[f_txt()]);
-    assert!(!ed.screen_bytes().contains(PROMPT));
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    opened_without_offer(&mut ed, "orig", "after undo");
 }
 
 /// #863: a recovered buffer is modified: `:q` refuses with E37 and keeps the journal, `u` returns to the
@@ -417,23 +416,15 @@ fn a_recovered_buffer_is_modified_and_traces_from_the_disk_text() {
         .write_crashed(Some(&file), b"one\nTWO RECOVERED\n")
         .unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    assert!(ed.screen_bytes().contains(PROMPT));
+    wait_for_prompt(&mut ed);
     ed.keys("r");
-    let before = ed.screen_bytes().len();
-    ed.keys(":q\r");
+    // `:q` refuses a recovered buffer, and says why.
+    ed.keys_then_wait_for(":q\r", "E37");
     assert!(ed.is_running(), "`:q` refuses a recovered buffer");
-    assert!(
-        ed.screen_bytes()[before..].contains("E37"),
-        "says why: {:?}",
-        &ed.screen_bytes()[before..]
-    );
     assert!(journal.exists());
     ed.keys(":trace save t.trace\r");
     let trace = dir.path("t.trace");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while !trace.exists() && std::time::Instant::now() < deadline {
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    assert!(support::wait_until(Duration::from_secs(5), || trace.exists()));
     let out = support::run_detached(
         &["--replay", trace.to_str().unwrap(), file.to_str().unwrap()],
         std::process::Stdio::null(),
@@ -464,15 +455,11 @@ fn a_fifo_journal_does_not_block_startup() {
     let mut ed = Editor::start(&dir, &[f_txt()]);
     // The status line names the journal as unreadable; the reason (`is not a regular file`) is past the
     // 80th column.
-    assert!(
-        ed.screen_bytes().contains("unreadable"),
-        "reports the journal"
-    );
+    ed.wait_for("unreadable");
+    // The append fails visibly.
+    let before = ed.mark();
     type_synced_changes(&mut ed);
-    assert!(
-        ed.screen_bytes().contains("E303"),
-        "the append fails visibly"
-    );
+    ed.wait_for_after(before, "E303");
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
     assert!(std::fs::symlink_metadata(&jp)
@@ -490,10 +477,12 @@ fn a_non_utf8_file_name_opens() {
     let name = Path::new(std::ffi::OsStr::from_bytes(b"bad\xff.txt"));
     let on_disk = std::fs::write(dir.0.join(name), b"latin\n").is_ok();
     let mut ed = Editor::start(&dir, &[name]);
-    assert!(ed.is_running(), "opens without a panic");
     if on_disk {
-        assert!(ed.screen_bytes().contains("latin"), "shows the file");
+        ed.wait_for("latin"); // shows the file
+    } else {
+        ed.sync();
     }
+    assert!(ed.is_running(), "opens without a panic");
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
 }
@@ -523,6 +512,7 @@ fn the_unnamed_buffer_is_rescued_and_offered_after_cd() {
     std::fs::create_dir(dir.path("sub")).unwrap();
     let mut ed = Editor::start(&dir, &[]);
     ed.keys(&format!("iunnamed work{ESC}:cd sub\r"));
+    ed.sync();
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     drop(ed);
@@ -535,12 +525,8 @@ fn the_unnamed_buffer_is_rescued_and_offered_after_cd() {
     );
 
     let mut ed = Editor::start(&dir, &[]);
-    assert!(
-        ed.screen_bytes().contains(PROMPT),
-        "the next pathless start offers it"
-    );
-    ed.keys("r");
-    assert!(ed.screen_bytes().contains("unnamed work"));
+    wait_for_prompt(&mut ed); // the next pathless start offers it
+    ed.keys_then_wait_for("r", "unnamed work");
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
     assert!(unnamed_journals(&dir).is_empty(), "`:q!` lets it go");
@@ -555,7 +541,7 @@ fn a_legacy_sidecar_journal_is_offered_then_archived() {
     let sidecar = dir.path("f.txt.ruse-journal");
     std::fs::write(&sidecar, ruse_tui::persist::rjs0::frame(b"legacy work\n")).unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    assert!(ed.screen_bytes().contains(PROMPT));
+    wait_for_prompt(&mut ed);
     ed.keys("r:w\r:q\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"legacy work\n");
@@ -564,6 +550,6 @@ fn a_legacy_sidecar_journal_is_offered_then_archived() {
         .unwrap()
         .count();
     assert_eq!(archived, 1);
-    let ed = Editor::start(&dir, &[f_txt()]);
-    assert!(!ed.screen_bytes().contains(PROMPT), "offered once");
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    opened_without_offer(&mut ed, "legacy work", "offered once");
 }
