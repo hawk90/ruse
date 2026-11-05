@@ -7,6 +7,8 @@
 //! WORD (`W`/`B`/`E`) split on blanks only. They step one grapheme cluster at a time, as nvim's `inc()` /
 //! `dec()` do, and a cluster takes the class of its first char. All positions land on char boundaries.
 
+use std::cell::Cell;
+
 use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
 /// A motion in the editing grammar.
@@ -225,42 +227,125 @@ pub(crate) fn next_boundary(b: &[u8], pos: usize) -> usize {
 /// The byte offset of the next **grapheme cluster** boundary after `pos` (F-002): one `l`/`MoveRight`
 /// step crosses a whole user-perceived character — an emoji ZWJ sequence, a base+combining mark, a
 /// wide CJK glyph — not a single `char`, so the cursor never desyncs from the logical text (UAX#29).
-/// Falls back to the char boundary if the buffer is not valid UTF-8 (a binary file has no graphemes).
+/// Falls back to the char boundary if the line is not valid UTF-8 (a binary file has no graphemes).
+///
+/// One call costs O(line): it finds and validates the line. A loop that steps many times holds one
+/// [`Steps`] instead, which pays that once per line it enters (#1224).
 pub(crate) fn next_grapheme(b: &[u8], pos: usize) -> usize {
-    // A grapheme cluster never crosses a line break — UAX#29 always breaks around LF — so segmenting just
-    // the CURRENT LINE is exactly equivalent to segmenting the whole buffer, but O(line) instead of O(buffer)
-    // on the most frequently pressed motion. At/past the line end (window exhausted) the next boundary is the
-    // newline byte itself, handled by the char-boundary fallback (LF is 1 byte, so char == grapheme there).
-    let ls = line_start(b, pos);
-    let le = line_end(b, pos);
-    match std::str::from_utf8(&b[ls..le]) {
-        Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
-            let mut gc = GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
-            match gc.next_boundary(s, 0).ok().flatten() {
-                Some(rel) => ls + rel,
-                None => next_boundary(b, pos), // window exhausted: cross the newline
-            }
-        }
-        // Not text, or `pos` inside a char: the char step is the safe answer.
-        _ => next_boundary(b, pos),
-    }
+    Steps::new(b).next(pos)
 }
 
 /// The byte offset of the previous grapheme-cluster boundary before `pos` (the `h`/`MoveLeft` step).
+/// One call costs O(line), as [`next_grapheme`]; loops use [`Steps`].
 pub(crate) fn prev_grapheme(b: &[u8], pos: usize) -> usize {
-    // Windowed to the current line, for the same reason as [`next_grapheme`]. At the line start the previous
-    // boundary is the preceding newline, handled by the char-boundary fallback.
-    let ls = line_start(b, pos);
-    let le = line_end(b, pos);
-    match std::str::from_utf8(&b[ls..le]) {
-        Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
-            let mut gc = GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
-            match gc.prev_boundary(s, 0).ok().flatten() {
-                Some(rel) => ls + rel,
-                None => prev_boundary(b, pos), // window exhausted: cross back over the newline
-            }
+    Steps::new(b).prev(pos)
+}
+
+/// A grapheme-cluster stepper over `b` that remembers the line it last stepped on: its bounds and whether
+/// it is valid UTF-8. Finding, validating and segmenting the current line on every step made a word
+/// motion over a multi-megabyte line O(line²): a 64 MiB line ran for minutes (#1224). Through `Steps` a
+/// step costs the cluster it crosses (the segmenter reads only the text around `pos`), and a line is found
+/// and validated once, when the walk enters it.
+///
+/// The answers are those of the one-shot functions, which are this with a fresh cache. A grapheme cluster
+/// never crosses a line break (UAX#29 always breaks around LF), so segmenting the current line equals
+/// segmenting the buffer. At a line's end (its `\n`) or start the step crosses the newline by the
+/// char-boundary fallback (LF is one byte, so char == grapheme there). A line that is not valid UTF-8
+/// steps by char boundary throughout, as do positions inside a char.
+///
+/// The cache is in `Cell`s so a shared `&Steps` (the text objects' buffer view) can step too.
+pub(crate) struct Steps<'a> {
+    b: &'a [u8],
+    /// The cached line `[ls, le]`, `le` being its `\n` or the buffer end; empty (`ls > le`) before first use.
+    span: Cell<(usize, usize)>,
+    /// The cached line's text, `None` when it is not valid UTF-8.
+    text: Cell<Option<&'a str>>,
+}
+
+impl<'a> Steps<'a> {
+    pub(crate) fn new(b: &'a [u8]) -> Self {
+        Steps {
+            b,
+            span: Cell::new((1, 0)),
+            text: Cell::new(None),
         }
-        _ => prev_boundary(b, pos),
+    }
+
+    /// The line holding `pos` (clamped to the buffer) as `(start, end, text)`, from the cache when `pos` is
+    /// on the cached line: [`line_start`] and [`line_end`] give the same line for every offset in `[ls, le]`.
+    fn line(&self, pos: usize) -> (usize, usize, Option<&'a str>) {
+        let p = pos.min(self.b.len());
+        let (ls, le) = self.span.get();
+        if ls <= p && p <= le {
+            return (ls, le, self.text.get());
+        }
+        let ls = line_start(self.b, p);
+        let le = line_end(self.b, p);
+        let text = std::str::from_utf8(&self.b[ls..le]).ok();
+        self.span.set((ls, le));
+        self.text.set(text);
+        (ls, le, text)
+    }
+
+    /// [`line_start`] of `pos`.
+    pub(crate) fn line_start(&self, pos: usize) -> usize {
+        self.line(pos).0
+    }
+
+    /// [`line_end`] of `pos`.
+    pub(crate) fn line_end(&self, pos: usize) -> usize {
+        self.line(pos).1
+    }
+
+    /// [`next_grapheme`] of `pos`.
+    pub(crate) fn next(&self, pos: usize) -> usize {
+        // Two ASCII bytes always have a cluster boundary between them inside a line (no ASCII char extends,
+        // prepends or joins; the CR LF pair spans the line end, which is a boundary anyway), and the
+        // char-boundary fallback of a non-UTF-8 line answers the same. So the common step needs no line.
+        let b = self.b;
+        if pos < b.len() && b[pos] < 0x80 && b.get(pos + 1).is_none_or(|&c| c < 0x80) {
+            return pos + 1;
+        }
+        let (ls, _, text) = self.line(pos);
+        let rel = pos.saturating_sub(ls);
+        match text {
+            Some(s) if s.is_char_boundary(rel.min(s.len())) => {
+                let mut gc = GraphemeCursor::new(rel.min(s.len()), s.len(), true);
+                match gc.next_boundary(s, 0).ok().flatten() {
+                    Some(r) => ls + r,
+                    None => next_boundary(self.b, pos), // line exhausted: cross the newline
+                }
+            }
+            // Not text, or `pos` inside a char: the char step is the safe answer.
+            _ => next_boundary(self.b, pos),
+        }
+    }
+
+    /// [`prev_grapheme`] of `pos`.
+    pub(crate) fn prev(&self, pos: usize) -> usize {
+        // The mirror of the ASCII step in [`Steps::next`]: an ASCII byte before `pos` whose own predecessor
+        // is ASCII, a newline or the buffer start begins a cluster of its own (a non-ASCII predecessor could
+        // be a Prepend char, so that takes the full path).
+        let b = self.b;
+        if pos > 0
+            && pos <= b.len()
+            && b[pos - 1] < 0x80
+            && (pos == 1 || b[pos - 2] < 0x80 || b[pos - 1] == b'\n')
+        {
+            return pos - 1;
+        }
+        let (ls, _, text) = self.line(pos);
+        let rel = pos.saturating_sub(ls);
+        match text {
+            Some(s) if s.is_char_boundary(rel.min(s.len())) => {
+                let mut gc = GraphemeCursor::new(rel.min(s.len()), s.len(), true);
+                match gc.prev_boundary(s, 0).ok().flatten() {
+                    Some(r) => ls + r,
+                    None => prev_boundary(self.b, pos), // line exhausted: cross back over the newline
+                }
+            }
+            _ => prev_boundary(self.b, pos),
+        }
     }
 }
 
@@ -369,28 +454,31 @@ pub(crate) fn char_cls(b: &[u8], p: usize, big: bool) -> u32 {
     }
 }
 
+// The word walks below step through one [`Steps`], so the line's bounds and UTF-8 check are found once
+// per line the walk enters, not on every cluster (#1224).
+
 /// Vim `cls()` at `p` on Vim's line model: a line's NUL slot is blank.
-fn vcls(b: &[u8], p: usize, big: bool) -> u32 {
-    if p >= line_end(b, p) {
+fn vcls(s: &Steps, p: usize, big: bool) -> u32 {
+    if p >= s.line_end(p) {
         return 0;
     }
-    char_cls(b, p, big)
+    char_cls(s.b, p, big)
 }
 
 /// Whether `p` is on an empty line (Vim `col == 0 && LINEEMPTY`).
-fn on_empty_line(b: &[u8], p: usize) -> bool {
-    let ls = line_start(b, p);
-    p == ls && line_end(b, ls) == ls
+fn on_empty_line(s: &Steps, p: usize) -> bool {
+    let ls = s.line_start(p);
+    p == ls && s.line_end(ls) == ls
 }
 
 /// Vim `inc()`: the next position and how it got there (0 within the line, 2 onto the line's NUL slot, 1 to
 /// the next line's start), or `None` from the last line's NUL slot.
-fn vinc(b: &[u8], p: usize) -> Option<(usize, u8)> {
-    let le = line_end(b, p);
+fn vinc(s: &Steps, p: usize) -> Option<(usize, u8)> {
+    let le = s.line_end(p);
     if p < le {
-        let q = next_grapheme(b, p);
+        let q = s.next(p);
         Some((q, if q < le { 0 } else { 2 }))
-    } else if le + 1 < b.len() {
+    } else if le + 1 < s.b.len() {
         Some((le + 1, 1))
     } else {
         None
@@ -399,9 +487,9 @@ fn vinc(b: &[u8], p: usize) -> Option<(usize, u8)> {
 
 /// Vim `dec()`: the previous position (0 within the line, 1 back onto the previous line's NUL slot), or
 /// `None` at the buffer start.
-fn vdec(b: &[u8], p: usize) -> Option<(usize, u8)> {
-    if p > line_start(b, p) {
-        Some((prev_grapheme(b, p), 0))
+fn vdec(s: &Steps, p: usize) -> Option<(usize, u8)> {
+    if p > s.line_start(p) {
+        Some((s.prev(p), 0))
     } else if p > 0 {
         Some((p - 1, 1))
     } else {
@@ -414,13 +502,14 @@ fn vdec(b: &[u8], p: usize) -> Option<(usize, u8)> {
 /// of the operated text", `:help word`), while earlier counts cross freely (`3dw` takes three words over a
 /// line break, #742). Skipping white space stops on an empty line, which counts as a word (#746). A landing
 /// on a NUL slot is the end of the motion; a bare move pulls it back onto the last char.
-fn word_fwd(b: &[u8], pos: usize, big: bool, count: u32, eol: bool) -> usize {
+fn word_fwd(s: &Steps, pos: usize, big: bool, count: u32, eol: bool) -> usize {
+    let b = s.b;
     let mut p = pos.min(b.len());
     for left in (0..count.max(1)).rev() {
         let stop = |i: u8| i >= 1 && eol && left == 0;
-        let sclass = vcls(b, p, big);
-        let last_line = line_end(b, p) + 1 >= b.len();
-        let Some((q, i)) = vinc(b, p) else {
+        let sclass = vcls(s, p, big);
+        let last_line = s.line_end(p) + 1 >= b.len();
+        let Some((q, i)) = vinc(s, p) else {
             return p;
         };
         p = q;
@@ -428,8 +517,8 @@ fn word_fwd(b: &[u8], pos: usize, big: bool, count: u32, eol: bool) -> usize {
             return p;
         }
         if sclass != 0 {
-            while vcls(b, p, big) == sclass {
-                let Some((q, i)) = vinc(b, p) else {
+            while vcls(s, p, big) == sclass {
+                let Some((q, i)) = vinc(s, p) else {
                     return p;
                 };
                 p = q;
@@ -438,11 +527,11 @@ fn word_fwd(b: &[u8], pos: usize, big: bool, count: u32, eol: bool) -> usize {
                 }
             }
         }
-        while vcls(b, p, big) == 0 {
-            if on_empty_line(b, p) {
+        while vcls(s, p, big) == 0 {
+            if on_empty_line(s, p) {
                 break;
             }
-            let Some((q, i)) = vinc(b, p) else {
+            let Some((q, i)) = vinc(s, p) else {
                 return p;
             };
             p = q;
@@ -455,58 +544,58 @@ fn word_fwd(b: &[u8], pos: usize, big: bool, count: u32, eol: bool) -> usize {
 }
 
 /// Start of the next (small-)word / WORD — a bare Vim `w` / `W` step.
-fn next_word_start(b: &[u8], pos: usize, big: bool) -> usize {
-    word_fwd(b, pos, big, 1, false)
+fn next_word_start(s: &Steps, pos: usize, big: bool) -> usize {
+    word_fwd(s, pos, big, 1, false)
 }
 
 /// Start of the current/previous word / WORD — Vim `b` / `B` (`bck_word`). An empty line is a stop (#746).
-fn prev_word_start(b: &[u8], pos: usize, big: bool) -> usize {
-    let Some((mut p, _)) = vdec(b, pos.min(b.len())) else {
+fn prev_word_start(s: &Steps, pos: usize, big: bool) -> usize {
+    let Some((mut p, _)) = vdec(s, pos.min(s.b.len())) else {
         return 0;
     };
     // Skip the white space before the word; an empty line is a word of its own.
-    while vcls(b, p, big) == 0 {
-        if on_empty_line(b, p) {
+    while vcls(s, p, big) == 0 {
+        if on_empty_line(s, p) {
             return p;
         }
-        match vdec(b, p) {
+        match vdec(s, p) {
             Some((q, _)) => p = q,
             None => return p,
         }
     }
     // Back to the start of this word, then one forward over the overshoot.
-    let c = vcls(b, p, big);
-    while vcls(b, p, big) == c {
-        match vdec(b, p) {
+    let c = vcls(s, p, big);
+    while vcls(s, p, big) == c {
+        match vdec(s, p) {
             Some((q, _)) => p = q,
             None => return p,
         }
     }
-    vinc(b, p).map_or(p, |(q, _)| q)
+    vinc(s, p).map_or(p, |(q, _)| q)
 }
 
 /// The landing of Vim `ge` / `gE` (`bckend_word`): the last char of the previous word, or an empty line
 /// on the way (#746). Stays at the buffer start when there is no earlier word.
-fn prev_word_end(b: &[u8], pos: usize, big: bool) -> usize {
-    let mut p = pos.min(b.len());
-    let sclass = vcls(b, p, big);
-    let Some((q, _)) = vdec(b, p) else {
+fn prev_word_end(s: &Steps, pos: usize, big: bool) -> usize {
+    let mut p = pos.min(s.b.len());
+    let sclass = vcls(s, p, big);
+    let Some((q, _)) = vdec(s, p) else {
         return p;
     };
     p = q;
     if sclass != 0 {
-        while vcls(b, p, big) == sclass {
-            match vdec(b, p) {
+        while vcls(s, p, big) == sclass {
+            match vdec(s, p) {
                 Some((q, _)) => p = q,
                 None => return p,
             }
         }
     }
-    while vcls(b, p, big) == 0 {
-        if on_empty_line(b, p) {
+    while vcls(s, p, big) == 0 {
+        if on_empty_line(s, p) {
             break;
         }
-        match vdec(b, p) {
+        match vdec(s, p) {
             Some((q, _)) => p = q,
             None => return p,
         }
@@ -519,21 +608,28 @@ fn prev_word_end(b: &[u8], pos: usize, big: bool) -> usize {
 /// of the same char, which made `e` re-find the word it sits at the end of (#741); and on a base char with
 /// combining marks the next char is a mark of the same cell, which did the same (#909).
 pub(crate) fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
-    let mut i = next_grapheme(b, pos.min(b.len()));
+    word_end_in(&Steps::new(b), pos, big)
+}
+
+/// [`word_end_excl`] through a caller's [`Steps`].
+fn word_end_in(s: &Steps, pos: usize, big: bool) -> usize {
+    let b = s.b;
+    let mut i = s.next(pos.min(b.len()));
     while i < b.len() && char_cls(b, i, big) == 0 {
-        i = next_grapheme(b, i);
+        i = s.next(i);
     }
     if i >= b.len() {
         return b.len();
     }
-    run_end(b, i, big)
+    run_end(s, i, big)
 }
 
 /// One past the run of clusters from `i` that share the class of the one at `i`.
-fn run_end(b: &[u8], mut i: usize, big: bool) -> usize {
+fn run_end(s: &Steps, mut i: usize, big: bool) -> usize {
+    let b = s.b;
     let cw = char_cls(b, i, big);
     while i < b.len() && char_cls(b, i, big) == cw {
-        i = next_grapheme(b, i);
+        i = s.next(i);
     }
     i
 }
@@ -585,7 +681,7 @@ pub(crate) fn current_word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
     if char_cls(b, pos, big) == 0 {
         return pos; // on blank: not the cw special case — caller uses the ordinary word span
     }
-    run_end(b, pos, big)
+    run_end(&Steps::new(b), pos, big)
 }
 
 /// The word-object class of a byte: for `iW`/`aW` (`big`) only whitespace-vs-not matters, so punctuation
@@ -1895,13 +1991,15 @@ pub(crate) fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         return paragraph_target(b, cur0, m == Motion::ParagraphFwd, n);
     }
     let mut c = cur0;
+    // `{count}h` / `{count}l` step through one line cache: a count is not a whole-line scan per step (#1224).
+    let steps = Steps::new(b);
     for _ in 0..n {
         let prev = c;
         c = match m {
             // `h`/`l` are bounded by the line; the count stops at its edge.
             // A step is one grapheme cluster (F-002, #696): a composed char or a ZWJ emoji is one char.
-            Motion::Left if c > line_start(b, c) => prev_grapheme(b, c),
-            Motion::Right if c < line_end(b, c) => next_grapheme(b, c),
+            Motion::Left if c > steps.line_start(c) => steps.prev(c),
+            Motion::Right if c < steps.line_end(c) => steps.next(c),
             Motion::Left | Motion::Right => c,
             Motion::WrapLeft => wrap_left(b, c),
             Motion::WrapRight => wrap_right(b, c),
@@ -1925,16 +2023,16 @@ pub(crate) fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
                     le
                 }
             }
-            Motion::WordFwd => next_word_start(b, c, false),
-            Motion::WordBack => prev_word_start(b, c, false),
-            Motion::WordEnd => prev_grapheme(b, word_end_excl(b, c, false)), // land ON the last char
-            Motion::WordEndBack => prev_word_end(b, c, false),               // Vim `ge`
+            Motion::WordFwd => next_word_start(&steps, c, false),
+            Motion::WordBack => prev_word_start(&steps, c, false),
+            Motion::WordEnd => steps.prev(word_end_in(&steps, c, false)), // land ON the last char
+            Motion::WordEndBack => prev_word_end(&steps, c, false),       // Vim `ge`
             Motion::EmacsWordFwd => emacs_word_fwd(b, c), // Emacs forward-word: two-class, land AFTER the word
             Motion::EmacsWordBack => emacs_word_back(b, c), // Emacs backward-word: two-class mirror
-            Motion::BigWordFwd => next_word_start(b, c, true),
-            Motion::BigWordBack => prev_word_start(b, c, true),
-            Motion::BigWordEnd => prev_grapheme(b, word_end_excl(b, c, true)),
-            Motion::BigWordEndBack => prev_word_end(b, c, true), // Vim `gE`
+            Motion::BigWordFwd => next_word_start(&steps, c, true),
+            Motion::BigWordBack => prev_word_start(&steps, c, true),
+            Motion::BigWordEnd => steps.prev(word_end_in(&steps, c, true)),
+            Motion::BigWordEndBack => prev_word_end(&steps, c, true), // Vim `gE`
             // FindChar / line-jumps are resolved by the early returns above; objects/linewise have no
             // bare-move target.
             Motion::FindChar { .. }
@@ -2089,9 +2187,10 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // instead of joining it to the next (nvim: `dw` on ["foo   ","bar"] → ["","bar"]). Earlier counts
         // cross line breaks (`3dw`, #742), and an empty line is a word of its own (#746): `dw` there ends at
         // the next line's start, which the exclusive-linewise rule in `op_span` turns into a linewise delete.
-        Motion::WordFwd | Motion::BigWordFwd => {
-            (cur, word_fwd(b, cur, m == Motion::BigWordFwd, n, true))
-        }
+        Motion::WordFwd | Motion::BigWordFwd => (
+            cur,
+            word_fwd(&Steps::new(b), cur, m == Motion::BigWordFwd, n, true),
+        ),
         // `d$` reaches the line end (deletes the last char too), unlike the bare `$` move which stops on it.
         // `d{count}$` reaches the end of the line `count - 1` below.
         Motion::LineEnd => (cur, line_end(b, lines_down(b, cur, n - 1))),
@@ -2129,7 +2228,8 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             // Each step starts from the previous landing (the last char of a word), not its exclusive end, so
             // `2de` on `foo.bar` takes `foo.` (the `.` is a word of its own).
             let big = m == Motion::BigWordEnd;
-            let land = repeat_step(n, cur, |p| prev_grapheme(b, word_end_excl(b, p, big)));
+            let s = Steps::new(b);
+            let land = repeat_step(n, cur, |p| s.prev(word_end_in(&s, p, big)));
             (cur, next_grapheme(b, land).max(cur))
         }
         // Emacs `kill-word` (`M-d`): `[cursor, emacs_word_fwd)` — the two-class forward-word span, which
@@ -2146,7 +2246,8 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // and including the cursor char (Vim `dge` on `r` of "foo bar" → "fo").
         Motion::WordEndBack | Motion::BigWordEndBack => {
             let big = m == Motion::BigWordEndBack;
-            let e = repeat_step(n, cur, |e| prev_word_end(b, e, big));
+            let s = Steps::new(b);
+            let e = repeat_step(n, cur, |e| prev_word_end(&s, e, big));
             (e, next_grapheme(b, cur))
         }
         // `^` / `|` / `go` / `gM` are exclusive and can point either way (indent / column / byte / line-%,
@@ -2727,6 +2828,152 @@ mod windowed_grapheme_tests {
         // `h` at a line start crosses back over the newline.
         assert_eq!(prev_grapheme(b, 3), 2, "line start → the newline");
         assert_eq!(prev_grapheme(b, 2), 1, "newline → prev line's last char");
+    }
+}
+
+#[cfg(test)]
+mod steps_tests {
+    //! #1224: [`Steps`] caches the current line; its answers must equal the per-call line-windowed stepping
+    //! it replaced, for any order of queries over any bytes (lines that are not UTF-8, positions inside a
+    //! char, CRLF, combining marks, ZWJ and flag sequences), and a word walk over a long line must cost the
+    //! text it crosses.
+    use super::{line_end, line_start, next_boundary, prev_boundary, target, Motion, Steps};
+    use proptest::prelude::*;
+    use unicode_segmentation::GraphemeCursor;
+
+    /// The pre-#1224 `next_grapheme`, verbatim: find, validate and segment the line on every call.
+    fn next_ref(b: &[u8], pos: usize) -> usize {
+        let ls = line_start(b, pos);
+        let le = line_end(b, pos);
+        match std::str::from_utf8(&b[ls..le]) {
+            Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
+                let mut gc =
+                    GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
+                match gc.next_boundary(s, 0).ok().flatten() {
+                    Some(rel) => ls + rel,
+                    None => next_boundary(b, pos),
+                }
+            }
+            _ => next_boundary(b, pos),
+        }
+    }
+
+    /// The pre-#1224 `prev_grapheme`, verbatim.
+    fn prev_ref(b: &[u8], pos: usize) -> usize {
+        let ls = line_start(b, pos);
+        let le = line_end(b, pos);
+        match std::str::from_utf8(&b[ls..le]) {
+            Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
+                let mut gc =
+                    GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
+                match gc.prev_boundary(s, 0).ok().flatten() {
+                    Some(rel) => ls + rel,
+                    None => prev_boundary(b, pos),
+                }
+            }
+            _ => prev_boundary(b, pos),
+        }
+    }
+
+    /// Text pieces that exercise the segmenter and the fallbacks.
+    const PIECES: &[&[u8]] = &[
+        b"a",
+        b"_",
+        b" ",
+        b".",
+        b"\t",
+        b"\n",
+        b"\r",
+        b"\r\n",
+        "e\u{301}".as_bytes(),
+        "\u{301}".as_bytes(),
+        "가".as_bytes(),
+        "👨\u{200d}👩\u{200d}👧".as_bytes(),
+        "\u{200d}".as_bytes(),
+        "🇰🇷".as_bytes(),
+        "🇯".as_bytes(),
+        "👍🏽".as_bytes(),
+        "\u{915}\u{94d}\u{937}".as_bytes(), // Devanagari conjunct (InCB)
+        "\u{600}".as_bytes(),               // a Prepend char: joins the ASCII char after it
+        b"\xff",
+        b"\x80",
+        b"\xe0\x80",
+        b"\xea\xb0", // a cut 3-byte char
+    ];
+
+    fn bytes(picks: &[usize]) -> Vec<u8> {
+        picks
+            .iter()
+            .flat_map(|&i| PIECES[i % PIECES.len()].to_vec())
+            .collect()
+    }
+
+    proptest! {
+        #![proptest_config(crate::test_cases(512))]
+
+        /// One `Steps` answers like the reference at every offset (char boundary or not, and one past the
+        /// end), queried in an arbitrary order that jumps between lines and directions.
+        #[test]
+        fn steps_equal_the_per_call_reference(
+            picks in proptest::collection::vec(0usize..64, 0..40),
+            order in proptest::collection::vec((0usize..400, any::<bool>()), 0..80),
+        ) {
+            let b = bytes(&picks);
+            let steps = Steps::new(&b);
+            let all = (0..=b.len() + 1).map(|p| (p, true)).chain((0..=b.len() + 1).map(|p| (p, false)));
+            let jumps = order.iter().map(|&(p, f)| (p % (b.len() + 2), f));
+            for (pos, fwd) in all.chain(jumps) {
+                if fwd {
+                    prop_assert_eq!(steps.next(pos), next_ref(&b, pos), "next at {} in {:?}", pos, b);
+                } else {
+                    prop_assert_eq!(steps.prev(pos), prev_ref(&b, pos), "prev at {} in {:?}", pos, b);
+                }
+                let p = pos.min(b.len());
+                prop_assert_eq!(steps.line_start(pos), line_start(&b, p));
+                prop_assert_eq!(steps.line_end(pos), line_end(&b, p));
+            }
+            // A forward and a backward walk, each step from the last landing, as the word loops do.
+            let mut p = 0;
+            while p < b.len() {
+                let q = steps.next(p);
+                prop_assert_eq!(q, next_ref(&b, p));
+                p = q;
+            }
+            while p > 0 {
+                let q = steps.prev(p);
+                prop_assert_eq!(q, prev_ref(&b, p));
+                p = q;
+            }
+        }
+    }
+
+    /// Word motions over one 512 KiB line cross it in one pass: before #1224 every cluster re-validated the
+    /// whole line, so these counts ran for hours; now they finish in well under a second even unoptimized.
+    /// The landings are checked against the word count of one repeated unit.
+    #[test]
+    fn word_walks_over_a_long_line_are_linear() {
+        const UNIT: &str = "ab_c, d.e(\"가나\") e\u{301}x ";
+        let reps = (512 << 10) / UNIT.len();
+        let b = UNIT.repeat(reps).into_bytes();
+        let unit = UNIT.len();
+        // Words per unit, from a short buffer: the `w` count that lands on the second unit's start.
+        let short = UNIT.repeat(3).into_bytes();
+        let per = (1..100)
+            .find(|&k| target(&short, 0, Motion::WordFwd, k) == unit)
+            .expect("the unit is a whole number of words");
+        let k = (reps - 2) as u32;
+        assert_eq!(target(&b, 0, Motion::WordFwd, per * k), k as usize * unit);
+        let back = target(&b, (reps - 1) * unit, Motion::WordBack, per * k);
+        assert_eq!(back, unit, "`b` walks back as many units");
+        let e = target(&b, 0, Motion::WordEnd, per * k);
+        assert!(
+            e > (k as usize - 1) * unit && e < k as usize * unit,
+            "`e` ends in unit {k}"
+        );
+        let ge = target(&b, (reps - 1) * unit, Motion::WordEndBack, per * k);
+        assert!(ge > unit && ge < 2 * unit, "`ge` ends in the second unit");
+        // A hostile `l` count walks the line once and stops at its edge (the caller clamps it onto a char).
+        assert_eq!(target(&b, 0, Motion::Right, u32::MAX), b.len());
     }
 }
 

@@ -26,9 +26,12 @@ use crate::motion::{self, Motion};
 const QUOTE_ESCAPE: u8 = b'\\';
 
 /// The buffer seen through Vim's position primitives. `last` is the `NUL` slot of the last line.
+/// Steps go through one [`motion::Steps`], so a walk finds and validates each line once, not once per
+/// cluster (#1224).
 struct Buf<'a> {
     b: &'a [u8],
     last: usize,
+    steps: motion::Steps<'a>,
 }
 
 impl<'a> Buf<'a> {
@@ -36,6 +39,7 @@ impl<'a> Buf<'a> {
         Buf {
             b,
             last: motion::content_end(b),
+            steps: motion::Steps::new(b),
         }
     }
 
@@ -59,7 +63,7 @@ impl<'a> Buf<'a> {
     }
 
     fn line_start(&self, p: usize) -> usize {
-        motion::line_start(self.b, p)
+        self.steps.line_start(p)
     }
 
     /// `p` sits at column 0 of an empty line.
@@ -73,14 +77,14 @@ impl<'a> Buf<'a> {
     }
 
     fn is_last_line(&self, p: usize) -> bool {
-        motion::line_end(self.b, p) >= self.last
+        self.steps.line_end(p) >= self.last
     }
 
     /// Vim `inc`: one char forward; `2` when that lands on the `NUL`, `1` when it crosses into the next
     /// line, `-1` (no move) on the last line's `NUL`.
     fn inc(&self, p: &mut usize) -> i32 {
         if !self.is_nul(*p) {
-            let q = motion::next_grapheme(self.b, *p);
+            let q = self.steps.next(*p);
             *p = q;
             return if self.is_nul(q) { 2 } else { 0 };
         }
@@ -94,7 +98,7 @@ impl<'a> Buf<'a> {
     /// Vim `dec`: one char back; at column 0 it moves to the previous line's `NUL` (`1`), `-1` at offset 0.
     fn dec(&self, p: &mut usize) -> i32 {
         if !self.col0(*p) {
-            *p = motion::prev_grapheme(self.b, *p);
+            *p = self.steps.prev(*p);
             return 0;
         }
         if *p == 0 {
@@ -127,7 +131,7 @@ impl<'a> Buf<'a> {
         if self.col0(*p) {
             return false;
         }
-        *p = motion::prev_grapheme(self.b, *p);
+        *p = self.steps.prev(*p);
         true
     }
 
@@ -444,7 +448,7 @@ fn findsent(buf: &Buf, p: &mut usize, forward: bool, mut count: u32) -> bool {
                 if buf.is_last_line(pos) {
                     return false;
                 }
-                pos = motion::line_end(buf.b, pos) + 1;
+                pos = buf.steps.line_end(pos) + 1;
                 break 'found;
             } else if !forward {
                 buf.decl(&mut pos);
@@ -483,7 +487,7 @@ fn findsent(buf: &Buf, p: &mut usize, forward: bool, mut count: u32) -> bool {
                 let c = buf.gchar(pos);
                 if c == 0 || (buf.col0(pos) && start_ps(buf, pos)) {
                     if !forward && buf.line_start(pos) != startline {
-                        pos = motion::line_end(buf.b, pos) + 1;
+                        pos = buf.steps.line_end(pos) + 1;
                     }
                     break;
                 }
