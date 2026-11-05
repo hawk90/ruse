@@ -708,12 +708,15 @@ pub(crate) struct Session {
     /// File buffers whose file on disk differs from what ruse last read or saved (`[disk changed]`,
     /// RFC-0023 §8), as of the last [`Session::check_disk`].
     disk_changed: HashSet<DocumentId>,
-    /// The ones of them W11/W12 was shown for, once per change.
-    disk_warned: HashSet<DocumentId>,
+    /// The file buffers W11/W12 (changed) or E211 (gone) was shown for, and for which state: once per
+    /// change.
+    disk_warned: HashMap<DocumentId, persist::disk::State>,
     /// The last key or paste, and the last disk check: the idle check runs [`persist::journal::IDLE`]
     /// after both.
     last_input: std::time::Instant,
     disk_checked: std::time::Instant,
+    /// `'readonly'` beyond a file buffer's own flag: W10, `ruse -R`, buffers without a file (#1211).
+    pub(crate) readonly: crate::app::dispatch::ReadOnly,
     /// `ruse` with no file: the start buffer has no path, but a crash rescues it into this process's unnamed
     /// journal, which the next pathless start offers (#856). Only the crash paths write it: the buffer can
     /// never be saved, so a periodic journal would outlive every `:q!`.
@@ -889,9 +892,10 @@ impl Session {
             journal_writers: HashMap::new(),
             journal_failed: HashSet::new(),
             disk_changed: HashSet::new(),
-            disk_warned: HashSet::new(),
+            disk_warned: HashMap::new(),
             last_input: std::time::Instant::now(),
             disk_checked: std::time::Instant::now(),
+            readonly: crate::app::dispatch::ReadOnly::default(),
             unnamed_start: path.is_none().then_some(file_buf),
             rescue,
             profile_name: profile,
@@ -975,9 +979,9 @@ impl Session {
     }
 
     /// Sync every buffer's pending journal records now: before a risky operation (`:!`, a filter, `:r !`,
-    /// `:w !`, `:terminal`), so a hang or a kill inside it loses nothing that was typed (RFC-0023 §4).
+    /// `:w !`, `:terminal`, an LSP edit batch), so a hang or a kill inside it loses nothing that was typed
+    /// (RFC-0023 §4).
     pub(crate) fn sync_journals(&mut self) {
-        let now = std::time::Instant::now();
         let Session {
             ws,
             files,
@@ -986,16 +990,7 @@ impl Session {
             status,
             ..
         } = self;
-        for (id, w) in journal_writers.iter_mut() {
-            let (Some(doc), Some(bf)) = (ws.document_mut(*id), files.get(id)) else {
-                continue;
-            };
-            w.absorb(doc, bf.fmt, now); // the changes made since the frame began, too
-            if w.unsynced() {
-                let r = w.flush(doc);
-                journal_outcome(r, *id, &bf.path, w.journal(), journal_failed, status);
-            }
-        }
+        sync_journals(ws, files, journal_writers, journal_failed, status);
     }
 
     /// How long until a buffered journal sync is due, for the event loop's poll timeout.
@@ -1044,6 +1039,7 @@ impl Session {
             journals,
             journal_writers,
             journal_failed,
+            readonly,
             unnamed_start,
             rescue,
             folds,
@@ -1123,6 +1119,7 @@ impl Session {
         // (#856): each file-backed buffer (keyed by its own path, F-007; incl. `:e`-opened ones) and the
         // pathless start buffer. A scratch buffer (`:enew`) is skipped so its bytes never land in some
         // file's recovery. `save()` clears a buffer's journal by path, so this stays consistent.
+        readonly.follow(files);
         if *rescue {
             let now = std::time::Instant::now();
             let mut entries = Vec::with_capacity(files.len() + 1);
@@ -1354,6 +1351,11 @@ impl Session {
     /// mutates `highlighters`, which the frame's highlight spans borrowed until render ended), then open the
     /// references / code-action pickers it collected.
     pub(crate) fn post_render(&mut self, frame: &FrameCtx) {
+        // An LSP edit batch (format, rename, a server's `workspace/applyEdit`) is a risky operation: the
+        // typing before it reaches the journal first (RFC-0023 §4, #1202).
+        if self.lsp.has_edit_batch() {
+            self.sync_journals();
+        }
         let recorded = &mut self.recorded;
         self.lsp.apply_pending(
             &mut self.ws,
@@ -1394,11 +1396,14 @@ impl Session {
         poll_ms
     }
 
-    /// The status-line flags after the focused buffer's `[+]` (RFC-0023 §8): `[journal!]` when the last
+    /// The status-line flags after the focused buffer's `[+]` (RFC-0023 §8): `[RO]` for a `'readonly'` buffer (nvim's `%r`, #1211), `[journal!]` when the last
     /// write or sync of its modified buffer's journal failed (#938).
     pub(crate) fn status_flags(&self) -> String {
         let mut flags = String::new();
         let id = self.ws.focused_buffer();
+        if self.readonly.get(&self.files, id) {
+            flags.push_str("[RO]");
+        }
         if self.journal_failed.contains(&id) && self.ws.focused().doc.is_modified() {
             flags.push_str("[journal!]");
         }
@@ -1410,7 +1415,8 @@ impl Session {
 
     /// Look at every file buffer's file again (RFC-0023 §8): a stat, and a hash when it moved. A buffer
     /// whose file newly differs from what ruse read or saved gets nvim's W11 (unmodified) or W12 (modified
-    /// too) on the status line when `announce`, the focused buffer first. ruse does not offer to reload.
+    /// too) on the status line when `announce`, the focused buffer first; one whose file is gone gets
+    /// nvim's E211 and no `[disk changed]` flag. ruse does not offer to reload.
     pub(crate) fn check_disk(&mut self, announce: bool) {
         self.disk_checked = std::time::Instant::now();
         let focused = self.ws.focused_buffer();
@@ -1421,27 +1427,31 @@ impl Session {
             let Some(bf) = self.files.get(&id) else {
                 continue;
             };
-            if persist::disk::check(&bf.path) {
+            let state = persist::disk::check(&bf.path);
+            if state == persist::disk::State::Changed {
                 self.disk_changed.insert(id);
-                if !self.disk_warned.contains(&id) && first.is_none() {
-                    first = Some(id);
-                }
             } else {
                 self.disk_changed.remove(&id);
+            }
+            if state == persist::disk::State::Same {
                 self.disk_warned.remove(&id);
+            } else if self.disk_warned.get(&id) != Some(&state) && first.is_none() {
+                first = Some((id, state));
             }
         }
         self.disk_changed.retain(|id| self.files.contains_key(id));
-        self.disk_warned.retain(|id| self.files.contains_key(id));
-        let Some(id) = first.filter(|_| announce) else {
+        self.disk_warned.retain(|id, _| self.files.contains_key(id));
+        let Some((id, state)) = first.filter(|_| announce) else {
             return;
         };
-        self.disk_warned.insert(id);
+        self.disk_warned.insert(id, state);
         let (Some(bf), Some(doc)) = (self.files.get(&id), self.ws.document(id)) else {
             return;
         };
         let name = bf.path.display();
-        self.status = if doc.is_modified() {
+        self.status = if state == persist::disk::State::Gone {
+            format!("E211: File \"{name}\" no longer available")
+        } else if doc.is_modified() {
             format!(
                 "W12: Warning: File \"{name}\" has changed and the buffer was changed in Vim as well"
             )
@@ -1553,8 +1563,10 @@ impl Session {
             self.end_macro_undo();
             self.sync_undo_before_typed();
         }
+        let ro_watch = self.readonly.watch(&self.ws, &self.files);
         // A replayed key's edits are the macro's (INV-ORIGIN, #880).
         self.route_as(raw_key, from_replay, frame);
+        self.readonly.warn(ro_watch, &self.ws, &mut self.status);
         if !from_replay && !self.emacs_profile {
             // A typed `@{reg}` (or `@:`, `Q`) queued its replay: one undo step for all of it (#939).
             if self.macros.replay_pending() && !self.ws.focused().doc.in_undo_block() {
@@ -1619,6 +1631,7 @@ impl Session {
         self.sync_undo_before_typed();
         let visual_append = self.visual_paste_appends(mode, &frame.snapshot);
         let out = self.engine.paste(&text, mode, visual_append);
+        let ro_watch = self.readonly.watch(&self.ws, &self.files);
         let Session {
             ws,
             files,
@@ -1637,6 +1650,7 @@ impl Session {
             Feed::Repeat(r) => run_repeat(r, ws, files, recorded, status, quit),
             _ => {}
         }
+        self.readonly.warn(ro_watch, &self.ws, &mut self.status);
         self.settle_interrupt();
         if self.quit {
             Flow::Quit
@@ -1702,6 +1716,8 @@ impl Session {
             opt_sources,
             ui_opts,
             config,
+            files,
+            readonly,
             ..
         } = self;
         let mut host = crate::app::set_exec::OptionHost {
@@ -1720,6 +1736,8 @@ impl Session {
             fold_rev,
             sources: opt_sources,
             ui: ui_opts,
+            files,
+            readonly,
             win_height: 0,
         };
         crate::app::set_exec::apply_config(config, &mut host);
@@ -1819,6 +1837,8 @@ impl Session {
             alt_file,
             screen_want,
             scroll_valid,
+            journal_writers,
+            journal_failed,
             ..
         } = self;
         let (revision, text_rows) = (frame.revision, frame.text_rows);
@@ -2020,6 +2040,10 @@ impl Session {
                 // F-014: the code-action picker applies the selected action's WorkspaceEdit (inline, as
                 // the `spans` borrow is released post-render — like the references jump).
                 Some(Accepted::Action(action)) => {
+                    if !action.edit.is_empty() {
+                        // An LSP edit batch syncs the journal first (RFC-0023 §4, #1202).
+                        sync_journals(ws, files, journal_writers, journal_failed, status);
+                    }
                     lsp.apply_code_action(
                         &action,
                         ws,
@@ -3358,6 +3382,7 @@ impl Session {
             rescue,
             journals,
             journal_writers,
+            readonly,
             ..
         } = self;
         let (cols, text_rows) = (frame.cols, frame.text_rows);
@@ -3494,6 +3519,8 @@ impl Session {
                     fold_rev,
                     sources: opt_sources,
                     ui: ui_opts,
+                    files,
+                    readonly,
                     win_height,
                 };
                 let out =
@@ -5009,6 +5036,27 @@ fn journal_health(
     }
 }
 
+/// [`Session::sync_journals`] over the session's fields, for a caller that holds them borrowed apart.
+fn sync_journals(
+    ws: &mut Workspace,
+    files: &Files,
+    journal_writers: &mut HashMap<DocumentId, persist::journal::Writer>,
+    journal_failed: &mut HashSet<DocumentId>,
+    status: &mut String,
+) {
+    let now = std::time::Instant::now();
+    for (id, w) in journal_writers.iter_mut() {
+        let (Some(doc), Some(bf)) = (ws.document_mut(*id), files.get(id)) else {
+            continue;
+        };
+        w.absorb(doc, bf.fmt, now); // the changes made since the frame began, too
+        if w.unsynced() {
+            let r = w.flush(doc);
+            journal_outcome(r, *id, &bf.path, w.journal(), journal_failed, status);
+        }
+    }
+}
+
 /// Report a journal sync: a failure is shown once per failing run, as Neovim's E303 is, rather than
 /// silently leaving the work unprotected (#907); the records stay buffered for the next try.
 /// The status line then shows `[journal!]` until a write succeeds (RFC-0023 §8).
@@ -5044,7 +5092,8 @@ fn is_ex_error(status: &str) -> bool {
     matches!(digits, Some(n) if n > 0 && status[1 + n..].starts_with(':'))
 }
 
-pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
+/// `read_only_mode` is `ruse -R` (#1211).
+pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
     let fmt = persist::encoding::FileFormat::detect(&raw);
     let disk = fmt.to_buffer(&raw);
@@ -5174,6 +5223,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             bf.read_only = true; // the start buffer is the only one with a file yet
         }
     }
+    s.readonly.mode = read_only_mode;
     // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
     // still works — `"+p` just pastes nothing.
@@ -5760,5 +5810,69 @@ mod info_tests {
     fn non_info_command_is_none() {
         let ws = Workspace::new(&b"x\n"[..]);
         assert!(info_status(&Command::Undo, &ws).is_none());
+    }
+}
+
+#[cfg(test)]
+mod journal_tests {
+    use super::*;
+
+    /// A session on `f.txt` in a scratch directory whose buffer is journaled into the scratch state home,
+    /// as the binary journals a file buffer (the test does not touch the process-global rescue store).
+    fn journaled(
+        tag: &str,
+        text: &[u8],
+    ) -> (Session, &'static persist::journal::Journals, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("ruse-session-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("f.txt");
+        std::fs::write(&file, text).unwrap();
+        let mut s = Session::new(SessionInit {
+            path: Some(file.clone()),
+            fmt: persist::encoding::FileFormat::default(),
+            initial: text.to_vec(),
+            status: String::new(),
+            profile: "vim",
+            term: TermInfo::default(),
+            cwd: dir.clone(),
+            trusted: false,
+            rescue: false,
+        });
+        let j: &'static persist::journal::Journals = Box::leak(Box::new(
+            persist::journal::Journals::in_state_home(&dir.join("state")),
+        ));
+        s.journals = Some(j);
+        let id = s.ws.focused_buffer();
+        let fmt = persist::encoding::FileFormat::default();
+        let mut w = persist::journal::Writer::new(j, &file, fmt);
+        w.absorb(
+            s.ws.document_mut(id).unwrap(),
+            fmt,
+            std::time::Instant::now(),
+        );
+        s.journal_writers.insert(id, w);
+        (s, j, file)
+    }
+
+    /// #1202: an LSP edit batch is a risky operation (RFC-0023 §4). The typing before it reaches the journal
+    /// before the batch applies, with no idle wait.
+    #[test]
+    fn an_lsp_edit_batch_syncs_the_journal_first() {
+        let (mut s, j, file) = journaled("lsp-batch", b"fn main() {}\n");
+        let typed = vec![(BytePos(0), BytePos(0), "pub ".to_string())];
+        assert!(s.ws.apply_edits(&typed, TransactionOrigin::UserInput));
+        assert!(!j.path_for(&file).exists(), "nothing is due yet");
+        s.lsp
+            .queue_format_edits(vec![(BytePos(0), BytePos(0), "// f\n".to_string())]);
+        let frame = s.pre_frame(80, 24);
+        s.post_render(&frame);
+        assert_eq!(
+            j.replay(Some(&file)).as_deref(),
+            Some(&b"pub fn main() {}\n"[..]),
+            "the typing, synced before the batch"
+        );
+        assert_eq!(s.ws.focused().doc.bytes(), b"// f\npub fn main() {}\n");
+        let _ = std::fs::remove_dir_all(file.parent().unwrap());
     }
 }

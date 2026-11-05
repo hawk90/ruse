@@ -104,6 +104,8 @@ pub enum Opt {
     FoldColumn,
     Scroll,
     SmoothScroll,
+    /// `'readonly'`: `:w` refuses (E45) and the first change warns (W10). Per buffer (#1211).
+    ReadOnly,
 }
 
 /// An option's value.
@@ -648,6 +650,15 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(false),
         Locality::Local,
+    ),
+    def(
+        Opt::ReadOnly,
+        "readonly",
+        "ro",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::PerBuffer,
     ),
     def(
         Opt::RelativeNumber,

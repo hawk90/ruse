@@ -14,6 +14,7 @@ import sys
 
 from rusekit import repo, render, contract, model as model_mod  # noqa: E402
 from rusekit.change.classify import classify_changeset  # noqa: E402
+from rusekit.change.edit import CONTRACT_FLAGS  # noqa: E402
 
 
 # Automation whose PRs never carry a hand-authored gate block. Rather than exempt them blindly,
@@ -136,11 +137,36 @@ def main(argv: list[str]) -> int:
     eff_kind = declared
     if cl.observed_kind and (cl.observed_risk > (contract.kind_risk(declared) or -1)):
         eff_kind = cl.observed_kind
+    # contracts.* flags (#1204): a change that declares it crosses a stability boundary is a `contract`
+    # change (spec/templates/change.yaml), whatever the paths say; a stored-format change also names its
+    # migration. A path that suggests a flag the contract leaves false is a warning: the diff cannot tell
+    # a format change from a refactor of the code that reads the format.
+    con = c.get("contracts") or {}
+    art = c.get("artifacts") or {}
+    crossed = [k for k in CONTRACT_FLAGS if con.get(k) is True]
+    floor = contract.kind_risk("contract")
+    if crossed and floor is not None:
+        declared_risk = contract.kind_risk(declared) if declared else None
+        ok_kind = declared_risk is not None and declared_risk >= floor
+        checks.append((ok_kind, f"contracts: {', '.join(crossed)} set, so the kind is 'contract'"
+                       + ("" if ok_kind else f" — declared '{declared}' is too low "
+                          "(`change set --kind contract`)")))
+        if (contract.kind_risk(eff_kind) or 0) < floor:
+            eff_kind = "contract"
+    if con.get("persistent_format") is True:
+        mig = art.get("migration")
+        named = isinstance(mig, str) and bool(mig.strip())
+        checks.append((named, "contracts: persistent-format change names its migration"
+                       + (f" ({mig})" if named else
+                          " — `change set --migration <ref>` (or `--migration none`)")))
+    for f, flag, why in cl.flag_hits:
+        if con.get(flag) is not True:
+            warns.append(f"contracts: {f} ({why}) — if this changes the format, "
+                         f"`change set --{flag.replace('_', '-')}`")
     kspec = kinds.get(eff_kind, {})
     eff_risk = kspec.get("risk", 0)
 
     # required artifacts
-    art = c.get("artifacts") or {}
     aff = c.get("affected") or {}
     for req in kspec.get("required_artifacts", []):
         if req == "issue":

@@ -76,6 +76,9 @@ It mirrors the human one-minute guide in [change-paths.md](../contributing/chang
 `architecture` for a one-line README change only **warns**. Whether a docs edit is editorial or semantic —
 and whether something is "really" an architecture change — stays a human judgment; the tool only forces a
 floor when a path is unambiguously high-risk, and hard-fails a hand-edit of a generated file (ENG-DOC-001).
+Paths that guard a stability boundary (`contract_triggers` in `change-kinds.yaml`: the persistence-format
+contract, the RJ01/RJS0 record code, the protocol contracts) only **warn** when the contract leaves the
+matching `contracts.*` flag unset, because a refactor of format code need not change the format.
 
 ## The Change Contract
 
@@ -114,6 +117,8 @@ python3 tools/ruse.py change set --issue 42 --replace --allow tools/    # replac
 | `--spec-ref ID` | `affected.*`, chosen by prefix: `CAP-*` → capabilities, `F-*`/`C-*` → requirements, `INV-*` → invariants, `D-*` → decisions (repeatable) |
 | `--non-goal TEXT` | `non_goals` (repeatable) |
 | `--rfc ID` / `--decision ID` | `artifacts.rfc` / `artifacts.decision` (scalars) |
+| `--persistent-format` / `--protocol` / `--public-api` (and `--no-…`) | `contracts.*`: the change crosses that stability boundary; `pr check` then holds it to kind `contract` |
+| `--migration REF` | `artifacts.migration`: where old data's migration is decided (an RFC section, a `D-*`, a PR), or `none`; required by `pr check` when `contracts.persistent_format` is set |
 | `--kind KIND` / `--goal TEXT` | `kind` / `goal` (`change set` only; `change start` has its own `--kind` / `--goal`) |
 
 List flags **append**, and duplicates are skipped. With `change set --replace`, each list flag you pass

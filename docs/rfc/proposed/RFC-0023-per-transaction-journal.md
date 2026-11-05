@@ -186,8 +186,9 @@ text by temp, fsync and rename; nothing is ever appended behind bytes this write
 (`journal::rescue`) appends a Checkpoint and a Marker after the last intact record, cutting a torn tail first,
 or writes a fresh Header + Checkpoint when no intact Header is there. A failed write keeps the records and
 retries on the next trigger; past 8 MiB buffered they are replaced by a Checkpoint of the current text, so a
-journal that keeps failing holds bounded memory. Risky operations are `:!`, `:{range}!`, `:r !`, `:w !` and
-`:terminal`; ruse has no `C-z` suspend and no plugin edit batch yet. The save-point Meta record is in the format
+journal that keeps failing holds bounded memory. Risky operations are `:!`, `:{range}!`, `:r !`, `:w !`,
+`:terminal` and an LSP edit batch (format edits, a rename, a code action's edit, a server's
+`workspace/applyEdit`; #1202); ruse has no `C-z` suspend and no plugin edit batch yet. The save-point Meta record is in the format
 and the reader but is not written in this slice: a save leaves the buffer clean, which deletes the journal (§6),
 so a save point would only matter for a save followed by an edit within one command. A rename (`:saveas`,
 `:file`) moves the journal to the new name and appends a Meta rename; a file-format change appends a Meta
@@ -204,6 +205,11 @@ large record) rather than lose the changes. Replay first checks the disk file ag
 the deltas are applied to it. If it does not, recovery cannot rebuild the text. It says so ("the file changed
 on disk since the journal began; the 37 changes cannot be replayed"), archives the journal and opens the
 disk file. Compaction is skipped for these documents; a save starts a new journal with a new `DiskBase`.
+As built (#1203), the hash is computed on a thread of its own, started when the writer first sees the clean
+text (at open, after a save), so the first keystroke does not wait for it (about 90 ms for 33 MiB on an
+arm64 laptop, now a few microseconds). The first change's records buffer behind a held Header; the sync
+writes the Header and its `DiskBase` first, so no Edit record reaches disk before it. The idle and change-count
+triggers wait for the hash; a risky operation's sync waits for it to finish.
 
 ### 6. When the journal is deleted
 
@@ -262,13 +268,20 @@ per canonical path, what this process last read from the file or saved to it: it
 time, inode, device) and a content hash (SipHash of the bytes, a change detector, not a security boundary).
 Every read of a buffer's file (startup, `:e`, `:e!`) and every save record it. A check stats the file and
 hashes it only when the stat moved, so a `touch` is not a change and an mtime alone is never trusted; a file
-that is gone or unreadable differs. Checks run on the 4000 ms idle timer, after a shell command (`:!` and the
+that is unreadable differs. Checks run on the 4000 ms idle timer, after a shell command (`:!` and the
 other risky operations, as nvim checks after a shell command), on `:checktime`, on focus gain (ruse does not
 yet ask the terminal for focus reports: DECSET 1004 is not in the F-010 probe), and before every save. A
 newly changed file gives nvim's W11 (buffer unmodified) or W12 (modified) on the status line, once per
 change; no reload is offered. A save without `!` into a changed file is refused with nvim's warning ("The
 file has been changed since reading it!!!") plus "(add ! to write anyway)", where nvim asks y/n (design doc
 §5: never silently overwrite an externally changed file); `:w!` writes, and the save records the new text.
+A file that is gone (deleted, renamed away, a dangling link) is not "changed" (#1221): it gives nvim's
+`E211: File "<name>" no longer available` once, modified buffer or not, with no `[disk changed]` flag, and a
+save writes it again without `!`. A file that comes back is compared by content again (nvim forgets a deleted
+file's timestamp and stays silent; ruse warns if the returned file differs). `:w >> %` (an append to the
+buffer's own file, under any spelling) records the appended file as ruse's own write, as nvim does, unless
+the file had already changed under ruse before the append; an append to another buffer's file is a change
+for that buffer.
 
 ### 9. Retention
 

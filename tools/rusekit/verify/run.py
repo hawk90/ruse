@@ -76,20 +76,62 @@ def _select(scopes: set[str], heavy: bool) -> tuple[list[dict], list[str]]:
     return selected, skipped
 
 
+TEST_REPORT_LINES = 120   # at most this much of cargo test's failure reports is printed
+STDERR_HEAD_LINES = 40    # and of stderr's first diagnostic (a clippy or compile error)
+STDERR_TAIL_LINES = 8
+
+
+def failure_excerpt(out: str, err: str) -> list[str]:
+    """What a failed step prints (#1225): enough to see WHY without re-running it.
+
+    `cargo test` writes each failing test's captured output, panic message included, to STDOUT
+    (`---- <name> stdout ----` blocks up to the closing `failures:` list) and only "error: test
+    failed" to stderr, so a stderr tail alone loses the message. Clippy and rustc write the
+    diagnostic first and a summary last, so stderr's first `error`/`warning` block is kept too.
+    """
+    lines: list[str] = []
+    report: list[str] = []
+    inside = False
+    for ln in out.splitlines():
+        if ln.startswith("---- ") and ln.endswith(" ----"):
+            inside = True
+        elif inside and ln == "failures:":
+            inside = False
+        if inside:
+            report.append(ln)
+    if report:
+        lines += report[:TEST_REPORT_LINES]
+        if len(report) > TEST_REPORT_LINES:
+            lines.append(f"... ({len(report) - TEST_REPORT_LINES} more lines of test output)")
+    err_lines = err.splitlines()
+    first = next((i for i, ln in enumerate(err_lines)
+                  if ln.startswith(("error", "warning"))), None)
+    tail_from = max(0, len(err_lines) - STDERR_TAIL_LINES)
+    if first is not None and first < tail_from:
+        head_end = min(first + STDERR_HEAD_LINES, tail_from)
+        lines += err_lines[first:head_end]
+        if head_end < tail_from:
+            lines.append("...")
+    lines += err_lines[tail_from:]
+    return lines
+
+
 def _run_step(st: dict) -> dict:
     t0 = time.time()
     try:
         p = subprocess.run(st["cmd"], cwd=repo.ROOT, capture_output=True, text=True,
                            timeout=600)
         code, out, errtxt = p.returncode, p.stdout, p.stderr
-    except subprocess.TimeoutExpired:
-        code, out, errtxt = 124, "", "timed out after 600s"
+    except subprocess.TimeoutExpired as e:
+        partial = e.stdout.decode(errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        code, out, errtxt = 124, partial, "timed out after 600s"
     except FileNotFoundError as e:
         code, out, errtxt = 127, "", str(e)
     dur = int((time.time() - t0) * 1000)
     return {"step": st["name"], "command": " ".join(st["cmd"]),
             "exit_code": code, "duration_ms": dur,
-            "stderr_tail": "\n".join(errtxt.splitlines()[-8:])}
+            "stderr_tail": "\n".join(errtxt.splitlines()[-STDERR_TAIL_LINES:]),
+            "_excerpt": failure_excerpt(out, errtxt) if code != 0 else []}
 
 
 def main(argv: list[str]) -> int:
@@ -139,14 +181,14 @@ def main(argv: list[str]) -> int:
     passed = True
     for st in selected:
         r = _run_step(st)
+        excerpt = r.pop("_excerpt")   # printed, not recorded: evidence keeps the short stderr tail
         results.append(r)
         good = r["exit_code"] == 0
         passed = passed and good
         line = f"{st['name']:<16} exit={r['exit_code']} {r['duration_ms']}ms"
         (render.ok if good else render.fail)(line)
-        if not good and r["stderr_tail"]:
-            for ln in r["stderr_tail"].splitlines():
-                print("      " + render.c(ln, "dim"))
+        for ln in excerpt:
+            print("      " + render.c(ln, "dim"))
     for s in skipped:
         render.warn(f"skipped {s}")
 

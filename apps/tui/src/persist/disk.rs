@@ -41,6 +41,17 @@ fn hash(bytes: &[u8]) -> u64 {
     h.finish()
 }
 
+/// How a file on disk compares with what ruse last read from it or saved to it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum State {
+    /// It holds the bytes ruse read or saved (or ruse never read or wrote it).
+    Same,
+    /// It holds other bytes, or exists but cannot be read (nvim's W11/W12).
+    Changed,
+    /// It is gone: deleted, renamed away, or a dangling link (nvim's E211).
+    Gone,
+}
+
 /// What ruse last read from or saved to a file, and whether the file still holds it.
 #[derive(Clone, Debug)]
 pub struct Seen {
@@ -48,7 +59,7 @@ pub struct Seen {
     hash: u64,
     /// The stat the last check saw (the read or save first).
     last: Option<Stat>,
-    changed: bool,
+    state: State,
 }
 
 impl Seen {
@@ -58,29 +69,33 @@ impl Seen {
         Seen {
             hash: hash(bytes),
             last: stat(path),
-            changed: false,
+            state: State::Same,
         }
     }
 
-    /// Whether the file differed from what ruse read or saved at the last [`Seen::check`].
+    /// How the file compared at the last [`Seen::check`].
     #[must_use]
-    pub fn changed(&self) -> bool {
-        self.changed
+    pub fn state(&self) -> State {
+        self.state
     }
 
-    /// Look at `path` again; returns whether it now differs from what ruse read or saved. Only a stat
-    /// that moved reads and hashes the file; a file that is gone or cannot be read differs.
-    pub fn check(&mut self, path: &Path) -> bool {
+    /// Look at `path` again and compare it with what ruse read or saved. Only a stat that moved reads and
+    /// hashes the file. A file that comes back after it was gone is compared by content again, so one
+    /// restored as ruse saw it is the same (nvim forgets a deleted file's timestamp and never notices).
+    pub fn check(&mut self, path: &Path) -> State {
         let now = stat(path);
         if now == self.last {
-            return self.changed;
+            return self.state;
         }
         self.last = now;
-        self.changed = match now {
-            None => true,
-            Some(_) => crate::persist::read_file(path).map_or(true, |b| hash(&b) != self.hash),
+        self.state = match now {
+            None => State::Gone,
+            Some(_) => match crate::persist::read_file(path) {
+                Ok(b) if hash(&b) == self.hash => State::Same,
+                _ => State::Changed,
+            },
         };
-        self.changed
+        self.state
     }
 }
 
@@ -110,20 +125,40 @@ pub fn saw(path: &Path, bytes: &[u8]) {
     }
 }
 
-/// [`Seen::check`] for `path`; `false` for a file ruse has not read or written.
-pub fn check(path: &Path) -> bool {
+/// [`Seen::check`] for `path`; [`State::Same`] for a file ruse has not read or written.
+pub fn check(path: &Path) -> State {
     let k = key(path);
     registry()
         .lock()
         .ok()
         .and_then(|mut r| r.get_mut(&k).map(|s| s.check(path)))
-        .unwrap_or(false)
+        .unwrap_or(State::Same)
 }
 
-/// Whether a save without `!` to `path` would overwrite a change another program made: [`check`], for
-/// a file that still exists. A file that is gone is no conflict (nvim writes it again without asking).
+/// Whether a save without `!` to `path` would overwrite a change another program made. A file that is
+/// gone is no conflict (nvim writes it again without asking); a dangling link that stands where it was
+/// still is.
 pub fn conflicts(path: &Path) -> bool {
-    check(path) && fs::symlink_metadata(path).is_ok()
+    match check(path) {
+        State::Same => false,
+        State::Changed => true,
+        State::Gone => fs::symlink_metadata(path).is_ok(),
+    }
+}
+
+/// Record that ruse appended to `path` (`:w >>` to the buffer's own file), given what [`check`] said
+/// just before: a file that held what ruse saw is now what ruse made it, as after a save (nvim does not
+/// count its own append as a change). A file another program had changed first stays changed.
+pub fn appended(path: &Path, before: State) {
+    if before != State::Same {
+        return;
+    }
+    let known = registry().lock().is_ok_and(|r| r.contains_key(&key(path)));
+    if known {
+        if let Ok(bytes) = crate::persist::read_file(path) {
+            saw(path, &bytes);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -137,22 +172,44 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let f = dir.join("g.txt");
-        assert!(!check(&f), "never seen");
+        assert_eq!(check(&f), State::Same, "never seen");
         fs::write(&f, b"one\n").unwrap();
         saw(&f, b"one\n");
-        assert!(!check(&f));
+        assert_eq!(check(&f), State::Same);
         fs::write(&f, b"other\n").unwrap();
-        assert!(check(&f));
+        assert_eq!(check(&f), State::Changed);
         // ruse saves over it: what it wrote is what it saw.
         assert!(conflicts(&f));
         fs::write(&f, b"mine!!\n").unwrap();
         saw(&f, b"mine!!\n");
-        assert!(!check(&f));
+        assert_eq!(check(&f), State::Same);
         fs::remove_file(&f).unwrap();
         assert!(
-            check(&f) && !conflicts(&f),
-            "gone: changed, but a save may write it"
+            check(&f) == State::Gone && !conflicts(&f),
+            "gone, and a save may write it"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// ruse's own append keeps the file "as ruse saw it"; an append over another program's change does not
+    /// hide that change.
+    #[test]
+    fn an_own_append_is_not_a_change() {
+        let dir = std::env::temp_dir().join(format!("ruse-disk-app-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        fs::write(&f, b"one\n").unwrap();
+        saw(&f, b"one\n");
+        let before = check(&f);
+        fs::write(&f, b"one\none\n").unwrap(); // the append
+        appended(&f, before);
+        assert_eq!(check(&f), State::Same, "own append");
+        fs::write(&f, b"theirs\n").unwrap();
+        let before = check(&f);
+        fs::write(&f, b"theirs\none\n").unwrap();
+        appended(&f, before);
+        assert_eq!(check(&f), State::Changed, "their change stays visible");
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -164,20 +221,27 @@ mod tests {
         let f = dir.join("f.txt");
         fs::write(&f, b"one\n").unwrap();
         let mut seen = Seen::of(&f, b"one\n");
-        assert!(!seen.check(&f), "unchanged");
+        assert_eq!(seen.check(&f), State::Same, "unchanged");
         // The same bytes written again (a new mtime, maybe a new inode): not a change.
         fs::remove_file(&f).unwrap();
         fs::write(&f, b"one\n").unwrap();
-        assert!(!seen.check(&f), "same content");
+        assert_eq!(seen.check(&f), State::Same, "same content");
         // A different length: a stat within one mtime tick of the last still moves.
         fs::write(&f, b"two!\n").unwrap();
-        assert!(seen.check(&f) && seen.changed());
-        assert!(seen.check(&f), "stays changed");
+        assert!(seen.check(&f) == State::Changed && seen.state() == State::Changed);
+        assert_eq!(seen.check(&f), State::Changed, "stays changed");
         // Back to what ruse read: no longer differs.
         fs::write(&f, b"one\n").unwrap();
-        assert!(!seen.check(&f));
+        assert_eq!(seen.check(&f), State::Same);
         fs::remove_file(&f).unwrap();
-        assert!(seen.check(&f), "a file that is gone differs");
+        assert_eq!(seen.check(&f), State::Gone, "a file that is gone");
+        // It comes back: compared by content again.
+        fs::write(&f, b"one\n").unwrap();
+        assert_eq!(seen.check(&f), State::Same, "restored as read");
+        fs::remove_file(&f).unwrap();
+        assert_eq!(seen.check(&f), State::Gone);
+        fs::write(&f, b"three\n").unwrap();
+        assert_eq!(seen.check(&f), State::Changed, "back with other bytes");
         let _ = fs::remove_dir_all(&dir);
     }
 }

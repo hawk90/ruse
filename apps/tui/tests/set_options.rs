@@ -214,3 +214,47 @@ fn hlsearch_tildeop_and_folds_keep_working() {
     );
     assert_eq!(status_after(":set nofen<CR>:set fen?<CR>"), "nofoldenable");
 }
+
+/// #1211: `'readonly'` (nvim v0.12.6, probed headless). The first change to an unmodified read-only
+/// buffer gives W10, and so does starting Insert mode before a character is typed. It warns once until
+/// `'readonly'` is set again, not after an undo back to the unmodified text; a buffer already modified
+/// when `'readonly'` is set does not warn. The text still changes.
+#[test]
+fn readonly_warns_once_on_the_first_change() {
+    const W10: &str = "W10: Warning: Changing a readonly file";
+    assert_eq!(status_after(":set ro?<CR>"), "noreadonly");
+    assert_eq!(status_after(":set ro<CR>:set ro?<CR>"), "  readonly");
+    assert_eq!(
+        status_after(":set ro<CR>:set noro<CR>:set ro?<CR>"),
+        "noreadonly"
+    );
+    let mut h = Headless::vim("abc");
+    h.keys(":set ro<CR>x");
+    assert_eq!((h.status(), h.text().as_str()), (W10, "bc"));
+    // `:set ts?` puts something else on the status line first.
+    h.keys(":set ts?<CR>x");
+    assert_eq!(
+        (h.status(), h.text().as_str()),
+        ("  tabstop=4", "c"),
+        "once"
+    );
+    h.keys("uu:set ts?<CR>x");
+    assert_eq!(
+        h.status(),
+        "  tabstop=4",
+        "not again after undo to the unmodified text"
+    );
+    h.keys("u:set ro<CR>x");
+    assert_eq!(h.status(), W10, "setting 'readonly' again warns again");
+    // Insert mode warns as it starts.
+    let mut h = Headless::vim("abc");
+    h.keys(":set ro<CR>i");
+    assert_eq!(h.status(), W10);
+    // `:set noro` stops it; a modified buffer does not warn.
+    assert_eq!(status_after(":set ro<CR>:set noro<CR>x"), "");
+    let mut h = Headless::vim("abc");
+    h.keys("x:set ro<CR>:set ts?<CR>x");
+    assert_eq!((h.status(), h.text().as_str()), ("  tabstop=4", "c"));
+    // A command-line change warns too.
+    assert_eq!(status_after(":set ro<CR>:s/x/y/<CR>"), W10);
+}
