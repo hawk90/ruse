@@ -144,7 +144,7 @@ XDG path, as Neovim uses). The directory is created `0700`, files `0600`. A file
 `<basename>.<16 hex of sha256(canonical absolute path)>.rj`, so two `notes.md` in different trees do not
 collide and a human can still tell what it is. A pathless buffer uses `unnamed.<pid>.<start time>.rj`.
 Archives go to `journal/archive/` with the same name plus a timestamp. As built (slice 2): the basename is
-shortened at a character boundary so the name, plus the archive's `.<unix ms>` suffix, fits `NAME_MAX` (#1196);
+shortened at a character boundary so the name, plus the archive's `@<unix ms>` suffix, fits `NAME_MAX` (#1196);
 the start time in the unnamed name is the process's own startup clock in Unix milliseconds, fixed when the
 session starts (#1192); a pathless start offers the newest `unnamed.*.rj` whose pid is no longer running, and
 recovering it renames it to this process's unnamed journal. A legacy sidecar holding exactly the disk text is
@@ -293,6 +293,12 @@ for that buffer.
 
 On startup, at most once a day, ruse removes archives older than 14 days and keeps at most 20 archives per
 document path. It never removes a live journal. These numbers resolve D-005's "Open (tuning)" retention item.
+
+As built (#934, `persist::retention`): the last sweep's time is kept in `journal/archive-sweep`; an archive's
+age is its modification time, which archiving sets. An archive is named `<name>@<unix ms>`; the `@` is
+written only by archiving, so the sweep owns every `<stem>@<digits>` file, a name shortened to fit `NAME_MAX`
+too, and nothing else (plus the exact `<journal name>.<unix ms>` names of the first build). Only regular files
+are removed, and no symlink is followed. `:checkhealth` reports the archive's size and last sweep.
 
 ## Slices
 

@@ -21,6 +21,7 @@ pub mod diff;
 pub mod disk;
 pub mod encoding;
 pub mod journal;
+pub mod retention;
 pub mod rj01;
 pub mod rjs0;
 

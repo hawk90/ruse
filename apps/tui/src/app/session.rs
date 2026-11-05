@@ -5081,6 +5081,7 @@ fn journal_health(
         .collect();
     health::Journaling::On {
         dir: j.dir().display().to_string(),
+        archive: persist::retention::stats(j),
         buffers,
     }
 }
@@ -5150,6 +5151,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
     // but cannot be read or replayed is reported on the status line, never silently skipped (#897). The
     // owner (and the unnamed buffer's journal name) is fixed now, at startup (#1192).
     let _ = persist::journal::owner();
+    // RFC-0023 §9 (#934): at most once a day, old archives go; live journals are never touched.
+    if let Some(j) = persist::journal::current() {
+        let _ = persist::retention::sweep_if_due(j, persist::journal::now_ms());
+    }
     let offer = persist::journal::current()
         .map_or(persist::Recovery::None, |j| j.offer(path.as_deref(), &disk));
 

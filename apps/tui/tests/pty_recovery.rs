@@ -357,3 +357,54 @@ fn a_non_utf8_recovery_of_an_empty_file_is_undoable() {
 fn a_non_utf8_recovery_that_drops_the_final_newline_is_undoable() {
     recovers_undoably(b"caf\xe9\nend\n", b"caf\xe9\nend \xff");
 }
+
+/// RFC-0023 §9 (#934): startup sweeps the archive once a day. An archive past 14 days goes, a young one and
+/// a file that is not an archive stay, a crashed session's live journal is still offered, and
+/// `:checkhealth` reports the archive and the sweep.
+#[test]
+fn startup_sweeps_old_archives_and_checkhealth_reports_them() {
+    let dir = Scratch::new();
+    let (_, journal) = crashed(&dir);
+    let archive = dir.journals().archive_dir();
+    std::fs::create_dir_all(&archive).unwrap();
+    let name = journal.file_name().unwrap().to_str().unwrap().to_string();
+    let aged = |p: &Path, days: u64| {
+        std::fs::write(p, b"old work").unwrap();
+        let t = std::time::SystemTime::now() - Duration::from_secs(days * 86_400);
+        std::fs::File::options()
+            .write(true)
+            .open(p)
+            .unwrap()
+            .set_modified(t)
+            .unwrap();
+    };
+    let old = archive.join(format!("{name}@1"));
+    let young = archive.join(format!("{name}.2"));
+    let other = archive.join("notes.txt");
+    aged(&old, 15);
+    aged(&young, 13);
+    aged(&other, 30);
+    // The live journal is as old as the oldest archive.
+    std::fs::File::options()
+        .write(true)
+        .open(&journal)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(30 * 86_400))
+        .unwrap();
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    ed.wait_for(KEYS);
+    assert!(!old.exists(), "past 14 days: removed");
+    assert!(young.exists() && other.exists() && journal.exists());
+    assert!(dir.journals().dir().join("archive-sweep").exists());
+    ed.keys("q");
+    assert_eq!(ed.exit_status(), 0);
+    // `k` archives the journal; the archive now holds two, and the second start does not sweep again.
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    ed.wait_for(KEYS);
+    ed.keys_then_wait_for("k", "recovery discarded");
+    ed.keys_then_wait_for(":checkhealth\r", "OK   journal archive: 2 files, ");
+    ed.wait_for("last swept ");
+    ed.keys(ESC);
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+}

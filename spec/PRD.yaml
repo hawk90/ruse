@@ -651,6 +651,11 @@ features:
     # session's journal. #1210: when such a second session crashed, the in-use prompt names its work and
     # adds [r] recover its changes (the recovery prompt for that journal). A save removes temp files a
     # crashed save left (`.<name>.ruse-tmp-<pid>-<hex>`).
+    # #934 (RFC-0023 §9; persist/retention.rs): at startup, at most once a day (stamp `journal/archive-sweep`),
+    # archives older than 14 days (counted from the archiving) are removed and at most 20 are kept per
+    # document path, newest first; archives are `<name>@<unix ms>` (the `@` written only by archiving, so a
+    # shortened long name is swept too); only those names, regular files, no symlink followed; live
+    # journals are never touched. `:checkhealth` shows the archive's count, size and last sweep.
     # #938 (RFC-0023 slice 4, first part): `[journal!]` after `[+]` while the last journal write failed;
     # the first failure's E303 names the journal.
     # v0.1.5 (#610; app/ex_more.rs): the alternate file name a `:w {file}`, `:sav` or `:file {name}` leaves

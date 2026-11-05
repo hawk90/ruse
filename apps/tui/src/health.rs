@@ -61,6 +61,8 @@ pub enum Journaling {
     /// The journal directory and one entry per file buffer.
     On {
         dir: String,
+        /// The archive of discarded journals (RFC-0023 §9).
+        archive: crate::persist::retention::ArchiveStats,
         buffers: Vec<JournalInput>,
     },
 }
@@ -86,12 +88,31 @@ fn journal_rows(j: &Journaling) -> Vec<HealthRow> {
             Status::Warn,
             "no state directory (set XDG_STATE_HOME or HOME): unsaved work is not journaled".into(),
         )],
-        Journaling::On { dir, buffers } => {
+        Journaling::On {
+            dir,
+            archive,
+            buffers,
+        } => {
             let mut rows = vec![row("recovery journal", Status::Ok, format!("in {dir}"))];
+            rows.push(archive_row(archive));
             rows.extend(buffers.iter().map(journal_row));
             rows
         }
     }
+}
+
+/// The archive's size and when it was last swept (RFC-0023 §9, #934).
+fn archive_row(a: &crate::persist::retention::ArchiveStats) -> HealthRow {
+    let files = if a.count == 1 { "file" } else { "files" };
+    let swept = a.last_sweep_ms.map_or_else(
+        || "not swept yet".to_string(),
+        |ms| format!("last swept {}", crate::persist::journal::date_time(ms)),
+    );
+    row(
+        "journal archive",
+        Status::Ok,
+        format!("{} {files}, {} bytes, {swept}", a.count, a.bytes),
+    )
 }
 
 fn journal_row(b: &JournalInput) -> HealthRow {
@@ -291,6 +312,11 @@ mod tests {
         let mut i = sample();
         i.journaling = Journaling::On {
             dir: "/s".into(),
+            archive: crate::persist::retention::ArchiveStats {
+                count: 3,
+                bytes: 4096,
+                last_sweep_ms: None,
+            },
             buffers: vec![
                 JournalInput {
                     file: "f.txt".into(),
@@ -313,17 +339,21 @@ mod tests {
         assert_eq!(l[8], "OK   recovery journal: in /s");
         assert_eq!(
             l[9],
-            "OK   journal: f.txt: 120 bytes, synced 3s ago, 1 failed write, /s/f.txt.0123456789abcdef.rj"
+            "OK   journal archive: 3 files, 4096 bytes, not swept yet"
         );
         assert_eq!(
             l[10],
+            "OK   journal: f.txt: 120 bytes, synced 3s ago, 1 failed write, /s/f.txt.0123456789abcdef.rj"
+        );
+        assert_eq!(
+            l[11],
             "WARN journal: g.txt: last write failed: Permission denied (os error 13), 2 failed \
              writes, /s/f.txt.0123456789abcdef.rj"
         );
-        assert_eq!(l[11], "OK   journal: h.txt: clean, no journal");
+        assert_eq!(l[12], "OK   journal: h.txt: clean, no journal");
         assert_eq!(
             l.last().unwrap(),
-            "checkhealth: 11 ok, 1 issue(s) — journal: g.txt WARN"
+            "checkhealth: 12 ok, 1 issue(s) — journal: g.txt WARN"
         );
         i.journaling = Journaling::NoStateDir;
         assert!(summary_line(&report(&i)).contains("recovery journal WARN"));

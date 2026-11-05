@@ -416,12 +416,16 @@ items:
       - A PII-removal policy applies to recovery files
     evidence:
       - docs/design/persistence-and-recovery.md
+      - apps/tui/src/persist/retention.rs::sweep_if_due
+      - apps/tui/src/persist/retention.rs::each_path_keeps_its_newest_twenty
+      - apps/tui/tests/pty_recovery.rs::startup_sweeps_old_archives_and_checkhealth_reports_them
     legacy_ids:
       - DR-PERSIST-9
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
-    notes: Designed; the journal is deleted on a successful save, but stale journals have no retention sweep and D-017 (PII/redaction)
-      is still open.
+    notes: Retention is built (#934, RFC-0023 §9); a clean buffer, a save and a discard delete the live journal, the recovery prompt's
+      `e`/`k` archive it, and a startup sweep at most once a day removes archives older than 14 days and keeps 20 per document path.
+      Journals are owner-only (0700/0600). The PII-removal half (D-017 redaction, export preview) is still open.
   - id: DET-001
     title: No direct wall clock / randomness / OS state in core command processing
     area: det
