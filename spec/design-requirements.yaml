@@ -295,22 +295,27 @@ items:
     title: Append-only journal with checksum + schema version; truncation recovers to last valid record
     area: persist
     priority: P0
-    status: partial
+    status: done
     acceptance:
       - Journal is append-only
       - Every record carries a checksum
       - Records carry a schema version
       - A truncated tail recovers up to the last valid record
     evidence:
-      - apps/tui/src/persist/journal.rs::append
-      - apps/tui/src/persist/journal.rs::replay_bytes
-      - apps/tui/src/persist/journal.rs::torn_payload_tail_is_discarded
-      - apps/tui/tests/persist_roundtrip.rs::a_torn_journal_tail_never_blocks_reopening
+      - apps/tui/src/persist/rj01.rs::replay
+      - apps/tui/src/persist/journal.rs::Writer
+      - apps/tui/src/persist/rj01.rs::a_torn_last_record_at_every_offset_replays_the_prefix
+      - apps/tui/tests/journal_roundtrip.rs::every_record_carries_a_checksum_and_the_schema_version
+      - apps/tui/tests/journal_torn_write.rs::a_journal_cut_at_every_byte_of_its_last_sync_offers_the_previous_text
+      - apps/tui/tests/journal_torn_write.rs::the_crash_path_truncates_a_torn_tail_before_it_appends
     legacy_ids:
       - DR-PERSIST-3
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
-    notes: Frame is [len][crc32][payload]; no schema version yet (spec/contracts/persistence-format.yaml guarantees it).
+    notes: >-
+      RJ01 records (RFC-0023 §2, D-064): magic, schema_ver 1.0, kind, CRC32C over the header and the
+      payload, end magic. Records are appended; compaction and a journal changed under the writer rewrite it
+      whole by temp + fsync + rename. Replay stops at the first bad record and reports the lost tail.
   - id: PERSIST-004
     title: Recovery data never auto-overwrites the original file
     area: persist
@@ -366,15 +371,21 @@ items:
     title: Large files use an incremental journal
     area: persist
     priority: P2
-    status: todo
+    status: done
     acceptance:
       - Journal records are incremental edits, not full snapshots
-    evidence: []
+    evidence:
+      - apps/tui/src/persist/rj01.rs::encode_edit
+      - apps/tui/src/persist/journal.rs::a_large_document_journals_against_the_disk_text
+      - apps/tui/tests/journal_roundtrip.rs::the_journal_replays_forward_and_inverts_back
     legacy_ids:
       - DR-PERSIST-7
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
-    notes: Every journal record is the full buffer (MVP-minimal); incremental records are the planned C-PERSIST elaboration
+    notes: >-
+      One Edit record per applied change, forward and inverse edits (RFC-0023 §2). Above 32 MiB the journal
+      starts from the disk text's length and SHA-256 instead of a Checkpoint, and is never compacted
+      (RFC-0023 §5); a changed disk file refuses the replay.
       in docs/design/persistence-and-recovery.md.
   - id: PERSIST-008
     title: Versioned workspace/session persistence format

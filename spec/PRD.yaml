@@ -618,6 +618,11 @@ features:
     # v0.1.8 (#864/#865/#868/#935/#936): every fsync counts (E667 keeps the buffer modified), unique temp
     # names, in-place write for hard links / unreproducible owner or xattrs / non-writable directory (nvim's
     # backupcopy=auto; E514 on a partial write), E505 for a read-only file without `!`.
+    # v0.1.8 RFC-0023 slice 2 (D-064, #932/#1192/#1196): the journal is per-transaction RJ01 (persist/rj01.rs:
+    # schema 1.0, CRC32C, Header/Checkpoint/Edit with inverse/Meta/Marker) in $XDG_STATE_HOME/ruse/journal/
+    # (0700/0600, `<basename>.<path hash>.rj`, unnamed buffer by pid + start time), synced after 4 s idle,
+    # 200 changes or before `:!`/filters/`:terminal`; compaction past 1 MiB; a DiskBase above 32 MiB; legacy
+    # RJS0 sidecars read once and archived. Replaces the snapshot throttle. The prompt is still two-way.
     # v0.1.5 (#610; app/ex_more.rs): the alternate file name a `:w {file}`, `:sav` or `:file {name}` leaves
     # (`#`, `"#`, `:e #`, `:b#`), `:f[ile] [{name}]`/`:0file`, `:fin[d]`/`:sf[ind]` over the default
     # `'path'` (`.,,`), `:dr[op]`, `:vi[sual]`, `:pw[d]`, `:cd`/`:chd[ir]` (`-`, `~`; buffer paths follow).
@@ -625,7 +630,7 @@ features:
     # `:oldfiles`/`#<n` (no viminfo/shada), `:checktime`, and `:file`'s `[Not edited]` state.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
-    summary: Atomic save preserving encoding/line-endings; append-only recovery journal.
+    summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.
     trace:
       # Census-N/A (#93, D-043). F-008 is ruse PERSISTENCE ARCHITECTURE (C-PERSIST), not an
       # enumerable upstream surface: no editor's source tree TABULATES "atomic write / fsync

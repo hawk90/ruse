@@ -163,13 +163,16 @@ fn write_after_the_directory_disappears_keeps_the_edit() {
     assert_eq!(std::fs::read(sub.join("f.txt")).unwrap(), b"new orig\n");
 }
 
-/// A recovery-journal append that fails (the directory is read-only, so `f.txt.ruse-journal` cannot be
-/// created) is shown, as Neovim's E303 is, instead of leaving the work silently unprotected.
+/// A journal write that fails (the journal directory is read-only) is shown, as Neovim's E303 is, instead
+/// of leaving the work silently unprotected. A read-only PROJECT directory no longer matters: journals live
+/// in the state directory (RFC-0023 §3).
 #[test]
 fn journal_append_failure_is_visible() {
     if is_root() {
         return;
     }
+    // 200 changes (one per typed character) trigger a sync without waiting for the idle timer.
+    let burst = format!("i{}{ESC}", "x".repeat(200));
     let dir = Scratch::new();
     let locked = dir.path("ro");
     std::fs::create_dir(&locked).unwrap();
@@ -177,15 +180,25 @@ fn journal_append_failure_is_visible() {
     std::fs::write(&file, b"orig\n").unwrap();
     chmod(&locked, 0o555);
     let mut ed = Editor::start(&dir, &[Path::new("ro/f.txt")]);
-    ed.keys("i");
-    // The journal is throttled to every 8th change; one key per frame makes each a change.
-    for c in "abcdefghijkl".chars() {
-        ed.keys(&c.to_string());
-    }
-    ed.keys(ESC);
+    ed.keys(&burst);
+    let journal = dir.journals().path_for(&file);
+    let journaled = support::wait_until(Duration::from_secs(5), || journal.exists());
     let shown = ed.screen_bytes();
     drop(ed);
     chmod(&locked, 0o755);
+    assert!(journaled, "a file in a read-only directory is journaled");
+    assert!(!shown.contains("E303"), "{shown:?}");
+
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"orig\n");
+    let jdir = dir.journals().dir().to_path_buf();
+    std::fs::create_dir_all(&jdir).unwrap();
+    chmod(&jdir, 0o555);
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.keys(&burst);
+    let shown = ed.screen_bytes();
+    drop(ed);
+    chmod(&jdir, 0o755);
     assert!(shown.contains("E303"), "journal failure shown: {shown:?}");
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
 }
@@ -250,7 +263,7 @@ fn edit_of_hostile_paths_reports_and_keeps_the_session() {
 }
 
 /// Open, edit, save and journal a file under `name`: the bytes land in that exact file, and the crash
-/// journal is written next to it under the same odd name.
+/// journal is written for it under a name derived from the odd one.
 fn round_trips(dir: &Scratch, name: &Path) {
     let file = dir.0.join(name);
     // `--` first: a leading-dash name is otherwise an unknown option (#896), as in nvim.
@@ -287,7 +300,7 @@ fn round_trips(dir: &Scratch, name: &Path) {
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     assert_eq!(
-        ruse_tui::persist::journal::replay(Some(&file)).as_deref(),
+        dir.journals().replay(Some(&file)).as_deref(),
         Some(&b"yxorig\n"[..]),
         "{name:?}"
     );

@@ -1,18 +1,20 @@
-//! Durable persistence & crash recovery (F-008). MVP-minimal, honest against all four acceptance
-//! criteria; the full four-state / inverse-edit / incremental journal in
-//! `docs/design/persistence-and-recovery.md` is the post-MVP C-PERSIST elaboration.
+//! Durable persistence & crash recovery (F-008, `docs/design/persistence-and-recovery.md`).
 //!
 //!   * [`atomic`]   — temp + fsync + rename + directory fsync (durable "Saved"). (#1)
 //!   * [`encoding`] — detect the original EOL/BOM and restore it on save. (#2)
-//!   * [`journal`]  — append-only framed recovery records; a torn tail is discarded. (#4)
+//!   * [`rj01`]     — the per-transaction journal record format and its replay (RFC-0023, D-064). (#4)
+//!   * [`journal`]  — where journals live, the writer, the crash-path rescue, the open-time offer. (#4)
+//!   * [`rjs0`]     — the legacy snapshot journal, read once and archived.
 //!   * [`assess_recovery`] — the pure open-time decision; recovery never auto-overwrites. (#3, #4)
 //!
-//! The pure cores are terminal-free and file-free (they take/return bytes) so the whole persistence
-//! contract is unit-testable; only the thin `append`/`replay`/`save` wrappers touch the disk.
+//! The format and the decisions are pure over bytes, so the persistence contract is unit-testable; only
+//! the journal's thin file wrappers and the atomic save touch the disk.
 
 pub mod atomic;
 pub mod encoding;
 pub mod journal;
+pub mod rj01;
+pub mod rjs0;
 
 /// What a document's journal offers at open time, once compared against the on-disk file.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -27,7 +29,7 @@ pub enum Recovery {
 
 /// The open-time recovery decision (F-008 #3/#4), pure over the two byte sources so it is testable
 /// without a filesystem. `disk` is the file's current content (the editor's cold-open buffer, after
-/// [`encoding::FileFormat::to_buffer`]); `recovered` is [`journal::replay`]'s latest valid payload.
+/// [`encoding::FileFormat::to_buffer`]); `recovered` is what the journal replays to.
 ///
 /// A recovery is offered only when the journal holds work that genuinely differs from disk — a stale
 /// journal left after a clean exit (its last record == disk) yields `None`, so the user is not

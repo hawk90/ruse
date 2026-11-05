@@ -143,7 +143,12 @@ Journals live in `$XDG_STATE_HOME/ruse/journal/` (default `~/.local/state/ruse/j
 XDG path, as Neovim uses). The directory is created `0700`, files `0600`. A file's journal is named
 `<basename>.<16 hex of sha256(canonical absolute path)>.rj`, so two `notes.md` in different trees do not
 collide and a human can still tell what it is. A pathless buffer uses `unnamed.<pid>.<start time>.rj`.
-Archives go to `journal/archive/` with the same name plus a timestamp.
+Archives go to `journal/archive/` with the same name plus a timestamp. As built (slice 2): the basename is
+shortened at a character boundary so the name, plus the archive's `.<unix ms>` suffix, fits `NAME_MAX` (#1196);
+the start time in the unnamed name is the process's own startup clock in Unix milliseconds, fixed when the
+session starts (#1192); a pathless start offers the newest `unnamed.*.rj` whose pid is no longer running, and
+recovering it renames it to this process's unnamed journal. A legacy sidecar holding exactly the disk text is
+archived without a prompt, so it stops sitting in the project tree.
 
 This follows Neovim (swap in `stdpath("state")/swap//`, with the path encoded in the name) rather than Vim's
 `directory=.,...` or Emacs's `#file#` next to the file. Writing next to the file pollutes the project tree,
@@ -172,10 +177,30 @@ choice except `q` the legacy file is moved into the archive. RJS0 is never writt
 
 Today's `Throttle` (a snapshot every N changes) and `MAX_FRAMES` go away.
 
+As built (slice 2): the writer (`apps/tui/src/persist/journal.rs` `Writer`) starts a journal at the first
+change after the buffer was last clean, as Header + Checkpoint of the text that change applied to, so the Edit
+records chain from the disk text. A Checkpoint drain (recording just turned on with the buffer modified, an
+overflow, `:e!` followed by an edit), a journal that is not the length the writer left it (deleted, truncated,
+written by another process), and compaction all rewrite the journal whole as Header + Checkpoint of the current
+text by temp, fsync and rename; nothing is ever appended behind bytes this writer did not write. The crash path
+(`journal::rescue`) appends a Checkpoint and a Marker after the last intact record, cutting a torn tail first,
+or writes a fresh Header + Checkpoint when no intact Header is there. A failed write keeps the records and
+retries on the next trigger; past 8 MiB buffered they are replaced by a Checkpoint of the current text, so a
+journal that keeps failing holds bounded memory. Risky operations are `:!`, `:{range}!`, `:r !`, `:w !` and
+`:terminal`; ruse has no `C-z` suspend and no plugin edit batch yet. The save-point Meta record is in the format
+and the reader but is not written in this slice: a save leaves the buffer clean, which deletes the journal (§6),
+so a save point would only matter for a save followed by an edit within one command. A rename (`:saveas`,
+`:file`) moves the journal to the new name and appends a Meta rename; a file-format change appends a Meta
+format record.
+
 ### 5. Large files
 
 A document whose text is larger than 32 MiB (D-005's open threshold, now fixed) gets a `DiskBase` instead of
-a Checkpoint: its length and SHA-256 hash. Replay first checks the disk file against that hash. If it matches,
+a Checkpoint: its length and SHA-256 hash. As built (slice 2), the length and hash are of the disk text as the
+buffer holds it (decoded with the Header's `FileFormat`, the text the deltas apply to), so the writer hashes
+the text it already has instead of re-reading the file, and a replay checks the very bytes it applies to. When
+the change log overflows on such a document the writer still writes a Checkpoint of the current text (one
+large record) rather than lose the changes. Replay first checks the disk file against that hash. If it matches,
 the deltas are applied to it. If it does not, recovery cannot rebuild the text. It says so ("the file changed
 on disk since the journal began; the 37 changes cannot be replayed"), archives the journal and opens the
 disk file. Compaction is skipped for these documents; a save starts a new journal with a new `DiskBase`.

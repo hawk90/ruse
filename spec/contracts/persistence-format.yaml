@@ -1,10 +1,13 @@
 # Contract-Driven Development — the on-disk transaction-journal + save file-format contract (D-005),
 # declared before implementation. A stored format is the hardest contract to change, so it is contract-first.
+# Implemented by RJ01 (RFC-0023 slice 2, D-064): apps/tui/src/persist/rj01.rs (format, replay) and
+# apps/tui/src/persist/journal.rs (writer, location, crash path). `active` is the checker's word for
+# implemented (tools/rusekit/gov/contracts.py): every `verified_by` path must exist.
 id: CONTRACT-PERSISTENCE
 title: Transaction journal + save file format
 kind: file-format
 owner: workspace
-status: declared
+status: active
 compatibility: backward        # older journals remain recoverable; schema version gates changes
 version: 1
 guarantees:
@@ -18,6 +21,7 @@ budgets:
   recovery_scan_p95_ms: 500
   journal_record_overhead_bytes: 64
 verified_by:
-  - tests/contract/journal-roundtrip     # planned: save→load preserves semantic content
-  - tests/contract/journal-torn-write    # planned: truncated-tail recovery
+  - apps/tui/tests/journal_roundtrip.rs   # journal-roundtrip: written → replayed text; inverses walk back
+  - apps/tui/tests/journal_torn_write.rs  # journal-torn-write: cut at every byte → last intact record
+  - apps/tui/benches/journal_replay.rs    # recovery_scan_p95_ms
 refs: [D-005, INV-TXN, INV-UNDO, INV-BUFFER-KIND]

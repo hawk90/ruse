@@ -78,3 +78,7 @@ harness = false
 [[bench]]
 name = "count_insert"
 harness = false
+
+[[bench]]
+name = "journal_replay"
+harness = false

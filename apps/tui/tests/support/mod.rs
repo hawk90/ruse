@@ -45,6 +45,25 @@ impl Scratch {
         std::fs::write(&p, bytes).expect("write scratch file");
         p
     }
+
+    /// The journal directory the editor uses here: the child's `XDG_STATE_HOME` is the scratch `home`.
+    pub fn journals(&self) -> ruse_tui::persist::journal::Journals {
+        ruse_tui::persist::journal::Journals::in_state_home(&self.0.join("home"))
+    }
+}
+
+/// Wait (bounded) until `cond` holds; whether it did.
+pub fn wait_until(limit: Duration, mut cond: impl FnMut() -> bool) -> bool {
+    let deadline = Instant::now() + limit;
+    loop {
+        if cond() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 impl Drop for Scratch {

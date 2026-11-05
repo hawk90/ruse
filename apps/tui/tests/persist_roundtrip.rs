@@ -6,7 +6,7 @@
 
 use ruse_tui::persist::encoding::{Eol, FileFormat};
 use ruse_tui::persist::{assess_recovery, atomic, journal, Recovery};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 fn scratch(name: &str) -> PathBuf {
@@ -39,25 +39,33 @@ fn atomic_save_preserves_crlf_and_is_durable() {
     assert_eq!(std::fs::read(&f).unwrap(), b"alpha\r\nBETA\r\ngamma\r\n");
 }
 
+/// The journal directory of a test's own state home, next to its files.
+fn journals(near: &Path) -> journal::Journals {
+    journal::Journals::in_state_home(&near.parent().unwrap().join("state"))
+}
+
 #[test]
 fn crash_with_unsaved_work_is_recoverable_then_cleared_on_save() {
     let f = scratch("work.txt");
+    let j = journals(&f);
     atomic::save(&f, b"saved line\n").unwrap();
     let disk = std::fs::read(&f).unwrap();
 
     // No journal yet → nothing to recover.
     assert_eq!(
-        assess_recovery(&disk, journal::replay(Some(&f)).as_deref()),
+        assess_recovery(&disk, j.replay(Some(&f)).as_deref()),
         Recovery::None
     );
 
-    // The editor throttles unsaved snapshots into the journal; simulate two, the second being the
-    // latest unsaved state at the moment of the "crash".
-    journal::append(Some(&f), b"saved line\nunsaved 1").unwrap();
-    journal::append(Some(&f), b"saved line\nunsaved 1\nunsaved 2").unwrap();
+    // The crash path writes the exact latest text; a later one supersedes an earlier one.
+    j.write_text(Some(&f), b"saved line\nunsaved 1").unwrap();
+    let journal = j
+        .write_text(Some(&f), b"saved line\nunsaved 1\nunsaved 2")
+        .unwrap();
+    assert!(journal.starts_with(j.dir()), "outside the project tree");
 
     // Reopen: the journal's latest valid record differs from disk → recovery is offered.
-    let recovered = journal::replay(Some(&f));
+    let recovered = j.replay(Some(&f));
     assert_eq!(
         assess_recovery(&disk, recovered.as_deref()),
         Recovery::Available(b"saved line\nunsaved 1\nunsaved 2".to_vec())
@@ -65,47 +73,41 @@ fn crash_with_unsaved_work_is_recoverable_then_cleared_on_save() {
 
     // A durable save clears the journal — there is no longer unsaved work to recover.
     atomic::save(&f, b"saved line\nunsaved 1\nunsaved 2\n").unwrap();
-    journal::clear(Some(&f));
-    assert_eq!(journal::replay(Some(&f)), None);
+    j.clear(Some(&f));
+    assert_eq!(j.replay(Some(&f)), None);
 }
 
 #[test]
 fn per_buffer_journals_are_independent_by_path() {
-    // F-007: the session journals the FOCUSED buffer keyed to ITS path, so two open files (e.g. one via
-    // `:e`) each keep their own recovery — one buffer's unsaved work never leaks into the other's.
+    // F-007: each file buffer is journaled under ITS path, so two open files (e.g. one via `:e`) each keep
+    // their own recovery — one buffer's unsaved work never leaks into the other's.
     let a = scratch("a.txt");
-    let b = scratch("b.txt");
-    journal::append(Some(&a), b"A unsaved").unwrap();
-    journal::append(Some(&b), b"B unsaved").unwrap();
+    let b = a.with_file_name("b.txt");
+    let j = journals(&a);
+    j.write_text(Some(&a), b"A unsaved").unwrap();
+    j.write_text(Some(&b), b"B unsaved").unwrap();
 
-    assert_eq!(
-        journal::replay(Some(&a)).as_deref(),
-        Some(&b"A unsaved"[..])
-    );
-    assert_eq!(
-        journal::replay(Some(&b)).as_deref(),
-        Some(&b"B unsaved"[..])
-    );
+    assert_eq!(j.replay(Some(&a)).as_deref(), Some(&b"A unsaved"[..]));
+    assert_eq!(j.replay(Some(&b)).as_deref(), Some(&b"B unsaved"[..]));
 
     // Saving/clearing one buffer leaves the other's journal intact.
-    journal::clear(Some(&a));
-    assert_eq!(journal::replay(Some(&a)), None);
-    assert_eq!(
-        journal::replay(Some(&b)).as_deref(),
-        Some(&b"B unsaved"[..])
-    );
+    j.clear(Some(&a));
+    assert_eq!(j.replay(Some(&a)), None);
+    assert_eq!(j.replay(Some(&b)).as_deref(), Some(&b"B unsaved"[..]));
 }
 
 #[test]
 fn a_torn_journal_tail_never_blocks_reopening() {
     let f = scratch("torn.txt");
-    // Two good records, then a truncated third (a crash mid-append). Recovery must still work off
-    // the last intact record rather than erroring the open.
-    let mut bytes = journal::frame(b"rev A").unwrap();
-    bytes.extend(journal::frame(b"rev B").unwrap());
-    let torn = journal::frame(b"rev C - interrupted").unwrap();
+    let j = journals(&f);
+    // A good journal, then a truncated record (a crash mid-append). Recovery must still work off the last
+    // intact record rather than erroring the open.
+    let path = j.write_text(Some(&f), b"rev B").unwrap();
+    let mut bytes = std::fs::read(&path).unwrap();
+    let mut torn = Vec::new();
+    ruse_tui::persist::rj01::encode_checkpoint(&mut torn, 0, 0, b"rev C - interrupted").unwrap();
     bytes.extend_from_slice(&torn[..torn.len() - 5]);
-    std::fs::write(journal::journal_path(Some(&f)), &bytes).unwrap();
+    std::fs::write(&path, &bytes).unwrap();
 
-    assert_eq!(journal::replay(Some(&f)).as_deref(), Some(&b"rev B"[..]));
+    assert_eq!(j.replay(Some(&f)).as_deref(), Some(&b"rev B"[..]));
 }

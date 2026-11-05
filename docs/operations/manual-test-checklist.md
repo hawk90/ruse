@@ -67,7 +67,8 @@ Each item names *why* it is manual — the structural reason an automated test c
 ## 4. Terminal lifecycle / recovery (D-040)
 *Why manual: raw-mode, signals, and panic-time terminal restoration need a real tty.*
 - [ ] Enter and exit are clean — after quit the shell prompt is intact (no stuck raw mode, no colour bleed).
-- [ ] **Panic recovery**: force a panic mid-edit → a record is appended to `<file>.ruse-journal` **and** the terminal
+- [ ] **Panic recovery**: force a panic mid-edit → a Checkpoint is appended to the file's journal in
+      `$XDG_STATE_HOME/ruse/journal/` (`<name>.<hash>.rj`) **and** the terminal
       is restored to a usable state (the panic hook, not a garbled screen).
 - [ ] Terminal **resize** (SIGWINCH) reflows the layout; the cursor stays correct.
 - [ ] `CTRL-Z` suspend then `fg` resume restores the screen; `CTRL-C` behaves as configured.
