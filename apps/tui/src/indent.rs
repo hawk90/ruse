@@ -27,6 +27,163 @@ use tree_sitter::{InputEdit, Node, Parser, Point, Tree};
 
 pub mod python;
 
+/// How far back [`IndentTree::window`] looks for a top-level line to start at.
+const WINDOW_ROWS: usize = 1000;
+
+/// A parse tree to compute indent levels from, over a buffer or a window of it (#1214).
+///
+/// A buffer whose tree has no error is indented by that tree. Once a block is left open somewhere, though,
+/// re-parsing the whole buffer with its closers appended costs tens of milliseconds a keystroke on a
+/// 100k-line file, and nests everything after the open block inside it. So the lines asked about are
+/// parsed in a WINDOW instead: from the nearest top-level line above them (a non-blank line that starts in
+/// column 0 and does not continue or close a block, at most [`WINDOW_ROWS`] back) to the end of the last of
+/// them, with the window's own open blocks closed ([`closed_tree`]). Its depth is then counted from that
+/// top-level line, as nvim's indent scripts count from the lines above. All positions taken and given are
+/// the buffer's.
+pub struct IndentTree<'a> {
+    tree: Cow<'a, Tree>,
+    bytes: Cow<'a, [u8]>,
+    /// The buffer byte and row the tree's text starts at.
+    base: usize,
+    base_row: usize,
+}
+
+impl<'a> IndentTree<'a> {
+    /// The tree for the buffer lines from row `first_row` (which starts at byte `first_ls`) to the line
+    /// ending at byte `last_le`: `tree` itself when it has no error, else a window parse.
+    pub fn new(
+        tree: &'a Tree,
+        bytes: &'a [u8],
+        first_row: usize,
+        first_ls: usize,
+        last_le: usize,
+    ) -> IndentTree<'a> {
+        let whole = || IndentTree {
+            tree: Cow::Borrowed(tree),
+            bytes: Cow::Borrowed(bytes),
+            base: 0,
+            base_row: 0,
+        };
+        if !tree.root_node().has_error() {
+            return whole();
+        }
+        IndentTree::window(tree, bytes, first_row, first_ls, last_le).unwrap_or_else(whole)
+    }
+
+    /// A window parse (see the type) in the language of `like`, for the same lines as [`IndentTree::new`].
+    /// Only the window's own lines are read, so the cost does not grow with the buffer.
+    pub fn window(
+        like: &Tree,
+        bytes: &'a [u8],
+        first_row: usize,
+        first_ls: usize,
+        last_le: usize,
+    ) -> Option<IndentTree<'a>> {
+        let (base, back) = window_start(bytes, first_ls);
+        let text = &bytes[base..last_le.min(bytes.len())];
+        let mut parser = Parser::new();
+        parser.set_language(&like.language()).ok()?;
+        let tree = parser.parse(text, None)?;
+        let tree = closed_tree(&tree, text).into_owned();
+        Some(IndentTree {
+            tree: Cow::Owned(tree),
+            bytes: Cow::Borrowed(text),
+            base,
+            base_row: first_row - back,
+        })
+    }
+
+    /// [`indent_levels`] for buffer lines `first_line..=last_line`.
+    pub fn levels(&self, first_line: usize, last_line: usize) -> Vec<usize> {
+        indent_levels(
+            &self.tree,
+            &self.bytes,
+            first_line - self.base_row,
+            last_line - self.base_row,
+        )
+    }
+
+    /// [`suggest_indent`] at buffer byte `at` for buffer row `new_row`.
+    pub fn suggest_indent(&self, at: usize, new_row: usize) -> usize {
+        suggest_indent(&self.tree, at - self.base, new_row - self.base_row)
+    }
+
+    /// [`suggest_open_below`] for the buffer line `[ls, le)` and buffer row `new_row`.
+    pub fn open_below(&self, ls: usize, le: usize, new_row: usize) -> usize {
+        suggest_open_below(
+            &self.tree,
+            &self.bytes,
+            ls - self.base,
+            le - self.base,
+            new_row - self.base_row,
+        )
+    }
+
+    /// [`broken_at`] at buffer byte `at`.
+    pub fn broken_at(&self, at: usize) -> bool {
+        broken_at(&self.tree, &self.bytes, at - self.base)
+    }
+}
+
+/// Where a window for the lines from the one starting at byte `ls` on starts: the start of the nearest
+/// top-level line above it (or the buffer's first line), at most [`WINDOW_ROWS`] back, and how many rows
+/// back that is. A top-level
+/// line is non-blank, starts in column 0, and does not begin with a closer or a word that continues a
+/// statement (`else`, `fi`, …); a closer in column 0 above the first line ends a top-level block, so the
+/// window may start on the line after it.
+fn window_start(bytes: &[u8], ls: usize) -> (usize, usize) {
+    let mut start = ls;
+    let mut below = None; // the line after a column-0 closer: (start, rows back)
+    for back in 0..=WINDOW_ROWS {
+        let le = bytes[start..]
+            .iter()
+            .position(|&c| c == b'\n')
+            .map_or(bytes.len(), |i| start + i);
+        // The first line's own column is what is being decided (a line just dedented by `fi` reads `fin`
+        // in column 0), so the window starts above it unless it is the buffer's first.
+        let line = if back == 0 {
+            &[][..]
+        } else {
+            &bytes[start..le]
+        };
+        if let Some(&c) = line.first().filter(|c| !c.is_ascii_whitespace()) {
+            let word = line
+                .split(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+                .next()
+                .unwrap_or(b"");
+            let continues = matches!(
+                word,
+                b"else"
+                    | b"elif"
+                    | b"fi"
+                    | b"done"
+                    | b"esac"
+                    | b"then"
+                    | b"do"
+                    | b"catch"
+                    | b"finally"
+            );
+            if !continues && !matches!(c, b'}' | b')' | b']') {
+                return (start, back);
+            }
+            if !continues && back > 0 {
+                if let Some(b) = below {
+                    return b;
+                }
+            }
+        }
+        if start == 0 {
+            return (0, back);
+        }
+        below = Some((start, back));
+        start = bytes[..start - 1]
+            .iter()
+            .rposition(|&c| c == b'\n')
+            .map_or(0, |i| i + 1);
+    }
+    below.unwrap_or((ls, 0))
+}
+
 /// The tree to indent `bytes` by (#1214). While a block is being typed it is not closed yet, and
 /// tree-sitter's error recovery then folds the whole function into an `ERROR` node (Rust) or ends the
 /// block at the end of the file (C, JavaScript), so its depth no longer says where a line belongs. When
@@ -597,6 +754,106 @@ mod tests {
         assert_eq!(key_reindent("rust", 'e', b"    else", false), None);
         assert_eq!(key_placeholder("bash", b"elif"), b" :; then :");
         assert_eq!(key_placeholder("go", b"else"), b"");
+    }
+
+    /// #1214: the window starts at the top-level line above, so a block left open far above does not
+    /// nest the lines below it, and the first line's own column (`fin` just dedented) is not read.
+    #[test]
+    fn indent_tree_windows_a_broken_buffer() {
+        let src = b"fn open() {\n    let y = 1;\n\nfn g() {\n    x;\n}\n\nfn h() {\n    z;";
+        let tree = parse_rust(src);
+        let starts = line_starts(src);
+        let le = |r: usize| starts[r + 1] - 1;
+        let it = IndentTree::new(&tree, src, 4, starts[4], le(4));
+        assert!(!it.broken_at(le(4)));
+        assert_eq!(it.open_below(starts[4], le(4), 5), 1);
+        let it = IndentTree::new(&tree, src, 8, starts[8], src.len());
+        assert_eq!(it.open_below(starts[8], src.len(), 9), 1);
+        assert_eq!(it.levels(8, 8), vec![1]);
+        let src = b"if a; then\n    x\nfin";
+        let tree = parse(tree_sitter_bash::LANGUAGE.into(), src);
+        let it = IndentTree::window(&tree, src, 2, starts_of(src, 2), src.len()).unwrap();
+        assert_eq!(it.levels(2, 2), vec![1]);
+    }
+
+    fn starts_of(src: &[u8], row: usize) -> usize {
+        line_starts(src)[row]
+    }
+
+    /// #1214 cost of the indent tree on big files: clean, one block left open at the top, and the same
+    /// with no top-level line for the window to start at. Run with
+    /// `cargo test --release -p ruse-tui --lib indent_tree_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    #[allow(clippy::print_stdout)] // the timings are the output
+    fn indent_tree_cost() {
+        use std::time::Instant;
+        let item = |lang: &str, i: usize, pad: &str| {
+            match lang {
+            "rust" => format!(
+                "{pad}fn f{i}(a: u32) -> u32 {{\n{pad}    let x = a + {i};\n{pad}    if x > 3 {{\n{pad}        return x * 2;\n{pad}    }}\n{pad}    x\n{pad}}}\n\n"
+            ),
+            _ => format!(
+                "{pad}int f{i}(int a) {{\n{pad}    int x = a + {i};\n{pad}    if (x > 3) {{\n{pad}        return x * 2;\n{pad}    }}\n{pad}    return x;\n{pad}}}\n\n"
+            ),
+        }
+        };
+        let open = |lang: &str| match lang {
+            "rust" => "fn open() {\n    let y = 1;\n",
+            _ => "int open() {\n    int y = 1;\n",
+        };
+        for (lang, name) in [
+            (
+                tree_sitter::Language::from(tree_sitter_rust::LANGUAGE),
+                "rust",
+            ),
+            (tree_sitter::Language::from(tree_sitter_c::LANGUAGE), "c"),
+        ] {
+            for lines in [20_000usize, 100_000] {
+                // clean; one unclosed block at the top; the same with every later line indented (no
+                // top-level line for the window to start at).
+                for case in ["clean", "unclosed", "unclosed-indented"] {
+                    let pad = if case == "unclosed-indented" {
+                        "    "
+                    } else {
+                        ""
+                    };
+                    let mut src = String::new();
+                    if case != "clean" {
+                        src.push_str(open(name));
+                    }
+                    let mut i = 0;
+                    while i * 8 < lines {
+                        src.push_str(&item(name, i, pad));
+                        i += 1;
+                    }
+                    let bytes = src.as_bytes();
+                    let starts = line_starts(bytes);
+                    let n = starts.len() - 1;
+                    let tree = parse(lang.clone(), bytes);
+                    let mut o_ms = Vec::new();
+                    let mut o_lv = Vec::new();
+                    for &row in &[1usize, n / 10, n / 2, n - 3] {
+                        let ls = starts[row];
+                        let le = starts[row + 1] - 1;
+                        let t = Instant::now();
+                        let it = IndentTree::new(&tree, bytes, row, ls, le);
+                        let level = (!it.broken_at(le)).then(|| it.open_below(ls, le, row + 1));
+                        o_ms.push((t.elapsed().as_secs_f64() * 1e5).round() / 100.0);
+                        o_lv.push(level);
+                    }
+                    let t = Instant::now();
+                    let le50 = starts[n / 2 + 50] - 1;
+                    let it = IndentTree::new(&tree, bytes, n / 2, starts[n / 2], le50);
+                    let _ = it.levels(n / 2, n / 2 + 49);
+                    let eq = t.elapsed().as_secs_f64() * 1e3;
+                    println!(
+                        "BENCH {name} {n} lines {case} has_error={} o_ms={o_ms:?} levels={o_lv:?} eq50_ms={eq:.2}",
+                        tree.root_node().has_error(),
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -925,8 +925,9 @@ features:
     # a bracket ending its line), and line up `elif`/`else`/`except`/`finally`. Strings and comments come
     # from the tree, as nvim's with `syntax on`. In brace languages a closer typed first lines up with its
     # opener. Not built: cindent's C rules beyond the keys below (#1163).
-    # #1214 (oracle-verified, `unc_*`): a block not closed yet indents by the depth it will have: the tree is
-    # parsed again with the closers of its open brackets (and sh `fi`/`done`/`esac`) appended, and where it
+    # #1214 (oracle-verified, `unc_*`): a block not closed yet indents by the depth it will have: a window
+    # from the top-level line above (at most 1000 rows) is parsed with the closers of its open brackets (and
+    # sh `fi`/`done`/`esac`) appended (<= 2 ms a key on any file size, release), and where it
     # is still broken around the line `o`/`O`/`<CR>` keep the line's indent (autoindent). #1206 (`ik_*`):
     # the other node-depth languages' 'indentkeys' re-indent the line by its depth after the key: sh
     # `then`/`do`/`else`/`elif`/`fi`/`done`/`esac`/`end`/`;;`/`;&` (and `fin`... undoing `fi`), C `0#` (column

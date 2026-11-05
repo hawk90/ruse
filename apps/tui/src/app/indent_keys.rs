@@ -48,29 +48,6 @@ fn depth_keys_lang(
         .find(|&l| l == name)
 }
 
-/// The focused buffer's tree parsed afresh for `bytes` (the cached one is only shifted by the edit), with
-/// its open blocks closed (`indent::closed_tree`).
-fn fresh_tree(
-    ws: &Workspace,
-    highlighters: &HashMap<DocumentId, CachedHighlight>,
-    bytes: &[u8],
-) -> Option<tree_sitter::Tree> {
-    let hl = highlighters.get(&ws.focused_buffer())?;
-    let old = hl.tree_matching(bytes)?;
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&old.language()).ok()?;
-    let tree = parser.parse(bytes, Some(&old))?;
-    Some(crate::indent::closed_tree(&tree, bytes).into_owned())
-}
-
-/// `bytes` parsed from scratch in the language of `like`, with its open blocks closed.
-fn parse_closed(like: &tree_sitter::Tree, bytes: &[u8]) -> Option<tree_sitter::Tree> {
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&like.language()).ok()?;
-    let tree = parser.parse(bytes, None)?;
-    Some(crate::indent::closed_tree(&tree, bytes).into_owned())
-}
-
 /// Whether the focused buffer is indented by the Python script.
 pub(crate) fn is_python(
     ws: &Workspace,
@@ -268,20 +245,22 @@ fn depth_key_reindent(
     let cols = match key {
         crate::indent::KeyReindent::Column0 => 0,
         crate::indent::KeyReindent::Depth => {
-            let tree = fresh_tree(ws, highlighters, b)?;
-            let level = if !crate::indent::broken_at(&tree, b, le) {
-                Some(crate::indent::indent_levels(&tree, b, row, row)[0])
-            } else {
-                // A keyword that still waits for its statement (`else`, `elif`) breaks the tree by
-                // itself: ask again with a statement filled in after the caret.
-                let fill = crate::indent::key_placeholder(lang, b[ls..cur.0].trim_ascii_start());
-                let probe = [&b[..cur.0], fill, &b[cur.0..]].concat();
-                (!fill.is_empty())
-                    .then(|| parse_closed(&tree, &probe))
-                    .flatten()
-                    .filter(|t| !crate::indent::broken_at(t, &probe, le + fill.len()))
-                    .map(|t| crate::indent::indent_levels(&t, &probe, row, row)[0])
+            // The cached tree is only shifted by the key's edit; the line's window is parsed afresh.
+            let like = highlighters
+                .get(&ws.focused_buffer())
+                .and_then(CachedHighlight::tree)?;
+            let level = |bytes: &[u8], le: usize| {
+                let tree = crate::indent::IndentTree::window(like, bytes, row, ls, le)?;
+                (!tree.broken_at(le)).then(|| tree.levels(row, row)[0])
             };
+            // A keyword that still waits for its statement (`else`, `elif`) breaks the tree by itself:
+            // ask again with a statement filled in after the caret.
+            let fill = crate::indent::key_placeholder(lang, b[ls..cur.0].trim_ascii_start());
+            let level = level(b, le).or_else(|| {
+                (!fill.is_empty())
+                    .then(|| level(&[&b[..cur.0], fill, &b[cur.0..]].concat(), le + fill.len()))
+                    .flatten()
+            });
             level.map_or_else(
                 || prev_line_indent(b, ls, pane.view.tab_width()),
                 |l| l * pane.view.shift_width(),
