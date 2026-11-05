@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use crate::anchor::{
     AnchorId, AnchorPolicy, AnchorStore, Bias, LineGravity, LineMap, Resolved, Tracked,
 };
+use crate::change_log::{ChangeDrain, ChangeEntry, ChangeKind, ChangeLog, ChangeLogCap};
 use crate::edit::{Edit, EditError, EditList};
 use crate::line_undo::LineUndo;
 use crate::pos::{BytePos, Revision};
@@ -58,6 +59,8 @@ pub struct Document {
     mark_undo: HashMap<u64, Vec<Option<usize>>>,
     /// Positions carried for Views at rest ([`Document::pin_tracked`]).
     pinned: Vec<Tracked>,
+    /// The applied changes a recovery journal drains ([`Document::drain_changes`], RFC-0023 §1).
+    changes: ChangeLog,
 }
 
 impl Document {
@@ -89,6 +92,7 @@ impl Document {
             undo_block: None,
             mark_undo: HashMap::new(),
             pinned: Vec::new(),
+            changes: ChangeLog::default(),
         };
         d.rebuild_index();
         d
@@ -279,7 +283,21 @@ impl Document {
         // An empty edit list changes nothing, so it is no undo step and leaves the modified state alone
         // (INV-UNDO, #765); the revision still advances (INV-TXN).
         if txn.edits.is_empty() {
+            let base = self.revision;
             self.revision = self.revision.next();
+            if self.changes.wants() {
+                self.changes.push(ChangeEntry {
+                    base_revision: base,
+                    result_revision: self.revision,
+                    origin: txn.origin,
+                    group_hint: txn.group_hint,
+                    forward: EditList::default(),
+                    inverse: EditList::default(),
+                    kind: ChangeKind::Navigate {
+                        to_node: self.undo.current_seq(),
+                    },
+                });
+            }
             return Ok(self.revision);
         }
         // Committed path — nothing above mutated state, so failure above is atomic-no-op.
@@ -320,8 +338,27 @@ impl Document {
                 .map_or(BytePos(0), |e| crate::pos::line_start(&self.text, e.pos))
         });
         let group_before = self.undo.current_group();
+        let parent = self.undo.current_seq();
+        let logged = self
+            .changes
+            .wants()
+            .then(|| (txn.edits.clone(), inverse.clone()));
         self.undo
             .record(txn.edits, inverse, origin, hint, self.revision, cursor);
+        if let Some((forward, inverse)) = logged {
+            self.changes.push(ChangeEntry {
+                base_revision: prev,
+                result_revision: self.revision,
+                origin,
+                group_hint: txn.group_hint,
+                forward,
+                inverse,
+                kind: ChangeKind::Fresh {
+                    node: self.undo.current_seq(),
+                    parent,
+                },
+            });
+        }
         let group = self.undo.current_group();
         if group != group_before && !saved.is_empty() {
             // A new undo step: remember the marks as they were before it (Vim's `u_savecommon`).
@@ -436,7 +473,7 @@ impl Document {
                 }
             }
             let old = Arc::clone(&self.text);
-            self.reapply(edits, tracked);
+            self.reapply(edits, step.nodes[i], tracked);
             if i >= step.tail {
                 undo_cursor::entries(&old, &self.text, edits, &mut entries);
             }
@@ -559,6 +596,34 @@ impl Document {
         self.undo.sync();
     }
 
+    /// Turn the change log on or off (RFC-0023 §1). Off by default, so a frontend that does not journal
+    /// pays nothing. Turning it on makes the next [`Document::drain_changes`] a
+    /// [`ChangeDrain::Checkpoint`] (the base the following entries apply to); turning it off drops what
+    /// was recorded.
+    pub fn record_changes(&mut self, on: bool) {
+        self.changes.set_recording(on);
+    }
+
+    /// Whether the change log is on ([`Document::record_changes`]).
+    #[must_use]
+    pub fn is_recording_changes(&self) -> bool {
+        self.changes.is_recording()
+    }
+
+    /// Set the change log's bound (default [`ChangeLogCap::default`]: 4096 entries or 8 MiB of edits).
+    pub fn set_change_log_cap(&mut self, cap: ChangeLogCap) {
+        self.changes.set_cap(cap);
+    }
+
+    /// Hand the journal writer every change applied since the last drain, and clear the log: one
+    /// [`ChangeEntry`] per revision bump, oldest first. When the log is off, was just turned on, or
+    /// overflowed its cap since the last drain, the answer is [`ChangeDrain::Checkpoint`] with the current
+    /// text instead, and the writer must write that whole text as its new base.
+    pub fn drain_changes(&mut self) -> ChangeDrain {
+        self.changes
+            .drain(&self.text, self.revision, self.undo.current_seq())
+    }
+
     /// Access to the undo history (for chronological inspection / navigation state).
     #[must_use]
     pub fn history(&self) -> &UndoHistory {
@@ -582,9 +647,28 @@ impl Document {
 
     /// Re-apply an edit list as a navigation step (undo/redo): advances the revision and moves anchors,
     /// but records no new undo node.
-    fn reapply(&mut self, edits: &EditList, tracked: &mut [Tracked]) {
+    /// `node` is the undo node current after it and the origin of the node whose edits these are, for the
+    /// change log.
+    fn reapply(
+        &mut self,
+        edits: &EditList,
+        (to_node, origin): (MonotonicSeq, Option<TransactionOrigin>),
+        tracked: &mut [Tracked],
+    ) {
         let new_text = edits.apply_to(&self.text);
         self.line_undo.on_reapply(&self.text, edits);
+        if self.changes.wants() {
+            self.changes.push(ChangeEntry {
+                base_revision: self.revision,
+                result_revision: self.revision.next(),
+                // Only the root has no origin, and its edits are never re-applied.
+                origin: origin.unwrap_or(TransactionOrigin::UserInput),
+                group_hint: GroupHint::Continue,
+                forward: edits.clone(),
+                inverse: edits.inverse(&self.text),
+                kind: ChangeKind::Navigate { to_node },
+            });
+        }
         let old = std::mem::replace(&mut self.text, Arc::new(new_text));
         self.revision = self.revision.next();
         self.anchors.apply_change(&old, &self.text, edits);
