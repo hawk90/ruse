@@ -116,17 +116,18 @@ fn read_only_file_needs_a_bang() {
     chmod(&file, 0o444);
     let mut ed = Editor::start(&dir, &[Path::new("r.txt")]);
     ed.keys(&format!("Ax{ESC}:w\r"));
-    let refused = ed.screen_bytes();
-    assert!(
-        refused.contains("E505: \"r.txt\" is read-only (add ! to override)"),
-        "{refused:?}"
-    );
+    let e505 = "E505: \"r.txt\" is read-only (add ! to override)";
+    let shown = support::wait_until(Duration::from_secs(10), || ed.screen_bytes().contains(e505));
+    assert!(shown, "{:?}", ed.screen_bytes());
     assert_eq!(std::fs::read(&file).unwrap(), b"ro\n");
     ed.keys(":q\r");
     assert!(ed.is_running(), ":q must refuse the unsaved edit");
     ed.keys(":w!\r");
+    // The durable save's fsyncs can keep the screen quiet past the harness's settle time: wait for it.
     assert!(
-        ed.screen_bytes().contains("\"r.txt\" 1L, 4B written"),
+        support::wait_until(Duration::from_secs(10), || ed
+            .screen_bytes()
+            .contains("\"r.txt\" 1L, 4B written")),
         "{:?}",
         ed.screen_bytes()
     );

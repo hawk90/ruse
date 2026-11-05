@@ -9,6 +9,7 @@ mod support;
 
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 use support::{Editor, Scratch};
 
@@ -77,9 +78,10 @@ fn update_saveas_and_exit_write() {
     ed.keys(":sav\r");
     assert!(ed.screen_bytes().contains("E471: Argument required"));
     ed.keys(":sav moved.txt\r");
-    assert!(ed
+    // The durable save's fsyncs can keep the screen quiet past the harness's settle time: wait for it.
+    assert!(support::wait_until(Duration::from_secs(10), || ed
         .screen_bytes()
-        .contains("\"moved.txt\" [New] 1L, 3B written"));
+        .contains("\"moved.txt\" [New] 1L, 3B written")));
     ed.keys("x:x\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(read_written(&dir, "moved.txt", "c\n"), "c\n");
