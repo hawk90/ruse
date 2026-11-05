@@ -37,6 +37,10 @@ pub fn enter(ledger: &Ledger) -> Vec<u8> {
     if ledger.enabled(Capability::ResizeEvents) {
         out.extend_from_slice(b"\x1b[?2048h");
     }
+    if ledger.enabled(Capability::FocusEvents) {
+        // `CSI I` / `CSI O` on focus gain / loss; the gain looks at the files on disk again (#1220).
+        out.extend_from_slice(b"\x1b[?1004h");
+    }
     // SynchronizedOutput is wrapped per-frame (BSU/ESU) by the renderer, not a persistent enter
     // mode, so it is deliberately not pushed here — enabling it globally would suppress no output.
     out
@@ -46,6 +50,9 @@ pub fn enter(ledger: &Ledger) -> Vec<u8> {
 /// terminal is handed back to the parent shell exactly as it was found.
 pub fn exit(ledger: &Ledger) -> Vec<u8> {
     let mut out = Vec::new();
+    if ledger.enabled(Capability::FocusEvents) {
+        out.extend_from_slice(b"\x1b[?1004l");
+    }
     if ledger.enabled(Capability::ResizeEvents) {
         out.extend_from_slice(b"\x1b[?2048l");
     }
@@ -120,11 +127,13 @@ mod tests {
         l.record(c, e);
         let (c, e) = on(Capability::ResizeEvents);
         l.record(c, e);
+        let (c, e) = on(Capability::FocusEvents);
+        l.record(c, e);
 
-        // Enter: encoding, then paste, then resize.
-        assert_eq!(enter(&l), b"\x1b[>3u\x1b[?2004h\x1b[?2048h");
-        // Exit: resize, then paste, then encoding — the exact reverse, no leftover modes.
-        assert_eq!(exit(&l), b"\x1b[?2048l\x1b[?2004l\x1b[<u");
+        // Enter: encoding, then paste, then resize, then focus.
+        assert_eq!(enter(&l), b"\x1b[>3u\x1b[?2004h\x1b[?2048h\x1b[?1004h");
+        // Exit: focus, resize, paste, then encoding — the exact reverse, no leftover modes.
+        assert_eq!(exit(&l), b"\x1b[?1004l\x1b[?2048l\x1b[?2004l\x1b[<u");
     }
 
     #[test]

@@ -384,8 +384,8 @@ fail cleanly.
 > read-only view inside the prompt, not an editor buffer (the startup prompt runs before the editor exists).
 > There is no `<name>.ruse-recovered` side file. The ownership marker is the RJ01 Header's owner record; a live
 > owner is `kill(pid, 0)` plus a matching start time read from the system (`/proc/<pid>/stat`, `proc_pidinfo`),
-> and an unreadable start time counts as a crash. "Read-only" is a per-buffer flag that makes `:w`, `:wa` and
-> `ZZ` refuse with E45 unless forced; there is no `'readonly'` option yet. A session that edits anyway journals
+> and an unreadable start time counts as a crash. "Read-only" is the buffer's `'readonly'` option (#1216): `:w`,
+> `:wa` and `ZZ` refuse with E45 unless forced, and the first change warns W10. A session that edits anyway journals
 > to `<name>.<pid>.rj` beside the owner's and only ever deletes a journal whose Header names itself. The same
 > "beside, never over" rule holds for a journal from a newer major version and for one this process cannot read.
 
@@ -445,6 +445,14 @@ using both the cheap hint and the authoritative hash:
   theirs → reload, my changes go to a recovery side-file; diff/merge). A **save into this state is refused by
   preflight** ([stability §13](stability-and-observability.md) — "file changed externally"): we never silently
   overwrite an externally-changed file; the user must acknowledge. This mirrors Vim's `W12`/`FileChangedShell`.
+
+> **As built (v0.1.8, #938, #1219, #1220):** the check runs after a shell command, on `:checktime`, before a save,
+> on the 4000 ms idle timer and on focus gain. There is no filesystem watcher. Focus gain needs focus reports
+> (DECSET 1004): the terminal guard asks for them when the F-010 capability ledger has them (an xterm-like
+> `$TERM` hint or a DECRQM `CSI ? 1004 $ p` reply; a "not recognised" reply or `RUSE_NO_FOCUS=1` turns them
+> off) and turns them off on every exit, the signal watchdog's included. nvim sets 1004 on every terminal; a
+> terminal that ignores the mode ignores the set. Inside tmux, focus reports reach ruse only with
+> `set -g focus-events on` in `tmux.conf`; without it a change is noticed by the other triggers.
 
 ### 6. Undo grouping boundaries (resolves the open D-005 part)
 

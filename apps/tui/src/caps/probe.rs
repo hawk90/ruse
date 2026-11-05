@@ -23,6 +23,7 @@ const DECRQM_MODES: &[(u16, Capability)] = &[
     (1006, Capability::SgrMouse),
     (2026, Capability::SynchronizedOutput),
     (2048, Capability::ResizeEvents),
+    (1004, Capability::FocusEvents),
 ];
 
 /// The outbound probe: a DECRQM query per mode, the kitty keyboard query (`CSI ? u`), then the DA1

@@ -52,6 +52,10 @@ pub enum Capability {
     SynchronizedOutput,
     /// In-band resize reporting, mode 2048 (`nvim.termmode.resizeevents`).
     ResizeEvents,
+    /// Focus reporting, mode 1004: the terminal sends `CSI I` / `CSI O` when its window gains or loses focus
+    /// (TERM-MOUSE-2). nvim sets it unasked and never queries it; ruse asks DECRQM too, so a terminal that
+    /// says "not recognised" is never sent it (#1220).
+    FocusEvents,
     /// Inline-graphics protocol for images (value: [`CapValue::Graphics`]) — F-031 slice 3b / D-053.
     InlineGraphics,
 }
@@ -145,6 +149,8 @@ impl Ledger {
             .insert(Capability::SynchronizedOutput, def(CapValue::Bool(false)));
         l.rows
             .insert(Capability::ResizeEvents, def(CapValue::Bool(false)));
+        l.rows
+            .insert(Capability::FocusEvents, def(CapValue::Bool(false)));
         l.rows.insert(
             Capability::InlineGraphics,
             def(CapValue::Graphics(GraphicsProtocol::None)),

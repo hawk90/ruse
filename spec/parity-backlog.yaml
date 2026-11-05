@@ -12,7 +12,7 @@ backlog:
   # dropped. Burn down by giving each a census surface (or a ruse-choice PILLAR) and repointing F-010.
   - { id: TERM-PROBE-2,  feature: F-010, reason: "confidence ledger + user override — ruse-ADAPTED (F-010 acceptance #2), a ruse-choice with no upstream denominator; belongs in a PILLAR, not a FAM parity fact" }
   - { id: TERM-PROBE-3,  feature: F-010, reason: "tmux/screen passthrough (L2) — DCS-wrapping, not a DECRQM mode; needs a multiplexer census surface" }
-  - { id: TERM-MOUSE-2,  feature: F-010, reason: "focus reporting (mode 1004) — neovim SETS it but never DA1-queries it, so it is absent from the TermMode probe enum" }
+  - { id: TERM-MOUSE-2,  feature: F-010, reason: "focus reporting (mode 1004) — neovim SETS it but never DA1-queries it, so it is absent from the TermMode probe enum; ruse sets it from the ledger since #1220 (no census home to repoint to)" }
   - { id: TERM-GFX-4,    feature: F-010, reason: "pixel<->cell sizing (CSI 14 t / CSI 16 t) — a window-op query, not a DEC private mode; low priority" }
   - { id: TERM-OSC52-1,  feature: F-010, reason: "clipboard write over OSC 52 — a runtime clipboard provider concern (runtime/lua in neovim), not a TUI capability probe" }
   # F-008 file/persistence facts with no census SURFACE (#93, D-043). Durable-atomic-save + recovery

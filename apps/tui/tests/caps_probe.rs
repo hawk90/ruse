@@ -48,6 +48,7 @@ fn modern_terminal_confirms_everything() {
     stream.extend(decrqm(1006, 1)); // SGR mouse: set
     stream.extend(decrqm(2026, 2)); // synchronized output: reset — but RECOGNISED = supported
     stream.extend(decrqm(2048, 1)); // resize events: set
+    stream.extend(decrqm(1004, 2)); // focus reports: reset, recognised (#1220)
     stream.extend_from_slice(KITTY_REPLY);
     stream.extend_from_slice(DA1);
 
@@ -57,6 +58,7 @@ fn modern_terminal_confirms_everything() {
     assert!(ledger.enabled(Capability::SgrMouse));
     assert!(ledger.enabled(Capability::SynchronizedOutput)); // recognised, even though currently off
     assert!(ledger.enabled(Capability::ResizeEvents));
+    assert!(ledger.enabled(Capability::FocusEvents));
     assert_eq!(ledger.key_encoding(), KeyEncoding::Kitty);
     assert_eq!(
         ledger.get(Capability::SgrMouse).unwrap().source,

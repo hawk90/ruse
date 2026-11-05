@@ -104,17 +104,12 @@ fn start_watchdog() {
     }
 }
 
-/// Best-effort terminal teardown from outside the session (the guard lives on the stuck main thread):
-/// leave the alt screen, show the cursor, leave raw mode. After a hang-up there is no terminal to restore.
+/// Best-effort terminal teardown from outside the session (the guard lives on the stuck main thread): pop the
+/// modes the guard pushed, leave the alt screen, show the cursor, leave raw mode, with a raw write since the
+/// stuck thread may hold the stdout lock. After a hang-up there is no terminal to restore.
 #[cfg(unix)]
 fn restore_terminal() {
-    // A raw write, not `io::stdout()`: the stuck thread may hold the stdout lock.
-    let seq = b"\x1b[?1049l\x1b[?25h";
-    // SAFETY: writes a valid buffer to fd 1; a failure (no terminal) is ignored.
-    unsafe {
-        libc::write(1, seq.as_ptr().cast(), seq.len());
-    }
-    let _ = crossterm::terminal::disable_raw_mode();
+    crate::terminal::guard::restore_raw();
 }
 
 /// Mark the process as exiting through the normal path, so the watchdog stands down. Hold the guard until

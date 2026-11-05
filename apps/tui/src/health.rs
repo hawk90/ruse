@@ -39,6 +39,8 @@ pub struct HealthInputs {
     pub sgr_mouse: bool,
     pub sync_output: bool,
     pub bracketed_paste: bool,
+    /// Focus reporting (mode 1004): a focus gain looks at the files on disk again (#1220).
+    pub focus_events: bool,
     /// The focused buffer's file extension (without the dot), or `None` for a nameless/extension-less buffer.
     pub file_ext: Option<String>,
     /// Whether a tree-sitter grammar is available for that extension.
@@ -158,6 +160,7 @@ pub fn report(i: &HealthInputs) -> Vec<HealthRow> {
         cap("term: sgr-mouse", i.sgr_mouse),
         cap("term: synchronized-output", i.sync_output),
         cap("term: bracketed-paste", i.bracketed_paste),
+        cap("term: focus-events", i.focus_events),
         match &i.file_ext {
             Some(ext) if i.grammar_ok => row(
                 "syntax grammar",
@@ -226,6 +229,7 @@ mod tests {
             sgr_mouse: true,
             sync_output: true,
             bracketed_paste: true,
+            focus_events: true,
             file_ext: Some("rs".into()),
             grammar_ok: true,
             buffers: 2,
@@ -237,13 +241,13 @@ mod tests {
     #[test]
     fn report_covers_every_check_and_all_ok_reads_clean() {
         let rows = report(&sample());
-        // profile, 3 term caps, grammar, buffers, trace, journal = 8 rows.
-        assert_eq!(rows.len(), 8);
-        assert!(rows[..7].iter().all(|r| r.status == Status::Ok));
-        assert_eq!(rows[7].status, Status::Absent, "a headless session");
+        // profile, 4 term caps, grammar, buffers, trace, journal = 9 rows.
+        assert_eq!(rows.len(), 9);
+        assert!(rows[..8].iter().all(|r| r.status == Status::Ok));
+        assert_eq!(rows[8].status, Status::Absent, "a headless session");
         assert_eq!(
             summary_line(&rows),
-            "checkhealth: 7 ok, 1 issue(s) — recovery journal n/a"
+            "checkhealth: 8 ok, 1 issue(s) — recovery journal n/a"
         );
     }
 
@@ -255,7 +259,7 @@ mod tests {
         i.grammar_ok = false; // -> Absent
         let rows = report(&i);
         let s = summary_line(&rows);
-        assert!(s.starts_with("checkhealth: 5 ok, 3 issue(s)"), "{s}");
+        assert!(s.starts_with("checkhealth: 6 ok, 3 issue(s)"), "{s}");
         assert!(s.contains("term: sgr-mouse WARN"), "{s}");
         assert!(s.contains("syntax grammar n/a"), "{s}");
     }
@@ -306,20 +310,20 @@ mod tests {
             ],
         };
         let l = lines(&report(&i));
-        assert_eq!(l[7], "OK   recovery journal: in /s");
+        assert_eq!(l[8], "OK   recovery journal: in /s");
         assert_eq!(
-            l[8],
+            l[9],
             "OK   journal: f.txt: 120 bytes, synced 3s ago, 1 failed write, /s/f.txt.0123456789abcdef.rj"
         );
         assert_eq!(
-            l[9],
+            l[10],
             "WARN journal: g.txt: last write failed: Permission denied (os error 13), 2 failed \
              writes, /s/f.txt.0123456789abcdef.rj"
         );
-        assert_eq!(l[10], "OK   journal: h.txt: clean, no journal");
+        assert_eq!(l[11], "OK   journal: h.txt: clean, no journal");
         assert_eq!(
             l.last().unwrap(),
-            "checkhealth: 10 ok, 1 issue(s) — journal: g.txt WARN"
+            "checkhealth: 11 ok, 1 issue(s) — journal: g.txt WARN"
         );
         i.journaling = Journaling::NoStateDir;
         assert!(summary_line(&report(&i)).contains("recovery journal WARN"));

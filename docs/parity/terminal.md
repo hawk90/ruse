@@ -126,7 +126,7 @@ Source: xterm ctlseqs.
 
 | ID | Capability | Target | Compat | Weight |
 | --- | --- | --- | --- | --- |
-| TERM-MOUSE-2 | Focus events (backlogged #91 — mode 1004 is SET-only in neovim, never DA1-queried) | L1 | Equivalent | med |
+| TERM-MOUSE-2 | Focus events (backlogged #91 — mode 1004 is SET-only in neovim, never DA1-queried). ruse sets it from the capability ledger (env hint or DECRQM reply, `RUSE_NO_FOCUS` override) and runs the disk check on `CSI I` (#1220); tmux needs `focus-events on` | L1 | Equivalent | med |
 
 <!-- TERM-MOUSE-1 (SGR-1006 mouse) retired in #91 — census-backed by nvim.termmode.mousesgrext (1006)
      plus the nvim.termmode.mousebuttonevent/mouseanyevent probe pair (1002/1003). F-010 derives it there. -->

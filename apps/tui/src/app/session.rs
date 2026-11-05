@@ -607,6 +607,7 @@ pub(crate) struct TermInfo {
     pub(crate) sgr_mouse: bool,
     pub(crate) sync_output: bool,
     pub(crate) bracketed_paste: bool,
+    pub(crate) focus_events: bool,
 }
 
 /// The values one frame computes before its key is read and the key's handlers read back (#878): the
@@ -3788,6 +3789,7 @@ impl Session {
                     sgr_mouse: term.sgr_mouse,
                     sync_output: term.sync_output,
                     bracketed_paste: term.bracketed_paste,
+                    focus_events: term.focus_events,
                     file_ext: files
                         .get(&ws.focused_buffer())
                         .and_then(|bf| bf.path.extension())
@@ -5218,6 +5220,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
             sgr_mouse: guard.sgr_mouse(),
             sync_output: guard.sync_output(),
             bracketed_paste: guard.bracketed_paste(),
+            focus_events: guard.focus_events(),
         },
         cwd,
         trusted,
@@ -5472,9 +5475,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
                         s.on_paste(&text, &frame);
                         continue;
                     }
-                    // Focus gain looks at the files on disk again (RFC-0023 §8). ruse does not ask the
-                    // terminal for focus reports yet (DECSET 1004 is not in the F-010 probe), so this
-                    // arrives only from a terminal that sends them unasked.
+                    // Focus gain looks at the files on disk again (RFC-0023 §8), as nvim's `:checktime`
+                    // on FocusGained. The guard asks for focus reports (mode 1004, #1220) where the
+                    // capability ledger has them.
                     Event::FocusGained => {
                         s.check_disk(true);
                         continue;

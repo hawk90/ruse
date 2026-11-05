@@ -9,6 +9,7 @@
 mod support;
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use support::{Editor, Scratch};
 
@@ -98,6 +99,44 @@ fn the_idle_timer_notices_a_change() {
     ed.wait_for_after(before, W11);
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
+}
+
+/// A focus gain looks again (nvim's `:checktime` on FocusGained, #1220): ruse asks the terminal for focus
+/// reports (mode 1004) on entry and turns them off on exit. A key every 200 ms keeps the idle timer from
+/// running, so only the focus report can find the change.
+#[test]
+fn a_focus_gain_notices_a_change() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"one\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    assert!(
+        ed.screen_bytes().contains("\x1b[?1004h"),
+        "focus reports are asked for"
+    );
+    ed.sync();
+    std::fs::write(&file, b"two, longer\n").unwrap();
+    ed.send(b"\x1b[I");
+    let start = Instant::now();
+    while !ed.screen_bytes().contains(W11) {
+        assert!(
+            start.elapsed() < Duration::from_secs(20),
+            "{}",
+            ed.report("no W11 after a focus gain", start)
+        );
+        std::thread::sleep(Duration::from_millis(200));
+        ed.send(b"0");
+    }
+    // W11 waits at the hit-enter prompt (#1222) unless a `0` already cleared it; `:` works either way.
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+    let out = ed.screen_bytes();
+    let off = out
+        .rfind("\x1b[?1004l")
+        .expect("focus reports are turned off");
+    assert!(
+        off > out.rfind("\x1b[?1004h").unwrap(),
+        "turned off after they were turned on"
+    );
 }
 
 /// A file deleted under the buffer is nvim's E211 (probed headless with `:checktime`, modified or not),

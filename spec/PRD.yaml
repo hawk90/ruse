@@ -745,7 +745,7 @@ features:
       # button/any probe pair. Six concerns have NO DA1-probe census home and are tracked in
       # spec/parity-backlog.yaml, not silently dropped: TERM-PROBE-2 (confidence ledger — ruse-ADAPTED,
       # F-010 acceptance #2, no upstream denominator), TERM-PROBE-3 (tmux/screen passthrough, L2),
-      # TERM-MOUSE-2 (focus 1004 — SET-only, never DA1-queried), TERM-GFX-4 (cell-pixel CSI 14/16 t),
+      # TERM-MOUSE-2 (focus 1004 — SET-only, never DA1-queried; ruse sets it from the ledger, #1220), TERM-GFX-4 (cell-pixel CSI 14/16 t),
       # TERM-OSC52-1 (clipboard write — a runtime provider, not a TUI probe). TERM-COLOR-1 (truecolor)
       # is NOT F-010's — it is a render concern already derived by F-006's trace.parity.
       parity: [nvim.termmode.bracketedpaste, nvim.termmode.mousesgrext, nvim.termmode.mousebuttonevent,

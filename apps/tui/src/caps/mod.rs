@@ -57,6 +57,15 @@ pub fn seed_env(ledger: &mut Ledger, term: &str, _colorterm: &str, term_program:
         ledger.record(Capability::BracketedPaste, hint(CapValue::Bool(true)));
     }
 
+    // Focus reporting (mode 1004, #1220): the same emulators, plus rxvt, which reports focus but answers no
+    // DECRQM. nvim sets 1004 on every terminal unasked; ruse leaves a dumb/linux/vt100 console alone unless
+    // the probe confirms it, and a fenced "not recognised" turns the hint off. A terminal that ignores the
+    // mode ignores the set (an unknown DEC private mode is a no-op); tmux passes the reports on only with
+    // `set -g focus-events on`.
+    if modern || term.starts_with("rxvt") {
+        ledger.record(Capability::FocusEvents, hint(CapValue::Bool(true)));
+    }
+
     // Inline graphics (F-031 slice 3b / D-053): env HINTS. The Kitty graphics protocol is spoken by more
     // than kitty — Ghostty and WezTerm implement it too, and none put "kitty" in `$TERM` — so hint Kitty for
     // those known emulators. iTerm2 from `$TERM_PROGRAM`. (The proper terminal-agnostic Kitty-APC detection
@@ -89,11 +98,13 @@ pub fn seed_env(ledger: &mut Ledger, term: &str, _colorterm: &str, term_program:
 /// * `no_kitty` — `$RUSE_NO_KITTY`: force the legacy keyboard encoding (disable kitty/xterm).
 /// * `no_mouse` — `$RUSE_NO_MOUSE`: force SGR mouse off.
 /// * `no_paste` — `$RUSE_NO_PASTE`: force bracketed paste off.
+/// * `no_focus` — `$RUSE_NO_FOCUS`: force focus reporting (mode 1004) off.
 pub fn apply_overrides(
     ledger: &mut Ledger,
     no_kitty: &str,
     no_mouse: &str,
     no_paste: &str,
+    no_focus: &str,
     graphics: &str,
 ) {
     let truthy = |v: &str| matches!(v.trim(), "1" | "true" | "yes" | "on");
@@ -108,6 +119,9 @@ pub fn apply_overrides(
     }
     if truthy(no_paste) {
         ledger.set_override(Capability::BracketedPaste, CapValue::Bool(false));
+    }
+    if truthy(no_focus) {
+        ledger.set_override(Capability::FocusEvents, CapValue::Bool(false));
     }
     // `$RUSE_GRAPHICS` forces the inline-graphics protocol (F-031 / D-053) — the escape hatch to test real
     // images on a Kitty-capable terminal we don't auto-detect, or to disable them: off|kitty|sixel|iterm2.
@@ -154,7 +168,7 @@ mod tests {
     fn ruse_graphics_override_forces_the_protocol() {
         // Force Kitty on a terminal env gave nothing — the test-anywhere escape hatch.
         let mut l = Ledger::with_defaults();
-        apply_overrides(&mut l, "", "", "", "kitty");
+        apply_overrides(&mut l, "", "", "", "", "kitty");
         assert_eq!(l.graphics(), GraphicsProtocol::Kitty);
         assert_eq!(
             l.get(Capability::InlineGraphics).unwrap().source,
@@ -163,7 +177,7 @@ mod tests {
         // …and force it off over a hint.
         let mut o = Ledger::with_defaults();
         seed_env(&mut o, "xterm-ghostty", "", "");
-        apply_overrides(&mut o, "", "", "", "off");
+        apply_overrides(&mut o, "", "", "", "", "off");
         assert_eq!(o.graphics(), GraphicsProtocol::None);
     }
 
@@ -180,7 +194,7 @@ mod tests {
             },
         );
         // …the user forces it off, and wins.
-        apply_overrides(&mut l, "1", "", "", "");
+        apply_overrides(&mut l, "1", "", "", "", "");
         assert_eq!(l.key_encoding(), KeyEncoding::Legacy);
         assert_eq!(
             l.get(Capability::KeyEncoding).unwrap().source,
@@ -199,7 +213,7 @@ mod tests {
                 confidence: Confidence::Confirmed,
             },
         );
-        apply_overrides(&mut l, "", "0", "no", ""); // none truthy
+        apply_overrides(&mut l, "", "0", "no", "off", ""); // none truthy
         assert!(l.enabled(Capability::BracketedPaste));
     }
 

@@ -50,6 +50,7 @@ fn build_ledger(
         &env("RUSE_NO_KITTY"),
         &env("RUSE_NO_MOUSE"),
         &env("RUSE_NO_PASTE"),
+        &env("RUSE_NO_FOCUS"),
         &env("RUSE_GRAPHICS"),
     );
     ledger
@@ -143,37 +144,51 @@ mod tests {
         (ledger, fenced)
     }
 
-    const PASTE_ONLY: &[u8] = b"\x1b[?2004h";
+    /// What an xterm-like TERM pushes on its env hints alone: bracketed paste, then focus reports.
+    const PASTE_FOCUS: &[u8] = b"\x1b[?2004h\x1b[?1004h";
 
     #[test]
     fn term_matrix_without_a_probe_reply() {
-        // (TERM, COLORTERM, key encoding, bracketed paste, bytes pushed on enter)
+        // (TERM, COLORTERM, key encoding, bracketed paste, bytes pushed on enter). Focus reporting follows
+        // the bracketed-paste hint, plus rxvt (#1220).
         let rows: &[(&str, &str, KeyEncoding, bool, &[u8])] = &[
             ("", "", KeyEncoding::Legacy, false, b""),
             ("dumb", "", KeyEncoding::Legacy, false, b""),
             ("linux", "", KeyEncoding::Legacy, false, b""),
             ("ansi", "", KeyEncoding::Legacy, false, b""),
             ("vt100", "", KeyEncoding::Legacy, false, b""),
-            ("xterm", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("xterm-256color", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("screen", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("screen-256color", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("tmux", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("tmux-256color", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("rxvt-unicode", "", KeyEncoding::Legacy, false, b""),
+            ("xterm", "", KeyEncoding::Legacy, true, PASTE_FOCUS),
+            ("xterm-256color", "", KeyEncoding::Legacy, true, PASTE_FOCUS),
+            ("screen", "", KeyEncoding::Legacy, true, PASTE_FOCUS),
+            (
+                "screen-256color",
+                "",
+                KeyEncoding::Legacy,
+                true,
+                PASTE_FOCUS,
+            ),
+            ("tmux", "", KeyEncoding::Legacy, true, PASTE_FOCUS),
+            ("tmux-256color", "", KeyEncoding::Legacy, true, PASTE_FOCUS),
+            (
+                "rxvt-unicode",
+                "",
+                KeyEncoding::Legacy,
+                false,
+                b"\x1b[?1004h",
+            ),
             (
                 "rxvt-unicode-256color",
                 "",
                 KeyEncoding::Legacy,
                 true,
-                PASTE_ONLY,
+                PASTE_FOCUS,
             ),
             (
                 "xterm-kitty",
                 "",
                 KeyEncoding::Kitty,
                 true,
-                b"\x1b[>3u\x1b[?2004h",
+                b"\x1b[>3u\x1b[?2004h\x1b[?1004h",
             ),
             // COLORTERM is read but carries no capability yet: colour depth is not modelled (#627), so
             // truecolor changes nothing the ledger decides.
@@ -182,7 +197,7 @@ mod tests {
                 "truecolor",
                 KeyEncoding::Legacy,
                 true,
-                PASTE_ONLY,
+                PASTE_FOCUS,
             ),
             ("dumb", "truecolor", KeyEncoding::Legacy, false, b""),
             ("linux", "24bit", KeyEncoding::Legacy, false, b""),
@@ -214,7 +229,7 @@ mod tests {
     const MODERN: &[&[u8]] = &[
         b"\x1b[?2004;2$y\x1b[?1006;2$y\x1b[?20",
         b"26;2$y\x1b[?2048;2$y\x1b[?0u\x1b",
-        b"[?62;22c",
+        b"[?1004;2$y\x1b[?62;22c",
     ];
 
     #[test]
@@ -228,6 +243,7 @@ mod tests {
                 Capability::SgrMouse,
                 Capability::SynchronizedOutput,
                 Capability::ResizeEvents,
+                Capability::FocusEvents,
             ] {
                 assert!(l.enabled(cap), "TERM={term:?}: {cap:?}");
                 assert_eq!(l.get(cap).map(|e| e.source), Some(Source::Probed));
@@ -237,13 +253,15 @@ mod tests {
 
     #[test]
     fn a_fenced_denial_overrides_the_env_hint() {
-        // xterm-256color hints bracketed paste; the terminal answers "mode not recognised" before DA1.
+        // xterm-256color hints bracketed paste and focus reports; the terminal answers "mode not
+        // recognised" for both before DA1.
         let (l, fenced) = with_reply(
             &[("TERM", "xterm-256color")],
-            &[b"\x1b[?2004;0$y\x1b[?1;2c"],
+            &[b"\x1b[?2004;0$y\x1b[?1004;0$y\x1b[?1;2c"],
         );
         assert!(fenced);
         assert!(!l.enabled(Capability::BracketedPaste));
+        assert!(!l.enabled(Capability::FocusEvents));
         // Nothing left to push: modifyOtherKeys is never requested (#772).
         assert!(caps::sequences::enter(&l).is_empty());
     }
@@ -277,11 +295,13 @@ mod tests {
             ("RUSE_NO_KITTY", "1"),
             ("RUSE_NO_MOUSE", "yes"),
             ("RUSE_NO_PASTE", "true"),
+            ("RUSE_NO_FOCUS", "1"),
         ];
         let (l, _) = with_reply(&vars, MODERN);
         assert_eq!(l.key_encoding(), KeyEncoding::Legacy);
         assert!(!l.enabled(Capability::SgrMouse));
         assert!(!l.enabled(Capability::BracketedPaste));
+        assert!(!l.enabled(Capability::FocusEvents));
         assert_eq!(
             l.get(Capability::KeyEncoding).map(|e| e.source),
             Some(Source::UserOverride)
