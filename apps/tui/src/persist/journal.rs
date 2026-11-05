@@ -6,7 +6,8 @@
 //!   directory `0700` and every file `0600`. A file's journal is `<basename>.<16 hex of sha256(canonical
 //!   path)>.rj`, the basename shortened so the name fits `NAME_MAX` even once archived (#1196). The unnamed
 //!   start buffer's is `unnamed.<pid>.<start ms>.rj`, fixed when the process starts, so a later `:cd` does
-//!   not move it (#1192). Archives go to `journal/archive/<name>.<unix ms>`.
+//!   not move it (#1192). Archives go to `journal/archive/<name>@<unix ms>` ([`ARCHIVE_MARK`]), the name
+//!   shortened to fit `NAME_MAX` when it must be (a long legacy sidecar's).
 //! * **Writes** (RFC §4). After each command the session drains the document's change log into the writer's
 //!   in-memory buffer; the buffer is written and `fdatasync`ed after [`IDLE`] without a change, after
 //!   [`SYNC_EVERY`] changes, or before a risky operation, and each sync ends with a Marker. A failed write
@@ -53,8 +54,11 @@ pub const COMPACT_AFTER: u64 = 1 << 20;
 const PENDING_CAP: usize = 8 << 20;
 /// The longest file name the common filesystems accept.
 const NAME_MAX: usize = 255;
-/// Room kept for the archive suffix (`.<unix ms>`, 14 bytes) on top of a journal name.
+/// Room kept for the archive suffix (`@<unix ms>`, 14 bytes) on top of a journal name.
 const ARCHIVE_SUFFIX: usize = 14;
+/// What separates an archive's name from its time: `<name>@<unix ms>`. Only [`Journals::archive`] writes it,
+/// so [`super::retention`] owns every file in the archive named `<stem>@<digits>`, a shortened stem too.
+pub const ARCHIVE_MARK: u8 = b'@';
 /// The extension and hash part of a journal name: `.<16 hex>.rj`.
 const HASH_SUFFIX: usize = 1 + 16 + 3;
 /// Room for the `.<pid>` of a second session's journal ([`claim`]).
@@ -434,19 +438,22 @@ impl Journals {
         discard_file(&self.path_of(doc));
     }
 
-    /// Move `path` into the archive as `<name>.<unix ms>`, its modification time set to now (the age
-    /// [`super::retention`] sweeps by); the archived path. A move across filesystems (a legacy sidecar in the
+    /// Move `path` into the archive as `<name>@<unix ms>` ([`ARCHIVE_MARK`]; `<name>` shortened to fit
+    /// `NAME_MAX` when it must be), its modification time set to now (the age [`super::retention`] sweeps
+    /// by); the archived path. A move across filesystems (a legacy sidecar in the
     /// project tree) copies and then removes.
     pub fn archive(&self, path: &Path) -> io::Result<PathBuf> {
         let dir = self.archive_dir();
         make_private_dir(&dir)?;
         let name = path
             .file_name()
-            .map_or_else(Vec::new, |n| path_bytes(Path::new(n)));
+            .map(|n| path_bytes(Path::new(n)))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| b"journal".to_vec());
         // A fresh name: a rename would replace an archive made in the same millisecond.
         let mut ms = now_ms();
         let to = loop {
-            let suffix = format!(".{ms}");
+            let suffix = format!("{}{ms}", char::from(ARCHIVE_MARK));
             let mut n = shorten(&name, NAME_MAX - suffix.len()).to_vec();
             n.extend_from_slice(suffix.as_bytes());
             let to = dir.join(os_name(n));

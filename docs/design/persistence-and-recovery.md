@@ -427,8 +427,10 @@ honored.
   > `journal/archive-sweep`), it removes archives older than 14 days, counted from the archiving (the move sets
   > the file's modification time), and then keeps the newest 20 per document path (`<base>.<path hash>`; a
   > second session's `<name>.<pid>.rj` counts with the owner's; unnamed buffers count as one path; a legacy
-  > sidecar by its basename). It removes only regular files whose name is exactly an archive name, follows no
-  > symlink, and does not sweep a symlinked archive directory. The numbers are fixed (no config key).
+  > sidecar by its basename; a name shortened to fit `NAME_MAX` by its shortened stem). Archives are named
+  > `<name>@<unix ms>`, and only archiving writes the `@`, so the sweep owns exactly those names (and the
+  > `<journal name>.<unix ms>` names of the first build) and no archive escapes it. It removes only regular
+  > files, follows no symlink, and does not sweep a symlinked archive directory. The numbers are fixed (no config key).
   > `:checkhealth` shows the archive's file count, size and last sweep.
 - carry document *content*, so they are treated as sensitive (INV-TRUST-1): excluded from diagnostic bundles by
   default, redaction-preview before any export (D-017), never logged, and never synced off-box without consent.

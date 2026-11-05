@@ -378,7 +378,7 @@ fn startup_sweeps_old_archives_and_checkhealth_reports_them() {
             .set_modified(t)
             .unwrap();
     };
-    let old = archive.join(format!("{name}.1"));
+    let old = archive.join(format!("{name}@1"));
     let young = archive.join(format!("{name}.2"));
     let other = archive.join("notes.txt");
     aged(&old, 15);
