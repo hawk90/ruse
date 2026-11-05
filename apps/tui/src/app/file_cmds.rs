@@ -287,8 +287,18 @@ pub(crate) fn ex_write(
                     Some(_) if !whole && !spec.bang => {
                         Err("E140: Use ! to write partial buffer".to_string())
                     }
-                    Some((path, _)) => write_own(ws, id, path, &source, &disk, whole, spec.bang)
-                        .map_err(|e| e.to_string()),
+                    Some((path, _)) => {
+                        let written = write_own(ws, id, path, &source, &disk, whole, spec.bang)
+                            .map_err(|e| e.to_string());
+                        // `:w!` over a 'readonly' buffer's own file resets 'readonly' (nvim, without
+                        // 'cpoptions' `Z`).
+                        if written.is_ok() && spec.bang {
+                            if let Some(bf) = files.get_mut(&id) {
+                                bf.read_only = false;
+                            }
+                        }
+                        written
+                    }
                 }
             } else {
                 let name = name.as_deref().expect("a write to another file names it");

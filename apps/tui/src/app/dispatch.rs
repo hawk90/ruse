@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{
-    BytePos, Command, DocumentId, Effect, ExCmd, ExOutcome, Register, SubRange, TransactionOrigin,
-    Workspace,
+    BytePos, Command, DocumentId, Effect, ExCmd, ExOutcome, Mode, Register, Revision, SubRange,
+    TransactionOrigin, Workspace,
 };
 
 use crate::highlight;
@@ -225,6 +225,89 @@ pub(crate) struct BufferFile {
 
 /// Neovim's message for a write to a `'readonly'` buffer without `!`.
 pub(crate) const E45: &str = "E45: 'readonly' option is set (add ! to override)";
+
+/// Neovim's warning on the first change to a `'readonly'` buffer.
+pub(crate) const W10: &str = "W10: Warning: Changing a readonly file";
+
+/// The `'readonly'` state that is not a file buffer's own [`BufferFile::read_only`] (#1211): the flag of a
+/// buffer without a file, which buffers gave W10 since `'readonly'` was last set (nvim's `b_did_warn`),
+/// and `ruse -R` (nvim's readonly mode, which makes every file the session opens read-only).
+#[derive(Default, Debug)]
+pub(crate) struct ReadOnly {
+    /// `ruse -R`: every file buffer starts read-only, until a `:set noro`.
+    pub(crate) mode: bool,
+    /// The file buffers the readonly mode already made read-only, so a `:setlocal noro` sticks.
+    seen: std::collections::HashSet<DocumentId>,
+    nofile: std::collections::HashSet<DocumentId>,
+    warned: std::collections::HashSet<DocumentId>,
+}
+
+impl ReadOnly {
+    /// Whether buffer `id` is `'readonly'`.
+    pub(crate) fn get(&self, files: &Files, id: DocumentId) -> bool {
+        files
+            .get(&id)
+            .map_or_else(|| self.nofile.contains(&id), |bf| bf.read_only)
+    }
+
+    /// Set or reset `'readonly'` on buffer `id`. Setting it lets the next change warn again (nvim).
+    pub(crate) fn set(&mut self, files: &mut Files, id: DocumentId, on: bool) {
+        match files.get_mut(&id) {
+            Some(bf) => bf.read_only = on,
+            None if on => {
+                self.nofile.insert(id);
+            }
+            None => {
+                self.nofile.remove(&id);
+            }
+        }
+        if on {
+            self.warned.remove(&id);
+        }
+    }
+
+    /// In readonly mode, make every file buffer not seen yet read-only.
+    pub(crate) fn follow(&mut self, files: &mut Files) {
+        if !self.mode {
+            return;
+        }
+        for (id, bf) in files.iter_mut() {
+            if self.seen.insert(*id) {
+                bf.read_only = true;
+            }
+        }
+    }
+
+    /// What a key may warn about: the focused buffer and its revision when it is read-only, unmodified,
+    /// and has not warned yet, else `None`.
+    pub(crate) fn watch(&self, ws: &Workspace, files: &Files) -> Option<(DocumentId, Revision)> {
+        let id = ws.focused_buffer();
+        let doc = ws.focused().doc;
+        (self.get(files, id) && !doc.is_modified() && !self.warned.contains(&id))
+            .then(|| (id, doc.revision()))
+    }
+
+    /// After a key: W10 when the watched buffer changed, or Insert or Replace mode began on it (nvim warns
+    /// as Insert mode starts, before a character is typed).
+    pub(crate) fn warn(
+        &mut self,
+        watched: Option<(DocumentId, Revision)>,
+        ws: &Workspace,
+        status: &mut String,
+    ) {
+        let Some((id, rev)) = watched else { return };
+        let changed = ws.document(id).is_some_and(|d| d.revision() != rev);
+        let inserting = ws.focused_buffer() == id
+            && matches!(
+                ws.focused().view.mode(),
+                Mode::Insert | Mode::Replace | Mode::VirtualReplace
+            );
+        if changed || inserting {
+            self.warned.insert(id);
+            *status = W10.to_string();
+        }
+    }
+}
 
 /// The per-buffer file registry: which buffers have a file on disk (a scratch `:enew` buffer has none, so
 /// `:w` on it declines). Replaces the old single `path`/`fmt`/`file_buf` triple (F-007 multi-buffer).

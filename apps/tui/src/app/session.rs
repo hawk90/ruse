@@ -714,6 +714,8 @@ pub(crate) struct Session {
     /// after both.
     last_input: std::time::Instant,
     disk_checked: std::time::Instant,
+    /// `'readonly'` beyond a file buffer's own flag: W10, `ruse -R`, buffers without a file (#1211).
+    pub(crate) readonly: crate::app::dispatch::ReadOnly,
     /// `ruse` with no file: the start buffer has no path, but a crash rescues it into this process's unnamed
     /// journal, which the next pathless start offers (#856). Only the crash paths write it: the buffer can
     /// never be saved, so a periodic journal would outlive every `:q!`.
@@ -892,6 +894,7 @@ impl Session {
             disk_warned: HashSet::new(),
             last_input: std::time::Instant::now(),
             disk_checked: std::time::Instant::now(),
+            readonly: crate::app::dispatch::ReadOnly::default(),
             unnamed_start: path.is_none().then_some(file_buf),
             rescue,
             profile_name: profile,
@@ -1035,6 +1038,7 @@ impl Session {
             journals,
             journal_writers,
             journal_failed,
+            readonly,
             unnamed_start,
             rescue,
             folds,
@@ -1114,6 +1118,7 @@ impl Session {
         // (#856): each file-backed buffer (keyed by its own path, F-007; incl. `:e`-opened ones) and the
         // pathless start buffer. A scratch buffer (`:enew`) is skipped so its bytes never land in some
         // file's recovery. `save()` clears a buffer's journal by path, so this stays consistent.
+        readonly.follow(files);
         if *rescue {
             let now = std::time::Instant::now();
             let mut entries = Vec::with_capacity(files.len() + 1);
@@ -1390,11 +1395,14 @@ impl Session {
         poll_ms
     }
 
-    /// The status-line flags after the focused buffer's `[+]` (RFC-0023 §8): `[journal!]` when the last
+    /// The status-line flags after the focused buffer's `[+]` (RFC-0023 §8): `[RO]` for a `'readonly'` buffer (nvim's `%r`, #1211), `[journal!]` when the last
     /// write or sync of its modified buffer's journal failed (#938).
     pub(crate) fn status_flags(&self) -> String {
         let mut flags = String::new();
         let id = self.ws.focused_buffer();
+        if self.readonly.get(&self.files, id) {
+            flags.push_str("[RO]");
+        }
         if self.journal_failed.contains(&id) && self.ws.focused().doc.is_modified() {
             flags.push_str("[journal!]");
         }
@@ -1549,8 +1557,10 @@ impl Session {
             self.end_macro_undo();
             self.sync_undo_before_typed();
         }
+        let ro_watch = self.readonly.watch(&self.ws, &self.files);
         // A replayed key's edits are the macro's (INV-ORIGIN, #880).
         self.route_as(raw_key, from_replay, frame);
+        self.readonly.warn(ro_watch, &self.ws, &mut self.status);
         if !from_replay && !self.emacs_profile {
             // A typed `@{reg}` (or `@:`, `Q`) queued its replay: one undo step for all of it (#939).
             if self.macros.replay_pending() && !self.ws.focused().doc.in_undo_block() {
@@ -1615,6 +1625,7 @@ impl Session {
         self.sync_undo_before_typed();
         let visual_append = self.visual_paste_appends(mode, &frame.snapshot);
         let out = self.engine.paste(&text, mode, visual_append);
+        let ro_watch = self.readonly.watch(&self.ws, &self.files);
         let Session {
             ws,
             files,
@@ -1633,6 +1644,7 @@ impl Session {
             Feed::Repeat(r) => run_repeat(r, ws, files, recorded, status, quit),
             _ => {}
         }
+        self.readonly.warn(ro_watch, &self.ws, &mut self.status);
         self.settle_interrupt();
         if self.quit {
             Flow::Quit
@@ -1698,6 +1710,8 @@ impl Session {
             opt_sources,
             ui_opts,
             config,
+            files,
+            readonly,
             ..
         } = self;
         let mut host = crate::app::set_exec::OptionHost {
@@ -1716,6 +1730,8 @@ impl Session {
             fold_rev,
             sources: opt_sources,
             ui: ui_opts,
+            files,
+            readonly,
             win_height: 0,
         };
         crate::app::set_exec::apply_config(config, &mut host);
@@ -3360,6 +3376,7 @@ impl Session {
             rescue,
             journals,
             journal_writers,
+            readonly,
             ..
         } = self;
         let (cols, text_rows) = (frame.cols, frame.text_rows);
@@ -3496,6 +3513,8 @@ impl Session {
                     fold_rev,
                     sources: opt_sources,
                     ui: ui_opts,
+                    files,
+                    readonly,
                     win_height,
                 };
                 let out =
@@ -5067,7 +5086,8 @@ fn is_ex_error(status: &str) -> bool {
     matches!(digits, Some(n) if n > 0 && status[1 + n..].starts_with(':'))
 }
 
-pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
+/// `read_only_mode` is `ruse -R` (#1211).
+pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
     let fmt = persist::encoding::FileFormat::detect(&raw);
     let disk = fmt.to_buffer(&raw);
@@ -5197,6 +5217,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             bf.read_only = true; // the start buffer is the only one with a file yet
         }
     }
+    s.readonly.mode = read_only_mode;
     // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
     // still works — `"+p` just pastes nothing.

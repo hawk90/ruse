@@ -20,7 +20,7 @@ use crate::app::session::run as session_run;
 
 /// `ruse --help` text. Paths are the only arguments the interactive editor takes today.
 const USAGE: &str = "\
-usage: ruse [--] [file]
+usage: ruse [-R] [--] [file]
        ruse --replay <trace> <file>
        ruse agent
        ruse ssh [host]
@@ -28,6 +28,9 @@ usage: ruse [--] [file]
 
 Open <file> in the editor, or an unnamed buffer with no file.
 Use `--` before a file name that starts with '-'.
+
+Options:
+  -R    read-only: every file opened is 'readonly' (:w gives E45, :w! writes)
 
 Environment:
   RUSE_PROFILE=vim|emacs|native   key profile (default vim; overrides input.profile)
@@ -47,8 +50,8 @@ enum Invocation {
     Replay(Vec<String>),
     Agent,
     Ssh(Option<String>),
-    /// The interactive editor on one file, or on an unnamed buffer.
-    Edit(Option<PathBuf>),
+    /// The interactive editor on one file, or on an unnamed buffer; `true` with `-R` (read-only mode).
+    Edit(Option<PathBuf>, bool),
 }
 
 /// Parse argv (without the program name). A leading `-` word is an option; after `--` every word is a
@@ -82,9 +85,12 @@ fn parse(args: &[OsString]) -> Invocation {
     }
     let mut files: Vec<&OsString> = Vec::new();
     let mut options_done = false;
+    let mut read_only = false;
     for arg in args {
         if !options_done && arg == "--" {
             options_done = true;
+        } else if !options_done && arg == "-R" {
+            read_only = true;
         } else if !options_done && arg.as_encoded_bytes().first() == Some(&b'-') {
             return Invocation::Usage(format!("unknown option: {}", arg.to_string_lossy()));
         } else {
@@ -92,8 +98,8 @@ fn parse(args: &[OsString]) -> Invocation {
         }
     }
     match files.as_slice() {
-        [] => Invocation::Edit(None),
-        [one] => Invocation::Edit(Some(PathBuf::from(one))),
+        [] => Invocation::Edit(None, read_only),
+        [one] => Invocation::Edit(Some(PathBuf::from(one)), read_only),
         // nvim opens every file into its argument list. ruse has no argument list yet, and opening only
         // the first would drop the rest without a word, so refuse until it does.
         _ => Invocation::Usage(format!(
@@ -110,7 +116,7 @@ pub fn run() -> ExitCode {
     crate::log::init();
     crate::recover::install_hook();
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
-    let path = match parse(&args) {
+    let (path, read_only) = match parse(&args) {
         // Written, not `print!`ed: a closed stdout (`ruse --help | true`) must not panic.
         Invocation::Help => {
             let _ = io::stdout().write_all(USAGE.as_bytes());
@@ -133,7 +139,7 @@ pub fn run() -> ExitCode {
         // With a host → SSH stdio (`ssh host ruse agent`, slice 2a; requires `ruse` on the remote PATH until
         // agent bootstrap lands). No host → the local pipe proof (`ruse agent` subprocess, slice 1).
         Invocation::Ssh(host) => return ssh_connect(host.as_deref()),
-        Invocation::Edit(path) => path,
+        Invocation::Edit(path, read_only) => (path, read_only),
     };
     // The editor draws on stdout and reads keys from stdin. Without a terminal on both it cannot run, and
     // the raw-mode call would fail with a bare OS error (#896); say which side is missing instead.
@@ -162,7 +168,7 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let result = session_run(path, raw);
+    let result = session_run(path, raw, read_only);
     // From here this thread ends the process; the signal watchdog stands down (#897).
     let _exiting = crate::signals::begin_exit();
     // The terminal guard has already restored the terminal. A fatal signal or an I/O error ended the session
@@ -295,12 +301,12 @@ mod tests {
 
     #[test]
     fn no_arguments_opens_an_unnamed_buffer() {
-        assert_eq!(p(&[]), Invocation::Edit(None));
+        assert_eq!(p(&[]), Invocation::Edit(None, false));
     }
 
     #[test]
     fn one_word_is_a_file() {
-        assert_eq!(p(&["a.txt"]), Invocation::Edit(Some("a.txt".into())));
+        assert_eq!(p(&["a.txt"]), Invocation::Edit(Some("a.txt".into()), false));
     }
 
     #[test]
@@ -327,11 +333,32 @@ mod tests {
 
     #[test]
     fn double_dash_ends_options() {
-        assert_eq!(p(&["--", "-x"]), Invocation::Edit(Some("-x".into())));
-        assert_eq!(p(&["--", "--"]), Invocation::Edit(Some("--".into())));
-        assert_eq!(p(&["--"]), Invocation::Edit(None));
-        assert_eq!(p(&["--", "agent"]), Invocation::Edit(Some("agent".into())));
-        assert_eq!(p(&["a.txt", "--"]), Invocation::Edit(Some("a.txt".into())));
+        assert_eq!(p(&["--", "-x"]), Invocation::Edit(Some("-x".into()), false));
+        assert_eq!(p(&["--", "--"]), Invocation::Edit(Some("--".into()), false));
+        assert_eq!(p(&["--"]), Invocation::Edit(None, false));
+        assert_eq!(
+            p(&["--", "agent"]),
+            Invocation::Edit(Some("agent".into()), false)
+        );
+        assert_eq!(
+            p(&["a.txt", "--"]),
+            Invocation::Edit(Some("a.txt".into()), false)
+        );
+    }
+
+    /// `-R` is nvim's read-only mode, before or after the file; after `--` it is a file name.
+    #[test]
+    fn dash_r_is_read_only_mode() {
+        assert_eq!(
+            p(&["-R", "a.txt"]),
+            Invocation::Edit(Some("a.txt".into()), true)
+        );
+        assert_eq!(
+            p(&["a.txt", "-R"]),
+            Invocation::Edit(Some("a.txt".into()), true)
+        );
+        assert_eq!(p(&["-R"]), Invocation::Edit(None, true));
+        assert_eq!(p(&["--", "-R"]), Invocation::Edit(Some("-R".into()), false));
     }
 
     #[test]
@@ -359,7 +386,7 @@ mod tests {
         let raw = OsString::from_vec(b"caf\xe9.txt".to_vec());
         assert_eq!(
             parse(std::slice::from_ref(&raw)),
-            Invocation::Edit(Some(PathBuf::from(raw)))
+            Invocation::Edit(Some(PathBuf::from(raw)), false)
         );
     }
 

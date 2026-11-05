@@ -50,6 +50,9 @@ pub(crate) struct OptionHost<'a> {
     pub fold_rev: &'a mut HashMap<DocumentId, Revision>,
     pub sources: &'a mut HashMap<Opt, OptSource>,
     pub ui: &'a mut UiOptions,
+    /// The buffers' files and `'readonly'` (#1211).
+    pub files: &'a mut crate::app::dispatch::Files,
+    pub readonly: &'a mut crate::app::dispatch::ReadOnly,
     /// The focused window's text rows: `'scroll'` reads and checks against it (0 when unknown).
     pub win_height: usize,
 }
@@ -285,6 +288,7 @@ impl OptionHost<'_> {
             Opt::CpOptions => OptVal::Text(crate::input::set_cmd::CPO_DEFAULT.into()),
             Opt::VerboseFile => OptVal::Text("".into()),
             Opt::FoldEnable => OptVal::Bool(self.foldenable.get(&buf).copied().unwrap_or(true)),
+            Opt::ReadOnly => OptVal::Bool(self.readonly.get(self.files, buf)),
             Opt::FoldLevel => OptVal::Num(
                 i64::try_from(self.foldlevel.get(&buf).copied().unwrap_or(0)).unwrap_or(i64::MAX),
             ),
@@ -416,6 +420,14 @@ impl OptionHost<'_> {
             (Opt::FoldEnable, _) => {
                 self.foldenable.insert(buf, on);
                 self.reapply_folds(buf);
+            }
+            // `'readonly'` is the buffer's; a `:set noro` (not `:setlocal`) also ends `ruse -R`'s readonly
+            // mode, as nvim's does.
+            (Opt::ReadOnly, _) => {
+                self.readonly.set(self.files, buf, on);
+                if !on && level != OptionLevel::Local {
+                    self.readonly.mode = false;
+                }
             }
             _ => {}
         }

@@ -644,7 +644,12 @@ features:
     # v0.1.5 (#610; app/ex_more.rs): the alternate file name a `:w {file}`, `:sav` or `:file {name}` leaves
     # (`#`, `"#`, `:e #`, `:b#`), `:f[ile] [{name}]`/`:0file`, `:fin[d]`/`:sf[ind]` over the default
     # `'path'` (`.,,`), `:dr[op]`, `:vi[sual]`, `:pw[d]`, `:cd`/`:chd[ir]` (`-`, `~`; buffer paths follow).
-    # Not modeled yet: `:view`/`:sview` (no 'readonly'), `:lcd`/`:tcd` (no window-local directory),
+    # v0.1.8 (#1211; app/dispatch.rs ReadOnly, tests/pty_readonly.rs): the per-buffer 'readonly' option
+    # (`:set ro`/`noro`/`ro?`, no config key: it is buffer state), `ruse -R` (nvim's readonly mode: every
+    # file the session opens is read-only until a `:set noro`), `[RO]` after `[+]` on the status line
+    # (`f.txt [+][RO]`, nvim's `%m%r`), W10 on the first change or Insert start of an unmodified read-only
+    # buffer (once until 'readonly' is set again, no 1 s pause), and `:w!` resetting 'readonly'.
+    # Not modeled yet: `:view`/`:sview`, `:lcd`/`:tcd` (no window-local directory),
     # `:oldfiles`/`#<n` (no viminfo/shada), and `:file`'s `[Not edited]` state.
     # #938 (RFC-0023 slice 4, second part; persist/disk.rs, tests/pty_disk_changed.rs): `[disk changed]`
     # when the file differs from what ruse read or saved (stat, confirmed by a content hash), checked on
