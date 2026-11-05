@@ -149,6 +149,8 @@ fn core_option(opt: Opt, val: &OptVal) -> Option<EditorOption> {
         Opt::FormatPrg => EditorOption::FormatPrg(s(val)),
         Opt::EqualPrg => EditorOption::EqualPrg(s(val)),
         Opt::CinWords => EditorOption::CinWords(s(val)),
+        Opt::LispWords => EditorOption::LispWords(s(val)),
+        Opt::Lisp => EditorOption::Lisp(b(val)),
         Opt::JoinSpaces => EditorOption::JoinSpaces(b(val)),
         Opt::WrapMargin => EditorOption::WrapMargin(match val {
             OptVal::Num(n) => *n,
@@ -182,9 +184,11 @@ fn core_value(opts: &[EditorOption], opt: Opt) -> Option<OptVal> {
         | (Opt::FormatListPat, EditorOption::FormatListPat(s))
         | (Opt::FormatPrg, EditorOption::FormatPrg(s))
         | (Opt::EqualPrg, EditorOption::EqualPrg(s))
-        | (Opt::CinWords, EditorOption::CinWords(s)) => Some(OptVal::Text(s.into())),
+        | (Opt::CinWords, EditorOption::CinWords(s))
+        | (Opt::LispWords, EditorOption::LispWords(s)) => Some(OptVal::Text(s.into())),
         (Opt::WrapMargin, EditorOption::WrapMargin(n)) => Some(OptVal::Num(n)),
         (Opt::JoinSpaces, EditorOption::JoinSpaces(v))
+        | (Opt::Lisp, EditorOption::Lisp(v))
         | (Opt::IgnoreCase, EditorOption::IgnoreCase(v))
         | (Opt::SmartCase, EditorOption::SmartCase(v))
         | (Opt::ExpandTab, EditorOption::ExpandTab(v))
@@ -626,6 +630,8 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::FormatPrg => "editor.formatprg",
         Opt::EqualPrg => "editor.equalprg",
         Opt::CinWords => "editor.cinwords",
+        Opt::Lisp => "editor.lisp",
+        Opt::LispWords => "editor.lispwords",
         Opt::JoinSpaces => "editor.joinspaces",
         Opt::SideScroll => "editor.sidescroll",
         Opt::SideScrollOff => "editor.sidescrolloff",

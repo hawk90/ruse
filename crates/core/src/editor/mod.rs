@@ -138,6 +138,10 @@ pub enum EditorOption {
     /// `'wrapmargin'` (`wm`) — with `'textwidth'` 0, wrap this many columns before the window's right edge
     /// (#618).
     WrapMargin(i64),
+    /// `'lisp'` — `=` and, under `'autoindent'`, `o`/`O`/`<CR>`/`cc` indent by the Lisp rules (#1163).
+    Lisp(bool),
+    /// `'lispwords'` (`lw`) — the comma-separated words whose forms `'lisp'` indents as a body (#1163).
+    LispWords(String),
 }
 
 impl EditorOption {
@@ -231,6 +235,8 @@ pub(crate) struct FormatConfig {
     pub(crate) prg: Cow<'static, str>,
     pub(crate) equalprg: Cow<'static, str>,
     pub(crate) cinwords: Cow<'static, str>,
+    pub(crate) lisp: bool,
+    pub(crate) lispwords: Cow<'static, str>,
     pub(crate) joinspaces: bool,
     pub(crate) wrapmargin: i64,
 }
@@ -279,6 +285,8 @@ impl ViewOptions {
             prg: Cow::Borrowed(""),
             equalprg: Cow::Borrowed(""),
             cinwords: Cow::Borrowed(indent::DEFAULT_CINWORDS),
+            lisp: false,
+            lispwords: Cow::Borrowed(lisp::DEFAULT_LISPWORDS),
             joinspaces: false,
             wrapmargin: 0,
         },
@@ -324,6 +332,8 @@ impl ViewOptions {
             EditorOption::EqualPrg(v) => self.format.equalprg = Cow::Owned(v),
             EditorOption::CinWords(v) => self.format.cinwords = Cow::Owned(v),
             EditorOption::JoinSpaces(v) => self.format.joinspaces = v,
+            EditorOption::Lisp(v) => self.format.lisp = v,
+            EditorOption::LispWords(v) => self.format.lispwords = Cow::Owned(v),
             EditorOption::WrapMargin(n) => {
                 self.format.wrapmargin = n.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
             }
@@ -357,6 +367,8 @@ impl ViewOptions {
             EditorOption::CinWords(self.format.cinwords.to_string()),
             EditorOption::JoinSpaces(self.format.joinspaces),
             EditorOption::WrapMargin(self.format.wrapmargin),
+            EditorOption::Lisp(self.format.lisp),
+            EditorOption::LispWords(self.format.lispwords.to_string()),
         ]
     }
 
@@ -1160,6 +1172,13 @@ impl View {
     #[must_use]
     pub fn shift_width(&self) -> usize {
         self.indent.shift_width()
+    }
+
+    /// Whether `'lisp'` is on: the core indents by the Lisp rules, so the frontend's indenters stand
+    /// aside (#1163).
+    #[must_use]
+    pub fn lisp(&self) -> bool {
+        self.format.lisp
     }
 
     /// This View's scroll position (first visible buffer row). Maintained by the frontend.
@@ -3423,6 +3442,8 @@ pub use ex_cmd::{
 mod format;
 pub use format::OptionValueError;
 mod indent;
+mod lisp;
+pub use lisp::DEFAULT_LISPWORDS;
 mod planner;
 pub use planner::plan;
 pub(crate) use planner::word_search;
@@ -4011,7 +4032,26 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     if let Some(refused) = refused {
         p = refused;
     }
-    let effects = commit(st, p);
+    let mut effects = commit(st, p);
+    // `'lisp'` under `'autoindent'`: the line an open or a linewise change leaves takes the Lisp indent
+    // (nvim's `open_line` and `op_change` run `fixthisline(get_lisp_indent)`, #1163).
+    if st.view.format.lisp
+        && st.view.indent.autoindent
+        && st.view.mode == Mode::Insert
+        && !opened_leader
+        && st.view.caret == CaretGravity::OnChar
+        && (linewise_change
+            || (matches!(
+                cmd,
+                Command::OpenBelow | Command::OpenAbove | Command::InsertNewline
+            ) && st.doc.revision() != entry_rev))
+    {
+        let b = st.doc.bytes();
+        let row = crate::pos::raw::line_of(b, st.view.cursor);
+        let cols = lisp::line_indent(b, row, st.view.indent.tab_width, &st.view.format.lispwords);
+        let fix = planner::plan_set_indents(st, row, row, &[Some(cols)], GroupHint::Continue);
+        effects.extend(commit(st, fix));
+    }
     let failed = !was_refused
         && st.view.cursor == entry_cursor
         && st.doc.revision() == entry_rev

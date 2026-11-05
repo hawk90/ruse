@@ -310,6 +310,11 @@ features:
     # the deleted indent on the next <CR>, `=` keeps indent characters under 'preserveindent', 'cinwords'
     # is settable, and 'equalprg' makes `=` filter through a program. Not implemented: cindent, cinkeys,
     # cinoptions, cinscopedecls, indentkeys, lisp, lispoptions, lispwords, vartabstop, varsofttabstop.
+    # #1163 (oracle-verified vs nvim v0.12.6): 'lisp' and 'lispwords' are built — `=` re-indents by nvim's
+    # get_lisp_indent (the first line of a multi-line range kept, as Vi), and under 'autoindent' so do
+    # o/O/<CR> and cc/S, with the Lisp bracket search (`;` comments, `#\(`, strings by quote count).
+    # 'lisp' wins over the tree indent. Not built: 'lispoptions' (only matters with an 'indentexpr', which
+    # ruse has none of), the Lisp rules of `%` and showmatch, cindent and 'vartabstop'/'varsofttabstop'.
     # #1206: no 'indentkeys'/'cinkeys' OPTION, but the keys nvim's defaults re-indent on are built in per
     # language (F-015): Python's `<:>`, `=elif`, `=except`, `e`, `0#`, `0{`/`0}`/`0)`/`0]`, `o`, `O`, and
     # `i_CTRL-F` (`!^F`) re-indents the line from the buffer's indenter (a no-op without one).

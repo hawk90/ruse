@@ -311,6 +311,20 @@ pub const SCHEMA: &[KeyDef] = &[
         false,
     ),
     key(
+        "editor.lisp",
+        Ty::Bool,
+        Scope::Workspace,
+        Merge::Replace,
+        false,
+    ),
+    key(
+        "editor.lispwords",
+        Ty::Str,
+        Scope::Workspace,
+        Merge::Replace,
+        false,
+    ),
+    key(
         "editor.joinspaces",
         Ty::Bool,
         Scope::User,

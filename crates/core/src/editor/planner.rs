@@ -4632,7 +4632,7 @@ fn matching_opener_pad(b: &[u8], cur: usize, open: u8, close: u8) -> Option<Vec<
 /// Apply explicit indent `levels` (one per line from `first_line`) to `[first_line, last_line]`: each
 /// non-blank line's leading whitespace becomes `levels[i] × shiftwidth`; blank lines are emptied. One
 /// transaction. The frontend supplies tree-derived levels (tree-aware `=`); the core stays view-free.
-fn plan_set_indents(
+pub(super) fn plan_set_indents(
     st: &EditorState,
     first_line: usize,
     last_line: usize,
@@ -4903,6 +4903,19 @@ fn plan_comment(st: &EditorState, first: usize, last: usize, at: usize, hint: Gr
 
 fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: GroupHint) -> Plan {
     let b = st.bytes();
+    // `'lisp'`: the Lisp rules instead (#1163).
+    if st.view.format.lisp {
+        let ind = st.view.indent;
+        let cols = super::lisp::reindent(
+            b,
+            first_line,
+            last_line,
+            ind.tab_width,
+            &st.view.format.lispwords,
+            |c| ind.whitespace(c),
+        );
+        return plan_set_indents(st, first_line, last_line, &cols, hint);
+    }
     // Per-line start offset, and the net bracket depth AT each line's start.
     let mut line_starts: Vec<usize> = Vec::new();
     let mut depth_at: Vec<i32> = Vec::new();

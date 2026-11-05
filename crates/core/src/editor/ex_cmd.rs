@@ -423,6 +423,8 @@ fn option_name(opt: &EditorOption) -> (&'static str, String) {
         EditorOption::CinWords(v) => ("cinwords", hex(v.as_bytes())),
         EditorOption::JoinSpaces(v) => ("joinspaces", flag(v)),
         EditorOption::WrapMargin(n) => ("wrapmargin", n.to_string()),
+        EditorOption::Lisp(v) => ("lisp", flag(v)),
+        EditorOption::LispWords(v) => ("lispwords", hex(v.as_bytes())),
     }
 }
 
@@ -456,6 +458,7 @@ fn string_option(name: &str) -> Option<fn(String) -> EditorOption> {
         "formatprg" => EditorOption::FormatPrg,
         "equalprg" => EditorOption::EqualPrg,
         "cinwords" => EditorOption::CinWords,
+        "lispwords" => EditorOption::LispWords,
         _ => return None,
     })
 }
@@ -784,6 +787,7 @@ impl ExCmd {
                             })
                         }),
                         "joinspaces" => flag(value).map(EditorOption::JoinSpaces),
+                        "lisp" => flag(value).map(EditorOption::Lisp),
                         _ => None,
                     };
                     ExCmd::Set(opt.ok_or_else(|| a.bad())?)
@@ -1151,6 +1155,8 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::SoftTabStop(4)),
         ExCmd::Set(EditorOption::AutoIndent(false)),
         ExCmd::Set(EditorOption::SmartIndent(true)),
+        ExCmd::Set(EditorOption::Lisp(true)),
+        ExCmd::Set(EditorOption::LispWords("defun,let*".into())),
         ExCmd::Set(EditorOption::CopyIndent(true)),
         ExCmd::Set(EditorOption::PreserveIndent(true)),
         ExCmd::Set(EditorOption::SmartTab(false)),

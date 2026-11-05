@@ -495,6 +495,10 @@ fn resolve_tree_aware(
             .and_then(highlight::CachedHighlight::tree)
             .filter(|t| indent::uses_node_depth(t))
     };
+    // `'lisp'` indents in the core, as nvim's Lisp rules win over an indent expression (#1163).
+    if ws.focused().view.lisp() {
+        return cmd;
+    }
     // Python indents as nvim's indent script does, after the edit (`indent_keys`), in columns (#1205).
     let python = crate::app::indent_keys::is_python(ws, highlighters);
     if python {

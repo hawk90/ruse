@@ -107,7 +107,7 @@ pub(crate) fn before(
     highlighters: &HashMap<DocumentId, CachedHighlight>,
     can: &mut bool,
 ) -> After {
-    if !is_python(ws, highlighters) {
+    if !is_python(ws, highlighters) || ws.focused().view.lisp() {
         return After::Nothing;
     }
     let pane = ws.focused();

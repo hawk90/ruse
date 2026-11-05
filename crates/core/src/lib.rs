@@ -94,8 +94,8 @@ pub use edit::{Edit, EditError, EditList};
 pub use editor::{
     apply_command, commit, plan, CaretGravity, EditorOption, EditorState, ExCmd, ExOutcome,
     GlobalCmd, GroupKind, IndentStyle, LineAddr, Mode, Plan, SortKind, SortOptions, SubFlags,
-    SubOutcome, SubRange, Substitution, View, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES,
-    MAX_SHIFT_LEVELS,
+    SubOutcome, SubRange, Substitution, View, DEFAULT_LISPWORDS, MAX_APPLY_EDITS,
+    MAX_APPLY_EDIT_BYTES, MAX_SHIFT_LEVELS,
 };
 pub use effect::Effect;
 pub use expr::{eval as eval_expr, eval_or_empty as eval_expr_or_empty, ExprError};
