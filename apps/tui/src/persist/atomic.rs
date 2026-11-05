@@ -19,7 +19,9 @@
 //!
 //! **Honesty** (#936): every fsync's result counts. If the directory cannot be fsynced the file has been
 //! replaced but the save is NOT reported durable ([`SaveError::NotDurable`]), so the caller keeps the buffer
-//! modified and its recovery journal.
+//! modified and its recovery journal. A filesystem that does not support a directory fsync (`EINVAL`,
+//! `ENOTSUP`, `EOPNOTSUPP`, `EISDIR`) is not a failure: the save counts, with
+//! [`Method::RenamedDirSyncUnsupported`] and a report note that the rename's durability is not proven.
 //!
 //! Directory fsync, ownership and xattr handling are Unix-only; elsewhere the file fsync + rename still give
 //! atomic replacement. Known gaps: macOS ACLs (not exposed as xattrs) are not carried over by the rename path,
@@ -50,8 +52,24 @@ const TEMP_ATTEMPTS: u32 = 16;
 pub enum Method {
     /// A new inode was renamed over the target (atomic).
     Renamed,
+    /// Renamed, but the filesystem does not support a directory fsync (`EINVAL`/`ENOTSUP`/...), so the
+    /// rename's durability is not proven. The save counts (the bytes are fsynced in the file); the message
+    /// says what was not proven, as SQLite and PostgreSQL treat an unsupported directory fsync.
+    RenamedDirSyncUnsupported,
     /// The existing file was overwritten (keeps hard links, owner, ACLs and xattrs; not atomic).
     InPlace,
+}
+
+impl Method {
+    /// The suffix the write report carries for this method: empty unless something was not proven.
+    pub fn note(self) -> &'static str {
+        match self {
+            Method::RenamedDirSyncUnsupported => {
+                " (directory sync not supported here; rename durability not proven)"
+            }
+            Method::Renamed | Method::InPlace => "",
+        }
+    }
 }
 
 /// Why a save did not complete. `Display` is the status-line text.
@@ -124,14 +142,20 @@ pub(crate) enum Step {
 
 #[cfg(test)]
 thread_local! {
-    static FAULT: std::cell::Cell<Option<Step>> = const { std::cell::Cell::new(None) };
+    static FAULT: std::cell::Cell<Option<(Step, Option<i32>)>> = const { std::cell::Cell::new(None) };
     static SYNCED_DIRS: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// Make `step` fail on this thread until cleared with `None` (test seam).
+/// Make `step` fail on this thread with a real I/O error (`EIO`) until cleared with `None` (test seam).
 #[cfg(test)]
 pub(crate) fn inject(step: Option<Step>) {
-    FAULT.with(|f| f.set(step));
+    FAULT.with(|f| f.set(step.map(|s| (s, None))));
+}
+
+/// Make `step` fail on this thread with the OS error `errno` until cleared with `inject(None)`.
+#[cfg(test)]
+pub(crate) fn inject_errno(step: Step, errno: i32) {
+    FAULT.with(|f| f.set(Some((step, Some(errno)))));
 }
 
 /// The directories this thread fsynced, oldest first, draining the log (test seam).
@@ -143,10 +167,12 @@ pub(crate) fn take_synced_dirs() -> Vec<PathBuf> {
 macro_rules! fault {
     ($step:ident) => {
         #[cfg(test)]
-        if FAULT.with(|f| f.get()) == Some(Step::$step) {
-            return Err(
-                io::Error::other(concat!("injected ", stringify!($step), " failure")).into(),
-            );
+        if let Some((Step::$step, errno)) = FAULT.with(|f| f.get()) {
+            return Err(match errno {
+                Some(code) => io::Error::from_raw_os_error(code),
+                None => io::Error::other(concat!("injected ", stringify!($step), " failure")),
+            }
+            .into());
         }
     };
 }
@@ -292,7 +318,8 @@ pub fn write(path: &Path, bytes: &[u8], force: bool) -> Result<Method, SaveError
         }
     }
     match replace(&target, bytes, existing.as_ref()) {
-        Ok(()) => Ok(Method::Renamed),
+        Ok(true) => Ok(Method::Renamed),
+        Ok(false) => Ok(Method::RenamedDirSyncUnsupported),
         Err(Attempt::Fail(e)) => Err(e),
         Err(Attempt::InPlace) => match &existing {
             Some(m) => in_place(&target, bytes, m, force),
@@ -325,7 +352,8 @@ fn hard_linked(_: &fs::Metadata) -> bool {
     false
 }
 
-fn replace(target: &Path, bytes: &[u8], existing: Option<&fs::Metadata>) -> Result<(), Attempt> {
+/// Rename a filled temp over `target`; `Ok(false)` when the directory fsync is not supported here.
+fn replace(target: &Path, bytes: &[u8], existing: Option<&fs::Metadata>) -> Result<bool, Attempt> {
     let (tmp, mut f) = match create_temp(target, existing.is_some()) {
         Ok(t) => t,
         // The directory is not writable (or read-only): the file itself may still be.
@@ -389,30 +417,50 @@ fn same_owner(f: &File, m: &fs::Metadata) -> io::Result<bool> {
     Ok(unsafe { libc::fchown(f.as_raw_fd(), m.uid(), m.gid()) } == 0)
 }
 
-/// fsync `dir` so a rename in it is durable. Every failure counts (#936).
-fn sync_dir(dir: &Path) -> Result<(), SaveError> {
+/// Whether an error from opening or fsyncing a directory means the filesystem does not support it (some
+/// network and FUSE filesystems), rather than that the sync failed. SQLite and PostgreSQL draw the same line.
+#[cfg(unix)]
+fn dir_sync_unsupported(e: &io::Error) -> bool {
+    e.raw_os_error()
+        .is_some_and(|c| [libc::EINVAL, libc::ENOTSUP, libc::EOPNOTSUPP, libc::EISDIR].contains(&c))
+}
+
+/// fsync `dir` so a rename in it is durable. `Ok(false)`: the filesystem does not support it, so durability
+/// is not proven but nothing failed. Any other failure (EIO, ENOSPC, EROFS, EACCES, ...) is `E667` (#936).
+fn sync_dir(dir: &Path) -> Result<bool, SaveError> {
     #[cfg(unix)]
     {
-        let not_durable = |err| SaveError::NotDurable {
-            path: dir.to_path_buf(),
-            err,
+        let fail = |err: io::Error| {
+            if dir_sync_unsupported(&err) {
+                Ok(false)
+            } else {
+                Err(SaveError::NotDurable {
+                    path: dir.to_path_buf(),
+                    err,
+                })
+            }
         };
         let open = || -> io::Result<File> {
             fault!(OpenDir);
             File::open(dir)
         };
-        let d = open().map_err(not_durable)?;
+        let d = match open() {
+            Ok(d) => d,
+            Err(e) => return fail(e),
+        };
         let sync = || -> io::Result<()> {
             fault!(SyncDir);
             d.sync_all()
         };
-        sync().map_err(not_durable)?;
+        if let Err(e) = sync() {
+            return fail(e);
+        }
         #[cfg(test)]
         SYNCED_DIRS.with(|s| s.borrow_mut().push(dir.to_path_buf()));
     }
     #[cfg(not(unix))]
     let _ = dir;
-    Ok(())
+    Ok(true)
 }
 
 /// Overwrite the existing `target` in place and fsync it. `force` lets the owner write a file without write
@@ -718,6 +766,47 @@ mod tests {
             assert_eq!(read(&f), b"new", "{step:?}: the rename already happened");
             assert!(temps(&dir).is_empty());
         }
+    }
+
+    /// A filesystem that does not support a directory fsync (EINVAL, ENOTSUP, EOPNOTSUPP, EISDIR from the
+    /// open or the fsync) does not fail the save: it succeeds with a method whose note says the rename's
+    /// durability is not proven. A real I/O error (EIO, ENOSPC, EROFS, EACCES) stays E667.
+    #[cfg(unix)]
+    #[test]
+    fn unsupported_directory_fsync_is_saved_with_a_note() {
+        let codes = [libc::EINVAL, libc::ENOTSUP, libc::EOPNOTSUPP, libc::EISDIR];
+        for step in [Step::OpenDir, Step::SyncDir] {
+            for code in codes {
+                let dir = tmpdir();
+                let f = dir.join("f.txt");
+                fs::write(&f, b"old").unwrap();
+                let m = {
+                    let _g = Fault::set(step);
+                    inject_errno(step, code);
+                    write(&f, b"new", false)
+                };
+                let m = m.unwrap_or_else(|e| panic!("{step:?} errno {code}: {e}"));
+                assert_eq!(m, Method::RenamedDirSyncUnsupported, "{step:?} {code}");
+                assert!(m.note().contains("rename durability not proven"));
+                assert_eq!(read(&f), b"new");
+            }
+            for code in [libc::EIO, libc::ENOSPC, libc::EROFS, libc::EACCES] {
+                let dir = tmpdir();
+                let f = dir.join("f.txt");
+                let e = {
+                    let _g = Fault::set(step);
+                    inject_errno(step, code);
+                    write(&f, b"new", false).unwrap_err()
+                };
+                assert!(
+                    matches!(e, SaveError::NotDurable { .. }),
+                    "{step:?} {code}: {e:?}"
+                );
+                assert!(e.to_string().starts_with("E667: "), "{e}");
+            }
+        }
+        assert_eq!(Method::Renamed.note(), "");
+        assert_eq!(Method::InPlace.note(), "");
     }
 
     /// A failed file fsync leaves the target untouched and no temp behind.

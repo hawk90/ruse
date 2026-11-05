@@ -774,7 +774,7 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
     let bytes = bf.fmt.to_disk(&source);
     // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is.
     match persist::atomic::write(&bf.path, &bytes, false) {
-        Ok(_) => {
+        Ok(method) => {
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());
@@ -783,12 +783,14 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
             // written WITHOUT a trailing newline, surface `[noeol]` (as Vim does) so the missing EOL is never
             // a silent surprise. The check is on the SOURCE bytes actually written (to_disk only re-applies
             // BOM/CRLF, not EOL), so a successful `:set fixeol` write ends in `\n` and shows no marker.
+            // A filesystem without directory fsync is saved, but the report says what was not proven.
             *status = format!(
-                "\"{}\"{} {}L, {}B written",
+                "\"{}\"{} {}L, {}B written{}",
                 bf.path.display(),
                 noeol_marker(&source),
                 line_count(&source),
-                bytes.len()
+                bytes.len(),
+                method.note()
             );
             true
         }
@@ -1303,6 +1305,28 @@ mod dispatch_tests {
         assert!(save(&mut ws, &files, &mut status, false));
         assert!(status.ends_with("written"), "{status}");
         assert!(!ws.focused().doc.is_modified());
+    }
+
+    /// A filesystem that does not support a directory fsync (EINVAL) saves: the buffer is clean and the
+    /// journal cleared, and the report says the rename's durability is not proven instead of failing.
+    #[cfg(unix)]
+    #[test]
+    fn save_where_directory_fsync_is_unsupported_is_saved_with_a_note() {
+        let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
+        let mut status = String::new();
+        persist::atomic::inject_errno(persist::atomic::Step::SyncDir, libc::EINVAL);
+        let ok = save(&mut ws, &files, &mut status, false);
+        persist::atomic::inject(None);
+        assert!(ok, "{status}");
+        assert_eq!(
+            status,
+            format!(
+                "\"{}\" 1L, 3B written (directory sync not supported here; rename durability not proven)",
+                path.display()
+            )
+        );
+        assert!(!ws.focused().doc.is_modified());
+        assert_eq!(std::fs::read(&path).unwrap(), b"xa\n");
     }
 
     /// #872: `:set fixeol` adds the newline to the written file only, the buffer stays as typed and is clean,

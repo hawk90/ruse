@@ -316,7 +316,9 @@ directory), not a returned `write()`.
       copy every xattr (on Linux this includes the POSIX ACL; a value that cannot be set → IN PLACE).
 6. fsync(temp)                              # data and metadata durable before it becomes the file
 7. rename(temp, target)                     # atomic replace on POSIX
-8. open + fsync(dir)                        # make the rename itself durable; a failure here is E667
+8. open + fsync(dir)                        # make the rename itself durable; a failure here is E667,
+      except EINVAL/ENOTSUP/EOPNOTSUPP/EISDIR (the filesystem does not support it), which saves with
+      the note "directory sync not supported here; rename durability not proven"
 9. close dir fd.
 10. On success: saved_revision ← document_revision; saved_node ← current_undo_node.seq; disk_observed ← OurSave{revision, new hash/stat};
       append a Meta(save-point) record; only THEN surface "Saved".
@@ -326,7 +328,12 @@ If any step before 7 fails the temp file is unlinked and the original is untouch
 INV-ERR-CLASS); "Saved" is never shown. `saved_revision`/`disk_observed` advance **only after step 8**, so a
 crash between `rename` and `fsync(dir)` cannot leave us believing we saved when the directory entry might not
 survive: a failed step 8 reports `E667` ("written but not proven durable"), the buffer stays modified and its
-journal stays.
+journal stays. A filesystem that does not support a directory fsync at all (`EINVAL`, `ENOTSUP`/`EOPNOTSUPP`,
+`EISDIR` from opening or fsyncing the directory; some network and FUSE filesystems) is not a failure, as in
+SQLite and PostgreSQL: otherwise `:w` could never succeed there although the file's bytes are fsynced. The
+save then counts and the buffer is marked saved, but the report says `written (directory sync not supported
+here; rename durability not proven)` and makes no durability claim for the rename. A real I/O error (`EIO`,
+`ENOSPC`, `EROFS`, `EACCES`, ...) stays `E667`.
 
 **In place** (Neovim's `'backupcopy'` `auto`, Emacs's `backup-by-copying-when-linked`): when a rename would
 change the file's identity — other hard links would keep the old bytes, the owner/group or an xattr/ACL

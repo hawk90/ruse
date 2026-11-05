@@ -116,7 +116,7 @@ fn write_own(
     force: bool,
 ) -> Result<String, FileError> {
     match persist::atomic::write(path, disk, force) {
-        Ok(_) => {
+        Ok(method) => {
             if mark_saved {
                 if let Some(doc) = ws.document_mut(id) {
                     doc.mark_saved();
@@ -130,7 +130,7 @@ fn write_own(
                 source,
                 disk.len(),
                 "written",
-            ))
+            ) + method.note())
         }
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
@@ -284,7 +284,7 @@ pub(crate) fn ex_write(
                 match check_other_target(files, id, &target, name, spec.bang) {
                     Err(e) => Err(e.to_string()),
                     Ok(new) => match persist::atomic::write(&target, &disk, spec.bang) {
-                        Ok(_) => {
+                        Ok(method) => {
                             // A buffer with no file takes the name it is first written to (Vim's
                             // 'cpoptions' `F`); written whole, it is then saved.
                             if own.is_none() {
@@ -294,7 +294,8 @@ pub(crate) fn ex_write(
                                     persist::journal::clear(Some(&target));
                                 }
                             }
-                            Ok(write_report(name, new, &source, disk.len(), "written"))
+                            Ok(write_report(name, new, &source, disk.len(), "written")
+                                + method.note())
                         }
                         Err(e) => Err(e.to_string()),
                     },
@@ -352,14 +353,14 @@ pub(crate) fn ex_saveas(
     let fmt = with_ff(own.as_ref().map(|o| o.1).unwrap_or_default(), opts);
     let (source, disk) = encode(ws.focused().doc.bytes(), fmt, fixeol);
     match persist::atomic::write(&target, &disk, bang) {
-        Ok(_) => {
+        Ok(method) => {
             if let Some((old, _)) = &own {
                 persist::journal::clear(Some(old)); // the changes are on disk under the new name
             }
             adopt_file(ws, files, highlighters, id, name, fmt);
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(&target));
-            *status = write_report(name, new, &source, disk.len(), "written");
+            *status = write_report(name, new, &source, disk.len(), "written") + method.note();
             true
         }
         Err(e) => {
