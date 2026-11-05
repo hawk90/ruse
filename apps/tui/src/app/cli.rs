@@ -362,4 +362,25 @@ mod tests {
             Invocation::Edit(Some(PathBuf::from(raw)))
         );
     }
+
+    /// #867: a non-UTF-8 option or subcommand argument is a usage error, never a panic.
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_options_are_usage_errors() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = || OsString::from_vec(b"\xff".to_vec());
+        let opt = OsString::from_vec(b"-\xff".to_vec());
+        assert_eq!(usage(parse(&[opt])), "unknown option: -\u{fffd}");
+        let replay = [OsString::from("--replay"), bad(), "f".into()];
+        assert_eq!(
+            usage(parse(&replay)),
+            "--replay arguments must be valid UTF-8"
+        );
+        assert!(matches!(
+            parse(&["ssh".into(), bad()]),
+            Invocation::Usage(_)
+        ));
+        let raw = OsString::from_vec(b"--\xff".to_vec());
+        assert!(matches!(parse(&[raw]), Invocation::Usage(_)));
+    }
 }

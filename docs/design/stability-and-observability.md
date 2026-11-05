@@ -53,8 +53,10 @@ all now would be exactly the "pattern names first" over-design warned against ab
 - **§2 typed, structured errors**, never `Err(String)` (anti-pattern **STAB-1**). The `ErrorReport` /
   `ErrorCode` *ecosystem-API* scheme (§2.1) is **deferred** — v0 keeps the typed enums.
 - **§6/§8 recovery on a core-invariant break + panic policy.** A core panic *is* an invariant violation
-  (§8). The TUI installs a panic hook that first appends the unsaved buffer to the recovery journal
-  `<file>.ruse-journal` (§6, `apps/tui/src/recover.rs`; only the focused buffer, #856) and then lets the panic unwind (`TermGuard` restores the terminal) — it does
+  (§8). The TUI installs a panic hook that first appends every modified buffer to its recovery journal
+  `<file>.ruse-journal` (§6, `apps/tui/src/recover.rs`, #856), logs `event="panic"` with the panic's message and
+  location, restores the terminal so the panic message prints on the main screen and stays visible (#866), and
+  then lets the panic unwind — it does
   **not** `catch_unwind`-swallow (anti-pattern **STAB-6 [P1]**) nor blanket `panic=abort` (**STAB-5 [P1]**).
 - **§7 fail-fast (internal) vs graceful (external).** Internal bad state → fail-fast (assert). External
   failure only lowers the feature level: a tree-sitter parse failure drops to no highlighting; a file-IO

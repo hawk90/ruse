@@ -39,6 +39,39 @@ pub fn assess_recovery(disk: &[u8], recovered: Option<&[u8]>) -> Recovery {
     }
 }
 
+/// The recovered text as one edit over the disk text (#863): `(start, end, text)` replaces `disk[start..end]`
+/// with `text` and yields `recovered`. Only the span that differs is replaced, so the recovery is a small
+/// change the trace records and `u` takes back to the disk text. The span is widened to character
+/// boundaries; `None` when its recovered side is not valid UTF-8, which a text edit cannot carry, or when
+/// no boundary exists to cut the disk text at (it opens with a stray continuation byte).
+pub fn recovery_edit(disk: &[u8], recovered: &[u8]) -> Option<(usize, usize, String)> {
+    let cont = |b: &[u8], i: usize| i < b.len() && (b[i] & 0xC0) == 0x80;
+    let mut pre = disk
+        .iter()
+        .zip(recovered)
+        .take_while(|(a, b)| a == b)
+        .count();
+    while pre > 0 && (cont(disk, pre) || cont(recovered, pre)) {
+        pre -= 1;
+    }
+    if cont(disk, pre) {
+        return None; // a stray continuation byte opens the disk text: no boundary to cut at
+    }
+    let room = disk.len().min(recovered.len()) - pre;
+    let mut suf = disk
+        .iter()
+        .rev()
+        .zip(recovered.iter().rev())
+        .take(room)
+        .take_while(|(a, b)| a == b)
+        .count();
+    while suf > 0 && (cont(disk, disk.len() - suf) || cont(recovered, recovered.len() - suf)) {
+        suf -= 1;
+    }
+    let text = String::from_utf8(recovered[pre..recovered.len() - suf].to_vec()).ok()?;
+    Some((pre, disk.len() - suf, text))
+}
+
 /// Read a file to open it as a buffer, refusing paths that are not files instead of hanging or reading
 /// without end (#907). The type is checked (symlinks followed) before anything is read:
 ///
@@ -163,6 +196,57 @@ mod tests {
         writer.join().unwrap();
         drop(placeholder);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn apply(disk: &[u8], (s, e, t): &(usize, usize, String)) -> Vec<u8> {
+        [&disk[..*s], t.as_bytes(), &disk[*e..]].concat()
+    }
+
+    #[test]
+    fn recovery_edit_replaces_only_the_changed_span() {
+        let e = recovery_edit(b"one\ntwo\nthree\n", b"one\nTWO!\nthree\n").unwrap();
+        assert_eq!(e, (4, 7, "TWO!".into()));
+        assert_eq!(
+            recovery_edit(b"", b"new\n").unwrap(),
+            (0, 0, "new\n".into())
+        );
+        assert_eq!(
+            recovery_edit(b"gone\n", b"").unwrap(),
+            (0, 5, String::new())
+        );
+        // A shared lead byte of two different characters is not split.
+        let e = recovery_edit("é".as_bytes(), "è".as_bytes()).unwrap();
+        assert_eq!(e, (0, 2, "è".into()));
+        // Unchanged non-UTF-8 bytes around the change are fine; a non-UTF-8 change is not a text edit.
+        let e = recovery_edit(b"caf\xe9 x\n", b"caf\xe9 y\n").unwrap();
+        assert_eq!(apply(b"caf\xe9 x\n", &e), b"caf\xe9 y\n");
+        assert_eq!(recovery_edit(b"x\n", b"\xff\n"), None);
+    }
+
+    mod fuzz {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(crate::test_cases(256))]
+
+            /// Whenever an edit is returned, it turns the disk text into the recovered text exactly, and
+            /// its cut points are character boundaries of the disk text (what `apply_edits` requires).
+            #[test]
+            fn recovery_edit_reproduces_the_recovered_text(
+                disk in proptest::collection::vec(prop_oneof![Just(b'a'), Just(b'\n'), Just(0xC3u8), Just(0xA9u8), Just(0xFFu8)], 0..24),
+                rec in proptest::collection::vec(prop_oneof![Just(b'a'), Just(b'b'), Just(b'\n'), Just(0xC3u8), Just(0xA9u8)], 0..24),
+            ) {
+                if let Some(e) = recovery_edit(&disk, &rec) {
+                    prop_assert_eq!(apply(&disk, &e), rec);
+                    let boundary = |p: usize| p == disk.len() || (disk[p] & 0xC0) != 0x80;
+                    prop_assert!(e.0 <= e.1 && boundary(e.0) && boundary(e.1));
+                } else {
+                    let stray_start = disk.first().is_some_and(|b| b & 0xC0 == 0x80);
+                    prop_assert!(std::str::from_utf8(&rec).is_err() || stray_start);
+                }
+            }
+        }
     }
 
     #[test]

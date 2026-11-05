@@ -887,6 +887,41 @@ impl Session {
         }
     }
 
+    /// Put the start buffer's recovered text over the disk text it opened with (#863): as a recorded edit,
+    /// so the buffer is modified (`:q` refuses with E37), `u` goes back to the disk text, and a saved trace
+    /// starts from the disk text and replays the recovery. A change whose recovered side is not UTF-8 cannot
+    /// travel as a text edit; the buffer then loads the recovered bytes as its text, still marked modified,
+    /// and the trace starts from them.
+    pub(crate) fn apply_recovered(&mut self, rec: Vec<u8>) {
+        match persist::recovery_edit(self.ws.focused().doc.bytes(), &rec) {
+            Some((start, end, text)) => {
+                let ex = ExCmd::Edits {
+                    origin: TransactionOrigin::UserInput,
+                    edits: vec![(BytePos(start), BytePos(end), text)],
+                };
+                crate::app::dispatch::run_ex(ex, &mut self.ws, &mut self.recorded);
+                crate::app::dispatch::place_cursor(&mut self.ws, &mut self.recorded, 0);
+            }
+            None => {
+                self.ws.reload_focused(rec.clone());
+                self.ws.focused_doc_mut().mark_unsaved();
+                self.initial = rec;
+            }
+        }
+    }
+
+    /// Remove the journal of every buffer this session could have journaled (#862), on a normal quit: each
+    /// file buffer's, and the unnamed start buffer's `.ruse-journal`. A journal the session could not read
+    /// is kept ([`persist::journal::discard`]).
+    pub(crate) fn discard_journals(&self) {
+        for bf in self.files.values() {
+            persist::journal::discard(Some(bf.path.as_path()));
+        }
+        if self.unnamed_start.is_some() {
+            persist::journal::discard(None);
+        }
+    }
+
     /// Panic unless the focused buffer's folds are well formed over it (in range; a manual set flat, an
     /// indent set nested) and every manual fold anchor is live in its document — the fold part of the
     /// invariant walker (#906). Only the focused buffer's folds are reconciled each frame, so only they are
@@ -1008,11 +1043,17 @@ impl Session {
                     continue;
                 };
                 let (rev, dirty) = (doc.revision().0, doc.is_modified());
-                if journal_throttle
-                    .entry(*id)
-                    .or_default()
-                    .tick(rev, dirty, JOURNAL_THROTTLE)
-                {
+                let tick =
+                    journal_throttle
+                        .entry(*id)
+                        .or_default()
+                        .tick(rev, dirty, JOURNAL_THROTTLE);
+                // Undone back to the saved text, or re-read with `:e!`: the journal holds nothing to
+                // recover any more, so a crash from here must not offer the old changes back (#862).
+                if tick == persist::journal::Tick::Discard {
+                    persist::journal::discard(Some(bf.path.as_path()));
+                }
+                if tick == persist::journal::Tick::Append {
                     // A failed append (read-only or vanished directory, full disk) is shown once per
                     // failing run, as Neovim's E303 is, rather than silently leaving the work unprotected.
                     match persist::journal::append(Some(bf.path.as_path()), doc.bytes()) {
@@ -3582,7 +3623,10 @@ impl Session {
                     *status = "E89: No write since last change (add ! to override)".into();
                 } else {
                     ws.remove_buffer(id);
-                    files.remove(&id);
+                    // Its changes go with it (`:bd!`), as nvim deletes the swap file (#862).
+                    if let Some(bf) = files.remove(&id) {
+                        persist::journal::discard(Some(bf.path.as_path()));
+                    }
                     highlighters.remove(&id);
                     *status = format!("buffer {} deleted", id.0);
                 }
@@ -4720,17 +4764,19 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
     let stale_note = stale.then_some(persist::journal::STALE_NOTE);
-    let (initial, status) = match recovery {
+    // The buffer always starts as the disk text, which is also the trace's starting text; a recovery is
+    // applied over it once the session exists, as an edit (#863).
+    let (recovered, status) = match recovery {
         persist::Recovery::Available(rec) => {
             match prompt_recovery(&mut out, "q: quit and keep them", stale_note)? {
                 RecoveryChoice::Recover => (
-                    rec,
+                    Some(rec),
                     String::from("ruse — recovered unsaved changes (:w to save)"),
                 ),
                 RecoveryChoice::Discard => {
                     persist::journal::clear(path.as_deref()); // discarded on the user's say-so
                     (
-                        disk,
+                        None,
                         String::from("ruse — recovery discarded; opened disk version"),
                     )
                 }
@@ -4738,10 +4784,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
         }
         persist::Recovery::None => match journal_error {
-            Some(note) => (disk, format!("ruse — {note}")),
-            None => (disk, String::from("ruse — :q to quit")),
+            Some(note) => (None, format!("ruse — {note}")),
+            None => (None, String::from("ruse — :q to quit")),
         },
     };
+    let initial = disk;
 
     // The config layers (#614): machine, user, and the workspace's `.ruse/config.toml` when its trust record
     // matches. Loading never fails; the problems are diagnostics, shown once on the status line.
@@ -4801,6 +4848,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     s.config = config;
     s.config_paths = Some(config_paths);
     s.apply_config(true);
+    if let Some(rec) = recovered {
+        s.apply_recovered(rec);
+    }
     // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
     // still works — `"+p` just pastes nothing.
@@ -5031,6 +5081,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
         };
         s.on_key(raw_key, from_replay, &frame);
+    }
+    // A normal quit lets every buffer's unsaved changes go (#862): `:q` only gets here with none, and
+    // `:q!` / `:qa!` / `:cq` discard them on purpose. nvim deletes its swap files on each of these exits, so
+    // the next start offers nothing. A signal ends the loop without `quit`, and its journals are kept.
+    if s.quit && crate::signals::pending().is_none() {
+        s.discard_journals();
     }
     // F-031 3b-2b: clear any inline images on exit so none is left drawn after the editor quits.
     if has_graphics {

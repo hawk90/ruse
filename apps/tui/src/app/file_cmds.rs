@@ -419,6 +419,9 @@ pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: F
         Ok(raw) => {
             let fmt = with_ff(FileFormat::detect(&raw), opts);
             ws.reload_focused(fmt.to_buffer(&raw));
+            // The changes were thrown away on purpose (`:e!`); a journal of them must not be offered on
+            // the next start (#862). Neovim's swap file then holds the re-read text, which offers nothing.
+            persist::journal::discard(Some(&path));
             // The path is unchanged, so the buffer keeps its file entry and its highlighter: the reload
             // continues the buffer's revisions (#687), and the highlighter reparses on a new revision
             // against the bytes it last saw, so it never shows the pre-reload text (#894).

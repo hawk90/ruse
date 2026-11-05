@@ -121,17 +121,19 @@ pub(crate) fn open_file_with(
     let status = match recovered {
         Some(rec) => {
             // Apply the recovered text as an edit over the disk version, so the buffer is modified (a
-            // `:q` refuses) and `u` returns to what is on disk. Non-UTF-8 bytes cannot travel through
-            // a text edit; load them as the buffer instead, as the startup path does.
-            match String::from_utf8(rec) {
-                Ok(text) => {
-                    let len = ws.focused().doc.bytes().len();
+            // `:q` refuses) and `u` returns to what is on disk. A change that is not UTF-8 cannot travel
+            // through a text edit; load it as the buffer instead, still modified, as the startup path does.
+            match persist::recovery_edit(ws.focused().doc.bytes(), &rec) {
+                Some((start, end, text)) => {
                     ws.apply_edits(
-                        &[(BytePos(0), BytePos(len), text)],
+                        &[(BytePos(start), BytePos(end), text)],
                         TransactionOrigin::UserInput,
                     );
                 }
-                Err(e) => ws.reload_focused(e.into_bytes()),
+                None => {
+                    ws.reload_focused(rec);
+                    ws.focused_doc_mut().mark_unsaved();
+                }
             }
             ws.place_focused_cursor(BytePos(0));
             format!("\"{file}\" recovered unsaved changes (:w to save)")

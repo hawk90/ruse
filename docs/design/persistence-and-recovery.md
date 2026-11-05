@@ -32,8 +32,16 @@ related:
 > crc32 LE][payload]` frames, CRC over length and payload, with no file header or schema version. A torn tail is
 > cut off before the first append in a process, and a failed append is rolled back
 > (`apps/tui/src/persist/journal.rs`). Undo is in-memory (`crates/core/src/undo.rs`). The rest of this doc,
-> including the per-transaction `RJ01` format, is the target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008. Open journal
-> bugs include #858, #859, #862 and #873.
+> including the per-transaction `RJ01` format, is the target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008.
+>
+> **v0 journal lifecycle** (#862, #863, #869, #873). A journal exists only while it holds work that differs from
+> disk. It is deleted by a durable save; by the recovery prompt's discard; when the buffer becomes clean without a
+> save (undo back to the saved text, `:e!`); by `:bd[!]`; and on every normal exit (`:q`, `:q!`, `:qa!`, `:cq`,
+> `ZQ`), as nvim deletes its swap file on these. It is kept by a fatal signal or a panic (which write it), by the
+> prompt's quit choice, and when it could not be read (never offered, so never deleted). A recovered buffer starts
+> as the disk text with the recovery applied as one edit: it is modified, `u` returns to disk, and a saved trace
+> starts from the disk text. Only a regular file is ever opened as a journal (a FIFO or device is reported, not
+> read). A buffer over 4 GiB is refused with an error, not truncated into an unreadable frame.
 
 > This doc **resolves [D-005](../../spec/DECISIONS.md)** (was `open`): journal format details, incremental-
 > journal thresholds for large files, and undo-grouping boundaries. It is the normative specification behind

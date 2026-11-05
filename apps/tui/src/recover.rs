@@ -2,7 +2,8 @@
 //! it unwinds we append every modified buffer to its recovery journal (`<file>.ruse-journal`) so a bug never
 //! silently loses work. A fatal signal or an I/O error that ends the session takes the same path (#857).
 //! We do NOT `catch_unwind`-swallow (STAB-6) nor `panic=abort` (STAB-5): the previous hook still runs
-//! (prints + unwinds), and `TermGuard` restores the terminal on the way out.
+//! (prints + unwinds). The hook restores the terminal first, so the printed message lands on the main
+//! screen and stays visible (#866); `TermGuard`'s drop then finds nothing left to restore.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError, TryLockError};
@@ -109,11 +110,30 @@ enum Recovery {
     Failed(String),
 }
 
-/// Install the panic hook: journal every modified buffer, log a structured event, then chain to the
-/// previous hook (which unwinds). Never swallows the panic.
+/// Install the panic hook: journal every modified buffer, log a structured event with the panic's message
+/// and location, restore the terminal, then chain to the previous hook (which prints and unwinds). Never
+/// swallows the panic.
 pub fn install_hook() {
+    install_hook_with(|| crate::terminal::guard::restore(true));
+}
+
+/// A panic's message and `file:line:col` location, as the log event carries them (#866). A payload that is
+/// not a string is named the way the default hook names it.
+fn describe(info: &std::panic::PanicHookInfo<'_>) -> (String, String) {
+    let message = info.payload_as_str().unwrap_or("Box<dyn Any>").to_owned();
+    let location = info
+        .location()
+        .map_or_else(String::new, ToString::to_string);
+    (message, location)
+}
+
+/// [`install_hook`] with the terminal restore passed in, so a test can observe its order against the
+/// previous hook. The restore runs BEFORE the previous hook prints (#866): the message used to be printed
+/// on the alternate screen and wiped when the guard left it during the unwind.
+fn install_hook_with(restore: fn()) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        let (message, location) = describe(info);
         match rescue_all() {
             Some(outcomes) => {
                 let mut saved = 0usize;
@@ -121,10 +141,13 @@ pub fn install_hook() {
                     log_outcome("panic", path.as_deref(), r);
                     saved += usize::from(matches!(r, Recovery::Written(_)));
                 }
-                tracing::error!(event = "panic", recovered = saved, "core panic");
+                tracing::error!(event = "panic", recovered = saved, %location, "core panic: {message}");
             }
-            None => tracing::error!(event = "panic", "core panic; buffer store busy"),
+            None => {
+                tracing::error!(event = "panic", %location, "core panic; buffer store busy: {message}")
+            }
         }
+        restore();
         previous(info);
     }));
 }
@@ -185,6 +208,41 @@ mod tests {
             Some(&b"work at the panic\n"[..])
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #866: the hook restores the terminal before the previous hook prints the message, and it reads the
+    /// panic's message and location for the log event.
+    #[test]
+    fn panic_hook_restores_the_terminal_before_the_message_prints() {
+        static ORDER: Mutex<Vec<String>> = Mutex::new(Vec::new());
+        /// Hooks are process-wide: record only this test's own panicking thread.
+        fn push(s: String) {
+            if std::thread::current().name() == Some("panic-866") {
+                ORDER.lock().unwrap_or_else(PoisonError::into_inner).push(s);
+            }
+        }
+        let _serial = STORE_TEST.lock().unwrap_or_else(PoisonError::into_inner);
+        sync(Vec::new());
+        ORDER.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        // The "previous" hook stands for the default one that prints the message.
+        std::panic::set_hook(Box::new(|info| {
+            let (message, location) = describe(info);
+            push(format!("print {message} @ {location}"));
+        }));
+        install_hook_with(|| push("restore".into()));
+        let line = line!() + 3; // the `panic!` line below
+        let unwound = std::thread::Builder::new()
+            .name("panic-866".into())
+            .spawn(|| panic!("injected {}", 866))
+            .unwrap()
+            .join();
+        drop(std::panic::take_hook());
+        assert!(unwound.is_err());
+        let order = ORDER.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        assert_eq!(order.len(), 2, "{order:?}");
+        assert_eq!(order[0], "restore", "restored first: {order:?}");
+        let want = format!("print injected 866 @ {}:{line}:", file!());
+        assert!(order[1].starts_with(&want), "{order:?} vs {want}");
     }
 
     /// #856: a crash journals every modified buffer in the store, not only the focused one, and skips the

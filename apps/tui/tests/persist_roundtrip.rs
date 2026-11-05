@@ -101,9 +101,9 @@ fn a_torn_journal_tail_never_blocks_reopening() {
     let f = scratch("torn.txt");
     // Two good records, then a truncated third (a crash mid-append). Recovery must still work off
     // the last intact record rather than erroring the open.
-    let mut bytes = journal::frame(b"rev A");
-    bytes.extend(journal::frame(b"rev B"));
-    let torn = journal::frame(b"rev C - interrupted");
+    let mut bytes = journal::frame(b"rev A").unwrap();
+    bytes.extend(journal::frame(b"rev B").unwrap());
+    let torn = journal::frame(b"rev C - interrupted").unwrap();
     bytes.extend_from_slice(&torn[..torn.len() - 5]);
     std::fs::write(journal::journal_path(Some(&f)), &bytes).unwrap();
 

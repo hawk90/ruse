@@ -306,3 +306,157 @@ fn empty_journal_opens_the_file_and_journaling_resumes() {
     drop(ed);
     assert_eq!(restart_and_recover(&dir, "empty journal"), b"abcorig\n");
 }
+
+/// Type eight one-key changes (`JOURNAL_THROTTLE`), so the journal holds a frame, and leave Insert mode.
+fn type_eight_changes(ed: &mut Editor) {
+    ed.keys("i");
+    for c in "12345678".chars() {
+        ed.keys(&c.to_string()); // one key per frame, so each insert is one observed change
+    }
+    ed.keys(ESC);
+}
+
+/// #862: a normal exit leaves no journal behind, so the next start offers nothing. Each way of letting the
+/// changes go: undo back to the saved text then `:q`, `:e!` then `:q`, `:q!`, `:qa!`, `:cq`, and `:bd!`.
+/// nvim v0.12.6 deletes its swap file on `:q!`, `:qa!`, `:cq` and `:bd!`; after `u` or `:e!` its swap file
+/// holds the disk text, which offers nothing either.
+#[test]
+fn a_normal_exit_leaves_no_journal_to_offer() {
+    for (quit, status) in [
+        ("u:q\r", 0),
+        (":e!\r:q\r", 0),
+        (":q!\r", 0),
+        (":qa!\r", 0),
+        (":cq\r", 1),
+        (":bd!\r:q\r", 0),
+    ] {
+        let dir = Scratch::new();
+        let file = dir.file("f.txt", b"orig\n");
+        let mut ed = Editor::start(&dir, &[f_txt()]);
+        type_eight_changes(&mut ed);
+        assert!(
+            journal::journal_path(Some(&file)).exists(),
+            "{quit:?}: the edits are journaled"
+        );
+        ed.keys(quit);
+        assert_eq!(ed.exit_status(), status, "{quit:?}: exit status");
+        drop(ed);
+        assert!(
+            !journal::journal_path(Some(&file)).exists(),
+            "{quit:?}: the journal is gone"
+        );
+        let mut ed = Editor::start(&dir, &[f_txt()]);
+        assert!(
+            !ed.screen_bytes().contains(PROMPT),
+            "{quit:?}: nothing offered"
+        );
+        ed.keys(":q\r");
+        assert_eq!(ed.exit_status(), 0);
+        assert_eq!(std::fs::read(&file).unwrap(), b"orig\n", "{quit:?}");
+    }
+}
+
+/// #862: undoing back to the saved text drops the journal at once, so a crash after it offers nothing.
+#[test]
+fn undo_back_to_the_saved_text_drops_the_journal() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"orig\n");
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    type_eight_changes(&mut ed);
+    assert!(journal::journal_path(Some(&file)).exists());
+    ed.keys("u");
+    assert!(!journal::journal_path(Some(&file)).exists());
+    ed.signal(libc::SIGTERM);
+    assert_eq!(ed.exit_status(), -libc::SIGTERM);
+    drop(ed);
+    let ed = Editor::start(&dir, &[f_txt()]);
+    assert!(!ed.screen_bytes().contains(PROMPT));
+}
+
+/// #863: a recovered buffer is modified: `:q` refuses with E37 and keeps the journal, `u` returns to the
+/// disk text, and a saved trace starts from the disk text, so `ruse --replay` on the disk file reproduces
+/// the recovered buffer.
+#[test]
+fn a_recovered_buffer_is_modified_and_traces_from_the_disk_text() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"one\ntwo\n");
+    journal::append(Some(&file), b"one\nTWO RECOVERED\n").unwrap();
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    assert!(ed.screen_bytes().contains(PROMPT));
+    ed.keys("r");
+    let before = ed.screen_bytes().len();
+    ed.keys(":q\r");
+    assert!(ed.is_running(), "`:q` refuses a recovered buffer");
+    assert!(
+        ed.screen_bytes()[before..].contains("E37"),
+        "says why: {:?}",
+        &ed.screen_bytes()[before..]
+    );
+    assert!(journal::journal_path(Some(&file)).exists());
+    ed.keys(":trace save t.trace\r");
+    let trace = dir.path("t.trace");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !trace.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let out = support::run_detached(
+        &["--replay", trace.to_str().unwrap(), file.to_str().unwrap()],
+        std::process::Stdio::null(),
+        std::process::Stdio::piped(),
+    );
+    assert_eq!(out.status, 0, "replay: {}", out.stderr);
+    assert_eq!(out.stdout, b"one\nTWO RECOVERED\n");
+    // `u` takes the recovery back: the buffer is the disk text again, and clean.
+    ed.keys("u:q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"one\ntwo\n");
+}
+
+/// #869: a FIFO where the journal belongs is never opened as one: the file opens at once with the journal
+/// reported, an append fails visibly (E303) instead of blocking, and the FIFO is left alone.
+#[test]
+fn a_fifo_journal_does_not_block_startup() {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::FileTypeExt;
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"orig\n");
+    let jp = journal::journal_path(Some(&file));
+    let c = std::ffi::CString::new(jp.as_os_str().as_bytes()).unwrap();
+    // SAFETY: `c` is a valid NUL-terminated path.
+    assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+    let mut ed = Editor::start(&dir, &[f_txt()]);
+    // The status line names the journal as unreadable; the reason (`is not a regular file`) is past the
+    // 80th column.
+    assert!(
+        ed.screen_bytes().contains("unreadable"),
+        "reports the journal"
+    );
+    type_eight_changes(&mut ed);
+    assert!(
+        ed.screen_bytes().contains("E303"),
+        "the append fails visibly"
+    );
+    ed.keys(":q!\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert!(std::fs::symlink_metadata(&jp)
+        .unwrap()
+        .file_type()
+        .is_fifo());
+}
+
+/// #867: a file name that is not UTF-8 opens; nothing panics. Linux allows such a name on disk; macOS
+/// refuses to create one, so there it opens as a new buffer.
+#[test]
+fn a_non_utf8_file_name_opens() {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = Scratch::new();
+    let name = Path::new(std::ffi::OsStr::from_bytes(b"bad\xff.txt"));
+    let on_disk = std::fs::write(dir.0.join(name), b"latin\n").is_ok();
+    let mut ed = Editor::start(&dir, &[name]);
+    assert!(ed.is_running(), "opens without a panic");
+    if on_disk {
+        assert!(ed.screen_bytes().contains("latin"), "shows the file");
+    }
+    ed.keys(":q!\r");
+    assert_eq!(ed.exit_status(), 0);
+}
