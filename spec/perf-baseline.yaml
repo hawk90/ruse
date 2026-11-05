@@ -43,20 +43,25 @@ benches:
                                     # and re-segmented the whole line, so a motion was O(line) per cluster.
                                     # N keypresses per sample (100; 10 at 16m). Recorded 2026-11-05, release.
                                     # Before, same machine (loaded): w/1m 0.95-1.3 s, b/16m 4.4-8.3 s,
-                                    # one_word_e/64k 4.3 s (1m/16m did not finish). What remains is the
-                                    # per-command O(line) floor (wanted-column measure, `fails` re-running
-                                    # the target), not the stepping.
-    long_line_motions/w/1m: "304 ms"
-    long_line_motions/b/1m: "1.30 s"
-    long_line_motions/w/16m: "496 ms"
-    long_line_motions/b/16m: "1.99 s"
-    long_line_motions/i_ctrl_w/16m: "797 ms"
-    long_line_motions/w/100col: "91 us"   # was 182-198 us
-    long_line_motions/b/100col: "107 us"  # was 183-186 us
-    long_line_motions/one_word_e/1m: "14 ms"
-    long_line_motions/one_word_i_ctrl_w/16m: "156 ms"
-    long_line_motions/sentence_fwd/64k: "2.97 ms"  # 3 x `)`; was 7.7 s
-    long_line_motions/sentence_fwd/100col: "5.7 us" # was 166 us
+                                    # one_word_e/64k 4.3 s (1m/16m did not finish).
+                                    # #1231 (2026-11-05): no per-command full-line passes (lazy wanted
+                                    # column, `fails` sharing the target, byte tests for line ends). Before
+                                    # (#1224 baseline): w/1m 301 ms, b/1m 1.21 s, w/16m 485 ms, b/16m
+                                    # 1.94 s, w/100col 87 us, dollar/16m 87 ms. Left: one UTF-8 check of the
+                                    # line per command when a step meets non-ASCII text (#1232), and the
+                                    # O(buffer) cost of an edit (i_ctrl_w).
+    long_line_motions/w/1m: "12.9 ms"
+    long_line_motions/b/1m: "20.8 ms"
+    long_line_motions/w/16m: "22.9 ms"
+    long_line_motions/b/16m: "2.2 us"
+    long_line_motions/i_ctrl_w/16m: "328 ms"
+    long_line_motions/w/100col: "12.6 us"
+    long_line_motions/b/100col: "10.6 us"
+    long_line_motions/one_word_e/1m: "3.8 ms"
+    long_line_motions/one_word_i_ctrl_w/16m: "86 ms"
+    long_line_motions/sentence_fwd/64k: "1.27 ms"  # 3 x `)`; was 7.7 s before #1224
+    long_line_motions/sentence_fwd/100col: "5.4 us" # was 166 us before #1224
+    long_line_motions/dollar/16m: "5.9 ms"
   word_search:                      # #745 `*`/`#`/hlsearch: compile + scan of `\<word\>` over mixed Latin/Hangul/
                                     # CJK lines, edges checked with Vim's classes. DEV-PROFILE (2026-11-03, no
                                     # release build). Before (Unicode \b{start}/\b{end} in the engine), same

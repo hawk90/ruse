@@ -454,12 +454,24 @@ pub(crate) fn char_cls(b: &[u8], p: usize, big: bool) -> u32 {
     }
 }
 
-// The word walks below step through one [`Steps`], so the line's bounds and UTF-8 check are found once
-// per line the walk enters, not on every cluster (#1224).
+// The word walks below step through one [`Steps`], so a cluster step reads only the text it crosses
+// (#1224), and they tell a line's ends by its bytes (a `\n`, the buffer's ends) instead of finding the
+// line, so a walk costs what it crosses (#1231).
+
+/// Whether `p` is a line's NUL slot on Vim's line model: its `\n`, or the end of the buffer. The same as
+/// `p >= line_end(b, p)`, without the scan.
+pub(crate) fn at_nul(b: &[u8], p: usize) -> bool {
+    p >= b.len() || b[p] == b'\n'
+}
+
+/// Whether `p` starts its line: the same as `p == line_start(b, p)` for `p <= b.len()`, without the scan.
+pub(crate) fn at_bol(b: &[u8], p: usize) -> bool {
+    p == 0 || (p <= b.len() && b[p - 1] == b'\n')
+}
 
 /// Vim `cls()` at `p` on Vim's line model: a line's NUL slot is blank.
 fn vcls(s: &Steps, p: usize, big: bool) -> u32 {
-    if p >= s.line_end(p) {
+    if at_nul(s.b, p) {
         return 0;
     }
     char_cls(s.b, p, big)
@@ -467,19 +479,18 @@ fn vcls(s: &Steps, p: usize, big: bool) -> u32 {
 
 /// Whether `p` is on an empty line (Vim `col == 0 && LINEEMPTY`).
 fn on_empty_line(s: &Steps, p: usize) -> bool {
-    let ls = s.line_start(p);
-    p == ls && s.line_end(ls) == ls
+    at_bol(s.b, p) && at_nul(s.b, p)
 }
 
 /// Vim `inc()`: the next position and how it got there (0 within the line, 2 onto the line's NUL slot, 1 to
 /// the next line's start), or `None` from the last line's NUL slot.
 fn vinc(s: &Steps, p: usize) -> Option<(usize, u8)> {
-    let le = s.line_end(p);
-    if p < le {
+    if !at_nul(s.b, p) {
+        // A cluster never crosses the `\n`, so the step lands inside the line or on its NUL slot.
         let q = s.next(p);
-        Some((q, if q < le { 0 } else { 2 }))
-    } else if le + 1 < s.b.len() {
-        Some((le + 1, 1))
+        Some((q, if at_nul(s.b, q) { 2 } else { 0 }))
+    } else if p + 1 < s.b.len() {
+        Some((p + 1, 1))
     } else {
         None
     }
@@ -488,7 +499,8 @@ fn vinc(s: &Steps, p: usize) -> Option<(usize, u8)> {
 /// Vim `dec()`: the previous position (0 within the line, 1 back onto the previous line's NUL slot), or
 /// `None` at the buffer start.
 fn vdec(s: &Steps, p: usize) -> Option<(usize, u8)> {
-    if p > s.line_start(p) {
+    // `p > line_start(b, p)`: `line_start` clamps `p` to the buffer, so past its end that holds too.
+    if p > 0 && (p > s.b.len() || s.b[p - 1] != b'\n') {
         Some((s.prev(p), 0))
     } else if p > 0 {
         Some((p - 1, 1))
@@ -508,12 +520,20 @@ fn word_fwd(s: &Steps, pos: usize, big: bool, count: u32, eol: bool) -> usize {
     for left in (0..count.max(1)).rev() {
         let stop = |i: u8| i >= 1 && eol && left == 0;
         let sclass = vcls(s, p, big);
-        let last_line = s.line_end(p) + 1 >= b.len();
         let Some((q, i)) = vinc(s, p) else {
             return p;
         };
+        // Whether `p` was on the last line (`line_end(b, p) + 1 >= b.len()`), asked only once `inc` left
+        // the line's text, which tells where the line ends without a scan: onto the NUL slot (`i == 2`)
+        // it is `q`; from the NUL slot (`i == 1`) it is `p`.
+        let last_line = |le: usize| le + 1 >= b.len();
+        let crossed = match i {
+            2 => last_line(q),
+            1 => last_line(p),
+            _ => false,
+        };
         p = q;
-        if (i >= 1 && last_line) || stop(i) {
+        if crossed || stop(i) {
             return p;
         }
         if sclass != 0 {
@@ -1352,7 +1372,7 @@ pub(crate) fn off_phantom_at(b: &[u8], pos: usize) -> usize {
         return pos;
     }
     let le = b.len() - 1;
-    if le > line_start(b, le) {
+    if !at_bol(b, le) {
         prev_grapheme(b, le)
     } else {
         le
@@ -1773,38 +1793,41 @@ fn unmatched_spec(m: Motion) -> Option<(u8, u8, bool)> {
 ///   `textobj::object_fails`).
 ///
 /// Every other motion (line jumps, `0`, `^`, `$`, `|`, sections, …) never fails here.
+///
+/// `memo` holds (or receives) the motion's target, `target(b, cursor, m, count)`, so a planner that goes
+/// on to move does not run the motion twice (#1231). The line's ends are told by the bytes around a
+/// position ([`at_bol`], [`at_nul`]); only the vertical and `{count}$` checks find the line.
 #[must_use]
-pub(crate) fn fails(
+pub(crate) fn fails_with(
     b: &[u8],
     cursor: usize,
     m: Motion,
     count: u32,
     op: bool,
     visual: bool,
+    memo: &std::cell::OnceCell<usize>,
 ) -> bool {
     let n = count.max(1);
     let cur = cursor.min(b.len());
-    let ls = line_start(b, cur);
-    let le = line_end(b, cur);
-    let last_line = le >= content_end(b);
+    let last_line = || line_end(b, cur) >= content_end(b);
     // Where the motion leaves an on-char caret: never on a non-empty line's break or the phantom slot.
     let clamp = |t: usize| {
         let t = off_phantom_at(b, t.min(b.len()));
-        let (tls, tle) = (line_start(b, t), line_end(b, t));
-        if t == tle && tle > tls {
-            prev_grapheme(b, tle)
+        if at_nul(b, t) && !at_bol(b, t) {
+            prev_grapheme(b, t)
         } else {
             t
         }
     };
-    let still = || clamp(target(b, cur, m, count)) == clamp(cur);
+    let still = || clamp(*memo.get_or_init(|| target(b, cur, m, count))) == clamp(cur);
     match m {
-        Motion::Left => !op && cur <= ls,
-        Motion::Right if visual => !op && cur >= le,
-        Motion::Right => !op && next_grapheme(b, cur) >= le,
+        Motion::Left => !op && at_bol(b, cur),
+        Motion::Right if visual => !op && at_nul(b, cur),
+        // From the NUL slot the step crosses the `\n`, past the line's end; else it ends on or before it.
+        Motion::Right => !op && (at_nul(b, cur) || at_nul(b, next_grapheme(b, cur))),
         Motion::WrapLeft | Motion::WrapRight => !op && still(),
-        Motion::Up | Motion::UpFirstNonBlank => ls == 0,
-        Motion::Down | Motion::DownFirstNonBlank => last_line,
+        Motion::Up | Motion::UpFirstNonBlank => line_start(b, cur) == 0,
+        Motion::Down | Motion::DownFirstNonBlank => last_line(),
         Motion::WordFwd | Motion::BigWordFwd => !op && still(),
         Motion::WordBack | Motion::BigWordBack | Motion::WordEndBack | Motion::BigWordEndBack => {
             still()
@@ -1812,7 +1835,12 @@ pub(crate) fn fails(
         Motion::WordEnd | Motion::BigWordEnd => {
             !op && {
                 let before = if n > 1 { target(b, cur, m, n - 1) } else { cur };
-                clamp(target(b, cur, m, n)) == clamp(before)
+                let t = if n == count {
+                    *memo.get_or_init(|| target(b, cur, m, count))
+                } else {
+                    target(b, cur, m, n)
+                };
+                clamp(t) == clamp(before)
             }
         }
         Motion::FindChar {
@@ -1837,10 +1865,10 @@ pub(crate) fn fails(
         | Motion::UnmatchedBraceFwd => still(),
         // `{count}$` moves `count - 1` lines down first, failing like `j` only on the last line (`5$` on
         // the line above it still reaches the last line's end).
-        Motion::LineEnd => n > 1 && last_line,
+        Motion::LineEnd => n > 1 && last_line(),
         // `{count}dd`/`yy`/`cc`/`>>` move `count - 1` lines down first (`nv_lineop` → `cursor_down`), so on
         // the last line a count above 1 fails like `j` there (#1176).
-        Motion::Line => op && n > 1 && last_line,
+        Motion::Line => op && n > 1 && last_line(),
         // `it`/`at` outside a tag pair (or a count past its nesting) cancel the operator (#1179). The `at`
         // span holds the tags themselves, so it is empty only when there is no pair.
         Motion::Tag { .. } => {
@@ -3111,5 +3139,294 @@ mod method_motion_tests {
         assert_eq!(t(b, 0, Motion::MethodStartFwd, 1), 0);
         assert_eq!(t(b, 0, Motion::MethodEndBack, 1), 0);
         assert_eq!(t(b, 5, Motion::MethodStartBack, 1), 5);
+    }
+}
+
+#[cfg(test)]
+mod line_pass_tests {
+    //! #1231: the word helpers, `fails` and the line-end clamps tell a line's ends by the bytes around a
+    //! position instead of finding the line. Each must answer exactly as the line-finding version it
+    //! replaced, copied here verbatim (`old_*`), on any bytes and at any position.
+    use super::*;
+    use proptest::prelude::*;
+
+    /// The pre-#1231 `off_phantom_at`, verbatim.
+    fn old_off_phantom_at(b: &[u8], pos: usize) -> usize {
+        if pos < b.len() || b.last() != Some(&b'\n') {
+            return pos;
+        }
+        let le = b.len() - 1;
+        if le > line_start(b, le) {
+            prev_grapheme(b, le)
+        } else {
+            le
+        }
+    }
+
+    fn old_vcls(s: &Steps, p: usize, big: bool) -> u32 {
+        if p >= s.line_end(p) {
+            return 0;
+        }
+        char_cls(s.b, p, big)
+    }
+
+    /// Whether `p` is on an empty line (Vim `col == 0 && LINEEMPTY`).
+    fn old_on_empty_line(s: &Steps, p: usize) -> bool {
+        let ls = s.line_start(p);
+        p == ls && s.line_end(ls) == ls
+    }
+
+    /// Vim `inc()`: the next position and how it got there (0 within the line, 2 onto the line's NUL slot, 1 to
+    /// the next line's start), or `None` from the last line's NUL slot.
+    fn old_vinc(s: &Steps, p: usize) -> Option<(usize, u8)> {
+        let le = s.line_end(p);
+        if p < le {
+            let q = s.next(p);
+            Some((q, if q < le { 0 } else { 2 }))
+        } else if le + 1 < s.b.len() {
+            Some((le + 1, 1))
+        } else {
+            None
+        }
+    }
+
+    /// Vim `dec()`: the previous position (0 within the line, 1 back onto the previous line's NUL slot), or
+    /// `None` at the buffer start.
+    fn old_vdec(s: &Steps, p: usize) -> Option<(usize, u8)> {
+        if p > s.line_start(p) {
+            Some((s.prev(p), 0))
+        } else if p > 0 {
+            Some((p - 1, 1))
+        } else {
+            None
+        }
+    }
+
+    fn old_word_fwd(s: &Steps, pos: usize, big: bool, count: u32, eol: bool) -> usize {
+        let b = s.b;
+        let mut p = pos.min(b.len());
+        for left in (0..count.max(1)).rev() {
+            let stop = |i: u8| i >= 1 && eol && left == 0;
+            let sclass = old_vcls(s, p, big);
+            let last_line = s.line_end(p) + 1 >= b.len();
+            let Some((q, i)) = old_vinc(s, p) else {
+                return p;
+            };
+            p = q;
+            if (i >= 1 && last_line) || stop(i) {
+                return p;
+            }
+            if sclass != 0 {
+                while old_vcls(s, p, big) == sclass {
+                    let Some((q, i)) = old_vinc(s, p) else {
+                        return p;
+                    };
+                    p = q;
+                    if stop(i) {
+                        return p;
+                    }
+                }
+            }
+            while old_vcls(s, p, big) == 0 {
+                if old_on_empty_line(s, p) {
+                    break;
+                }
+                let Some((q, i)) = old_vinc(s, p) else {
+                    return p;
+                };
+                p = q;
+                if stop(i) {
+                    return p;
+                }
+            }
+        }
+        p
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn old_fails(b: &[u8], cursor: usize, m: Motion, count: u32, op: bool, visual: bool) -> bool {
+        let n = count.max(1);
+        let cur = cursor.min(b.len());
+        let ls = line_start(b, cur);
+        let le = line_end(b, cur);
+        let last_line = le >= content_end(b);
+        // Where the motion leaves an on-char caret: never on a non-empty line's break or the phantom slot.
+        let clamp = |t: usize| {
+            let t = old_off_phantom_at(b, t.min(b.len()));
+            let (tls, tle) = (line_start(b, t), line_end(b, t));
+            if t == tle && tle > tls {
+                prev_grapheme(b, tle)
+            } else {
+                t
+            }
+        };
+        let still = || clamp(target(b, cur, m, count)) == clamp(cur);
+        match m {
+            Motion::Left => !op && cur <= ls,
+            Motion::Right if visual => !op && cur >= le,
+            Motion::Right => !op && next_grapheme(b, cur) >= le,
+            Motion::WrapLeft | Motion::WrapRight => !op && still(),
+            Motion::Up | Motion::UpFirstNonBlank => ls == 0,
+            Motion::Down | Motion::DownFirstNonBlank => last_line,
+            Motion::WordFwd | Motion::BigWordFwd => !op && still(),
+            Motion::WordBack
+            | Motion::BigWordBack
+            | Motion::WordEndBack
+            | Motion::BigWordEndBack => still(),
+            Motion::WordEnd | Motion::BigWordEnd => {
+                !op && {
+                    let before = if n > 1 { target(b, cur, m, n - 1) } else { cur };
+                    clamp(target(b, cur, m, n)) == clamp(before)
+                }
+            }
+            Motion::FindChar {
+                ch,
+                forward,
+                till,
+                repeat,
+            } => find_char_target(b, cur, ch, forward, till, repeat, n).is_none(),
+            Motion::ParagraphFwd | Motion::ParagraphBack => {
+                paragraph_landing(b, cur, m == Motion::ParagraphFwd, n).is_none()
+            }
+            Motion::SentenceFwd | Motion::SentenceBack => {
+                crate::textobj::sentence_motion_fails(b, cur, m == Motion::SentenceFwd, n)
+            }
+            Motion::MatchBracket => match_bracket(b, cur).is_none(),
+            Motion::InnerParagraph | Motion::AParagraph => {
+                paragraph_fails(b, cur, n, m == Motion::AParagraph)
+            }
+            Motion::UnmatchedParenBack
+            | Motion::UnmatchedParenFwd
+            | Motion::UnmatchedBraceBack
+            | Motion::UnmatchedBraceFwd => still(),
+            // `{count}$` moves `count - 1` lines down first, failing like `j` only on the last line (`5$` on
+            // the line above it still reaches the last line's end).
+            Motion::LineEnd => n > 1 && last_line,
+            // `{count}dd`/`yy`/`cc`/`>>` move `count - 1` lines down first (`nv_lineop` → `cursor_down`), so on
+            // the last line a count above 1 fails like `j` there (#1176).
+            Motion::Line => op && n > 1 && last_line,
+            // `it`/`at` outside a tag pair (or a count past its nesting) cancel the operator (#1179). The `at`
+            // span holds the tags themselves, so it is empty only when there is no pair.
+            Motion::Tag { .. } => {
+                op && {
+                    let (s, e) = tag_span(b, cur, true, n);
+                    s == e
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Bytes that exercise the line model: blank and empty lines, CR, words, punctuation, multibyte and
+    /// combining text, a bracket pair and an invalid byte.
+    fn text() -> impl Strategy<Value = Vec<u8>> {
+        let piece = prop_oneof![
+            Just(b"a".to_vec()),
+            Just(b"_".to_vec()),
+            Just(b" ".to_vec()),
+            Just(b".".to_vec()),
+            Just(b"\n".to_vec()),
+            Just(b"\n\n".to_vec()),
+            Just(b"\r".to_vec()),
+            Just(b"(".to_vec()),
+            Just(b")".to_vec()),
+            Just("가".as_bytes().to_vec()),
+            Just("e\u{301}".as_bytes().to_vec()),
+            Just(b"\xff".to_vec()),
+        ];
+        proptest::collection::vec(piece, 0..24).prop_map(|v| v.concat())
+    }
+
+    fn motions() -> Vec<Motion> {
+        use Motion::*;
+        vec![
+            Left,
+            Right,
+            WrapLeft,
+            WrapRight,
+            Up,
+            Down,
+            UpFirstNonBlank,
+            DownFirstNonBlank,
+            WordFwd,
+            BigWordFwd,
+            WordBack,
+            BigWordBack,
+            WordEnd,
+            BigWordEnd,
+            WordEndBack,
+            BigWordEndBack,
+            LineEnd,
+            Line,
+            MatchBracket,
+            SentenceFwd,
+            UnmatchedParenFwd,
+            UnmatchedParenBack,
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(crate::test_cases(256))]
+
+        /// The byte tests equal the line-finding ones, at every position and one past the end.
+        #[test]
+        fn line_end_tests_equal_finding_the_line(b in text()) {
+            let s = Steps::new(&b);
+            for p in 0..=b.len() + 1 {
+                prop_assert_eq!(at_nul(&b, p), p >= line_end(&b, p), "at_nul {}", p);
+                if p <= b.len() {
+                    prop_assert_eq!(at_bol(&b, p), p == line_start(&b, p), "at_bol {}", p);
+                }
+                prop_assert_eq!(vcls(&s, p, false), old_vcls(&s, p, false), "vcls {}", p);
+                prop_assert_eq!(vcls(&s, p, true), old_vcls(&s, p, true), "vCLS {}", p);
+                prop_assert_eq!(on_empty_line(&s, p), old_on_empty_line(&s, p), "empty {}", p);
+                prop_assert_eq!(vinc(&s, p), old_vinc(&s, p), "inc {}", p);
+                prop_assert_eq!(vdec(&s, p), old_vdec(&s, p), "dec {}", p);
+                prop_assert_eq!(off_phantom_at(&b, p), old_off_phantom_at(&b, p), "phantom {}", p);
+                // The planner's Normal-mode clamp onto a non-empty line's last char.
+                let old = p == line_end(&b, p) && line_end(&b, p) > line_start(&b, p);
+                let new = p <= b.len() && at_nul(&b, p) && !at_bol(&b, p);
+                prop_assert_eq!(new, old, "clamp {}", p);
+            }
+        }
+
+        /// `w`/`W`, bare and under an operator, with any count, equal the pre-#1231 walk.
+        #[test]
+        fn word_fwd_equals_the_line_finding_walk(b in text(), count in 1u32..4) {
+            let s = Steps::new(&b);
+            for p in 0..=b.len() {
+                for big in [false, true] {
+                    for eol in [false, true] {
+                        prop_assert_eq!(
+                            word_fwd(&s, p, big, count, eol),
+                            old_word_fwd(&s, p, big, count, eol),
+                            "w at {} big={} eol={} count={}", p, big, eol, count
+                        );
+                    }
+                }
+            }
+        }
+
+        /// `fails` (sharing the target through its memo) equals the pre-#1231 one for every motion, from
+        /// every char boundary, bare, under an operator and in Visual.
+        #[test]
+        fn fails_equals_the_line_finding_check(b in text(), count in 0u32..4) {
+            for p in (0..=b.len()).filter(|&p| is_boundary(&b, p)) {
+                for m in motions() {
+                    for (op, visual) in [(false, false), (true, false), (false, true)] {
+                        let memo = std::cell::OnceCell::new();
+                        let new = fails_with(&b, p, m, count, op, visual, &memo);
+                        prop_assert_eq!(
+                            new,
+                            old_fails(&b, p, m, count, op, visual),
+                            "{:?} at {} count={} op={} visual={}", m, p, count, op, visual
+                        );
+                        if let Some(&t) = memo.get() {
+                            prop_assert_eq!(t, target(&b, p, m, count), "memo {:?} at {}", m, p);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

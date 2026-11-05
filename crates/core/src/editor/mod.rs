@@ -450,6 +450,63 @@ pub enum CaretGravity {
     BetweenChar,
 }
 
+/// The wanted column (Vim `curswant`), measured only when something reads it (#1231). Most commands
+/// reset the column to the cursor's, but only vertical moves, block selections and a few edits ever read
+/// it, and measuring walks the line from its start: on a multi-megabyte line that walk dominated every
+/// keypress. As nvim (`w_set_curswant`), the column is set to "where the cursor is now" and measured on
+/// first read. The pending form keeps what the measure reads (the buffer version, cursor, `'tabstop'` and
+/// the tab-end rule), so it gives the value the eager measure would have given, whatever happens to the
+/// buffer or the View before the read. Holding the buffer version is a refcount on the document's
+/// `Arc`; it keeps at most one older version alive until the next command replaces the column.
+#[derive(Clone)]
+pub(crate) struct Want(WantKind);
+
+#[derive(Clone)]
+enum WantKind {
+    /// A known column ([`range::MAXCOL`] after `$`).
+    Col(usize),
+    /// The column of `pos` in `text`, measured once on first read.
+    At {
+        text: std::sync::Arc<Vec<u8>>,
+        pos: usize,
+        ts: usize,
+        tab_end: bool,
+        col: std::sync::OnceLock<usize>,
+    },
+}
+
+impl Want {
+    pub(crate) const fn col(c: usize) -> Self {
+        Want(WantKind::Col(c))
+    }
+
+    /// The column: measured now when pending ([`range::wanted_vcol`]), then remembered.
+    pub(crate) fn get(&self) -> usize {
+        match &self.0 {
+            WantKind::Col(c) => *c,
+            WantKind::At {
+                text,
+                pos,
+                ts,
+                tab_end,
+                col,
+            } => *col.get_or_init(|| range::wanted_vcol(text, *pos, *ts, *tab_end)),
+        }
+    }
+}
+
+/// `curswant == MAXCOL` and friends. A pending column is a measured position, never [`range::MAXCOL`], so
+/// that test does not measure.
+impl PartialEq<usize> for Want {
+    fn eq(&self, other: &usize) -> bool {
+        match &self.0 {
+            WantKind::Col(c) => c == other,
+            WantKind::At { .. } if *other == range::MAXCOL => false,
+            WantKind::At { .. } => self.get() == *other,
+        }
+    }
+}
+
 /// Editor state over one document: the buffer, a byte cursor (always on a char boundary), and the mode.
 /// View-local state lives here for the headless spine; a real multi-view split comes later (INV-DOC-VIEW).
 /// A **View**: the per-view state over a shared [`Document`] (F-007 Buffer/View split). Cursor,
@@ -566,7 +623,7 @@ pub struct View {
     /// interior lines rather than collapsing to the short line's end. Maintained in [`apply_command`] — kept
     /// on a vertical move, set to [`MAXCOL`] by `$`/`<End>` (ride each line's end), and recomputed from the
     /// landing column after any other command. Read by the `plan` Move Up/Down arm via [`motion::vmove`].
-    curswant: usize,
+    curswant: Want,
     /// The search-case config (`'ignorecase'` + `'smartcase'`, F-009).
     search_case: SearchCase,
     /// Caret gravity (D-050): `OnChar` for Vim/Neovim (default), `BetweenChar` for the Emacs profile. Gates
@@ -846,7 +903,7 @@ impl View {
             text_width: ViewOptions::DEFAULT.text_width,
             format: ViewOptions::DEFAULT.format,
             text_cols: 80,
-            curswant: 0,
+            curswant: Want::col(0),
             keep_jumps: false,
             search_case: ViewOptions::DEFAULT.search_case,
             caret: ViewOptions::DEFAULT.caret,
@@ -1270,7 +1327,7 @@ impl View {
     /// frontend's screen-line motions (`gj`, `gk`, #615).
     #[must_use]
     pub fn curswant(&self) -> usize {
-        self.curswant
+        self.curswant.get()
     }
 
     /// This window's display options (#615, #616).
@@ -1534,7 +1591,7 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
             st.view.anchor = Some(cur);
             st.view.cursor = end;
             if g.to_eol {
-                st.view.curswant = range::MAXCOL;
+                st.view.curswant = Want::col(range::MAXCOL);
             }
         }
         (Some(_), None) => {}
@@ -2243,7 +2300,7 @@ impl EditorState {
         let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let count = (last - first + 1) as u32;
-        let want = self.view.curswant;
+        let want = self.view.curswant.clone();
         // Anchor the cursor at the FIRST line so the reused shift (which reads its start line from the
         // cursor) covers `[first, last]`; every extra level re-shifts the same span from there.
         self.view.cursor = lines[first].0;
@@ -2291,7 +2348,12 @@ impl EditorState {
         let cursor = if self.view.curswant == range::MAXCOL {
             motion::prev_grapheme(bytes, le).max(ls)
         } else {
-            range::want_col(bytes, ls, self.view.curswant, self.view.indent.tab_width)
+            range::want_col(
+                bytes,
+                ls,
+                self.view.curswant.get(),
+                self.view.indent.tab_width,
+            )
         };
         if cursor >= le && le > ls {
             motion::prev_grapheme(bytes, le)
@@ -3081,19 +3143,21 @@ impl EditorState {
         self.view.curswant = self.wanted_col();
     }
 
-    /// The wanted column ([`View::curswant`]) the caret sets where it stands now (#1090).
-    fn wanted_col(&self) -> usize {
+    /// The wanted column ([`View::curswant`]) the caret sets where it stands now (#1090), pending: it is
+    /// measured when first read ([`Want`], #1231).
+    fn wanted_col(&self) -> Want {
         let tab_end = match self.view.mode {
             Mode::Normal => self.view.caret == CaretGravity::OnChar,
             Mode::Visual { .. } => self.view.anchor.is_none_or(|a| self.view.cursor >= a),
             _ => false,
         };
-        range::wanted_vcol(
-            self.doc.bytes(),
-            self.view.cursor,
-            self.view.indent.tab_width,
+        Want(WantKind::At {
+            text: self.doc.text_arc(),
+            pos: self.view.cursor,
+            ts: self.view.indent.tab_width,
             tab_end,
-        )
+            col: std::sync::OnceLock::new(),
+        })
     }
 
     /// This View's caret gravity (D-050): `OnChar` (Vim/Neovim) or `BetweenChar` (Emacs profile).
@@ -3556,7 +3620,7 @@ fn undo_target(st: &EditorState, placed: crate::undo_cursor::UndoCursor, mode: M
     let le = line_end(b, ls);
     let at = match placed.col {
         Some(col) => snap(b, (ls + col).min(le)),
-        None => range::want_col(b, ls, st.view.curswant, st.view.indent.tab_width),
+        None => range::want_col(b, ls, st.view.curswant.get(), st.view.indent.tab_width),
     };
     if at == le && ls < le && mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
         prev_grapheme(b, le)
@@ -3994,9 +4058,15 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     prepare_selection_op(st, cmd);
     let (entry_mode, entry_cursor, entry_rev) = (st.view.mode, st.view.cursor, st.doc.revision());
     let entry_was_edit = st.view.last_was_edit;
-    let entry_col = {
-        let b = st.doc.bytes();
-        col_of(b, line_start(b, entry_cursor), entry_cursor)
+    // The buffer as the command found it (a refcount, not a copy): the entry column and line below are
+    // measured from it only when needed, since finding them walks the line from its start (#1231).
+    let entry_text = st.doc.text_arc();
+    let entry_col = || {
+        col_of(
+            &entry_text,
+            line_start(&entry_text, entry_cursor),
+            entry_cursor,
+        )
     };
     // The smartindent state a line opened by this command arms (read from the buffer before the edit).
     let opened_si = opened_si_state(st, cmd);
@@ -4013,7 +4083,6 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     } else {
         0
     };
-    let entry_line = line_start(st.doc.bytes(), entry_cursor);
     let mut p = plan(st, cmd);
     // A linewise change (`cc`, `S`, `Vc`) leaves its line with the kept indent and nothing typed: the
     // same autoindent cleanup an opened line gets applies (nvim's `op_change` sets `did_ai`).
@@ -4057,7 +4126,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         && st.doc.revision() == entry_rev
         && st.view.mode == entry_mode;
     let kept_col = failed && keeps_curswant_on_failure(st, cmd, effects.contains(&Effect::Beep));
-    track_insert_start(st, cmd, entry_mode, entry_cursor, entry_rev, entry_col);
+    track_insert_start(st, cmd, entry_mode, entry_cursor, entry_rev, &entry_col);
     // Opening a line drops the line `U` would restore (nvim's `open_line`). After `o`/`O` the first typed
     // change still saves the new line; after an Insert `<CR>` the rest of the insert saves nothing.
     match cmd {
@@ -4093,7 +4162,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         }
         _ if linewise_change => st.view.auto_indent_pending = only_indent_before_caret(st),
         // A caret key off the line ends it (nvim's `start_arrow`).
-        _ if line_start(st.doc.bytes(), st.view.cursor) != entry_line => {
+        _ if left_line(&entry_text, entry_cursor, st.doc.bytes(), st.view.cursor) => {
             st.view.auto_indent_pending = false;
         }
         // Typing anything keeps the indent (nvim clears `did_ai` on a typed blank too).
@@ -4203,6 +4272,21 @@ fn keeps_curswant_on_failure(st: &EditorState, cmd: &Command, beeped: bool) -> b
     }
 }
 
+/// Whether the cursor left its line: `line_start(after, cur) != line_start(before, entry)`. On an unchanged
+/// buffer that is a `\n` between the two positions, which costs the distance moved, not the line (#1231).
+fn left_line(before: &[u8], entry: usize, after: &[u8], cur: usize) -> bool {
+    // `before` is held for the whole command, so an equal data pointer is the same, unchanged buffer.
+    if std::ptr::eq(before.as_ptr(), after.as_ptr()) && before.len() == after.len() {
+        let (lo, hi) = (
+            entry.min(cur).min(after.len()),
+            entry.max(cur).min(after.len()),
+        );
+        after[lo..hi].contains(&b'\n')
+    } else {
+        line_start(after, cur) != line_start(before, entry)
+    }
+}
+
 /// Whether the caret sits after nothing but a non-empty indent on its line (an autoindent's leftover).
 fn only_indent_before_caret(st: &EditorState) -> bool {
     let b = st.doc.bytes();
@@ -4217,20 +4301,20 @@ fn opened_si_state(st: &EditorState, cmd: &Command) -> indent::SiState {
     let si = st.view.indent.smartindent && st.view.caret == CaretGravity::OnChar;
     let b = st.doc.bytes();
     let cur = st.view.cursor;
-    let ls = line_start(b, cur);
+    let ls = || line_start(b, cur); // only an open needs the line (#1231)
     match cmd {
         Command::OpenBelow | Command::OpenAbove if si => {
             let below = matches!(cmd, Command::OpenBelow);
             let words = &st.view.format.cinwords;
             st.view
                 .indent
-                .open_indent(b, ls, line_end(b, cur), below, words)
+                .open_indent(b, ls(), line_end(b, cur), below, words)
                 .1
         }
         Command::InsertNewline if si && st.view.mode == Mode::Insert => {
             st.view
                 .indent
-                .open_indent(b, ls, cur, true, &st.view.format.cinwords)
+                .open_indent(b, ls(), cur, true, &st.view.format.cinwords)
                 .1
         }
         _ => indent::SiState::default(),
@@ -4315,7 +4399,7 @@ fn track_insert_start(
     entry_mode: Mode,
     entry_cursor: usize,
     entry_rev: crate::Revision,
-    entry_col: usize,
+    entry_col: &dyn Fn() -> usize,
 ) {
     if !is_text_entry(st.view.mode) {
         st.view.insert_jumped = false;
@@ -4335,7 +4419,7 @@ fn track_insert_start(
         st.view.insert_jumped = false;
     } else if st.doc.revision() != entry_rev {
         if std::mem::take(&mut st.view.insert_jumped) {
-            st.view.insert_col = entry_col;
+            st.view.insert_col = entry_col();
         }
         // A delete back past the start (`<BS>`, `CTRL-W`, `CTRL-U` with 'backspace' "start") lowers it.
         let cur = st.view.cursor;
@@ -4365,8 +4449,8 @@ fn update_curswant(st: &mut EditorState, cmd: &Command, entry_mode: Mode, kept_c
     // Whether the cursor rests on the line's last char or past it.
     let at_line_end = |st: &EditorState| {
         let b = st.doc.bytes();
-        let le = line_end(b, st.view.cursor);
-        st.view.cursor >= le || motion::next_grapheme(b, st.view.cursor) >= le
+        let cur = st.view.cursor; // told by the bytes, not the line (#1231)
+        motion::at_nul(b, cur) || motion::at_nul(b, motion::next_grapheme(b, cur))
     };
     match cmd {
         // A failed command whose nvim handler never sets `w_set_curswant` (`keeps_curswant_on_failure`).
@@ -4387,7 +4471,7 @@ fn update_curswant(st: &mut EditorState, cmd: &Command, entry_mode: Mode, kept_c
         | Command::SetRegister(_) => {} // keep the sticky column
         // `$`/`<End>` and `A` (append) want the line's end.
         Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd | Command::AppendLineEnd => {
-            st.view.curswant = MAXCOL
+            st.view.curswant = Want::col(MAXCOL)
         }
         // Commands that establish a definite column: horizontal moves, the Insert-native keys, and every
         // insert-ENTRY except `A` (which is the append/MAXCOL case above) reset the wanted column — they

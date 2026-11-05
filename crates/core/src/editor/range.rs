@@ -224,17 +224,17 @@ pub(crate) fn op_landing(
     cur: usize,
     m: Motion,
     count: u32,
-    curswant: usize,
+    curswant: &super::Want,
     ts: usize,
     yank: bool,
 ) -> usize {
     match m {
-        Motion::Up => motion::vmove(b, cur, count, false, curswant, ts),
-        Motion::Down => motion::vmove(b, cur, count, true, curswant, ts),
+        Motion::Up => motion::vmove(b, cur, count, false, curswant.get(), ts),
+        Motion::Down => motion::vmove(b, cur, count, true, curswant.get(), ts),
         Motion::GotoLine | Motion::LastLine | Motion::GotoPercent => want_col(
             b,
             line_start(b, motion::target(b, cur, m, count)),
-            curswant,
+            curswant.get(),
             ts,
         ),
         Motion::Line => {
@@ -247,7 +247,7 @@ pub(crate) fn op_landing(
                 ls = le + 1;
             }
             if yank {
-                want_col(b, ls, curswant, ts)
+                want_col(b, ls, curswant.get(), ts)
             } else {
                 motion::first_non_blank(b, ls)
             }
@@ -344,7 +344,7 @@ pub(crate) fn forced_span(
     m: Motion,
     count: u32,
     wise: ForcedWise,
-    curswant: usize,
+    curswant: &super::Want,
     ts: usize,
 ) -> OpSpan {
     let plain = op_span_full(b, cur, m, count);

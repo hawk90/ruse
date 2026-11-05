@@ -1,4 +1,45 @@
 #[cfg(test)]
+mod lazy_wanted_column_tests {
+    //! #1231: the wanted column is set pending and measured on first read; the value is the one the eager
+    //! measure would have given when it was set.
+    use crate::editor::*;
+
+    #[test]
+    fn a_pending_column_measures_the_buffer_it_was_set_on() {
+        let mut st = EditorState::new(b"\tab\ncd\n".to_vec());
+        st.set_cursor(BytePos(2)); // `b`, after a tab
+        let want = st.view.curswant.clone();
+        let eager = range::wanted_vcol(st.bytes(), 2, st.view.indent.tab_width, true);
+        // Testing for MAXCOL does not measure.
+        assert!(want != range::MAXCOL);
+        assert!(matches!(&want.0, WantKind::At { col, .. } if col.get().is_none()));
+        // The buffer changes under it (another View's edit, an Ex command): the pending column still
+        // measures the text it was set on.
+        st.set_cursor(BytePos(0));
+        apply_command(&mut st, &Command::Delete(1, Motion::Right));
+        assert_eq!(st.bytes(), b"ab\ncd\n");
+        assert_eq!(want.get(), eager);
+        assert_ne!(
+            eager,
+            range::wanted_vcol(st.bytes(), 2, st.view.indent.tab_width, true)
+        );
+    }
+
+    #[test]
+    fn vertical_moves_read_the_pending_column() {
+        // `w` sets the column pending; `j` reads it (and keeps it); `k` comes back to the same char.
+        let mut st = EditorState::new(b"one two three\nfour five six\n".to_vec());
+        apply_command(&mut st, &Command::Move(2, Motion::WordFwd));
+        assert_eq!(st.cursor(), BytePos(8));
+        apply_command(&mut st, &Command::Move(1, Motion::Down));
+        assert_eq!(st.cursor(), BytePos(14 + 8));
+        apply_command(&mut st, &Command::Move(1, Motion::Up));
+        assert_eq!(st.cursor(), BytePos(8));
+        assert_eq!(st.view.curswant(), 8);
+    }
+}
+
+#[cfg(test)]
 mod register_tests {
     use crate::editor::*;
 
