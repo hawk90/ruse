@@ -3649,7 +3649,12 @@ impl Session {
                     }
                     range => ws.resolve_range(range).1,
                 };
-                run_ex(ExCmd::Mark { line, name }, ws, recorded);
+                let mark = ExCmd::Mark {
+                    line,
+                    name,
+                    nonblank: true,
+                };
+                run_ex(mark, ws, recorded);
             }
             // `:jumps` / `:changes` (F-003): position viewers over the jumplist / change list;
             // Enter jumps. Both use the position-viewer overlay.
@@ -4168,13 +4173,22 @@ impl Session {
             }
             // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
             // `:d`, `:>` and `:<` are jumps from where the cursor stood (nvim's `ex_operators`, #1119).
-            Ex::Delete(range, reg) => {
+            Ex::Delete(range, reg, flags) => {
                 let (first, last) = ws.resolve_range(range);
                 let n = lines_outcome(&run_ex(ExCmd::Delete { first, last, reg }, ws, recorded));
-                *status = if n == 1 {
-                    "1 line deleted".into()
-                } else {
-                    format!("{n} lines deleted")
+                *status = match flags {
+                    // `:dl`/`:dp` (#1241): show the new current line, as `ex_may_print` does.
+                    Some(flags) => {
+                        let pane = ws.focused();
+                        let b = pane.doc.bytes();
+                        let line = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
+                        let tab_width = pane.view.tab_width();
+                        crate::app::ex_print::rows(b, line, line, flags, tab_width, &|_| true)
+                            .pop()
+                            .unwrap_or_default()
+                    }
+                    None if n == 1 => "1 line deleted".into(),
+                    None => format!("{n} lines deleted"),
                 };
             }
             // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).

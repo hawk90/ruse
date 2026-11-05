@@ -575,11 +575,20 @@ mod tests {
     #[test]
     fn parse_delete_ranges() {
         use ruse_core::SubRange;
-        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine, None));
-        assert_eq!(parse_ex("delete"), Ex::Delete(SubRange::CurrentLine, None));
-        assert_eq!(parse_ex("2,5d"), Ex::Delete(SubRange::Lines(2, 5), None));
-        assert_eq!(parse_ex("%d"), Ex::Delete(SubRange::WholeFile, None));
-        assert_eq!(parse_ex("3delete"), Ex::Delete(SubRange::Lines(3, 3), None));
+        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine, None, None));
+        assert_eq!(
+            parse_ex("delete"),
+            Ex::Delete(SubRange::CurrentLine, None, None)
+        );
+        assert_eq!(
+            parse_ex("2,5d"),
+            Ex::Delete(SubRange::Lines(2, 5), None, None)
+        );
+        assert_eq!(parse_ex("%d"), Ex::Delete(SubRange::WholeFile, None, None));
+        assert_eq!(
+            parse_ex("3delete"),
+            Ex::Delete(SubRange::Lines(3, 3), None, None)
+        );
         // Not a delete verb → falls through (Unknown), not a spurious Delete.
         assert!(matches!(parse_ex("diffthis"), Ex::Unknown(_)));
     }
@@ -3813,7 +3822,7 @@ mod tests {
         assert_eq!(parse_ex("marks"), Ex::Marks);
         assert_eq!(parse_ex("jumps"), Ex::Jumps);
         assert_eq!(parse_ex("changes"), Ex::Changes);
-        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine, None));
+        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine, None, None));
     }
 
     /// F-007 multi-buffer ex commands parse: `:enew`, `:ls`, `:bn`/`:bp`, `:b {n}` (with/without space),

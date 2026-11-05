@@ -4450,7 +4450,7 @@ impl InputEngine {
                 if self.normal.op.is_some()
                     && !matches!(
                         key.code,
-                        KeyCode::Char('a'..='z' | 'A'..='Z' | '^' | '<' | '>')
+                        KeyCode::Char('a'..='z' | 'A'..='Z' | '0'..='9' | '^' | '<' | '>')
                     )
                 {
                     return self.unmatched(Ns::OperatorPending, key);
@@ -4473,8 +4473,11 @@ impl InputEngine {
                     // `` `< `` / `` `> `` — jump charwise to the start/end of the last visual selection.
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStart),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEnd),
-                    // `` `{a-z} `` — jump to a named mark, or `` d`a ``/`` y`a `` with an operator pending.
-                    KeyCode::Char(c @ ('a'..='z' | 'A'..='Z')) => self.mark_op(c, false),
+                    // `` `{a-z} `` — jump to a named mark, or `` d`a ``/`` y`a `` with an operator pending; a
+                    // numbered one (`` `1 ``, set by `:mark 1`, #1241) the same way.
+                    KeyCode::Char(c @ ('a'..='z' | 'A'..='Z' | '0'..='9')) => {
+                        self.mark_op(c, false)
+                    }
                     // Any other mark name is not wired — abort the pending construct.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
@@ -4498,7 +4501,7 @@ impl InputEngine {
                 if self.normal.op.is_some()
                     && !matches!(
                         key.code,
-                        KeyCode::Char('a'..='z' | 'A'..='Z' | '^' | '<' | '>')
+                        KeyCode::Char('a'..='z' | 'A'..='Z' | '0'..='9' | '^' | '<' | '>')
                     )
                 {
                     return self.unmatched(Ns::OperatorPending, key);
@@ -4521,8 +4524,9 @@ impl InputEngine {
                     // `'<` / `'>` — linewise to the first non-blank of the first/last selected line.
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStartLine),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEndLine),
-                    // `'{a-z}` — linewise to a named mark's line, or `d'a`/`y'a` with an operator pending.
-                    KeyCode::Char(c @ ('a'..='z' | 'A'..='Z')) => self.mark_op(c, true),
+                    // `'{a-z}` — linewise to a named mark's line, or `d'a`/`y'a` with an operator pending; a
+                    // numbered one (`'1`, #1241) the same way.
+                    KeyCode::Char(c @ ('a'..='z' | 'A'..='Z' | '0'..='9')) => self.mark_op(c, true),
                     // Any other mark name is not wired — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
@@ -4680,7 +4684,7 @@ mod ex_cmd;
 mod ex_extra;
 mod nvim_options;
 pub(crate) mod set_cmd;
-pub(crate) use ex::reuse_last_search;
+pub(crate) use ex::{comment_free, delete_print_flags, reuse_last_search};
 pub(crate) use ex_cmd::full_command_name;
 pub use ex_cmd::{strip_modifiers, ExModifiers};
 pub use ex_extra::{FileCmd, PrintFlags, StartKind, ZSpec};

@@ -125,8 +125,14 @@ pub enum ExCmd {
         last: usize,
         bytes: Vec<u8>,
     },
-    /// `:[range]mark {x}` / `:k{x}`: named mark `name` at the start of 1-based line `line`.
-    Mark { line: usize, name: char },
+    /// `:[range]mark {x}` / `:k{x}`: mark `name` (any mark `:mark` sets, #1241) on 1-based line `line`, at
+    /// its first non-blank as nvim's `ex_mark` puts it when `nonblank`, else at its start: a trace written
+    /// before #1241 records only letters, at the line start, and replays so (`ex_mark {line} {name}`).
+    Mark {
+        line: usize,
+        name: char,
+        nonblank: bool,
+    },
     /// `:set` of an option the core reads while editing; also the trace's starting option values.
     Set(EditorOption),
     /// The cursor placed at a byte offset by the frontend (`:normal`'s per-line column 0, a `:g` landing
@@ -289,11 +295,31 @@ impl EditorState {
             ExCmd::FilterReplace { first, last, bytes } => {
                 ExOutcome::Lines(self.filter_lines(lines(*first, *last), bytes))
             }
-            ExCmd::Mark { line, name } => {
+            ExCmd::Mark {
+                line,
+                name,
+                nonblank,
+            } => {
                 let b = self.doc.bytes();
                 let n = crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
-                let at = crate::pos::raw::nth_line_start(b, (*line).clamp(1, n.max(1)) - 1);
-                self.view.set_named_mark(*name, at);
+                let start = crate::pos::raw::nth_line_start(b, (*line).clamp(1, n.max(1)) - 1);
+                let at = if *nonblank {
+                    // `beginline(BL_WHITE | BL_FIX)`: the first non-blank, or a blank line's last char.
+                    let nb = crate::motion::first_non_blank(b, start);
+                    let end = crate::pos::raw::line_end(b, start);
+                    if nb == end && end > start {
+                        end - 1
+                    } else {
+                        nb
+                    }
+                } else {
+                    start
+                };
+                if *nonblank {
+                    self.view.set_mark(*name, at);
+                } else {
+                    self.view.set_named_mark(*name, at);
+                }
                 ExOutcome::Done
             }
             ExCmd::Set(opt) => {
@@ -572,7 +598,14 @@ impl ExCmd {
             ExCmd::FilterReplace { first, last, bytes } => {
                 format!("ex_filter {first} {last} {}", hex(bytes))
             }
-            ExCmd::Mark { line, name } => format!("ex_mark {line} {}", *name as u32),
+            ExCmd::Mark {
+                line,
+                name,
+                nonblank,
+            } => {
+                let at = if *nonblank { " ^" } else { "" };
+                format!("ex_mark {line} {}{at}", *name as u32)
+            }
             ExCmd::Set(opt) => {
                 let (name, value) = option_name(opt);
                 format!("ex_set {name} {value}")
@@ -733,9 +766,15 @@ impl ExCmd {
             "ex_mark" => {
                 let line = a.num()?;
                 let name = a.tok()?.parse::<u32>().ok().and_then(char::from_u32);
+                let nonblank = match a.toks.next() {
+                    None => false,
+                    Some("^") => true,
+                    Some(_) => return Err(a.bad()),
+                };
                 ExCmd::Mark {
                     line,
                     name: name.ok_or_else(|| a.bad())?,
+                    nonblank,
                 }
             }
             "ex_set" => {
@@ -1144,7 +1183,16 @@ pub(crate) fn samples() -> Vec<ExCmd> {
             last: 3,
             bytes: b"a\nb\n".to_vec(),
         },
-        ExCmd::Mark { line: 2, name: 'a' },
+        ExCmd::Mark {
+            line: 2,
+            name: 'a',
+            nonblank: false,
+        },
+        ExCmd::Mark {
+            line: 2,
+            name: '<',
+            nonblank: true,
+        },
         ExCmd::Set(EditorOption::IgnoreCase(true)),
         ExCmd::Set(EditorOption::SmartCase(false)),
         ExCmd::Set(EditorOption::TabStop(8)),
@@ -1204,7 +1252,8 @@ pub(crate) fn samples() -> Vec<ExCmd> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::Command;
+    use crate::command::{Command, SelectKind};
+    use crate::editor::apply_command;
 
     #[test]
     fn truncated_extra_or_out_of_bound_tokens_are_errors() {
@@ -1227,6 +1276,8 @@ mod tests {
             "ex_sort 1 2 z -",
             "ex_sort 1 2 - 61",
             "ex_mark 1 1114112",
+            "ex_mark 1 97 x",
+            "ex_mark 1 97 ^ ^",
             "ex_begin visual",
             "ex_edits lsp 1:2",
             "ex_edits lsp 1:2:6",
@@ -1283,6 +1334,64 @@ mod tests {
         });
         assert_eq!(out, ExOutcome::Lines(2));
         assert_eq!(st.bytes(), b"b\n");
+    }
+
+    /// #1241: `:mark` puts a mark on the line's first non-blank and sets the numbered, context, change
+    /// and Visual marks too; a trace from before (`ex_mark {line} {name}`) still sets a letter at the line
+    /// start, as it did live.
+    #[test]
+    fn ex_mark_sets_every_mark_and_old_records_replay_at_the_line_start() {
+        let mark = |line, name, nonblank| ExCmd::Mark {
+            line,
+            name,
+            nonblank,
+        };
+        assert_eq!(
+            Command::from_line("ex_mark 2 97").unwrap(),
+            Command::Ex(mark(2, 'a', false))
+        );
+        assert_eq!(
+            Command::from_line("ex_mark 2 60 ^").unwrap(),
+            Command::Ex(mark(2, '<', true))
+        );
+        let mut st = EditorState::new(b"a1\n  b2\n  a3\n   \nb5\n".to_vec());
+        st.apply_ex(&mark(2, 'a', false));
+        assert_eq!(st.view.named_mark('a'), Some(BytePos(3)), "the old record");
+        st.apply_ex(&mark(2, 'a', true));
+        assert_eq!(
+            st.view.named_mark('a'),
+            Some(BytePos(5)),
+            "the first non-blank"
+        );
+        st.apply_ex(&mark(4, 'b', true));
+        assert_eq!(
+            st.view.named_mark('b'),
+            Some(BytePos(15)),
+            "a blank line's last char"
+        );
+        st.apply_ex(&mark(3, '1', true));
+        assert_eq!(st.view.named_mark('1'), Some(BytePos(10)));
+        st.apply_ex(&mark(3, '\'', true));
+        assert_eq!(st.view.context_mark(), Some(BytePos(10)));
+        st.apply_ex(&mark(2, '[', true));
+        assert_eq!(st.view.change_mark_start(), Some(BytePos(5)));
+        assert_eq!(st.view.change_mark_end(), None, "only `[` is set");
+        // `<` with no Visual area is both ends, and `gv` has nothing to reselect until `>` is set too.
+        st.apply_ex(&mark(3, '<', true));
+        assert_eq!(
+            st.view.last_visual_bounds(),
+            Some((BytePos(10), BytePos(10), SelectKind::Charwise))
+        );
+        apply_command(&mut st, &Command::ReselectVisual);
+        assert_eq!(st.mode(), crate::Mode::Normal);
+        st.apply_ex(&mark(2, '>', true));
+        assert_eq!(
+            st.view.last_visual_bounds(),
+            Some((BytePos(5), BytePos(10), SelectKind::Charwise))
+        );
+        apply_command(&mut st, &Command::ReselectVisual);
+        assert!(st.mode().selection().is_some(), "both ends are set");
+        assert_eq!(st.cursor(), BytePos(5), "the cursor on the `>` end");
     }
 
     #[test]

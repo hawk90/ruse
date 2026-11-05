@@ -619,7 +619,7 @@ fn mark_error(cmd: &Command, ws: &Workspace) -> Option<String> {
         Command::OpToMark { name, .. } => *name,
         _ => return None,
     };
-    ((name.is_ascii_alphabetic() || matches!(name, '^' | '<' | '>'))
+    ((name.is_ascii_alphanumeric() || matches!(name, '^' | '<' | '>'))
         && ws.focused().view.named_mark(name).is_none())
     .then(|| "E20: Mark not set".to_string())
 }

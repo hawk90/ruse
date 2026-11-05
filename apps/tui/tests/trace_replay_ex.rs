@@ -90,6 +90,16 @@ const SESSIONS: &[(&str, &str, &str)] = &[
     ("one\ntwo\n", ":set sw=2<CR>>>:2>><CR>", "ex_shift"),
     ("one\ntwo\n", "yy:put<CR>:0put<CR>", "ex_put"),
     ("one\ntwo\nthree\n", ":3mark a<CR>gg'ax", "ex_mark"),
+    // `:mark` puts the mark on the first non-blank, and sets the non-letter marks too (#1241).
+    ("one\n  two\nthree\n", ":2ka<CR>gg`ax", "ex_mark 2 97 ^"),
+    ("one\ntwo\nthree\n", ":3k1<CR>gg`1x", "ex_mark 3 49 ^"),
+    ("one\ntwo\nthree\n", ":2k<<CR>:3k><CR>gvd", "ex_mark 3 62 ^"),
+    ("one\ntwo\nthree\n", ":3k'<CR>``x", "ex_mark 3 39 ^"),
+    (
+        "one\ntwo\nthree\n",
+        ":2k[<CR>:3k]<CR>:'[,']d<CR>",
+        "ex_mark 2 91 ^",
+    ),
     ("\tone\n", ":set et<CR>:retab<CR>", "ex_retab"),
     // ruse's shipped `ignorecase`+`smartcase` are in the trace's starting options: `/foo` lands on `Foo`.
     ("x foo Foo\n", "/foo<CR>x", "ex_set smartcase 1"),

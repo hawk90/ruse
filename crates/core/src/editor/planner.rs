@@ -3952,6 +3952,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             nop(cur, Mode::Select { kind: *kind })
         }
         Command::EnterSelect { .. } => nop(cur, st.view.mode),
+        // A Visual area `:mark <`/`:mark >` made with only one end (#1241) is not reselected either.
+        Command::ReselectVisual if st.view.visual_one_end.is_some() => nop(cur, st.view.mode),
         Command::ReselectVisual => match st.view.last_visual {
             // Restore the remembered selection: re-enter Visual with the stored kind, put the cursor on the
             // active end, and install the stored anchor (via `set_anchor`, which `commit` applies after its

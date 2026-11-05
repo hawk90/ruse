@@ -642,11 +642,16 @@ pub struct View {
     /// after an edit, so the first `g;` lands on the newest change; walks toward 0 (oldest) on `g;` and back
     /// toward the newest on `g,`. Reset to `changes.len()` whenever a new change is pushed.
     change_idx: usize,
-    /// The named marks `a`–`z` then `A`–`Z` (Vim `m{a-zA-Z}` / `` `{a-zA-Z} ``), indexed by [`mark_slot`].
-    /// `None` = unset. Set by [`Command::SetNamedMark`], read by [`Command::GotoNamedMark`], and snapped on
-    /// every commit like the change list. An uppercase (file) mark is kept with this view's buffer: a jump
-    /// to one set in another buffer is deferred (#1088), as are the numbered marks.
-    named_marks: [Option<usize>; 52],
+    /// The named marks `a`–`z`, `A`–`Z`, then `0`–`9` (Vim `m{a-zA-Z}` / `` `{a-zA-Z0-9} ``), indexed by
+    /// [`mark_slot`]. `None` = unset. Set by [`Command::SetNamedMark`] (a numbered mark only by `:mark`,
+    /// #1241), read by [`Command::GotoNamedMark`], and snapped on every commit like the change list. An
+    /// uppercase or numbered (file) mark is kept with this view's buffer: a jump to one set in another
+    /// buffer is deferred (#1088), and the numbered marks are not filled from a shada file.
+    named_marks: [Option<usize>; 62],
+    /// The one end of the last Visual area that is set (`'<'`, its start, or `'>'`, its end) when `:mark <`
+    /// or `:mark >` made it with no Visual area before (#1241). Vim's other end is then unset: both `<` and
+    /// `>` read the one that is (so [`View::last_visual`] holds it twice), but `gv` has nothing to reselect.
+    visual_one_end: Option<char>,
     /// Where Insert mode was last left (Vim's `` `^ `` mark), for `gi` to resume Insert there. Set in
     /// [`commit`] on an Insert→Normal transition to the pre-clamp caret, and snapped like the marks. `None`
     /// until the first Insert session ends.
@@ -690,11 +695,12 @@ pub struct View {
     jump_idx: usize,
 }
 
-/// The [`View::named_marks`] slot of mark `c`: `a`–`z` are 0–25, `A`–`Z` 26–51.
+/// The [`View::named_marks`] slot of mark `c`: `a`–`z` are 0–25, `A`–`Z` 26–51, `0`–`9` 52–61.
 fn mark_slot(c: char) -> Option<usize> {
     match c {
         'a'..='z' => Some(c as usize - 'a' as usize),
         'A'..='Z' => Some(26 + c as usize - 'A' as usize),
+        '0'..='9' => Some(52 + c as usize - '0' as usize),
         _ => None,
     }
 }
@@ -703,7 +709,7 @@ fn mark_slot(c: char) -> Option<usize> {
 const MAX_CHANGES: usize = 100;
 
 /// The fixed-position entries of [`View::tracked`], before the change list and the jumplist.
-const TRACKED_FIXED: usize = 57;
+const TRACKED_FIXED: usize = 67;
 
 /// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
 /// tests drive. F-007's Workspace will own many `(Document, View)` pairs referenced by handle; today
@@ -767,7 +773,7 @@ impl View {
     /// Every long-lived position this View keeps, for its Document to carry through a change as nvim's
     /// `mark_adjust` does (#686), in the order [`View::untrack`] reads back: `a`–`z` (dropped with their
     /// line, restored by undo), the last Visual area (restored by undo), `A`–`Z`, `` `^ `` (dropped), `[`
-    /// and `]`, then the change list and the jumplist. The cursor is the command's to place, so it is not
+    /// and `]`, `0`–`9` (kept, as file marks are), then the change list and the jumplist. The cursor is the command's to place, so it is not
     /// here; the Emacs mark stays a snapped offset (a byte anchor moved it off Emacs's in-place casing).
     pub(crate) fn tracked(&self) -> Vec<Tracked> {
         use crate::anchor::{LineGravity::Drop, LineGravity::Keep};
@@ -783,13 +789,18 @@ impl View {
         t.push(Tracked::line(va.map(BytePos), Keep).restored());
         t.push(Tracked::line(ve.map(BytePos), Keep).restored());
         t.extend(
-            self.named_marks[26..]
+            self.named_marks[26..52]
                 .iter()
                 .map(|&m| Tracked::line(m.map(BytePos), Keep)),
         );
         t.push(Tracked::line(self.last_insert.map(BytePos), Drop));
         t.push(Tracked::line(self.change_start.map(BytePos), Keep));
         t.push(Tracked::line(self.change_end.map(BytePos), Keep));
+        t.extend(
+            self.named_marks[52..]
+                .iter()
+                .map(|&m| Tracked::line(m.map(BytePos), Keep)),
+        );
         debug_assert_eq!(t.len(), TRACKED_FIXED);
         t.extend(
             self.changes
@@ -819,6 +830,9 @@ impl View {
         self.last_insert = pos(54);
         self.change_start = pos(55);
         self.change_end = pos(56);
+        for i in 52..62 {
+            self.named_marks[i] = pos(i + 5);
+        }
         let n = self.changes.len();
         for (i, c) in self.changes.iter_mut().enumerate() {
             *c = pos(TRACKED_FIXED + i).unwrap_or(0);
@@ -910,7 +924,8 @@ impl View {
             changes: Vec::new(),
             new_change: false,
             change_idx: 0,
-            named_marks: [None; 52],
+            named_marks: [None; 62],
+            visual_one_end: None,
             last_insert: None,
             change_start: None,
             change_end: None,
@@ -952,6 +967,48 @@ impl View {
         if let Some(i) = mark_slot(c) {
             self.named_marks[i] = Some(pos);
         }
+    }
+
+    /// Set mark `c` at `pos` the way nvim's `setmark_pos` does for `:mark` (#1241): a letter or digit is
+    /// that named or numbered mark, `'`/`` ` `` the context mark (a jumplist entry), `[`/`]` a change mark
+    /// and `<`/`>` one end of the last Visual area (with none, the only end). `false` for any other `c`,
+    /// which sets nothing (`E191`).
+    pub(crate) fn set_mark(&mut self, c: char, pos: usize) -> bool {
+        match c {
+            '\'' | '`' => self.push_jump(pos),
+            '[' => self.change_start = Some(pos),
+            ']' => self.change_end = Some(pos),
+            '<' | '>' => {
+                let start = c == '<';
+                self.last_visual = Some(match (self.last_visual, self.visual_one_end) {
+                    // The other end is still unset: this one is the only end again.
+                    (Some((_, _, kind)), Some(only)) if only == c => (pos, pos, kind),
+                    // The end that was missing: the area is whole now.
+                    (Some((a, _, kind)), Some(_)) => {
+                        self.visual_one_end = None;
+                        if start {
+                            (pos, a, kind)
+                        } else {
+                            (a, pos, kind)
+                        }
+                    }
+                    (Some((a, e, kind)), None) => {
+                        if start {
+                            (pos, e, kind)
+                        } else {
+                            (a, pos, kind)
+                        }
+                    }
+                    (None, _) => {
+                        self.visual_one_end = Some(c);
+                        (pos, pos, SelectKind::Charwise)
+                    }
+                });
+            }
+            _ if mark_slot(c).is_some() => self.set_named_mark(c, pos),
+            _ => return false,
+        }
+        true
     }
 
     /// The position of the last change (Vim `` `. ``), or `None` before the first edit.
@@ -3103,7 +3160,7 @@ impl EditorState {
     #[must_use]
     pub fn marks_snapshot(&self) -> Vec<(char, BytePos)> {
         let mut out = Vec::new();
-        for c in ('a'..='z').chain('A'..='Z') {
+        for c in ('a'..='z').chain('A'..='Z').chain('0'..='9') {
             if let Some(p) = self.view.named_mark(c) {
                 out.push((c, p));
             }
@@ -3680,6 +3737,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     if plan.mode.selection().is_none() {
         if let (Some(kind), Some(a)) = (entry_selection, entry_anchor) {
             st.view.last_visual = Some((a, entry_cursor, kind));
+            st.view.visual_one_end = None;
         }
     }
     match plan.action {

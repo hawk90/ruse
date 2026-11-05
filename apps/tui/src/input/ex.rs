@@ -64,8 +64,9 @@ pub enum Ex {
     Digraphs,
     /// `:marks` — view the set marks (a-z, `.`, `^`); Enter jumps to the mark (F-003).
     Marks,
-    /// `:[range]ma[rk] {a-zA-Z}` / `:[range]k{a-zA-Z}` — set mark `name` at column 0 of the range's last
-    /// line (no range: the cursor's line), as nvim's `ex_mark` does (#1088).
+    /// `:[range]ma[rk] {x}` / `:[range]k{x}` — set mark `name` (a letter, a digit, `'`/`` ` ``, `[`/`]` or
+    /// `<`/`>`) at the first non-blank of the range's last line (no range: the cursor's line), as nvim's
+    /// `ex_mark` does (#1088, #1241).
     Mark {
         range: SubRange,
         name: char,
@@ -79,8 +80,9 @@ pub enum Ex {
     Ascii,
     /// `:[range]d [x]`/`:delete` — delete the range's lines (no range = the current line) into register `x`
     /// (`None` = the unnamed one), like a linewise `dd`. A count after it (`:d 3`) is folded into the range
-    /// before parsing (`app::ex_range`).
-    Delete(SubRange, Option<char>),
+    /// before parsing (`app::ex_range`). The flags are those of `:dl`/`:dp` and their longer spellings
+    /// (`:help :dl`, #1241): show the new current line afterwards, as `:l`/`:p` would.
+    Delete(SubRange, Option<char>, Option<super::PrintFlags>),
     /// `:[range]y [x]`/`:yank` — yank the range's lines linewise into register `x` (like `yy`).
     Yank(SubRange, Option<char>),
     /// `:[range]j[oin][!]` — join the range's lines into one (no range = the current line, which joins with
@@ -99,8 +101,8 @@ pub enum Ex {
     /// `:[range]>` / `:[range]<` — shift the range's lines one indent level right (`left = false`) or left
     /// (`left = true`), reusing the core `>>`/`<<` shift (no range = the current line). Repeated verb chars
     /// multiply the level count: `:>>>` is `levels = 3`, `:<<` is `levels = 2` (Vim: each extra `>`/`<` adds
-    /// one `shiftwidth`). A trailing `[count]` argument (Vim's `:> 5`) is a documented follow-up — the shared
-    /// range-verb parser has no trailing-count seam (neither do `:d`/`:y`/`:j`).
+    /// one `shiftwidth`). A trailing `[count]` argument (Vim's `:> 5`) was already folded into the range
+    /// before parsing (`app::ex_range`), as for `:d`/`:y`/`:j`.
     Shift {
         range: SubRange,
         left: bool,
@@ -1223,13 +1225,9 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::SaveTrace(rest.trim().to_string())
             } else if let Some(ex) = parse_mark(line) {
                 ex
-            } else if let Some((range, reg)) =
-                parse_register_verb(line, &["d", "de", "del", "dele", "delet", "delete"])
-            {
-                Ex::Delete(range, reg)
-            } else if let Some((range, reg)) =
-                parse_register_verb(line, &["y", "ya", "yan", "yank"])
-            {
+            } else if let Some((range, reg, flags)) = parse_register_verb(line, true) {
+                Ex::Delete(range, reg, flags)
+            } else if let Some((range, reg, _)) = parse_register_verb(line, false) {
                 Ex::Yank(range, reg)
             } else if let Some((range, bang)) = parse_join(line) {
                 Ex::Join { range, bang }
@@ -1422,7 +1420,7 @@ fn parse_join(line: &str) -> Option<(SubRange, bool)> {
 /// Parse `:[range]>` / `:[range]<` into `(range, left, levels)`. After the optional `[0-9,%.$]` range
 /// prefix the verb is a run of one-or-more IDENTICAL `>` or `<` chars; the run length is the level count
 /// (Vim `:>>>` = 3 levels). `left = true` for `<`. Returns `None` (→ falls through) unless the whole verb
-/// is such a run — a mixed run (`:><`) or trailing junk (`:> x`, the deferred trailing-count form) is not
+/// is such a run — a mixed run (`:><`) or trailing junk (`:> x`; a count was folded into the range before) is not
 /// this command.
 fn parse_shift(line: &str) -> Option<(SubRange, bool, u32)> {
     let split = line
@@ -1482,9 +1480,10 @@ fn parse_put(line: &str) -> Option<(LineAddr, Option<char>, bool)> {
     Some((addr, reg, above))
 }
 
-/// Parse `:[range]ma[rk] {x}` and `:[range]k[ ]{x}` with `{x}` a letter (nvim's `ex_mark`, #1088): no
-/// argument is `E471`, more than one char `E488`. A numbered mark (which ruse does not keep) is not a
-/// `:mark` here and falls through to `Unknown`, as do `:keepjumps` and the other `:k…` commands.
+/// Parse `:[range]ma[rk] {x}` and `:[range]k[ ]{x}` (nvim's `ex_mark`, #1088, #1241). `{x}` is a mark
+/// `:mark` can set: a letter, a digit, `'`/`` ` ``, `[`/`]` or `<`/`>`; any other char is `E191`. No
+/// argument is `E471`, more than one char `E488`, a `!` `E477`, and a `"` starts a comment. `:keepjumps`
+/// and the other `:kee…` commands are not `:k` and fall through.
 fn parse_mark(line: &str) -> Option<Ex> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -1492,13 +1491,17 @@ fn parse_mark(line: &str) -> Option<Ex> {
     let (range_str, rest) = line.split_at(split);
     let spelled = ["mark", "mar", "ma"].into_iter().find_map(|v| {
         rest.strip_prefix(v)
-            .filter(|a| a.is_empty() || a.starts_with(' '))
+            .filter(|a| a.is_empty() || a.starts_with([' ', '!']))
     });
     // Vim's one exception to reading the whole word as the command name (`find_ex_command`): a `k` not
     // followed by `ee` is `:k` with its argument glued on (`:ka` is `:k a`, `:kfoo` is `:k foo`), while
     // `:kee…` is `:keepmarks` and its longer spellings (#1234).
     let arg = spelled.or_else(|| rest.strip_prefix('k').filter(|a| !a.starts_with("ee")))?;
-    let arg = arg.trim();
+    // The command takes no `!` (`:k!`, `:mark!`): nvim reads a bang glued to the name before the argument.
+    if arg.starts_with('!') {
+        return Some(Ex::Fail("E477: No ! allowed".into()));
+    }
+    let arg = comment_free(arg).trim();
     let mut chars = arg.chars();
     let Some(name) = chars.next() else {
         return Some(Ex::Fail(ARGUMENT_REQUIRED.into()));
@@ -1506,16 +1509,50 @@ fn parse_mark(line: &str) -> Option<Ex> {
     if chars.next().is_some() {
         return Some(Ex::Fail(format!("E488: Trailing characters: {arg}")));
     }
-    if !name.is_ascii_alphabetic() {
-        return None;
+    if !(name.is_ascii_alphanumeric() || matches!(name, '\'' | '`' | '[' | ']' | '<' | '>')) {
+        return Some(Ex::Fail(
+            "E191: Argument must be a letter or forward/backward quote".into(),
+        ));
     }
     let range = parse_sub_range(range_str)?;
     Some(Ex::Mark { range, name })
 }
 
-/// Parse `:[range]{verb} [x]` (`:d`, `:y`) into the range and the register `x`, a single char after
-/// whitespace (`:d a`, `:3y A`). A count after the register was already folded into the range.
-fn parse_register_verb(line: &str, verbs: &[&str]) -> Option<(SubRange, Option<char>)> {
+/// `arg` up to the `"` that starts a comment in a command that allows one after its argument (`:help
+/// :quote`): `:d`, `:y`, `:j`, `:k`, … (#1240).
+pub(crate) fn comment_free(arg: &str) -> &str {
+    arg.split('"').next().unwrap_or(arg)
+}
+
+/// The print flags of `:delete` spelled with a trailing `l` or `p` (`:help :dl`, #1241), as Vim's
+/// `find_ex_command` reads it: an abbreviation of `delete` (`d`, `de`, …, `delete` itself) followed by a
+/// letter that does not continue the word, which must be `l` (list) or `p` (print). So `:dl`, `:dell`,
+/// `:delel`, `:deletel`, `:dp`, `:dep`, `:deletep` are, but `:del` (an abbreviation) and `:dll` are not.
+pub(crate) fn delete_print_flags(verb: &str) -> Option<super::PrintFlags> {
+    let (stem, flag) = verb.split_at(verb.len().checked_sub(1)?);
+    let list = match flag {
+        "l" => true,
+        "p" => false,
+        _ => return None,
+    };
+    let continues = "delete".get(..verb.len()) == Some(verb);
+    (!stem.is_empty() && "delete".starts_with(stem) && !continues).then_some(super::PrintFlags {
+        number: false,
+        list,
+    })
+}
+
+/// The spellings of `:delete` and `:yank`.
+const DELETE_VERBS: &[&str] = &["d", "de", "del", "dele", "delet", "delete"];
+const YANK_VERBS: &[&str] = &["y", "ya", "yan", "yank"];
+
+/// Parse `:[range]{verb} [x]` (`:d` when `delete`, else `:y`) into the range, the register `x`, a single
+/// char after whitespace (`:d a`, `:3y A`), and the flags of a `:dl`/`:dp` spelling. A count after the
+/// register was already folded into the range, and a comment dropped.
+fn parse_register_verb(
+    line: &str,
+    delete: bool,
+) -> Option<(SubRange, Option<char>, Option<super::PrintFlags>)> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
         .unwrap_or(line.len());
@@ -1525,16 +1562,24 @@ fn parse_register_verb(line: &str, verbs: &[&str]) -> Option<(SubRange, Option<c
         .find(|c: char| !c.is_ascii_alphabetic())
         .unwrap_or(rest.len());
     let (verb, arg) = rest.split_at(verb_len);
-    if !verbs.contains(&verb) {
+    let flags = if delete {
+        let flags = delete_print_flags(verb);
+        if flags.is_none() && !DELETE_VERBS.contains(&verb) {
+            return None;
+        }
+        flags
+    } else if YANK_VERBS.contains(&verb) {
+        None
+    } else {
         return None;
-    }
+    };
     let arg = arg.trim();
     let reg = if arg.is_empty() {
         None
     } else {
         Some(single_char(arg)?)
     };
-    Some((parse_sub_range(range_str)?, reg))
+    Some((parse_sub_range(range_str)?, reg, flags))
 }
 
 /// The file commands [`parse_file_command`] reads.
@@ -2206,7 +2251,7 @@ mod shift_parse_tests {
     fn mixed_run_or_trailing_junk_is_not_a_shift() {
         // A mixed `>`/`<` run is not this command.
         assert!(matches!(parse_ex("><"), Ex::Unknown(_)));
-        // The trailing-count form `:> 5` is deferred; with trailing junk it is not a shift.
+        // A count (`:> 5`) is folded into the range before parsing; with trailing junk it is not a shift.
         assert!(matches!(parse_ex("> 5"), Ex::Unknown(_)));
         assert!(matches!(parse_ex(">x"), Ex::Unknown(_)));
     }
@@ -2311,7 +2356,7 @@ mod repeat_substitute_parse_tests {
         // Other `s`-verbs and trailing junk fall through (they never reach the repeat parser or it rejects).
         assert!(matches!(parse_ex("sort"), Ex::Sort(..)));
         assert!(matches!(parse_ex("split"), Ex::Split));
-        assert!(matches!(parse_ex("s 3"), Ex::Unknown(_))); // trailing count is deferred (like `:d`/`:>`)
+        assert!(matches!(parse_ex("s 3"), Ex::Unknown(_))); // a count after a bare `:s` is deferred
         assert!(matches!(parse_ex("sx"), Ex::Unknown(_))); // `x` is not a repeat flag
     }
 }
@@ -2403,19 +2448,104 @@ mod read_filter_parse_tests {
     fn delete_and_yank_take_a_register() {
         assert_eq!(
             parse_ex("d a"),
-            Ex::Delete(SubRange::CurrentLine, Some('a'))
+            Ex::Delete(SubRange::CurrentLine, Some('a'), None)
         );
         assert_eq!(
             parse_ex("2,3del _"),
-            Ex::Delete(SubRange::Lines(2, 3), Some('_'))
+            Ex::Delete(SubRange::Lines(2, 3), Some('_'), None)
         );
-        assert_eq!(parse_ex("de"), Ex::Delete(SubRange::CurrentLine, None));
+        assert_eq!(
+            parse_ex("de"),
+            Ex::Delete(SubRange::CurrentLine, None, None)
+        );
         assert_eq!(
             parse_ex("yan A"),
             Ex::Yank(SubRange::CurrentLine, Some('A'))
         );
         assert!(matches!(parse_ex("d ab"), Ex::Unknown(_)));
         assert!(matches!(parse_ex("dx"), Ex::Unknown(_)));
+    }
+
+    /// #1241: `:delete` spelled with a trailing `l`/`p` is `:delete` with that print flag, as Vim's
+    /// `find_ex_command` reads it (nvim v0.12.6).
+    #[test]
+    fn dl_and_dp_are_delete_with_a_print_flag() {
+        let list = Some(PrintFlags {
+            number: false,
+            list: true,
+        });
+        let print = Some(PrintFlags::default());
+        for (verb, flags) in [
+            ("dl", list),
+            ("dell", list),
+            ("delel", list),
+            ("deletl", list),
+            ("deletel", list),
+            ("dp", print),
+            ("dep", print),
+            ("delp", print),
+            ("deletp", print),
+            ("deletep", print),
+            ("del", None),
+            ("dele", None),
+            ("dll", None),
+            ("dlp", None),
+            ("dpl", None),
+            ("dela", None),
+            ("deletell", None),
+            ("l", None),
+            ("", None),
+        ] {
+            assert_eq!(delete_print_flags(verb), flags, "{verb:?}");
+        }
+        assert_eq!(
+            parse_ex("3dl a"),
+            Ex::Delete(SubRange::Lines(3, 3), Some('a'), list)
+        );
+        assert_eq!(
+            parse_ex("deletep"),
+            Ex::Delete(SubRange::CurrentLine, None, print)
+        );
+        assert!(matches!(parse_ex("dll"), Ex::Unknown(_)));
+    }
+
+    /// #1241: `:mark`/`:k` take every mark nvim's `setmark_pos` sets; anything else is E191, a bang E477,
+    /// and a `"` starts a comment.
+    #[test]
+    fn mark_takes_the_marks_setmark_sets() {
+        for name in ['a', 'Z', '0', '9', '\'', '`', '[', ']', '<', '>'] {
+            assert_eq!(
+                parse_ex(&format!("3k{name}")),
+                Ex::Mark {
+                    range: SubRange::Lines(3, 3),
+                    name
+                },
+                "{name:?}"
+            );
+            assert_eq!(
+                parse_ex(&format!("mark {name}")),
+                Ex::Mark {
+                    range: SubRange::CurrentLine,
+                    name
+                },
+                "{name:?}"
+            );
+        }
+        let fail = |s: &str| Ex::Fail(s.to_string());
+        let e191 = fail("E191: Argument must be a letter or forward/backward quote");
+        for bad in ["k^", "k.", "k(", "k#", "k-", "k{", "mark ^"] {
+            assert_eq!(parse_ex(bad), e191, "{bad:?}");
+        }
+        assert_eq!(parse_ex("k!"), fail("E477: No ! allowed"));
+        assert_eq!(parse_ex("mark! a"), fail("E477: No ! allowed"));
+        assert_eq!(parse_ex("k\""), fail(ARGUMENT_REQUIRED));
+        assert_eq!(
+            parse_ex("3k a \" why"),
+            Ex::Mark {
+                range: SubRange::Lines(3, 3),
+                name: 'a'
+            }
+        );
     }
 
     #[test]

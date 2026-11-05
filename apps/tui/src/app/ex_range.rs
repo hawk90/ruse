@@ -76,8 +76,8 @@ impl std::fmt::Display for ExRangeError {
 /// - a line number, `.` (the cursor's line), `$` (the last line);
 /// - `%` (`1,$`) or `*` (`'<,'>`), which stand for two addresses;
 /// - a mark: `'a`–`'z`, `'<`/`'>` (the last Visual selection), `'[`/`']` (the last change or yank), `'.`
-///   (the last change), `''` (the line before the latest jump) and `'A`–`'Z`; an unset one, or a numbered
-///   mark, is `E20`;
+///   (the last change), `''` (the line before the latest jump), `'A`–`'Z` and `'0`–`'9`; an unset one is
+///   `E20`;
 /// - `/pat/` (the next line that matches, wrapping around the end) or `?pat?` (the previous one), where
 ///   another `/pat/` or `?pat?` may follow to search on from there (`:/a//b/`), and an empty pattern is the
 ///   last search; `\/` and `\?` search for the last search pattern, `\&` for the last substitute pattern;
@@ -284,7 +284,11 @@ fn resolve(
     let tail = rest[i..].trim_start();
     let Some(&last) = addrs.last() else {
         // No range, but a counted command still needs the cursor's line (`:d 3`).
-        return Ok(counted(tail, cur_line, nlines)?.map_or_else(unchanged, ExRange::Line));
+        return Ok(match counted(tail, cur_line, nlines)? {
+            None => unchanged(),
+            Some((Some((a, b)), t)) => ExRange::Line(format!("{a},{b}{t}")),
+            Some((None, t)) => ExRange::Line(t),
+        });
     };
     if tail.is_empty() {
         // Going to a line clamps past the end (`:99`), but not below the start (`:-5` on line 3 is E16).
@@ -307,25 +311,26 @@ fn resolve(
         [a, b] => format!("{a},{b}"),
         _ => last.to_string(),
     };
-    Ok(ExRange::Line(
-        counted(tail, last, nlines)?.unwrap_or_else(|| format!("{range}{tail}")),
-    ))
+    Ok(ExRange::Line(match counted(tail, last, nlines)? {
+        None => format!("{range}{tail}"),
+        Some((Some((a, b)), t)) => format!("{a},{b}{t}"),
+        Some((None, t)) => format!("{range}{t}"),
+    }))
 }
 
-/// The 1-based line of the mark named by the byte `c` after a `'`: `Some(None)` for a mark that is not set
-/// (or a numbered mark, which ruse does not keep), `None` when `c` names no mark.
+/// The 1-based line of the mark named by the byte `c` after a `'`: `Some(None)` for a mark that is not set,
+/// `None` when `c` names no mark.
 fn mark_line(ws: &Workspace, c: u8, visual: Option<(i64, i64)>) -> Option<Option<i64>> {
     let view = &ws.focused().view;
     let pos = match c {
-        // An uppercase mark is kept with its buffer (#1088).
-        b'a'..=b'z' | b'A'..=b'Z' => view.named_mark(c as char),
+        // An uppercase or numbered mark is kept with its buffer (#1088, #1241).
+        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => view.named_mark(c as char),
         b'<' => return Some(visual.map(|v| v.0)),
         b'>' => return Some(visual.map(|v| v.1)),
         b'[' => view.change_mark_start(),
         b']' => view.change_mark_end(),
         b'.' => view.last_change(),
         b'\'' | b'`' => view.context_mark(),
-        b'0'..=b'9' => None,
         _ => return None,
     };
     let b = ws.focused().doc.bytes();
@@ -367,16 +372,18 @@ fn search_line(
     hit.ok_or_else(|| ExRangeError::PatternNotFound(pat.to_string()))
 }
 
-/// For `:d`, `:y` (each `[x] [count]`), `:j[!] [count]`, `:>`/`:<` `[count]` and the print commands
-/// `:p`/`:l`/`:nu`/`:#` `[count] [flags]` (`:help :d`, `:help :p`): the line in
-/// canonical form, with a count turned into the range of `count` lines from `line2` (clamped to the
-/// buffer, as Vim does) and the register after one space (`2,4d a`). `None` when `tail` is not one of
-/// these commands or has no argument.
+/// For `:d` (and `:dl`/`:dp`, #1241), `:y` (each `[x] [count]`), `:j[!] [count]`, `:>`/`:<` `[count]` and
+/// the print commands `:p`/`:l`/`:nu`/`:#` `[count] [flags]` (`:help :d`, `:help :p`): the command in
+/// canonical form, `{verb}` then the register after one space (`d a`) and the flags, with a `"` comment
+/// dropped (#1240); and, for a count, the range of `count` lines from `line2` (clamped to the buffer, as
+/// Vim does), which replaces the caller's. `None` when `tail` is not one of these commands or has no
+/// argument. A digit is always a count, never a register (`:d2` deletes two lines), because these
+/// commands take a count.
 ///
 /// # Errors
 /// [`ExRangeError::PositiveCount`] for a zero count, [`ExRangeError::Trailing`] for anything after the
 /// register and count.
-fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<String>, ExRangeError> {
+fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<Canonical>, ExRangeError> {
     let (verb, args) = match tail.as_bytes().first() {
         Some(&c @ (b'>' | b'<')) => {
             tail.split_at(tail.find(|x| x != c as char).unwrap_or(tail.len()))
@@ -398,20 +405,22 @@ fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<String>, ExRang
         );
     let takes_register = match verb {
         "d" | "de" | "del" | "dele" | "delet" | "delete" | "y" | "ya" | "yan" | "yank" => true,
+        _ if crate::input::delete_print_flags(verb).is_some() => true,
         "j" | "jo" | "joi" | "join" | "j!" | "jo!" | "joi!" | "join!" => false,
         _ if verb.starts_with(['>', '<']) || prints => false,
         _ => return Ok(None),
     };
-    let mut a = args.trim_start();
+    let mut a = crate::input::comment_free(args).trim();
     if a.is_empty() {
-        return Ok(None);
+        // Nothing but a comment (`:d " why`) is the bare command; nothing at all is the caller's line.
+        return Ok((a.len() != args.len()).then(|| (None, verb.to_string())));
     }
     let mut reg = None;
     if takes_register {
         if let Some(c) = a
             .chars()
             .next()
-            .filter(|c| c.is_ascii_alphabetic() || matches!(c, '"' | '-' | '_' | '*' | '+'))
+            .filter(|c| c.is_ascii_alphabetic() || matches!(c, '-' | '_' | '*' | '+'))
         {
             reg = Some(c);
             a = a[1..].trim_start();
@@ -437,19 +446,19 @@ fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<String>, ExRang
     if !a.is_empty() {
         return Err(ExRangeError::Trailing(a.to_string()));
     }
-    // Without a count the caller keeps its own range, and the parser reads the register.
-    let Some(n) = count else {
-        return Ok(None);
-    };
-    let last = line2.saturating_add(n - 1).min(nlines);
     let reg = reg.map(|c| format!(" {c}")).unwrap_or_default();
     let flags = if flags.is_empty() {
         String::new()
     } else {
         format!(" {flags}")
     };
-    Ok(Some(format!("{line2},{last}{verb}{reg}{flags}")))
+    let range = count.map(|n| (line2, line2.saturating_add(n - 1).min(nlines)));
+    Ok(Some((range, format!("{verb}{reg}{flags}"))))
 }
+
+/// A counted command in canonical form ([`counted`]): the range its count makes, if it has one, and the
+/// command after the range.
+type Canonical = (Option<(i64, i64)>, String);
 
 #[cfg(test)]
 mod tests {
@@ -622,5 +631,44 @@ mod tests {
         assert_eq!(resolve(0, "j x"), Err(ExRangeError::Trailing("x".into())));
         assert_eq!(resolve(0, "> x"), Err(ExRangeError::Trailing("x".into())));
         assert_eq!(resolve(0, "dig"), line("dig"), "another verb is left alone");
+    }
+
+    /// #1240: a digit after a count-taking command is a count, glued on or not, never a register; a `"`
+    /// starts a comment. #1241: `:dl`/`:dp` take a register and a count as `:d` does (nvim v0.12.6).
+    #[test]
+    fn a_digit_is_a_count_and_a_quote_a_comment() {
+        let resolve = |cursor_line: usize, line: &str| {
+            let mut ws = Workspace::new(b"a1\nb2\na3\nb4\na5\n".to_vec());
+            ws.place_focused_cursor(BytePos(cursor_line * 3));
+            resolve_in(&mut ws, line)
+        };
+        let line = |s: &str| Ok(ExRange::Line(s.to_string()));
+        assert_eq!(resolve(0, "d2"), line("1,2d"));
+        assert_eq!(resolve(0, "delete2"), line("1,2delete"));
+        assert_eq!(resolve(0, "d_2"), line("1,2d _"));
+        assert_eq!(resolve(0, "y a2"), line("1,2y a"));
+        assert_eq!(resolve(0, "j2"), line("1,2j"));
+        assert_eq!(resolve(0, "j!3"), line("1,3j!"));
+        assert_eq!(resolve(0, "<2"), line("1,2<"));
+        assert_eq!(resolve(0, "p2"), line("1,2p"));
+        assert_eq!(resolve(0, "#2"), line("1,2#"));
+        assert_eq!(resolve(0, "2;+1d 2"), line("3,4d"));
+        assert_eq!(
+            resolve(0, "d\"2"),
+            line("d"),
+            "a comment, not register `\"`"
+        );
+        assert_eq!(resolve(0, "d \" why"), line("d"));
+        assert_eq!(resolve(0, "3j \" why"), line("3j"));
+        assert_eq!(resolve(0, "d a \" why"), line("d a"));
+        assert_eq!(resolve(0, "d2x"), Err(ExRangeError::Trailing("x".into())));
+        assert_eq!(resolve(0, "dl2"), line("1,2dl"));
+        assert_eq!(resolve(0, "dl a 2"), line("1,2dl a"));
+        assert_eq!(resolve(0, "deletep 2"), line("1,2deletep"));
+        assert_eq!(
+            resolve(0, "dl x y"),
+            Err(ExRangeError::Trailing("y".into()))
+        );
+        assert_eq!(resolve(0, "co2"), line("co2"), "`:co` reads an address");
     }
 }
