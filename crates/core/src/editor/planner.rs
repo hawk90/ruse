@@ -577,7 +577,8 @@ fn search_char_span(
 pub(crate) fn word_search(b: &[u8], cur: usize, whole_word: bool) -> Option<(usize, String)> {
     let Some((s, e)) = motion::word_under_cursor(b, cur) else {
         let (s, e) = motion::cword_under_cursor(b, cur, false)?;
-        let text = std::str::from_utf8(&b[s..e]).ok()?;
+        // A byte that is not UTF-8 is spelled as the regex engine's escape char (#1243).
+        let text = crate::pattern::spell(&b[s..e]);
         // nvim's `nv_ident` escapes `/.*~[^$\` (`?` too for `#`, which its `?` search then unescapes).
         let mut pattern = String::with_capacity(2 * text.len());
         for c in text.chars() {
@@ -588,7 +589,7 @@ pub(crate) fn word_search(b: &[u8], cur: usize, whole_word: bool) -> Option<(usi
         }
         return Some((s, pattern));
     };
-    let word = std::str::from_utf8(&b[s..e]).ok()?;
+    let word = crate::pattern::spell(&b[s..e]);
     // Keyword chars (alnum/`_`/non-ASCII) are regex-safe; `\<…\>` = whole word.
     let pattern = if whole_word {
         format!("\\<{word}\\>")
@@ -1020,9 +1021,14 @@ fn apply_op(
 /// Recase `bytes`, keeping any invalid UTF-8 byte as it is: a file with stray bytes recases its letters
 /// instead of panicking (#706).
 fn recase_bytes(bytes: &[u8], case: WordCase) -> Vec<u8> {
+    recase_bytes_with(bytes, case, recase)
+}
+
+/// [`recase_bytes`] under the case `rules` (Vim's or Emacs's).
+fn recase_bytes_with(bytes: &[u8], case: WordCase, rules: fn(&str, WordCase) -> String) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
     for chunk in bytes.utf8_chunks() {
-        out.extend_from_slice(recase(chunk.valid(), case).as_bytes());
+        out.extend_from_slice(rules(chunk.valid(), case).as_bytes());
         out.extend_from_slice(chunk.invalid());
     }
     out
@@ -2076,9 +2082,8 @@ fn recase_span(
     if e <= s {
         return None;
     }
-    std::str::from_utf8(&b[s..e])
-        .ok()
-        .map(|span| rules(span, case).into_bytes())
+    // A byte that is not UTF-8 is kept as it is, the text around it recased (#706, #1243).
+    Some(recase_bytes_with(&b[s..e], case, rules))
 }
 
 /// Plan a `[count]J` / `[count]gJ` join (nvim's `do_join`). `count` joins `count-1` seams (Vim: `J`/`2J` =
@@ -2116,11 +2121,7 @@ fn plan_join(
     // the latest line part, none after an empty one). An empty line taking part adds nothing, so
     // `a`+``+`b` joins to `a b`, and `foo`+`` to `foo` (#677).
     let mut sum = le > first_ls;
-    let last_two = |s: &[u8]| -> (Option<char>, Option<char>) {
-        let t = std::str::from_utf8(s).unwrap_or("");
-        let mut it = t.chars().rev();
-        (it.next(), it.next())
-    };
+    let last_two = crate::charclass::last_two_chars;
     let (mut end1, mut end2) = if insert_space {
         last_two(&b[first_ls..le])
     } else {
@@ -2154,10 +2155,7 @@ fn plan_join(
         };
         let mut sep: Vec<u8> = Vec::new();
         if insert_space && content < next_le && b[content] != b')' && sum && end1 != Some('\t') {
-            let c0 = std::str::from_utf8(&b[content..next_le])
-                .ok()
-                .and_then(|t| t.chars().next())
-                .unwrap_or('\0');
+            let c0 = crate::charclass::cell_char(b, content).unwrap_or('\0');
             let e1 = end1.unwrap_or('\0');
             let narrow = |c: char| u32::from(c) < 0x100;
             let mbyte_ok = (!fc.has('M') || (narrow(c0) && narrow(e1)))
@@ -2852,9 +2850,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             }
             let nchars = text.chars().filter(|&c| c != '\n').count();
             let le = line_end(b, cur);
-            let end = std::str::from_utf8(&b[cur..le]).map_or(le, |rest| {
-                rest.char_indices().nth(nchars).map_or(le, |(i, _)| cur + i)
-            });
+            // A byte that is not UTF-8 is one char (#1243).
+            let end = (0..nchars).fold(cur, |p, _| if p < le { next_boundary(b, p) } else { le });
             let n = text.len();
             edit(
                 one(Edit::replace(
@@ -4042,18 +4039,14 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 Ok(v) => v,
                 Err(c) => return nop(c, Mode::Normal),
             };
-            match std::str::from_utf8(&b[s..e]) {
-                Ok(text) => {
-                    let new = recase(text, *case).into_bytes();
-                    edit(
-                        one(Edit::replace(BytePos(s), e - s, new)),
-                        s,
-                        Mode::Normal,
-                        hint,
-                    )
-                }
-                Err(_) => nop(s, Mode::Normal),
-            }
+            // A byte that is not UTF-8 is kept as it is (#706, #1243).
+            let new = recase_bytes(&b[s..e], *case);
+            edit(
+                one(Edit::replace(BytePos(s), e - s, new)),
+                s,
+                Mode::Normal,
+                hint,
+            )
         }
         // Visual `r{char}` — overwrite every non-newline char in the selection with `c`, keeping line
         // breaks and the byte length's char count; cursor to the span start, back to Normal. A block fills
@@ -4066,21 +4059,17 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 Ok(v) => v,
                 Err(c) => return nop(c, Mode::Normal),
             };
-            match std::str::from_utf8(&b[s..e]) {
-                Ok(text) => {
-                    let new: String = text
-                        .chars()
-                        .map(|ch| if ch == '\n' { '\n' } else { *c })
-                        .collect();
-                    edit(
-                        one(Edit::replace(BytePos(s), e - s, new.into_bytes())),
-                        s,
-                        Mode::Normal,
-                        hint,
-                    )
-                }
-                Err(_) => nop(s, Mode::Normal),
-            }
+            // A byte that is not UTF-8 is one char (#1243).
+            let new: String = crate::pattern::spell(&b[s..e])
+                .chars()
+                .map(|ch| if ch == '\n' { '\n' } else { *c })
+                .collect();
+            edit(
+                one(Edit::replace(BytePos(s), e - s, new.into_bytes())),
+                s,
+                Mode::Normal,
+                hint,
+            )
         }
         // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
         // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
@@ -4844,9 +4833,6 @@ fn plan_format_lines(
     hint: GroupHint,
 ) -> Plan {
     let b = st.bytes();
-    if std::str::from_utf8(&b[start..end]).is_err() {
-        return nop(cur, Mode::Normal);
-    }
     let lines: Vec<Vec<u8>> = b[start..end]
         .split(|&c| c == b'\n')
         .map(<[u8]>::to_vec)

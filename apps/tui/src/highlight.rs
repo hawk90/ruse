@@ -537,11 +537,12 @@ impl CachedSearch {
         if let Some((_, re)) = &self.compiled {
             // The viewport range is line-aligned (see `nth_line_start`), so a match on any visible line
             // is fully inside it — searching the slice and offsetting is complete for what render paints.
-            if let Ok(hay) = std::str::from_utf8(&bytes[vis.clone()]) {
-                for m in re.find_all(hay) {
-                    self.spans
-                        .push((vis.start + m.start.0, vis.start + m.end.0));
-                }
+            // A byte that is not UTF-8 is one char to the pattern (#1243).
+            let hay = ruse_core::pattern::Hay::new(&bytes[vis.clone()]);
+            for m in re.find_all(hay.as_str()) {
+                let m = hay.to_buf_match(m);
+                self.spans
+                    .push((vis.start + m.start.0, vis.start + m.end.0));
             }
         }
         self.key = Some((doc, rev, visible, pattern.to_string()));

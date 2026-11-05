@@ -184,9 +184,12 @@ pub fn file_info(name: Option<&str>, modified: bool, bytes: &[u8], cursor: ByteP
     format!("\"{name}\"{modflag} {lines} {word} --{pct}%--")
 }
 
-/// Number of Unicode scalar values in `s` (falling back to the byte length for invalid UTF-8).
+/// Number of chars in `s`, a byte that belongs to no valid UTF-8 char counting as one, as nvim counts
+/// them (#1243).
 fn char_count(s: &[u8]) -> usize {
-    std::str::from_utf8(s).map_or(s.len(), |t| t.chars().count())
+    s.utf8_chunks()
+        .map(|c| c.valid().chars().count() + c.invalid().len())
+        .sum()
 }
 
 /// Vim's `col_print`: one number when the byte column and virtual column coincide, else `byte-vcol`.
@@ -461,5 +464,18 @@ mod tests {
         assert_eq!(digraph_name(0x20), Some("SP"));
         assert_eq!(digraph_name('é' as u32), Some("e'"));
         assert_eq!(digraph_name('中' as u32), None); // beyond the curated range.
+    }
+
+    /// #1243: a byte that is not UTF-8 is one char in the `Char` count (nvim v0.12.6: `Char 5 of 8` on
+    /// "a<ff>é<ff>b\nq" at the `b`; a line of two cut bytes and ASCII has as many chars as bytes, so no
+    /// `Char` field). The `Col` vcol field still counts such a byte as one cell where nvim draws `<ff>`.
+    #[test]
+    fn cursor_pos_counts_an_invalid_byte_as_one_char() {
+        let info = cursor_pos_info(b"a\xff\xc3\xa9\xffb\nq\n", BytePos(5), 8);
+        assert!(info.ends_with("Char 5 of 8; Byte 6 of 9"), "{info}");
+        let info = cursor_pos_info(b"\xea\xb0ab\nq\n", BytePos(2), 8);
+        assert!(info.ends_with("Word 1 of 2; Byte 3 of 7"), "{info}");
+        let info = cursor_pos_info(b"x\x80\xcc\x81y z\nq\n", BytePos(4), 8);
+        assert!(info.ends_with("Char 4 of 9; Byte 5 of 10"), "{info}");
     }
 }

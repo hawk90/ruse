@@ -1818,7 +1818,7 @@ impl EditorState {
     /// expose a group-index map). The cursor lands on the start of the last changed line (Vim).
     ///
     /// # Errors
-    /// [`RegexError`] if the pattern is unrepresentable or malformed, or the buffer is not UTF-8.
+    /// [`RegexError`] if the pattern is unrepresentable or malformed.
     pub fn substitute(
         &mut self,
         range: SubRange,
@@ -1880,7 +1880,7 @@ impl EditorState {
     /// why confirm collects the accepted set and applies it in one pass at the end.
     ///
     /// # Errors
-    /// [`RegexError`] if the pattern is unrepresentable/malformed or the buffer is not UTF-8.
+    /// [`RegexError`] if the pattern is unrepresentable/malformed.
     pub fn substitute_preview(
         &self,
         range: SubRange,
@@ -1898,19 +1898,19 @@ impl EditorState {
         let re = crate::pattern::Regex::compile(pattern, opts)?;
 
         let bytes = self.doc.bytes();
-        let hay = std::str::from_utf8(bytes)
-            .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
+        // A byte that is not UTF-8 is one char to the pattern (#1243).
+        let hay = crate::pattern::Hay::new(bytes);
         // (start, end-excluding-newline) per line, without the slot after a final newline, so a zero-width
         // pattern (`^`, `$`, `x*`) never substitutes there (`:%s/^/#/` on "abc\ndef\n" appends no line).
-        let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
+        let lines = line_spans(hay.as_str());
+        let cursor_line = crate::pos::raw::line_of(bytes, self.view.cursor);
         // 1-based inclusive from the user, clamped into range and put in order.
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
 
         let mut out: Vec<Substitution> = Vec::new();
         find_substitutions(
             &re,
-            hay,
+            &hay,
             &lines,
             (first, last),
             flags.global,
@@ -1929,7 +1929,7 @@ impl EditorState {
     /// the frontend echoes `N matches on M lines`.
     ///
     /// # Errors
-    /// [`RegexError`] if the pattern is unrepresentable/malformed or the buffer is not UTF-8.
+    /// [`RegexError`] if the pattern is unrepresentable/malformed.
     pub fn substitute_count(
         &self,
         range: SubRange,
@@ -2018,7 +2018,7 @@ impl EditorState {
     /// runner, which needs the SAME mark set but replays each marked line through the input engine.
     ///
     /// # Errors
-    /// [`RegexError`] if the `:g` pattern is unrepresentable/malformed, or the buffer is not valid UTF-8.
+    /// [`RegexError`] if the `:g` pattern is unrepresentable/malformed.
     pub fn global_marks(
         &self,
         range: SubRange,
@@ -2027,9 +2027,10 @@ impl EditorState {
     ) -> Result<Vec<usize>, RegexError> {
         let opts = self.view.search_options();
         let re = crate::pattern::Regex::compile(pattern, opts)?;
-        let bytes = self.doc.bytes();
-        let hay = std::str::from_utf8(bytes)
-            .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
+        // A byte that is not UTF-8 is one char to the pattern (#1243); the marks are line indices, the
+        // same in the haystack as in the buffer.
+        let buf = crate::pattern::Hay::new(self.doc.bytes());
+        let hay = buf.as_str();
         // `line_spans` has no span for the slot after a final newline, so a `:g`/`:v` never marks or acts on
         // it (visible under a `normal` payload, which would edit it).
         let lines = line_spans(hay);
@@ -2122,8 +2123,7 @@ impl EditorState {
         let marked = marked.to_vec();
         // Re-derive the untouched buffer's line spans for pass 2 (marking above did not mutate the buffer).
         let bytes = self.doc.bytes();
-        let hay = std::str::from_utf8(bytes)
-            .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
+        let hay = bytes;
         let lines = line_spans(hay);
 
         // PASS 2: run the command over the marked lines.
@@ -2144,7 +2144,7 @@ impl EditorState {
                     }
                 }
                 if let Some(r) = ranges.last_mut() {
-                    if r.1 == hay.len() && r.0 > 0 && !hay.ends_with('\n') {
+                    if r.1 == hay.len() && r.0 > 0 && !hay.ends_with(b"\n") {
                         r.0 -= 1;
                     }
                 }
@@ -2196,12 +2196,14 @@ impl EditorState {
                     smart_case: flags.ignore_case.is_none() && opts.smart_case,
                 };
                 let sre = crate::pattern::Regex::compile(sp, sopts)?;
+                let buf = crate::pattern::Hay::new(bytes);
+                let lines = line_spans(buf.as_str());
                 let mut subs: Vec<Substitution> = Vec::new();
                 let mut consumed = None;
                 for &li in &marked {
                     find_substitutions(
                         &sre,
-                        hay,
+                        &buf,
                         &lines,
                         (li, li),
                         flags.global,
@@ -2225,11 +2227,9 @@ impl EditorState {
     /// `:[range]d {x}` — [`EditorState::delete_lines`] into register `reg` (`None` = the unnamed one).
     pub fn delete_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let bytes = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(bytes) else {
-            return 0;
-        };
+        let hay: &[u8] = bytes;
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let (fs, _) = lines[first];
         let (_, le) = lines[last];
@@ -2284,11 +2284,9 @@ impl EditorState {
     /// `:[range]y {x}` — [`EditorState::yank_lines`] into register `reg` (`None` = the unnamed one).
     pub fn yank_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let bytes = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(bytes) else {
-            return 0;
-        };
+        let hay: &[u8] = bytes;
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let (fs, _) = lines[first];
         let (_, le) = lines[last];
@@ -2308,11 +2306,9 @@ impl EditorState {
     /// lines that were joined (0 if there was nothing to join).
     pub fn join_lines(&mut self, range: SubRange, no_space: bool) -> usize {
         let bytes = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(bytes) else {
-            return 0;
-        };
+        let hay: &[u8] = bytes;
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         // Position the cursor at the range's first line so the reused join starts there; the count is the
         // line span, which `plan_join` clamps to `.max(2)` — so a single-line range joins the current line
@@ -2350,11 +2346,9 @@ impl EditorState {
     /// the number of lines in the range.
     pub fn shift_lines(&mut self, range: SubRange, left: bool, levels: u32) -> usize {
         let bytes = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(bytes) else {
-            return 0;
-        };
+        let hay: &[u8] = bytes;
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let count = (last - first + 1) as u32;
         let want = self.view.curswant.clone();
@@ -2373,11 +2367,8 @@ impl EditorState {
         // leaves it on the FIRST). A shift never adds/removes lines, so `last` still names that line;
         // recompute its start against the POST-shift buffer (indent changed the byte offsets).
         let b = self.doc.bytes();
-        if let Ok(hay) = std::str::from_utf8(b) {
-            let lines = line_spans(hay);
-            if let Some(&(last_ls, _)) = lines.get(last) {
-                self.view.cursor = motion::first_non_blank(b, last_ls);
-            }
+        if let Some(&(last_ls, _)) = line_spans(b).get(last) {
+            self.view.cursor = motion::first_non_blank(b, last_ls);
         }
         // `:>` keeps the wanted column (`beginline(BL_SOL | BL_FIX)` under 'nostartofline', #1104).
         self.view.curswant = want;
@@ -2386,13 +2377,14 @@ impl EditorState {
 
     /// `:[range]m {addr}` — move the range's lines to after the destination line, as one undo group.
     /// Returns the number of lines moved, or `None` if the destination lies inside the source (Vim's
-    /// "move lines into themselves") or the buffer is not UTF-8. No range = the cursor's line.
+    /// "move lines into themselves"). No range = the cursor's line.
     pub fn move_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
         self.relocate_lines(range, dest, false)
     }
 
     /// `:[range]t {addr}` / `:copy` — COPY the range's lines to after the destination line (the source
-    /// stays), as one undo group. Returns the number of lines copied, or `None` if the buffer is not UTF-8.
+    /// stays), as one undo group. Returns the number of lines copied, or `None` for a relative destination
+    /// off the buffer.
     pub fn copy_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
         self.relocate_lines(range, dest, true)
     }
@@ -2424,12 +2416,12 @@ impl EditorState {
     /// non-hot ex commands (a surgical minimal-region edit is a possible later optimisation).
     fn relocate_lines(&mut self, range: SubRange, dest: LineAddr, copy: bool) -> Option<usize> {
         let bytes = self.doc.bytes();
-        let hay = std::str::from_utf8(bytes).ok()?;
-        let had_trailing_nl = hay.ends_with('\n');
-        let mut lines: Vec<String> = if hay.is_empty() {
+        let hay: &[u8] = bytes;
+        let had_trailing_nl = hay.ends_with(b"\n");
+        let mut lines: Vec<Vec<u8>> = if hay.is_empty() {
             Vec::new()
         } else {
-            let mut v: Vec<String> = hay.split('\n').map(str::to_string).collect();
+            let mut v: Vec<Vec<u8>> = hay.split(|&c| c == b'\n').map(<[u8]>::to_vec).collect();
             if had_trailing_nl {
                 v.pop(); // drop the empty element after the final '\n'
             }
@@ -2440,7 +2432,7 @@ impl EditorState {
             return Some(0);
         }
         let spans = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
         // `line_spans` counts a phantom empty line after a trailing '\n'; the split/pop `lines` vec does
         // not, so clamp to the vec.
@@ -2458,7 +2450,7 @@ impl EditorState {
             self.view.cursor = self.relocated_cursor(bytes, ls);
             return Some(0);
         }
-        let block: Vec<String> = lines[first..=last].to_vec();
+        let block: Vec<Vec<u8>> = lines[first..=last].to_vec();
         let count = block.len();
         if !copy {
             lines.drain(first..=last);
@@ -2473,11 +2465,10 @@ impl EditorState {
         for (k, line) in block.into_iter().enumerate() {
             lines.insert(adj + k, line);
         }
-        let mut text = lines.join("\n");
-        if had_trailing_nl && !text.is_empty() {
-            text.push('\n');
+        let mut new_bytes = lines.join(&b'\n');
+        if had_trailing_nl && !new_bytes.is_empty() {
+            new_bytes.push(b'\n');
         }
-        let new_bytes = text.into_bytes();
         let ls = crate::pos::raw::nth_line_start(&new_bytes, adj + count - 1).min(new_bytes.len());
         let cursor = self.relocated_cursor(&new_bytes, ls);
 
@@ -2547,7 +2538,7 @@ impl EditorState {
     /// (the bare `:put` default). The cursor lands on the first non-blank of the LAST inserted line
     /// (verified against nvim v0.12.4). `reg` is the register name (`None` = the unnamed register); reading
     /// it reuses the shared [`RegisterStore`], never a new store. Returns the number of lines inserted
-    /// (0 — a no-op leaving the cursor put — if the register is empty or the buffer is not UTF-8).
+    /// (0 — a no-op leaving the cursor put — if the register is empty).
     pub fn put_lines(&mut self, addr: LineAddr, reg: Option<char>) -> usize {
         // Reuse the shared register store: read the named slot's bytes (unnamed when `reg` is None).
         let reg_text = self.view.registers.get(reg).text().to_vec();
@@ -2555,11 +2546,9 @@ impl EditorState {
             return 0;
         }
         let buf = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(buf) else {
-            return 0;
-        };
+        let hay: &[u8] = buf;
         let orig_len = buf.len();
-        let had_trailing_nl = hay.ends_with('\n');
+        let had_trailing_nl = hay.ends_with(b"\n");
         // The lines to insert: split the register text on '\n'. A normalized LINEWISE register ends with a
         // '\n', so drop the empty element it leaves after the final newline. A CHARWISE register with no
         // trailing newline still splits into whole lines — the linewise-forcing rule.
@@ -2632,17 +2621,15 @@ impl EditorState {
     /// The cursor lands on the FIRST non-blank of the FIRST inserted line for a file read (`cursor_on_last =
     /// false`), and of the LAST inserted line for a command read (`cursor_on_last = true`) — a real nvim
     /// v0.12.4 quirk (`:r file` and `:r !cmd` differ), reproduced faithfully. Returns the number of lines
-    /// inserted (0 — a no-op leaving the cursor put — for empty `text` or a non-UTF-8 buffer).
+    /// inserted (0 — a no-op leaving the cursor put — for empty `text`).
     pub fn read_lines(&mut self, addr: LineAddr, text: &[u8], cursor_on_last: bool) -> usize {
         if text.is_empty() {
             return 0;
         }
         let buf = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(buf) else {
-            return 0;
-        };
+        let hay: &[u8] = buf;
         let orig_len = buf.len();
-        let had_trailing_nl = hay.ends_with('\n');
+        let had_trailing_nl = hay.ends_with(b"\n");
         // The lines to insert: split on '\n', dropping the empty element after a final newline so a file that
         // ends in '\n' does not read a spurious blank line (a file with NO final newline keeps its last line).
         let mut ins_lines: Vec<&[u8]> = text.split(|&b| b == b'\n').collect();
@@ -2807,9 +2794,7 @@ impl EditorState {
         let new_ts = new_tabstop.filter(|&n| n > 0).unwrap_or(old_ts);
         let expand = self.view.indent.style == IndentStyle::Space;
         let bytes = self.doc.bytes().to_vec();
-        let Ok(hay) = std::str::from_utf8(&bytes) else {
-            return false;
-        };
+        let hay: &[u8] = &bytes;
         let spans = line_spans(hay);
         if spans.is_empty() {
             self.view.indent.tab_width = new_ts;
@@ -2874,14 +2859,12 @@ impl EditorState {
     /// no-op that never compiles the pattern (Vim returns before reading the arguments).
     pub fn sort_lines(&mut self, range: SubRange, opts: &SortOptions) -> Result<usize, RegexError> {
         let bytes = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(bytes) else {
-            return Ok(0);
-        };
-        let had_trailing_nl = hay.ends_with('\n');
-        let mut lines: Vec<String> = if hay.is_empty() {
+        let hay: &[u8] = bytes;
+        let had_trailing_nl = hay.ends_with(b"\n");
+        let mut lines: Vec<&[u8]> = if hay.is_empty() {
             Vec::new()
         } else {
-            let mut v: Vec<String> = hay.split('\n').map(str::to_string).collect();
+            let mut v: Vec<&[u8]> = hay.split(|&c| c == b'\n').collect();
             if had_trailing_nl {
                 v.pop();
             }
@@ -2891,7 +2874,7 @@ impl EditorState {
             return Ok(0);
         }
         let spans = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
         let last = last.min(lines.len() - 1);
         let first = first.min(last);
@@ -2911,36 +2894,43 @@ impl EditorState {
             )?),
             None => None,
         };
-        // The comparable key for one line, honoring `/pattern/`, `r`, `i`, and `n`.
-        let key_of = |line: &str| -> SortKey {
-            let base: &str = match &compiled {
-                Some(re) => match re.find_at(line, BytePos(0)) {
-                    Some(m) if opts.use_match => &line[m.start.0..m.end.0],
-                    Some(m) => &line[m.end.0..],
-                    None => "",
-                },
+        // The comparable key for one line, honoring `/pattern/`, `r`, `i`, and `n`. A byte that is not
+        // UTF-8 is one char to the pattern (#1243), and text keys compare the line's bytes.
+        let key_of = |line: &[u8]| -> SortKey {
+            let base: &[u8] = match &compiled {
+                Some(re) => {
+                    let lh = crate::pattern::Hay::new(line);
+                    match re
+                        .find_at(lh.as_str(), BytePos(0))
+                        .map(|m| lh.to_buf_match(m))
+                    {
+                        Some(m) if opts.use_match => &line[m.start.0..m.end.0],
+                        Some(m) => &line[m.end.0..],
+                        None => b"",
+                    }
+                }
                 None => line,
             };
             match opts.key {
                 SortKind::Decimal | SortKind::Hex | SortKind::Octal | SortKind::Binary => {
-                    SortKey::Num(first_number(base, opts.key))
+                    SortKey::Num(first_number(&crate::pattern::spell(base), opts.key))
                 }
-                SortKind::Float => SortKey::Float(first_float(base)),
-                SortKind::Locale => SortKey::Locale(base.to_string()),
+                SortKind::Float => SortKey::Float(first_float(&crate::pattern::spell(base))),
+                SortKind::Locale => SortKey::Locale(crate::pattern::spell(base).into_owned()),
                 SortKind::Text if opts.ignore_case => SortKey::Text(base.to_ascii_lowercase()),
-                SortKind::Text => SortKey::Text(base.to_string()),
+                SortKind::Text => SortKey::Text(base.to_vec()),
             }
         };
 
-        let mut keyed: Vec<(SortKey, String)> = lines[first..=last]
+        let mut keyed: Vec<(SortKey, &[u8])> = lines[first..=last]
             .iter()
-            .map(|l| (key_of(l), l.clone()))
+            .map(|&l| (key_of(l), l))
             .collect();
         keyed.sort_by(|a, b| a.0.compare(&b.0)); // stable (Vim breaks ties by line number)
         if opts.reverse {
             keyed.reverse();
         }
-        let mut seg: Vec<String> = keyed.into_iter().map(|(_, l)| l).collect();
+        let mut seg: Vec<&[u8]> = keyed.into_iter().map(|(_, l)| l).collect();
         if opts.unique {
             if opts.ignore_case {
                 seg.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
@@ -2951,11 +2941,10 @@ impl EditorState {
         let removed = (last - first + 1) - seg.len();
         lines.splice(first..=last, seg);
 
-        let mut text = lines.join("\n");
-        if had_trailing_nl && !text.is_empty() {
-            text.push('\n');
+        let mut new_bytes = lines.join(&b'\n');
+        if had_trailing_nl && !new_bytes.is_empty() {
+            new_bytes.push(b'\n');
         }
-        let new_bytes = text.into_bytes();
         let line_start = new_bytes
             .split_inclusive(|&b| b == b'\n')
             .take(first)
@@ -3364,7 +3353,7 @@ pub enum SortKind {
 enum SortKey {
     Num(Option<i64>),
     Float(f64),
-    Text(String),
+    Text(Vec<u8>),
     Locale(String),
 }
 

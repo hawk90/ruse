@@ -937,7 +937,7 @@ pub(crate) fn search_pattern(cmd: &Command) -> Option<String> {
 
 /// All matches of `pattern` in `bytes` as byte spans, for the incsearch/hlsearch reverse-video
 /// highlight (F-009 #1). Uses the default search options (case-sensitive magic — the search default);
-/// an unrepresentable/malformed pattern or a non-UTF-8 buffer highlights nothing (never an error path).
+/// an unrepresentable/malformed pattern highlights nothing (never an error path).
 #[allow(clippy::too_many_arguments)] // the frame render legitimately needs the full view context
 pub(crate) fn render(
     out: &mut io::Stdout,

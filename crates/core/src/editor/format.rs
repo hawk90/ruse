@@ -584,11 +584,9 @@ fn col_at_cell(line: &[u8], want: usize, ts: usize) -> usize {
     line.len()
 }
 
+/// The char at byte `col` of `line`, a byte that is not UTF-8 read as its Latin-1 char (#1243).
 fn char_at(line: &[u8], col: usize) -> Option<char> {
-    std::str::from_utf8(&line[col.min(line.len())..])
-        .ok()
-        .and_then(|s| s.chars().next())
-        .or_else(|| line.get(col).map(|&c| c as char))
+    crate::charclass::cell_char(line, col)
 }
 
 /// Move a position on line `l` at or past `from` by `delta` bytes (a mark following an edit).
@@ -663,10 +661,9 @@ impl FmtBuf {
         let first = &self.lines[l];
         let mut spaces = 0usize;
         if !curr.is_empty() && curr[0] != b')' && !first.is_empty() {
-            let s = std::str::from_utf8(first).unwrap_or("");
-            let mut it = s.chars().rev();
-            let mut end1 = it.next().unwrap_or('\0');
-            let end2 = it.next().unwrap_or('\0');
+            let (end1, end2) = crate::charclass::last_two_chars(first);
+            let mut end1 = end1.unwrap_or('\0');
+            let end2 = end2.unwrap_or('\0');
             let c0 = char_at(curr, 0).unwrap_or('\0');
             let mbyte_ok = (!o.has('M') || (u32::from(c0) < 0x100 && u32::from(end1) < 0x100))
                 && (!o.has('B')
@@ -818,9 +815,10 @@ impl FmtBuf {
         } else {
             0
         };
-        let s = std::str::from_utf8(&line[lead..]).ok()?;
-        let m = re.find_at(s, crate::pos::BytePos(0))?;
-        let end = lead + m.end.0;
+        // A byte that is not UTF-8 is one char to the pattern (#1243).
+        let hay = crate::pattern::Hay::new(&line[lead..]);
+        let m = re.find_at(hay.as_str(), crate::pos::BytePos(0))?;
+        let end = lead + hay.to_buf(m.end.0);
         if end >= line.len() {
             return None;
         }

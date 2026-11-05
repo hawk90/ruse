@@ -21,53 +21,31 @@
 
 use crate::pos::raw::{line_end, nth_line_start};
 
-/// A Word-class byte (alnum + `_` + non-ASCII), mirroring `motion::class`'s `Class::Word`. ruse has no
-/// `iskeyword`; keyword boundaries follow this class everywhere (`*`/`#`/`gd`), so `[i`/`]i` do too.
-fn is_keyword_byte(c: u8) -> bool {
-    c == b'_' || c.is_ascii_alphanumeric() || c >= 0x80
-}
-
 /// Whether `line` contains `kw` as a whole word: an occurrence where Vim's `\<` and `\>` hold
-/// ([`crate::charclass::at_word_start`] / [`crate::charclass::at_word_end`]). A line that is not UTF-8
-/// falls back to byte guards (alnum, `_` and non-ASCII bytes are word bytes).
-fn line_has_keyword(line: &[u8], kw: &[u8]) -> bool {
-    if let (Ok(line), Ok(kw)) = (std::str::from_utf8(line), std::str::from_utf8(kw)) {
-        return !kw.is_empty()
-            && line.match_indices(kw).any(|(i, m)| {
-                crate::charclass::at_word_start(line, i)
-                    && crate::charclass::at_word_end(line, i + m.len())
-            });
-    }
-    if kw.is_empty() || kw.len() > line.len() {
-        return false;
-    }
-    let mut i = 0;
-    while i + kw.len() <= line.len() {
-        if &line[i..i + kw.len()] == kw {
-            let before_ok = i == 0 || !is_keyword_byte(line[i - 1]);
-            let after = i + kw.len();
-            let after_ok = after == line.len() || !is_keyword_byte(line[after]);
-            if before_ok && after_ok {
-                return true;
-            }
-        }
-        i += 1;
-    }
-    false
+/// ([`crate::charclass::at_word_start`] / [`crate::charclass::at_word_end`]). `kw` is spelled as a
+/// pattern ([`crate::pattern::spell`]), and so is the line: a byte that is not UTF-8 is one char with the
+/// class of its Latin-1 char (#1243).
+fn line_has_keyword(line: &[u8], kw: &str) -> bool {
+    let line = crate::pattern::spell(line);
+    !kw.is_empty()
+        && line.match_indices(kw).any(|(i, m)| {
+            crate::charclass::at_word_start(&line, i)
+                && crate::charclass::at_word_end(&line, i + m.len())
+        })
 }
 
-/// The 1-based line numbers (file order) whose line contains `keyword` as a whole word. Empty `keyword`
+/// The 1-based line numbers (file order) whose line contains `keyword` (spelled as a pattern, as
+/// [`crate::Workspace::word_under_cursor`] gives it) as a whole word. Empty `keyword`
 /// yields an empty list. A trailing `\n` does not create a spurious final match (the empty tail can't
 /// match a non-empty keyword).
 pub fn keyword_line_numbers(bytes: &[u8], keyword: &str) -> Vec<usize> {
-    let kw = keyword.as_bytes();
-    if kw.is_empty() {
+    if keyword.is_empty() {
         return Vec::new();
     }
     bytes
         .split(|&b| b == b'\n')
         .enumerate()
-        .filter(|(_, line)| line_has_keyword(line, kw))
+        .filter(|(_, line)| line_has_keyword(line, keyword))
         .map(|(idx, _)| idx + 1)
         .collect()
 }
@@ -193,6 +171,15 @@ mod tests {
             keyword_line_numbers("x API를\nxAPI\n漢API\n".as_bytes(), "API"),
             vec![1, 3]
         );
+    }
+
+    #[test]
+    fn a_byte_that_is_not_utf8_has_its_latin1_class() {
+        // #1243: 0xFF is a keyword char, so `foo<ff>` is no whole-word `foo`; 0x80 is punctuation.
+        let b = b"foo\xff\nfoo\x80\nx\xffy\n";
+        assert_eq!(keyword_line_numbers(b, "foo"), vec![2]);
+        let kw = crate::pattern::spell(b"x\xffy");
+        assert_eq!(keyword_line_numbers(b, &kw), vec![3]);
     }
 
     #[test]

@@ -5732,7 +5732,12 @@ fn sync_special_registers(
         ('%', file),
         ('#', alternate),
     ] {
-        let bytes = value.unwrap_or_default().into_bytes();
+        // A pattern spells a byte that is not UTF-8 as the regex engine's escape char (`*` on such a
+        // word, #1243); `"/` holds the byte itself, as nvim's does.
+        let bytes = match (name, value) {
+            ('/', Some(pat)) => ruse_core::pattern::unspell(&pat).into_owned(),
+            (_, value) => value.unwrap_or_default().into_bytes(),
+        };
         // Compared by text: an empty slot never written reads as an empty one (an empty special register
         // is "not set", E29/E30/E32/E35, whichever way it is empty).
         if ws.registers().get(Some(name)).text() != bytes.as_slice() {

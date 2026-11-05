@@ -49,7 +49,7 @@ pub(crate) fn vim_class(c: char) -> u32 {
 fn class_at(hay: &str, pos: usize) -> u32 {
     match hay[pos..].chars().next() {
         None | Some('\n') => BLANK,
-        Some(c) => vim_class(c),
+        Some(c) => hay_class(c),
     }
 }
 
@@ -58,8 +58,48 @@ fn class_at(hay: &str, pos: usize) -> u32 {
 fn class_before(hay: &str, pos: usize) -> Option<u32> {
     match hay[..pos].chars().next_back() {
         None | Some('\n') => None,
-        Some(c) => Some(vim_class(c)),
+        Some(c) => Some(hay_class(c)),
     }
+}
+
+/// Vim's class of a char of a regex haystack: an escape char ([`crate::pattern::Hay`]) spells a byte that
+/// is not UTF-8, whose class is the Latin-1 char's of its value (nvim's `utf_ptr2char` gives the byte).
+fn hay_class(c: char) -> u32 {
+    vim_class(crate::pattern::escaped_byte(c).map_or(c, char::from))
+}
+
+/// Vim's class of the cell at byte `p` of `b`: its char's, or for a byte that belongs to no valid UTF-8
+/// char, the Latin-1 char's of its value, as nvim's `utf_ptr2char` reads it (#1243): 0xA0 is blank, 0xB5
+/// and 0xC0-0xFF are keyword chars, the other bytes from 0x80 punctuation. `None` past the end.
+pub(crate) fn cell_class(b: &[u8], p: usize) -> Option<u32> {
+    cell_char(b, p).map(vim_class)
+}
+
+/// The last two chars of `s` as [`cell_char`] reads them, the last first (nvim's `endcurr1`/`endcurr2`).
+pub(crate) fn last_two_chars(s: &[u8]) -> (Option<char>, Option<char>) {
+    let last = (!s.is_empty()).then(|| crate::motion::prev_boundary(s, s.len()));
+    let before = last
+        .filter(|&p| p > 0)
+        .map(|p| crate::motion::prev_boundary(s, p));
+    (
+        last.and_then(|p| cell_char(s, p)),
+        before.and_then(|p| cell_char(s, p)),
+    )
+}
+
+/// The char of the cell at byte `p` of `b` as Vim's classes read it: the UTF-8 char there, or the Latin-1
+/// char of a byte that belongs to no valid char. `None` past the end. `p` is a char boundary.
+pub(crate) fn cell_char(b: &[u8], p: usize) -> Option<char> {
+    let lead = *b.get(p)?;
+    if lead < 0x80 {
+        return Some(char::from(lead));
+    }
+    Some(
+        crate::motion::char_len_at(b, p)
+            .and_then(|w| std::str::from_utf8(&b[p..p + w]).ok())
+            .and_then(|s| s.chars().next())
+            .unwrap_or(char::from(lead)),
+    )
 }
 
 /// Vim's `\<` at byte `pos` (`nfa_regmatch` NFA_BOW): the character there is a word character and

@@ -521,10 +521,13 @@ pub(crate) fn snap(b: &[u8], pos: usize) -> usize {
 // (`line_start`/`line_end`) read unchanged.
 pub(crate) use crate::pos::raw::{line_end, line_start};
 
+/// The char column of `pos` on the line starting at `start`: how many chars lie before it, a byte that
+/// belongs to no valid UTF-8 char counting as one (#1243), as [`at_col`] steps them.
 pub(crate) fn col_of(b: &[u8], start: usize, pos: usize) -> usize {
-    std::str::from_utf8(&b[start..pos])
-        .map(|s| s.chars().count())
-        .unwrap_or(0)
+    b[start..pos]
+        .utf8_chunks()
+        .map(|c| c.valid().chars().count() + c.invalid().len())
+        .sum()
 }
 
 pub(crate) fn at_col(b: &[u8], start: usize, col: usize) -> usize {
@@ -590,7 +593,8 @@ fn class(c: u8) -> Class {
 /// Vim `cls()` of the char at byte `p`: 0 for a blank (a line break and the buffer end included), else
 /// its Vim class ([`crate::charclass::vim_class`]: 1 punctuation, 2 word, 3 emoji, a per-script value), or 1
 /// for any non-blank when `big`. A combining mark or the rest of a cluster is never asked: callers step by
-/// grapheme cluster, so `p` is a cluster's first char. A byte that is not UTF-8 counts as a word char.
+/// grapheme cluster, so `p` is a cluster's first char. A byte that is not UTF-8 has the class of the
+/// Latin-1 char of its value ([`crate::charclass::cell_class`], #1243).
 pub(crate) fn char_cls(b: &[u8], p: usize, big: bool) -> u32 {
     use crate::charclass::{vim_class, WORD};
     let Some(&lead) = b.get(p) else {
@@ -599,11 +603,7 @@ pub(crate) fn char_cls(b: &[u8], p: usize, big: bool) -> u32 {
     let class = if lead < 0x80 {
         vim_class(char::from(lead))
     } else {
-        let end = next_boundary(b, p);
-        std::str::from_utf8(&b[p..end])
-            .ok()
-            .and_then(|s| s.chars().next())
-            .map_or(WORD, vim_class)
+        crate::charclass::cell_class(b, p).unwrap_or(WORD)
     };
     match class {
         _ if lead == b'\n' => 0,
@@ -903,54 +903,37 @@ fn inner_word_span(b: &[u8], cur: usize, big: bool) -> (usize, usize) {
 /// ([`crate::charclass::vim_class`]), so "API를" holds two keywords, "API" and "를", as for nvim (#745).
 /// Returns `None` when the current line has no keyword at or after the cursor.
 pub(crate) fn word_under_cursor(b: &[u8], cur: usize) -> Option<(usize, usize)> {
-    use crate::charclass::{vim_class, WORD};
+    use crate::charclass::{cell_class, WORD};
     if b.is_empty() {
         return None;
     }
-    let i = cur.min(b.len() - 1);
-    let (ls, le) = (line_start(b, i), line_end(b, i));
-    let Ok(line) = std::str::from_utf8(&b[ls..le]) else {
-        return byte_word_under_cursor(b, i);
-    };
-    let mut col = (i - ls).min(line.len());
-    while !line.is_char_boundary(col) {
-        col -= 1;
-    }
-    // 1. The first keyword character at or after the cursor.
-    let (off, c) = line[col..]
-        .char_indices()
-        .find(|&(_, c)| vim_class(c) >= WORD)?;
-    let this = vim_class(c);
-    let at = col + off;
-    // 2. Back to the start of the run of that class, 3. on to its end.
-    let start = line[..at]
-        .char_indices()
-        .rev()
-        .take_while(|&(_, c)| vim_class(c) == this)
-        .last()
-        .map_or(at, |(j, _)| j);
-    let end = line[at..]
-        .char_indices()
-        .find(|&(_, c)| vim_class(c) != this)
-        .map_or(line.len(), |(j, _)| at + j);
-    Some((ls + start, ls + end))
-}
-
-/// [`word_under_cursor`] on a line that is not UTF-8: a keyword is a run of alnum, `_` and non-ASCII
-/// bytes.
-fn byte_word_under_cursor(b: &[u8], cur: usize) -> Option<(usize, usize)> {
-    let mut i = cur;
-    if class(b[i]) != Class::Word {
-        // Not on a keyword — scan forward on the current line for the next one (Vim `*`).
-        let le = line_end(b, i);
-        while i < le && class(b[i]) != Class::Word {
-            i += 1;
+    // The chars of the line, a byte that is not UTF-8 one char with its Latin-1 class (#1243).
+    let class = |p: usize| {
+        if at_nul(b, p) {
+            0
+        } else {
+            cell_class(b, p).unwrap_or(0)
         }
-        if i >= le || class(b[i]) != Class::Word {
+    };
+    // 1. The first keyword char at or after the cursor, on its line.
+    let mut at = snap(b, cur.min(b.len() - 1));
+    while class(at) < WORD {
+        if at_nul(b, at) {
             return None;
         }
+        at = next_boundary(b, at);
     }
-    Some(inner_word_span(b, i, false))
+    let this = class(at);
+    // 2. Back to the start of the run of that class, 3. on to its end.
+    let mut start = at;
+    while !at_bol(b, start) && class(prev_boundary(b, start)) == this {
+        start = prev_boundary(b, start);
+    }
+    let mut end = at;
+    while !at_nul(b, end) && class(end) == this {
+        end = next_boundary(b, end);
+    }
+    Some((start, end))
 }
 
 /// The `<cword>` (`big == false`) or `<cWORD>` (`big == true`) span under the cursor — the buffer text
@@ -1005,23 +988,66 @@ pub(crate) fn cword_under_cursor(b: &[u8], cur: usize, big: bool) -> Option<(usi
 /// caret is not keyword-class or the caret is at a line/buffer start). A keyword is a run of grapheme
 /// clusters of one Vim class of 2 or more ([`crate::charclass::vim_class`]), as nvim's
 /// `get_normal_compl_info` reads it, so the base of "API를" is "를" (#1136).
-pub(crate) fn keyword_before_cursor(b: &[u8], cur: usize) -> (usize, &str) {
+pub(crate) fn keyword_before_cursor(b: &[u8], cur: usize) -> (usize, &[u8]) {
     let cur = cur.min(b.len());
-    let ls = line_start(b, cur);
-    let Ok(line) = std::str::from_utf8(&b[ls..cur]) else {
-        return byte_keyword_before_cursor(b, cur);
-    };
+    let steps = Steps::new(b);
     let mut start = cur;
     let mut class = None;
-    for (i, g) in line.grapheme_indices(true).rev() {
-        let k = keyword_class(g);
+    while !at_bol(b, start) {
+        let p = steps.prev(start);
+        let k = cluster_class(b, p);
         if k < crate::charclass::WORD || class.is_some_and(|c| c != k) {
             break;
         }
         class = Some(k);
-        start = ls + i;
+        start = p;
     }
-    (start, &line[start - ls..])
+    (start, &b[start..cur])
+}
+
+/// The Vim class of the grapheme cluster at `p` (its first char's, a byte that is not UTF-8 by its
+/// Latin-1 char, #1243), 0 for a line break or the buffer end.
+fn cluster_class(b: &[u8], p: usize) -> u32 {
+    if at_nul(b, p) {
+        return 0;
+    }
+    crate::charclass::cell_class(b, p).unwrap_or(0)
+}
+
+/// Every keyword in `b` as `(start, text)`, in positional order: runs of grapheme clusters of one Vim
+/// class of 2 or more (nvim `find_word_end`); a byte that is not UTF-8 is a cluster of its own with the
+/// class of its Latin-1 char (#1243).
+fn keyword_runs(b: &[u8]) -> Vec<(usize, &[u8])> {
+    let mut runs: Vec<(usize, &[u8])> = Vec::new();
+    let mut open: Option<(usize, u32)> = None;
+    let mut push = |i: usize, k: u32, open: &mut Option<(usize, u32)>| {
+        if let Some((s, c)) = *open {
+            if c == k {
+                return;
+            }
+            runs.push((s, &b[s..i]));
+            *open = None;
+        }
+        if k >= crate::charclass::WORD {
+            *open = Some((i, k));
+        }
+    };
+    if let Ok(text) = std::str::from_utf8(b) {
+        for (i, g) in text.grapheme_indices(true) {
+            push(i, keyword_class(g), &mut open);
+        }
+    } else {
+        let steps = Steps::new(b);
+        let mut i = 0;
+        while i < b.len() {
+            push(i, cluster_class(b, i), &mut open);
+            i = steps.next(i);
+        }
+    }
+    if let Some((s, _)) = open {
+        runs.push((s, &b[s..]));
+    }
+    runs
 }
 
 /// The Vim class of a grapheme cluster (its first char's), 0 for a line break.
@@ -1032,56 +1058,6 @@ fn keyword_class(g: &str) -> u32 {
     }
 }
 
-/// [`keyword_before_cursor`] for a line that is not UTF-8: a run of word-class bytes.
-fn byte_keyword_before_cursor(b: &[u8], cur: usize) -> (usize, &str) {
-    let mut s = cur;
-    while s > 0 && class(b[s - 1]) == Class::Word {
-        s -= 1;
-    }
-    (s, std::str::from_utf8(&b[s..cur]).unwrap_or(""))
-}
-
-/// Every keyword in `b` as `(start, text)`, in positional order: runs of grapheme clusters of one Vim
-/// class of 2 or more (nvim `find_word_end`); a buffer that is not UTF-8 falls back to word-class bytes.
-fn keyword_runs(b: &[u8]) -> Vec<(usize, &str)> {
-    let mut runs: Vec<(usize, &str)> = Vec::new();
-    let Ok(text) = std::str::from_utf8(b) else {
-        let mut i = 0;
-        while i < b.len() {
-            if class(b[i]) == Class::Word {
-                let s = i;
-                while i < b.len() && class(b[i]) == Class::Word {
-                    i += 1;
-                }
-                if let Ok(t) = std::str::from_utf8(&b[s..i]) {
-                    runs.push((s, t));
-                }
-            } else {
-                i += 1;
-            }
-        }
-        return runs;
-    };
-    let mut open: Option<(usize, u32)> = None;
-    for (i, g) in text.grapheme_indices(true) {
-        let k = keyword_class(g);
-        if let Some((s, c)) = open {
-            if c == k {
-                continue;
-            }
-            runs.push((s, &text[s..i]));
-            open = None;
-        }
-        if k >= crate::charclass::WORD {
-            open = Some((i, k));
-        }
-    }
-    if let Some((s, _)) = open {
-        runs.push((s, &text[s..]));
-    }
-    runs
-}
-
 /// The current-buffer keyword-completion candidates for `i_CTRL-N` / `i_CTRL-P` (F-003), in Vim's scan
 /// order. `base` is [`keyword_before_cursor`]'s text; the result is every keyword in the buffer that
 /// STARTS WITH `base`, ordered forward from the caret to end-of-buffer then wrapping from the buffer
@@ -1090,7 +1066,7 @@ fn keyword_runs(b: &[u8]) -> Vec<(usize, &str)> {
 /// `noignorecase`; the 'ignorecase'/'infercase' interaction is out of scope for this slice). C-P walks
 /// this same list backward — the caller cycles the index, so only one order is built. Verified against
 /// nvim v0.12.4.
-pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &str) -> Vec<String> {
+pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &[u8]) -> Vec<String> {
     // The run under construction begins here; it is never offered as its own candidate. Only meaningful
     // when `base` is non-empty (an empty base sits after a non-word char, so no run starts at the caret).
     let base_start = cur.saturating_sub(base.len());
@@ -1101,7 +1077,7 @@ pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &str) -> Vec<Strin
         .filter(|(s, _)| *s >= cur)
         .chain(runs.iter().filter(|(s, _)| *s < cur));
     let mut out: Vec<String> = Vec::new();
-    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
     for (s, t) in ordered {
         if !base.is_empty() && *s == base_start {
             continue; // the word being typed — never its own candidate
@@ -1109,8 +1085,12 @@ pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &str) -> Vec<Strin
         if !t.starts_with(base) {
             continue;
         }
-        if seen.insert(t) {
-            out.push((*t).to_string());
+        // KNOWN GAP: a keyword holding a byte that is not UTF-8 is not offered (nvim offers it); the
+        // candidates travel to the input engine as text.
+        if let Ok(text) = std::str::from_utf8(t) {
+            if seen.insert(t) {
+                out.push(text.to_string());
+            }
         }
     }
     out
@@ -3766,5 +3746,45 @@ mod find_char_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod invalid_byte_tests {
+    //! #1243: a byte that belongs to no valid UTF-8 char is one char, with the class of the Latin-1 char of
+    //! its value (0xA0 blank, 0xB5 and 0xC0-0xFF keyword, the rest punctuation), for the column count and
+    //! the keyword lookups, as nvim v0.12.6 reads it.
+    use super::{col_of, keyword_before_cursor, keyword_completions, word_under_cursor};
+
+    #[test]
+    fn col_of_counts_each_invalid_byte_as_a_char() {
+        assert_eq!(col_of(b"a\xff\xc3\xa9\xffb", 0, 6), 5);
+        assert_eq!(col_of(b"\xea\xb0ab", 0, 2), 2);
+        assert_eq!(col_of(b"x\x80\xcc\x81y", 0, 4), 3);
+        assert_eq!(col_of("한글".as_bytes(), 0, 6), 2);
+    }
+
+    #[test]
+    fn word_under_cursor_reads_the_latin1_class() {
+        // 0xFF is a keyword char: it joins the ASCII letters around it.
+        assert_eq!(word_under_cursor(b"foo\xffbar x", 0), Some((0, 7)));
+        // 0x80 is punctuation: it ends the word, and a cursor on it finds the next one.
+        assert_eq!(word_under_cursor(b"ab\x80cd", 0), Some((0, 2)));
+        assert_eq!(word_under_cursor(b"\x80ab ab", 0), Some((1, 3)));
+        // A cut sequence: its lead 0xE9 is a keyword char, its 0xB0 punctuation.
+        assert_eq!(word_under_cursor(b"\xe9\xb0ab", 0), Some((0, 1)));
+        assert_eq!(word_under_cursor(b"\x80 \xa0", 0), None);
+    }
+
+    #[test]
+    fn keyword_before_cursor_reads_the_latin1_class() {
+        assert_eq!(
+            keyword_before_cursor(b"x foo\xffba", 9),
+            (2, &b"foo\xffba"[..])
+        );
+        assert_eq!(keyword_before_cursor(b"foo\x80ba", 6), (4, &b"ba"[..]));
+        // Candidates split at 0x80; one holding a byte that is not UTF-8 is not offered (a known gap).
+        let b = b"foo\x80bar fo\xffx food\nfo";
+        assert_eq!(keyword_completions(b, b.len(), b"fo"), vec!["foo", "food"]);
     }
 }

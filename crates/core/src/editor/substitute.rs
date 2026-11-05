@@ -166,7 +166,7 @@ pub(crate) fn line_spans<B: AsRef<[u8]> + ?Sized>(hay: &B) -> Vec<(usize, usize)
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn find_substitutions(
     re: &Regex,
-    hay: &str,
+    buf: &crate::pattern::Hay<'_>,
     lines: &[(usize, usize)],
     (first, last): (usize, usize),
     global: bool,
@@ -174,6 +174,21 @@ pub(crate) fn find_substitutions(
     consumed: &mut Option<usize>,
     out: &mut Vec<Substitution>,
 ) {
+    // The search runs on the haystack (`lines` are its lines, `consumed` its offset); each substitution is
+    // pushed in buffer offsets, a byte that is not UTF-8 written back as itself (#1243).
+    let hay = buf.as_str();
+    let mut push = |start: usize, end: usize, replacement: Vec<u8>, line: usize| {
+        let replacement = match std::str::from_utf8(&replacement) {
+            Ok(text) => crate::pattern::unspell(text).into_owned(),
+            Err(_) => replacement,
+        };
+        out.push(Substitution {
+            start: BytePos(buf.to_buf(start)),
+            end: BytePos(buf.to_buf(end)),
+            replacement,
+            line,
+        });
+    };
     if !re.multiline() {
         for (li, &(ls, le)) in lines.iter().enumerate().take(last + 1).skip(first) {
             // CTRL-C stops the scan; the matches found so far are still substituted, as in nvim.
@@ -187,12 +202,12 @@ pub(crate) fn find_substitutions(
                 re.find_at(line, BytePos(0)).into_iter().collect()
             };
             for m in matches {
-                out.push(Substitution {
-                    start: BytePos(ls + m.start.0),
-                    end: BytePos(ls + m.end.0),
-                    replacement: expand_replacement(replacement, &line[m.start.0..m.end.0]),
-                    line: li,
-                });
+                push(
+                    ls + m.start.0,
+                    ls + m.end.0,
+                    expand_replacement(replacement, &line[m.start.0..m.end.0]),
+                    li,
+                );
             }
         }
         return;
@@ -258,12 +273,12 @@ pub(crate) fn find_substitutions(
                 prev_end = Some(col);
                 // A match through the last line break replaces up to it; the break stays.
                 stop = m.end.0 >= n;
-                out.push(Substitution {
-                    start: BytePos(m.start.0),
-                    end: BytePos(m.end.0.min(n - 1).max(m.start.0)),
-                    replacement: expand_replacement(replacement, &hay[m.start.0..m.end.0]),
-                    line: group,
-                });
+                push(
+                    m.start.0,
+                    m.end.0.min(n - 1).max(m.start.0),
+                    expand_replacement(replacement, &hay[m.start.0..m.end.0]),
+                    group,
+                );
                 let end_line = line_of(m.end.0);
                 if end_line > cur {
                     cur = end_line;

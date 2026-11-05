@@ -687,7 +687,7 @@ impl Workspace {
     /// placement helpers.
     ///
     /// # Errors
-    /// [`RegexError`] if the `:g` pattern is unrepresentable/malformed, or the buffer is not valid UTF-8.
+    /// [`RegexError`] if the `:g` pattern is unrepresentable/malformed.
     pub fn global_marks(
         &mut self,
         range: SubRange,
@@ -1288,13 +1288,14 @@ impl Workspace {
     }
 
     /// The keyword under (or forward-on-line from) the focused cursor — the pattern source for Vim `*`/`#`.
-    /// `None` when the current line has no keyword at/after the cursor.
+    /// `None` when the current line has no keyword at/after the cursor. A byte that is not UTF-8 is
+    /// spelled as the regex engine's escape char ([`crate::pattern::spell`]), so the text is a pattern.
     #[must_use]
     pub fn word_under_cursor(&self) -> Option<String> {
         let pane = self.focused();
         let b = pane.doc.bytes();
         let (s, e) = crate::motion::word_under_cursor(b, pane.view.cursor().0)?;
-        std::str::from_utf8(&b[s..e]).ok().map(str::to_string)
+        Some(crate::pattern::spell(&b[s..e]).into_owned())
     }
 
     /// The `<cword>` under the focused caret — the keyword (or, failing that, non-blank run) Vim's
@@ -1324,8 +1325,8 @@ impl Workspace {
     /// (the engine has no buffer). Returns `None` when there is no such line, or the adjacent line has no
     /// character at that column (a Vim no-op / bell — verified against nvim v0.12.4).
     ///
-    /// Column here is the count of CHARACTERS (Unicode scalar values) before the caret on the current
-    /// line. This equals Vim's display/virtual column for plain single-width, TAB-free text — the cases
+    /// Column here is the count of CHARACTERS (Unicode scalar values, a byte that is not UTF-8 one char)
+    /// before the caret on the current line. This equals Vim's display/virtual column for plain single-width, TAB-free text — the cases
     /// this slice targets and tests. TABs and wide (2-cell) characters are NOT virtual-column-mapped yet,
     /// so a caret past a TAB (or a wide char on the adjacent line) can diverge from Vim; that refinement
     /// is deferred (documented caveat).
@@ -1335,15 +1336,21 @@ impl Workspace {
         let b = pane.doc.bytes();
         let cur = pane.view.cursor().0;
         // Char column of the caret on the current line.
+        // A byte that is not UTF-8 is one char (#1243).
         let ls = crate::pos::raw::line_start(b, cur);
-        let col = std::str::from_utf8(b.get(ls..cur)?).ok()?.chars().count();
+        let col = crate::motion::col_of(b, ls, cur.min(b.len()));
         // The adjacent row. `checked_sub` guards "no line above" on the first line; a row past the last
         // line resolves to an empty slice below, which yields no char (so "no line below" also → None).
         let row = crate::pos::raw::line_of(b, cur);
         let target = if above { row.checked_sub(1)? } else { row + 1 };
         let ts = crate::pos::raw::nth_line_start(b, target);
-        let te = crate::pos::raw::line_end(b, ts);
-        std::str::from_utf8(b.get(ts..te)?).ok()?.chars().nth(col)
+        let at = crate::motion::at_col(b, ts, col);
+        if at >= crate::pos::raw::line_end(b, ts) {
+            return None;
+        }
+        // KNOWN GAP: a byte that is not UTF-8 there is not copied (nvim copies it); the engine takes a char.
+        let w = crate::motion::char_len_at(b, at)?;
+        std::str::from_utf8(&b[at..at + w]).ok()?.chars().next()
     }
 
     /// Insert-mode keyword completion source for `i_CTRL-N` / `i_CTRL-P` (F-003, current-buffer only).
@@ -1359,9 +1366,10 @@ impl Workspace {
         let b = pane.doc.bytes();
         let cur = pane.view.cursor().0;
         let (_, base) = crate::motion::keyword_before_cursor(b, cur);
-        let base = base.to_string();
-        let cands = crate::motion::keyword_completions(b, cur, &base);
-        (base, cands)
+        let cands = crate::motion::keyword_completions(b, cur, base);
+        // A base holding a byte that is not UTF-8 has no candidates (as in nvim), so its lossy text is
+        // never replaced.
+        (String::from_utf8_lossy(base).into_owned(), cands)
     }
 
     /// Insert-mode WHOLE-LINE completion source for `i_CTRL-X CTRL-L` (F-003, current-buffer only).

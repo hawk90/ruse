@@ -53,18 +53,17 @@ pub(crate) fn walk_count(
 }
 
 /// Every match a `/` or `?` search can land on, as `(start, end)` byte spans (end exclusive), in
-/// document order: [`pattern::Regex::search_all`], empty matches included. Invalid UTF-8 or an
-/// unrepresentable/malformed pattern yields an empty list.
+/// document order: [`pattern::Regex::search_all`], empty matches included. A byte that is not UTF-8 is
+/// one char to the pattern ([`pattern::Hay`], #1243). An unrepresentable/malformed pattern yields an
+/// empty list.
 pub(crate) fn search_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> Vec<(usize, usize)> {
-    let Ok(hay) = std::str::from_utf8(b) else {
-        return Vec::new();
-    };
     let Ok(re) = pattern::Regex::compile(pattern, opts) else {
         return Vec::new();
     };
-    re.search_all(hay)
+    let hay = pattern::Hay::new(b);
+    re.search_all(hay.as_str())
         .into_iter()
-        .map(|m| (m.start.0, m.end.0))
+        .map(|m| (hay.to_buf(m.start.0), hay.to_buf(m.end.0)))
         .collect()
 }
 
