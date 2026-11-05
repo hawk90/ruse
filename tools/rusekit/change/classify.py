@@ -26,6 +26,8 @@ class Classification:
     reasons: list[tuple[str, str, str]] = field(default_factory=list)  # (file, kind, why)
     notes: list[str] = field(default_factory=list)
     generated_hits: list[str] = field(default_factory=list)
+    # (file, contracts.* flag, why): paths that suggest a stability-boundary flag (contract_triggers)
+    flag_hits: list[tuple[str, str, str]] = field(default_factory=list)
     n_files: int = 0
     source: str = "none"
 
@@ -53,6 +55,7 @@ def classify_changeset(files: list[str], declared_kind: str | None,
     kinds = policy.get("kinds") or {}
     triggers = policy.get("path_triggers") or []
     human = policy.get("human_judgment") or []
+    flag_triggers = policy.get("contract_triggers") or []
     marker = policy.get("generated_marker")
 
     def risk_of(kind: str) -> int:
@@ -63,8 +66,12 @@ def classify_changeset(files: list[str], declared_kind: str | None,
     reasons: list[tuple[str, str, str]] = []
     notes: list[str] = []
     generated: list[str] = []
+    flag_hits: list[tuple[str, str, str]] = []
 
     for f in files:
+        for t in flag_triggers:
+            if re.search(t["pattern"], f):
+                flag_hits.append((f, t["flag"], t.get("reason", "")))
         # generated-file guard
         if marker and os.path.isfile(repo.path(f)) and marker in _head(f):
             generated.append(f)
@@ -92,6 +99,7 @@ def classify_changeset(files: list[str], declared_kind: str | None,
         reasons=reasons,
         notes=notes,
         generated_hits=generated,
+        flag_hits=flag_hits,
         n_files=len(files),
         source=source,
     )
@@ -112,6 +120,11 @@ def _report(cl: Classification) -> None:
         render.heading("\nHuman judgment")
         for n in cl.notes:
             render.bullet(n)
+    if cl.flag_hits:
+        render.heading("\nStability boundary (set the flag if the change alters it)")
+        for f, flag, why in cl.flag_hits:
+            render.bullet(f"{f}  →  contracts.{flag}  ({why}; "
+                          f"`change set --{flag.replace('_', '-')}`)")
     if cl.generated_hits:
         render.heading("\nGenerated files edited (forbidden — regenerate instead)")
         for g in cl.generated_hits:

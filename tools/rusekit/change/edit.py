@@ -12,6 +12,12 @@ editors and sandboxed agents cannot write, so every field an author normally fil
   --non-goal TEXT      non_goals entry          (repeatable)
   --rfc ID             artifacts.rfc            (scalar: replaces)
   --decision ID        artifacts.decision       (scalar: replaces)
+  --persistent-format  contracts.persistent_format = true (`--no-persistent-format` sets false): the
+                       change alters a stored format (the journal, a save format)
+  --protocol           contracts.protocol (plugin/remote protocol), `--no-protocol`
+  --public-api         contracts.public_api, `--no-public-api`
+  --migration REF      artifacts.migration: where the migration of old data is decided or done (an RFC
+                       section, a D-*, a PR); `--migration none` records that none is needed
 
 List flags APPEND to what the contract already holds (duplicates are skipped); `change set --replace`
 makes each list flag given REPLACE its list instead. Scalars always replace.
@@ -37,6 +43,11 @@ from rusekit import contract, render, repo  # noqa: E402
 SPEC_REF_SECTIONS = (("CAP-", "capabilities"), ("INV-", "invariants"), ("F-", "requirements"),
                      ("C-", "requirements"), ("D-", "decisions"))
 
+# contracts.* booleans (a true one holds the change to kind `contract`), and what each one guards
+CONTRACT_FLAGS = {"persistent_format": "a stored on-disk format (the journal, a save format)",
+                  "protocol": "the plugin or remote protocol",
+                  "public_api": "a public API"}
+
 # (section or None for top level, key) for each list flag
 LIST_FIELDS = {"allow": (None, "allow_paths"), "forbid": (None, "forbid_paths"),
                "non_goal": (None, "non_goals")}
@@ -57,6 +68,13 @@ def add_arguments(ap: argparse.ArgumentParser, *, with_kind: bool = True) -> Non
                     help="non_goals entry (repeatable)")
     ap.add_argument("--rfc", metavar="ID", help="artifacts.rfc (e.g. RFC-0021)")
     ap.add_argument("--decision", metavar="ID", help="artifacts.decision (e.g. D-062)")
+    for flag, what in CONTRACT_FLAGS.items():
+        ap.add_argument(f"--{flag.replace('_', '-')}", dest=flag,
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help=f"contracts.{flag}: the change alters {what}")
+    ap.add_argument("--migration", metavar="REF",
+                    help="artifacts.migration: where old data's migration is decided "
+                         "(e.g. \"RFC-0023 §3\"), or `none` when no migration is needed")
 
 
 def spec_section(ref: str) -> str | None:
@@ -185,6 +203,18 @@ def apply(text: str, args, *, replace: bool = False) -> tuple[str, list[str]]:
         if v is not None:
             put("artifacts", key, v)
             changes.append(f"artifacts.{key} = {v}")
+    for flag in CONTRACT_FLAGS:
+        v = getattr(args, flag, None)
+        if v is not None:
+            put("contracts", flag, v)
+            changes.append(f"contracts.{flag} = {str(v).lower()}")
+    mig = getattr(args, "migration", None)
+    if mig is not None:
+        mig = mig.strip()
+        if not mig:
+            raise ValueError("--migration: give a reference (an RFC section, D-*, PR) or `none`")
+        put("artifacts", "migration", mig)
+        changes.append(f"artifacts.migration = {mig}")
     kind = getattr(args, "kind", None)
     if kind:
         put(None, "kind", kind)

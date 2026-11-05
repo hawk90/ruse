@@ -88,6 +88,15 @@ path_triggers:
   - { pattern: '^tools/',                      min_kind: implementation, reason: tooling source }
   - { pattern: '\.rs$',                        min_kind: implementation, reason: rust source }
 
+# contract_triggers — touching a matching path suggests a `contracts.*` flag (#1204). The diff cannot tell a
+# format change from a refactor of the code that reads it, so this is a WARNING when the flag is not set,
+# never a floor; a contract that sets the flag is held to `min_kind: contract` (see `pr check`).
+contract_triggers:
+  - { pattern: '^spec/contracts/persistence-format\.yaml$', flag: persistent_format, reason: persistence format contract }
+  - { pattern: '^apps/tui/src/persist/(rj01|rjs0)\.rs$',    flag: persistent_format, reason: journal record format }
+  - { pattern: '^spec/contracts/plugin-protocol\.yaml$',    flag: protocol,          reason: plugin protocol contract }
+  - { pattern: '^spec/contracts/remote-runtime\.yaml$',     flag: protocol,          reason: remote runtime protocol contract }
+
 # human_judgment — matched paths get a WARNING (not a floor) telling the human to decide the
 # real kind. This is where the tool refuses to pretend it can read intent.
 human_judgment:

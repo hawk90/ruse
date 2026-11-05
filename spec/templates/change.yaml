@@ -24,7 +24,8 @@ affected:
   decisions: []               # D-*
   crates: []                  # core | plugin-protocol | render-model | terminal-platform | workspace | workspace-runtime
 
-# contracts — does this cross a stability boundary? (any true ⇒ kind is at least `contract`)
+# contracts — does this cross a stability boundary? (any true ⇒ kind is at least `contract`; set with
+# `change set --persistent-format` / `--protocol` / `--public-api`, enforced by `pr check`)
 contracts:
   public_api: false
   protocol: false
@@ -35,7 +36,7 @@ artifacts:
   issue: "<id>"
   rfc: null                   # RFC-#### when kind is architecture/contract
   decision: null              # D-### when hard to reverse
-  migration: false
+  migration: false            # persistent_format ⇒ a reference (`--migration "RFC-0023 §3"`) or "none"
 
 # allow_paths / forbid_paths — the blast radius the implementer (human or agent) may touch.
 # `pr check` flags a diff that strays outside allow_paths.
