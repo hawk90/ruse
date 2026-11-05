@@ -857,12 +857,13 @@ pub(crate) fn advance_n(b: &[u8], from: usize, count: u32, limit: usize) -> usiz
 /// and `~` step over a base char with its composing marks, or a ZWJ emoji sequence, as one character.
 /// Returns the end and whether all `count` fit.
 pub(crate) fn advance_graphemes(b: &[u8], from: usize, count: u32, limit: usize) -> (usize, bool) {
+    let steps = motion::Steps::new(b);
     let mut end = from;
     for _ in 0..count {
         if end >= limit {
             return (end, false);
         }
-        let nb = motion::next_grapheme(b, end).min(limit);
+        let nb = steps.next(end).min(limit);
         if nb == end {
             return (end, false);
         }

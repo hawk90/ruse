@@ -39,6 +39,24 @@ benches:
     long_line/dollar: "330 us"
     long_line/j_k_at_end: "35 ms"
     long_line/visual_block_yank: "69 ms"
+  long_line_motions:                # #1224 word/grapheme steps on one long line: a grapheme step re-validated
+                                    # and re-segmented the whole line, so a motion was O(line) per cluster.
+                                    # N keypresses per sample (100; 10 at 16m). Recorded 2026-11-05, release.
+                                    # Before, same machine (loaded): w/1m 0.95-1.3 s, b/16m 4.4-8.3 s,
+                                    # one_word_e/64k 4.3 s (1m/16m did not finish). What remains is the
+                                    # per-command O(line) floor (wanted-column measure, `fails` re-running
+                                    # the target), not the stepping.
+    long_line_motions/w/1m: "304 ms"
+    long_line_motions/b/1m: "1.30 s"
+    long_line_motions/w/16m: "496 ms"
+    long_line_motions/b/16m: "1.99 s"
+    long_line_motions/i_ctrl_w/16m: "797 ms"
+    long_line_motions/w/100col: "91 us"   # was 182-198 us
+    long_line_motions/b/100col: "107 us"  # was 183-186 us
+    long_line_motions/one_word_e/1m: "14 ms"
+    long_line_motions/one_word_i_ctrl_w/16m: "156 ms"
+    long_line_motions/sentence_fwd/64k: "2.97 ms"  # 3 x `)`; was 7.7 s
+    long_line_motions/sentence_fwd/100col: "5.7 us" # was 166 us
   word_search:                      # #745 `*`/`#`/hlsearch: compile + scan of `\<word\>` over mixed Latin/Hangul/
                                     # CJK lines, edges checked with Vim's classes. DEV-PROFILE (2026-11-03, no
                                     # release build). Before (Unicode \b{start}/\b{end} in the engine), same

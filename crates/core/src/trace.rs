@@ -329,11 +329,13 @@ mod tests {
     }
 
     /// The largest document a fuzzed replay goes on editing. A hostile count makes one put grow the buffer
-    /// to its 64 MiB bound (`MAX_PUT_BYTES`); a word motion on that one long line then costs O(line²),
-    /// because each grapheme step segments the whole line (#1213: one such case ran past CI's 20-minute
-    /// job limit). The fuzz checks that parsing and replay never panic, not long-line speed, so the replay
-    /// stops once the document is past this size.
-    const FUZZ_DOC_LIMIT: usize = 4 << 10;
+    /// to its 64 MiB bound (`MAX_PUT_BYTES`). Word motions were O(line²) on that one long line (#1213:
+    /// one such case ran past CI's 20-minute job limit); since #1224 they are linear, but every command
+    /// still makes a few O(line) passes (the wanted-column measure among them), about 10 s per command on
+    /// 64 MiB in a debug build. The fuzz checks that parsing and replay never panic, not long-line speed,
+    /// so the replay stops once the document is past this size: 256 KiB keeps a command under ~50 ms
+    /// unoptimized while the fuzz still edits buffers well past the 4 KiB it stopped at before #1224.
+    const FUZZ_DOC_LIMIT: usize = 256 << 10;
 
     /// Replay `cmds` on `initial` as [`Trace::replay`] does, stopping once the document passes
     /// [`FUZZ_DOC_LIMIT`].
@@ -342,7 +344,8 @@ mod tests {
     }
 
     /// #1213: the case that hung CI's `rust` job. A put with a maximal count fills the buffer with one
-    /// 64 MiB line; `i_CTRL-W` on it then ran for minutes. The fuzz replay stops after the put.
+    /// 64 MiB line; `i_CTRL-W` on it then ran for minutes (since #1224: about 1 s in release, 12 s in a
+    /// debug build, nearly all of it per-command passes over the line). The fuzz replay stops after the put.
     #[test]
     fn fuzz_replay_stops_once_a_put_grows_the_buffer() {
         let cmds = [

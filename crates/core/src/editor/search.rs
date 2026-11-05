@@ -94,9 +94,10 @@ pub(crate) fn landing_key(b: &[u8], pos: usize) -> usize {
 /// cursor past it, nor on a line-terminating `\n`). `0` for an empty buffer. The clamp target when a
 /// rightward character offset (`/pat/e+N`) runs off the end of the buffer.
 fn last_landable(b: &[u8]) -> usize {
+    let steps = crate::motion::Steps::new(b);
     let mut p = b.len();
     while p > 0 {
-        let pp = crate::motion::prev_grapheme(b, p);
+        let pp = steps.prev(p);
         if b[pp] != b'\n' {
             return pp;
         }
@@ -111,10 +112,11 @@ fn last_landable(b: &[u8]) -> usize {
 /// Clamps to the buffer — running off the end stops on the last landable char, off the front stops at 0.
 /// (Empty lines are a documented corner: a char offset stepping ACROSS a truly empty line skips over it.)
 pub(crate) fn step_char(b: &[u8], pos: usize, n: i32) -> usize {
+    let steps = crate::motion::Steps::new(b);
     let mut p = pos.min(b.len());
     if n >= 0 {
         for _ in 0..n {
-            let mut np = crate::motion::next_grapheme(b, p);
+            let mut np = steps.next(p);
             while np < b.len() && b[np] == b'\n' {
                 np = crate::motion::next_boundary(b, np);
             }
@@ -128,9 +130,9 @@ pub(crate) fn step_char(b: &[u8], pos: usize, n: i32) -> usize {
             if p == 0 {
                 return 0;
             }
-            let mut pp = crate::motion::prev_grapheme(b, p);
+            let mut pp = steps.prev(p);
             while pp > 0 && b[pp] == b'\n' {
-                pp = crate::motion::prev_grapheme(b, pp);
+                pp = steps.prev(pp);
             }
             p = pp;
         }
