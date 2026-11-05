@@ -20,7 +20,7 @@ use support::{Editor, Scratch};
 const ESC: &str = "\u{1b}";
 const LEAVE_ALT: &str = "\u{1b}[?1049l";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
-const PROMPT: &str = "recovered from a previous session";
+const PROMPT: &str = "Recovery journal for";
 
 fn f_txt() -> &'static Path {
     Path::new("f.txt")
@@ -179,7 +179,7 @@ fn signal_during_the_startup_recovery_prompt_restores_the_terminal() {
         let dir = Scratch::new();
         let file = dir.file("f.txt", b"on disk\n");
         dir.journals()
-            .write_text(Some(&file), b"unsaved work\n")
+            .write_crashed(Some(&file), b"unsaved work\n")
             .unwrap();
         let mut ed = Editor::start(&dir, &[f_txt()]);
         assert!(ed.screen_bytes().contains(PROMPT));
@@ -202,7 +202,7 @@ fn signal_during_the_edit_recovery_prompt_journals_open_buffers() {
     let a = dir.file("a.txt", b"a\n");
     let b = dir.file("b.txt", b"on disk\n");
     let j = dir.journals();
-    j.write_text(Some(&b), b"UNSAVED B\n").unwrap();
+    j.write_crashed(Some(&b), b"UNSAVED B\n").unwrap();
     let mut ed = Editor::start(&dir, &[Path::new("a.txt")]);
     ed.keys(&format!("iAA{ESC}:e b.txt\r"));
     assert!(ed.screen_bytes().contains(PROMPT));
@@ -241,14 +241,14 @@ fn two_journals_are_each_offered_and_recovered() {
 }
 
 /// A journal older than the file it belongs to (the file changed on disk since) is still offered, with a
-/// warning like nvim's "NEWER than swap file!"; `d` keeps the newer disk file.
+/// warning like nvim's "NEWER than swap file!"; `k` keeps the newer disk file and archives the journal.
 #[test]
 fn stale_journal_is_offered_with_a_warning() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"orig\n");
     let journal = dir
         .journals()
-        .write_text(Some(&file), b"old unsaved\n")
+        .write_crashed(Some(&file), b"old unsaved\n")
         .unwrap();
     std::fs::write(&file, b"changed elsewhere\n").unwrap();
     let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
@@ -262,16 +262,22 @@ fn stale_journal_is_offered_with_a_warning() {
     let screen = ed.screen_bytes();
     assert!(screen.contains(PROMPT));
     assert!(screen.contains("NEWER"), "warns that the file changed");
-    ed.keys("d:q\r");
+    ed.keys("k:q\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"changed elsewhere\n");
     assert!(!journal.exists());
+    assert_eq!(
+        std::fs::read_dir(dir.journals().archive_dir())
+            .unwrap()
+            .count(),
+        1
+    );
 
     // A journal written after the file is not flagged.
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"orig\n");
     dir.journals()
-        .write_text(Some(&file), b"unsaved\n")
+        .write_crashed(Some(&file), b"unsaved\n")
         .unwrap();
     let ed = Editor::start(&dir, &[f_txt()]);
     assert!(ed.screen_bytes().contains(PROMPT));
@@ -291,7 +297,7 @@ fn unreadable_journal_is_reported_and_kept() {
     let file = dir.file("f.txt", b"orig\n");
     let journal = dir
         .journals()
-        .write_text(Some(&file), b"unsaved\n")
+        .write_crashed(Some(&file), b"unsaved\n")
         .unwrap();
     std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o000)).unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
@@ -301,8 +307,15 @@ fn unreadable_journal_is_reported_and_kept() {
         screen.contains("unreadable"),
         "names the unreadable journal"
     );
-    ed.keys(":q\r");
+    // An edit synced (`:!` syncs first) goes beside the unreadable journal, never over it.
+    let bytes_mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    ed.keys(&format!("iNEW {ESC}:!true\r\r"));
+    let beside = || dir.journals().candidates(&file).len();
+    assert!(support::wait_until(Duration::from_secs(5), || beside() == 2));
+    assert_eq!(bytes_mode(&journal), 0o000, "its mode is unchanged");
+    ed.keys(":q!\r");
     let status = ed.exit_status();
+    assert_eq!(beside(), 1, ":q! drops this session's own journal only");
     std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o644)).unwrap();
     assert_eq!(status, 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
@@ -401,7 +414,7 @@ fn a_recovered_buffer_is_modified_and_traces_from_the_disk_text() {
     let file = dir.file("f.txt", b"one\ntwo\n");
     let journal = dir
         .journals()
-        .write_text(Some(&file), b"one\nTWO RECOVERED\n")
+        .write_crashed(Some(&file), b"one\nTWO RECOVERED\n")
         .unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
     assert!(ed.screen_bytes().contains(PROMPT));

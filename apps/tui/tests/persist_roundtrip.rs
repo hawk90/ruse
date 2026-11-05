@@ -5,7 +5,7 @@
 //! recover, then save durably and confirm the journal is cleared and the line-endings preserved.
 
 use ruse_tui::persist::encoding::{Eol, FileFormat};
-use ruse_tui::persist::{assess_recovery, atomic, journal, Recovery};
+use ruse_tui::persist::{atomic, journal, Recovery};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -52,10 +52,7 @@ fn crash_with_unsaved_work_is_recoverable_then_cleared_on_save() {
     let disk = std::fs::read(&f).unwrap();
 
     // No journal yet → nothing to recover.
-    assert_eq!(
-        assess_recovery(&disk, j.replay(Some(&f)).as_deref()),
-        Recovery::None
-    );
+    assert_eq!(j.offer(Some(&f), &disk), Recovery::None);
 
     // The crash path writes the exact latest text; a later one supersedes an earlier one.
     j.write_text(Some(&f), b"saved line\nunsaved 1").unwrap();
@@ -65,11 +62,10 @@ fn crash_with_unsaved_work_is_recoverable_then_cleared_on_save() {
     assert!(journal.starts_with(j.dir()), "outside the project tree");
 
     // Reopen: the journal's latest valid record differs from disk → recovery is offered.
-    let recovered = j.replay(Some(&f));
-    assert_eq!(
-        assess_recovery(&disk, recovered.as_deref()),
-        Recovery::Available(b"saved line\nunsaved 1\nunsaved 2".to_vec())
-    );
+    match j.offer(Some(&f), &disk) {
+        Recovery::Available(a) => assert_eq!(a.recovered, b"saved line\nunsaved 1\nunsaved 2"),
+        other => panic!("{other:?}"),
+    }
 
     // A durable save clears the journal — there is no longer unsaved work to recover.
     atomic::save(&f, b"saved line\nunsaved 1\nunsaved 2\n").unwrap();

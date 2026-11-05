@@ -40,9 +40,12 @@ const MAX_SYMLINK_HOPS: usize = 40;
 /// The longest file name the common filesystems accept (`NAME_MAX`); the temp name stays within it.
 const NAME_MAX: usize = 255;
 
-/// The temp name's fixed part: `.` + name + `.ruse-tmp-` + 8 hex digits.
+/// The temp name: `.` + name + `.ruse-tmp-` + the writer's pid + `-` + 8 hex digits. The pid lets a later
+/// save tell a crashed save's leftover from a live one's (#1197).
 const TEMP_TAG: &str = ".ruse-tmp-";
 const TEMP_RAND_LEN: usize = 8;
+/// Room for the pid (up to 10 digits) and its `-`.
+const TEMP_PID_LEN: usize = 11;
 
 /// Fresh temp names tried before giving up when each one already exists.
 const TEMP_ATTEMPTS: u32 = 16;
@@ -224,10 +227,17 @@ fn random_u32() -> u32 {
     h.finish() as u32
 }
 
-/// `.<name>.ruse-tmp-<rand>` next to `target`, with `<name>` shortened so the whole stays within
+/// `.<name>.ruse-tmp-<pid>-<rand>` next to `target`, with `<name>` shortened so the whole stays within
 /// `NAME_MAX` (#868: a name near the limit could not be saved).
 fn temp_path(target: &Path, rand: u32) -> PathBuf {
-    let room = NAME_MAX - 1 - TEMP_TAG.len() - TEMP_RAND_LEN;
+    let mut tmp = temp_prefix(target);
+    tmp.push(format!("{}-{rand:08x}", std::process::id()));
+    target.with_file_name(tmp)
+}
+
+/// `.<name>.ruse-tmp-` of `target`'s temp names, `<name>` shortened as [`temp_path`] does.
+fn temp_prefix(target: &Path) -> std::ffi::OsString {
+    let room = NAME_MAX - 1 - TEMP_TAG.len() - TEMP_PID_LEN - TEMP_RAND_LEN;
     let name = target.file_name().unwrap_or_default();
     #[cfg(unix)]
     let stem = {
@@ -246,8 +256,63 @@ fn temp_path(target: &Path, rand: u32) -> PathBuf {
     };
     let mut tmp = std::ffi::OsString::from(".");
     tmp.push(stem);
-    tmp.push(format!("{TEMP_TAG}{rand:08x}"));
-    target.with_file_name(tmp)
+    tmp.push(TEMP_TAG);
+    tmp
+}
+
+/// The writer's pid in a temp name of `target` (`prefix` = [`temp_prefix`]): `None` unless the name is
+/// exactly `<prefix><digits>-<8 hex digits>`.
+fn temp_writer(name: &[u8], prefix: &[u8]) -> Option<u32> {
+    let rest = name.strip_prefix(prefix)?;
+    let dash = rest.iter().position(|&b| b == b'-')?;
+    let (pid, rand) = (&rest[..dash], &rest[dash + 1..]);
+    let digits = !pid.is_empty() && pid.len() < TEMP_PID_LEN && pid.iter().all(u8::is_ascii_digit);
+    let hex = rand.len() == TEMP_RAND_LEN
+        && rand
+            .iter()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b));
+    if !(digits && hex) {
+        return None;
+    }
+    std::str::from_utf8(pid).ok()?.parse().ok()
+}
+
+/// Remove the temp files a crashed save of `target` left beside it (#1197): only names of exactly
+/// `target`'s temp pattern ([`temp_writer`]), only regular files (never a symlink or anything else), and
+/// only when their writer is not running (a pid of this host that `kill(pid, 0)` says is gone). A live
+/// writer's temp, a name that merely looks alike, and an old temp without a pid are left alone. Done once
+/// per target per process, so a save does not list a large directory every time.
+fn sweep_stale_temps(target: &Path) {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    static SWEPT: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+    {
+        let Ok(mut swept) = SWEPT.lock() else {
+            return;
+        };
+        if !swept
+            .get_or_insert_with(HashSet::new)
+            .insert(target.to_path_buf())
+        {
+            return;
+        }
+    }
+    let prefix = super::journal::path_bytes(Path::new(&temp_prefix(target)));
+    let me = std::process::id();
+    let Ok(entries) = fs::read_dir(containing_dir(target)) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let name = super::journal::path_bytes(Path::new(&e.file_name()));
+        let Some(pid) = temp_writer(&name, &prefix) else {
+            continue;
+        };
+        let is_file = fs::symlink_metadata(e.path()).is_ok_and(|m| m.file_type().is_file());
+        if pid != me && is_file && !super::journal::alive(pid) {
+            tracing::info!(event = "save.stale_temp_removed", path = %e.path().display());
+            let _ = fs::remove_file(e.path());
+        }
+    }
 }
 
 /// Create a fresh temp next to `target`, exclusively (`O_EXCL`), so it never follows a planted symlink and
@@ -304,6 +369,7 @@ pub fn save(target: &Path, bytes: &[u8]) -> io::Result<()> {
 /// every fsync succeeded; see [`SaveError`] for what each failure leaves on disk.
 pub fn write(path: &Path, bytes: &[u8], force: bool) -> Result<Method, SaveError> {
     let target = resolve_write_target(path).map_err(SaveError::Untouched)?;
+    sweep_stale_temps(&target);
     let existing = fs::metadata(&target).ok();
     // A rename would REPLACE a FIFO, socket or device node with a regular file (#907): refuse instead.
     if existing.as_ref().is_some_and(|m| !m.is_file()) {
@@ -866,17 +932,77 @@ mod tests {
         assert_eq!(read(&f), b"data");
     }
 
+    /// #1197: a save removes the temp files a crashed save of the same file left (writer gone), and nothing
+    /// else: not a live writer's, not this process's, not a symlink, not a name that only looks alike.
+    #[cfg(unix)]
+    #[test]
+    fn a_save_sweeps_only_dead_writers_temps() {
+        let dir = tmpdir();
+        let f = dir.join("f.txt");
+        fs::write(&f, b"old").unwrap();
+        let gone = crate::persist::journal::GONE_PID;
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let me = std::process::id();
+        let dead = format!(".f.txt.ruse-tmp-{gone}-deadbeef");
+        let kept = [
+            format!(".f.txt.ruse-tmp-{}-0badf00d", child.id()), // a live writer
+            format!(".f.txt.ruse-tmp-{me}-0badf00d"),           // this process
+            format!(".f.txt.ruse-tmp-{gone}-deadbee"),          // 7 hex digits
+            format!(".f.txt.ruse-tmp-{gone}-deadbeeg"),         // not hex
+            format!(".f.txt.ruse-tmp-{gone}-deadbeef.bak"),
+            ".f.txt.ruse-tmp-deadbeef".to_string(), // the old name, without a pid
+            format!(".g.txt.ruse-tmp-{gone}-deadbeef"), // another file's
+            format!("f.txt.ruse-tmp-{gone}-deadbeef"), // not hidden
+        ];
+        fs::write(dir.join(&dead), b"leftover").unwrap();
+        for k in &kept {
+            fs::write(dir.join(k), b"keep").unwrap();
+        }
+        let link = format!(".f.txt.ruse-tmp-{gone}-0000aaaa");
+        std::os::unix::fs::symlink(dir.join("f.txt"), dir.join(&link)).unwrap();
+        save(&f, b"new").unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(
+            !dir.join(&dead).exists(),
+            "the dead writer's temp is removed"
+        );
+        for k in &kept {
+            assert_eq!(read(&dir.join(k)), b"keep", "{k} is kept");
+        }
+        assert!(
+            fs::symlink_metadata(dir.join(&link)).is_ok(),
+            "a symlink is kept"
+        );
+        assert_eq!(read(&f), b"new");
+        assert_eq!(
+            temp_writer(dead.as_bytes(), b".f.txt.ruse-tmp-"),
+            Some(gone)
+        );
+        assert_eq!(
+            temp_writer(b".f.txt.ruse-tmp-5-DEADBEEF", b".f.txt.ruse-tmp-"),
+            None
+        );
+        assert_eq!(
+            temp_writer(b".f.txt.ruse-tmp--deadbeef", b".f.txt.ruse-tmp-"),
+            None
+        );
+    }
+
     /// #868: a name at NAME_MAX saves; its temp name is shortened to fit.
     #[test]
     fn longest_name_saves() {
         let dir = tmpdir();
         let f = dir.join("n".repeat(NAME_MAX));
-        assert_eq!(temp_path(&f, 0).file_name().unwrap().len(), NAME_MAX);
+        assert!(temp_path(&f, 0).file_name().unwrap().len() <= NAME_MAX);
         assert!(temp_path(&f, 7)
             .file_name()
             .unwrap()
             .to_string_lossy()
-            .ends_with(".ruse-tmp-00000007"));
+            .ends_with(&format!(".ruse-tmp-{}-00000007", std::process::id())));
         save(&f, b"x").unwrap();
         save(&f, b"y").unwrap();
         assert_eq!(read(&f), b"y");

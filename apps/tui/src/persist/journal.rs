@@ -18,6 +18,11 @@
 //! * **Lifecycle** (RFC §6, #862, #1191). A clean buffer has no journal: the writer deletes its journal when
 //!   the buffer becomes clean (saved, undone to the save, `:e!`), and the session deletes them on a normal
 //!   quit and on `:bd!`. A crash path never deletes; it writes a Checkpoint of the exact current text.
+//! * **Ownership** (RFC §7, #1193). Only a journal whose Header names this process is ever deleted. A journal
+//!   whose owner is another ruse still running on this host ([`is_live_other`]) makes the file
+//!   [`Recovery::InUse`]; a session that edits it anyway writes `<name>.<pid>.rj` beside it ([`claim`]),
+//!   which a later open also considers ([`Journals::candidates`]). Recovering adopts a journal as this
+//!   process's own ([`Journals::adopt`]); editing the disk file or discarding moves it to the archive.
 //! * **Legacy** (RFC §3). An `RJS0` sidecar `<file>.ruse-journal` from an older ruse is offered once and
 //!   then moved to the archive ([`super::rjs0`]). Nothing writes one any more.
 
@@ -32,6 +37,7 @@ use ruse_core::{ChangeDrain, Document};
 use super::encoding::FileFormat;
 use super::rj01::{self, Base, Header, Owner};
 use super::rjs0;
+use super::{Available, Recovery};
 
 /// Sync after this long without a change (Vim's `updatetime` default).
 pub const IDLE: Duration = Duration::from_millis(4000);
@@ -48,6 +54,8 @@ const NAME_MAX: usize = 255;
 const ARCHIVE_SUFFIX: usize = 14;
 /// The extension and hash part of a journal name: `.<16 hex>.rj`.
 const HASH_SUFFIX: usize = 1 + 16 + 3;
+/// Room for the `.<pid>` of a second session's journal ([`claim`]).
+const PID_SUFFIX: usize = 1 + 10;
 
 /// Unix milliseconds now.
 pub fn now_ms() -> u64 {
@@ -56,15 +64,130 @@ pub fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// This process as a journal owner: pid, host name, and the start time measured the first time it is asked
-/// (the session asks at startup, so the unnamed buffer's journal name is fixed then).
+/// This process as a journal owner: pid, host name, and its start time as the system reports it
+/// ([`process_start_ms`]), so a later session can tell this process from another that reuses its pid. When
+/// the system does not say, the time of the first call stands in (the session asks at startup, so the
+/// unnamed buffer's journal name is fixed then); such a journal is never taken for a live one.
 pub fn owner() -> &'static Owner {
     static OWNER: OnceLock<Owner> = OnceLock::new();
-    OWNER.get_or_init(|| Owner {
-        pid: std::process::id(),
-        host: host_name(),
-        start_ms: now_ms(),
+    OWNER.get_or_init(|| {
+        let pid = std::process::id();
+        Owner {
+            pid,
+            host: host_name(),
+            start_ms: process_start_ms(pid).unwrap_or_else(now_ms),
+        }
     })
+}
+
+/// How far apart two readings of one process's start time may be: Linux derives it from the boot time,
+/// which is kept in whole seconds and moves when the clock is stepped.
+const START_SLACK_MS: u64 = 2000;
+
+/// The start time of process `pid`, Unix milliseconds, as the system reports it: `/proc/<pid>/stat` and
+/// the boot time on Linux, `proc_pidinfo` on macOS. `None` when it cannot be read.
+pub fn process_start_ms(pid: u32) -> Option<u64> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        // The command name (field 2) may hold spaces and parentheses: count fields after the last `)`.
+        let rest = &stat[stat.rfind(')')? + 1..];
+        let ticks: u64 = rest.split_whitespace().nth(19)?.parse().ok()?;
+        let btime: u64 = fs::read_to_string("/proc/stat")
+            .ok()?
+            .lines()
+            .find_map(|l| l.strip_prefix("btime "))?
+            .trim()
+            .parse()
+            .ok()?;
+        // SAFETY: sysconf has no preconditions.
+        let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+        if hz <= 0 {
+            return None;
+        }
+        Some(btime * 1000 + ticks * 1000 / hz as u64)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let pid = libc::c_int::try_from(pid).ok()?;
+        // SAFETY: plain data, fully written by proc_pidinfo on success.
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+        // SAFETY: `info` is a valid buffer of `size` bytes for the PROC_PIDTBSDINFO flavor.
+        let n = unsafe {
+            libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, (&raw mut info).cast(), size)
+        };
+        if n != size {
+            return None;
+        }
+        Some(info.pbi_start_tvsec * 1000 + info.pbi_start_tvusec / 1000)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos")))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// Whether `o` is another ruse process still running on this host (RFC-0023 §7): same host name, its pid
+/// answers `kill(pid, 0)`, and that process started when the Header says. A start time that cannot be read
+/// counts as not running, so a reused pid or an unknown answer offers recovery rather than claim the file
+/// is in use. This process is never "another".
+pub fn is_live_other(o: &Owner) -> bool {
+    if o == owner() || o.host != owner().host || !alive(o.pid) {
+        return false;
+    }
+    process_start_ms(o.pid).is_some_and(|s| s.abs_diff(o.start_ms) <= START_SLACK_MS)
+}
+
+/// The owner recorded in the journal at `path`'s Header, when it has an intact one. Reads only a bounded
+/// prefix: the Header comes first and is small.
+pub fn read_owner(path: &Path) -> Option<Owner> {
+    match read_head(path)? {
+        Ok((rj01::Record::Header(h), _)) => Some(h.owner),
+        _ => None,
+    }
+}
+
+/// The first record of the journal at `path`, from a bounded prefix; `None` when it cannot be read.
+fn read_head(path: &Path) -> Option<Result<(rj01::Record, usize), rj01::Stop>> {
+    let f = open_regular(path, OpenOptions::new().read(true)).ok()?;
+    let mut raw = Vec::new();
+    f.take(HEADER_MAX).read_to_end(&mut raw).ok()?;
+    Some(rj01::read_record(&raw, 0))
+}
+
+/// The most of a journal [`read_owner`] reads: a Header holds a host name and a path.
+const HEADER_MAX: u64 = 64 << 10;
+
+/// The journal this process may write for a document whose journal is `journal`: that file, unless a live
+/// other session owns it (#1193), a newer ruse wrote it (kept for that version, RFC-0023 §7), or it is a
+/// regular file this process cannot read (mode 000, another user's: it may hold a crash's unsaved work, and
+/// the open reported it as kept), in which case this process's own `<name>.<pid>.rj` beside it. Anything
+/// else at the path that is not a regular file (a FIFO, a device) keeps the name, and the write fails
+/// visibly (#869).
+pub fn claim(journal: &Path) -> PathBuf {
+    match read_head(journal) {
+        Some(Ok((rj01::Record::Header(h), _))) if is_live_other(&h.owner) => {
+            alternate(journal, owner().pid)
+        }
+        Some(Err(rj01::Stop::NewerMajor(_))) => alternate(journal, owner().pid),
+        None if fs::symlink_metadata(journal).is_ok_and(|m| m.is_file()) => {
+            alternate(journal, owner().pid)
+        }
+        _ => journal.to_path_buf(),
+    }
+}
+
+/// `<stem>.<pid>.rj` for the journal `<stem>.rj`.
+fn alternate(journal: &Path, pid: u32) -> PathBuf {
+    let name = journal
+        .file_name()
+        .map_or_else(Vec::new, |n| path_bytes(Path::new(n)));
+    let stem = name.strip_suffix(b".rj").unwrap_or(&name);
+    let mut alt = stem.to_vec();
+    alt.extend_from_slice(format!(".{pid}.rj").as_bytes());
+    journal.with_file_name(os_name(alt))
 }
 
 fn host_name() -> Vec<u8> {
@@ -200,7 +323,8 @@ impl Journals {
         } else {
             base
         };
-        let mut name = shorten(&base, NAME_MAX - HASH_SUFFIX - ARCHIVE_SUFFIX).to_vec();
+        let mut name =
+            shorten(&base, NAME_MAX - HASH_SUFFIX - PID_SUFFIX - ARCHIVE_SUFFIX).to_vec();
         name.extend_from_slice(format!(".{hex}.rj").as_bytes());
         self.dir.join(os_name(name))
     }
@@ -241,18 +365,46 @@ impl Journals {
             text,
             0,
             0,
-        )?;
+        )
+    }
+
+    /// Write `text` as `doc`'s journal left by a session that crashed: its Header names a process of this
+    /// host that is not running. For tests that need a journal to recover from.
+    pub fn write_crashed(&self, doc: Option<&Path>, text: &[u8]) -> io::Result<PathBuf> {
+        let gone = Owner {
+            pid: GONE_PID,
+            host: owner().host.clone(),
+            start_ms: 1,
+        };
+        self.write_as(doc, text, &gone)
+    }
+
+    /// Write `text` as `doc`'s whole journal with `who` as its owner (tests: a crashed or a live session).
+    pub fn write_as(&self, doc: Option<&Path>, text: &[u8], who: &Owner) -> io::Result<PathBuf> {
+        let journal = self.path_of(doc);
+        let canon = doc.map(canonical);
+        if let Some(dir) = journal.parent() {
+            make_private_dir(dir)?;
+        }
+        let mut out = Vec::with_capacity(text.len() + 256);
+        let mut h = header(canon.as_deref(), FileFormat::default(), Base::Checkpoint);
+        h.owner = who.clone();
+        rj01::encode_header(&mut out, &h)?;
+        rj01::encode_checkpoint(&mut out, 0, 0, text)?;
+        rj01::encode_marker(&mut out, now_ms())?;
+        write_private(&journal, &out)?;
         Ok(journal)
     }
 
-    /// Remove `doc`'s journal after a durable save: there is nothing left to recover.
+    /// Remove `doc`'s journal after a durable save: there is nothing left to recover. Only a journal this
+    /// process owns ([`discard_file`]).
     pub fn clear(&self, doc: Option<&Path>) {
-        let _ = fs::remove_file(self.path_of(doc));
+        discard_file(&self.path_of(doc));
     }
 
-    /// Remove `doc`'s journal because its changes were let go (#862): a normal quit, `:e!`, `:bd!`. A
-    /// journal this process cannot open as a regular file (unreadable, a FIFO, a device) is left alone: the
-    /// user was told it was not offered, so it was never seen, and it is not this session's to delete.
+    /// Remove `doc`'s journal because its changes were let go (#862): a normal quit, `:e!`, `:bd!`. Only a
+    /// journal this process owns is removed ([`discard_file`]): another session's, live or crashed, is not
+    /// this session's to delete (#1193).
     pub fn discard(&self, doc: Option<&Path>) {
         discard_file(&self.path_of(doc));
     }
@@ -265,10 +417,18 @@ impl Journals {
         let name = path
             .file_name()
             .map_or_else(Vec::new, |n| path_bytes(Path::new(n)));
-        let suffix = format!(".{}", now_ms());
-        let mut name = shorten(&name, NAME_MAX - suffix.len()).to_vec();
-        name.extend_from_slice(suffix.as_bytes());
-        let to = dir.join(os_name(name));
+        // A fresh name: a rename would replace an archive made in the same millisecond.
+        let mut ms = now_ms();
+        let to = loop {
+            let suffix = format!(".{ms}");
+            let mut n = shorten(&name, NAME_MAX - suffix.len()).to_vec();
+            n.extend_from_slice(suffix.as_bytes());
+            let to = dir.join(os_name(n));
+            if fs::symlink_metadata(&to).is_err() {
+                break to;
+            }
+            ms += 1;
+        };
         if fs::rename(path, &to).is_err() {
             let bytes = read_journal(path)?;
             write_private(&to, &bytes)?;
@@ -292,136 +452,195 @@ impl Journals {
                     .parse()
                     .ok()?;
                 let mtime = e.metadata().ok()?.modified().ok()?;
-                (name.ends_with(".rj") && pid != me && !alive(pid)).then(|| (mtime, e.path()))
+                let gone = read_owner(&e.path())
+                    .map_or(!alive(pid), |o| o != *owner() && !is_live_other(&o));
+                (name.ends_with(".rj") && pid != me && gone).then(|| (mtime, e.path()))
             })
             .max()
             .map(|(_, p)| p)
     }
 
-    /// What the journal of `doc` (or, for `None`, an orphaned unnamed buffer's) offers at open time, given
-    /// the buffer's `disk` text (the file decoded with its detected format; empty for no file). A journal
-    /// replaying to the disk text offers nothing; a journal that cannot be used says why.
-    pub fn offer(&self, doc: Option<&Path>, disk: &[u8]) -> Offer {
-        let journal = match doc {
-            Some(d) => Some(self.path_for(d)),
-            None => self.orphaned_unnamed(),
+    /// The journals of `doc`: its own name first, then every `<name>.<pid>.rj` a second session wrote
+    /// beside it ([`claim`]), newest first.
+    pub fn candidates(&self, doc: &Path) -> Vec<PathBuf> {
+        let primary = self.path_for(doc);
+        let mut out = vec![primary.clone()];
+        let Some(stem) = primary
+            .file_name()
+            .map(|n| path_bytes(Path::new(n)))
+            .and_then(|n| n.strip_suffix(b".rj").map(<[u8]>::to_vec))
+        else {
+            return out;
         };
-        if let Some(journal) = journal {
-            match read_journal(&journal) {
-                Ok(raw) => {
-                    let r = rj01::replay(&raw, Some(disk));
-                    match r.unreplayable {
-                        Some(rj01::Unreplayable::NewerMajor(v)) => {
-                            return Offer::Note(format!(
-                                "recovery journal {} is from a newer ruse (format {v}.x); kept, not offered",
-                                journal.display()
-                            ))
-                        }
-                        Some(rj01::Unreplayable::DiskChanged { changes }) => {
-                            let kept = self.archive(&journal).map_or_else(
-                                |e| format!("not archived: {e}"),
-                                |p| format!("archived as {}", p.display()),
-                            );
-                            return Offer::Note(format!(
-                                "the file changed on disk since the journal began; the {changes} changes \
-                                 cannot be replayed (journal {kept})"
-                            ));
-                        }
-                        None => {}
-                    }
-                    if let Some(text) = r.text {
-                        if text == disk {
-                            return Offer::None;
-                        }
-                        let mut notes = Vec::new();
-                        if doc.is_some_and(|d| is_stale(d, &journal)) {
-                            notes.push(STALE_NOTE.to_string());
-                        }
-                        if r.lost_tail {
-                            notes.push(match r.last_marker_ms {
-                                Some(t) => format!(
-                                    "note: the end of the journal was damaged; recovered up to {}",
-                                    clock(t)
-                                ),
-                                None => "note: the end of the journal was damaged; recovered what was intact"
-                                    .to_string(),
-                            });
-                        }
-                        return Offer::Text {
-                            text,
-                            from: journal,
-                            legacy: false,
-                            notes,
-                        };
-                    }
+        let mut alts: Vec<(SystemTime, PathBuf)> = fs::read_dir(&self.dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter_map(|e| {
+                let name = path_bytes(Path::new(&e.file_name()));
+                let pid = name.strip_prefix(stem.as_slice())?.strip_prefix(b".")?;
+                let pid = pid.strip_suffix(b".rj")?;
+                (!pid.is_empty() && pid.iter().all(u8::is_ascii_digit)).then_some(())?;
+                let mtime = e.metadata().ok()?.modified().ok()?;
+                Some((mtime, e.path()))
+            })
+            .collect();
+        alts.sort_by_key(|a| std::cmp::Reverse(a.0));
+        out.extend(alts.into_iter().map(|(_, p)| p));
+        out
+    }
+
+    /// What the journals of `doc` (or, for `None`, an orphaned unnamed buffer's) offer at open time, given
+    /// the buffer's `disk` text (the file decoded with its detected format; empty for no file). A journal
+    /// whose owner is still running on this host makes the file [`Recovery::InUse`]; that wins over a
+    /// crashed one beside it, which stays for a later open. A journal replaying to the disk text offers
+    /// nothing; a journal that cannot be used says why.
+    pub fn offer(&self, doc: Option<&Path>, disk: &[u8]) -> Recovery {
+        let journals = match doc {
+            Some(d) => self.candidates(d),
+            None => self.orphaned_unnamed().into_iter().collect(),
+        };
+        // A journal to recover wins over one that only gives a note (a newer ruse's beside this one's).
+        let (mut available, mut note) = (None, None);
+        for journal in journals {
+            if let Some(o) = read_owner(&journal).filter(is_live_other) {
+                return Recovery::InUse { owner: o, journal };
+            }
+            if available.is_some() {
+                continue;
+            }
+            match self.offer_one(doc, &journal, disk) {
+                Recovery::None => {}
+                r @ Recovery::Available(_) => available = Some(r),
+                r => {
+                    note.get_or_insert(r);
                 }
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => return Offer::Note(unreadable_note(&journal, &e)),
             }
         }
-        // A sidecar from an older ruse.
+        available
+            .or(note)
+            .unwrap_or_else(|| self.offer_legacy(doc, disk))
+    }
+
+    /// The offer of the one journal at `journal` (its owner is not a live other session).
+    fn offer_one(&self, doc: Option<&Path>, journal: &Path, disk: &[u8]) -> Recovery {
+        let raw = match read_journal(journal) {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Recovery::None,
+            Err(e) => {
+                return Recovery::Unreplayable {
+                    reason: unreadable_note(journal, &e),
+                }
+            }
+        };
+        let r = rj01::replay(&raw, Some(disk));
+        match r.unreplayable {
+            Some(rj01::Unreplayable::NewerMajor(v)) => {
+                return Recovery::Unreplayable {
+                    reason: format!(
+                    "recovery journal {} is from a newer ruse (format {v}.x); kept, not offered",
+                    journal.display()
+                ),
+                }
+            }
+            Some(rj01::Unreplayable::DiskChanged { changes }) => {
+                let kept = self.archive(journal).map_or_else(
+                    |e| format!("not archived: {e}"),
+                    |p| format!("archived as {}", p.display()),
+                );
+                return Recovery::Unreplayable {
+                    reason: format!(
+                        "the file changed on disk since the journal began; the {changes} changes \
+                         cannot be replayed (journal {kept})"
+                    ),
+                };
+            }
+            None => {}
+        }
+        match r.text {
+            Some(text) if text != disk => Recovery::Available(Box::new(Available {
+                recovered: text,
+                base: r.header.as_ref().map(|h| h.base),
+                changes: Some(r.changes),
+                last_change: r.last_change_ms,
+                up_to: r.last_marker_ms,
+                lost_tail: r.lost_tail,
+                stale: doc.and_then(|d| stale_since(d, journal)),
+                owner: r.header.map(|h| h.owner),
+                journal: journal.to_path_buf(),
+                legacy: false,
+            })),
+            _ => Recovery::None,
+        }
+    }
+
+    /// A sidecar from an older ruse.
+    fn offer_legacy(&self, doc: Option<&Path>, disk: &[u8]) -> Recovery {
         let sidecar = rjs0::sidecar_path(doc);
         match read_journal(&sidecar) {
             Ok(raw) => match rjs0::last_snapshot(&raw) {
-                Some(text) if text != disk => Offer::Text {
-                    text: text.to_vec(),
-                    notes: doc
-                        .filter(|d| is_stale(d, &sidecar))
-                        .map(|_| STALE_NOTE.to_string())
-                        .into_iter()
-                        .collect(),
-                    from: sidecar,
+                Some(text) if text != disk => Recovery::Available(Box::new(Available {
+                    recovered: text.to_vec(),
+                    base: None,
+                    changes: None,
+                    last_change: None,
+                    up_to: None,
+                    lost_tail: false,
+                    stale: doc.and_then(|d| stale_since(d, &sidecar)),
+                    owner: None,
+                    journal: sidecar,
                     legacy: true,
-                },
+                })),
                 // Nothing in it to recover: archive it so it stops sitting in the project tree.
                 Some(_) => {
                     let _ = self.archive(&sidecar);
-                    Offer::None
+                    Recovery::None
                 }
-                None => Offer::None,
+                None => Recovery::None,
             },
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Offer::None,
-            Err(e) => Offer::Note(unreadable_note(&sidecar, &e)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Recovery::None,
+            Err(e) => Recovery::Unreplayable {
+                reason: unreadable_note(&sidecar, &e),
+            },
         }
     }
 
-    /// Act on the user's answer to an [`Offer::Text`]: `recovered` true for recover, false for discard.
-    /// A legacy sidecar is archived either way. An RJ01 journal is deleted on discard (archiving it is
-    /// slice 3), and kept on recover, the session's writer replacing it with its first sync; an orphaned
-    /// unnamed one becomes this process's own, so a crash or a normal quit finds it.
-    pub fn settle(&self, from: &Path, legacy: bool, recovered: bool) {
-        if legacy {
-            let _ = self.archive(from);
-        } else if !recovered {
-            let _ = fs::remove_file(from);
-        } else if from
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with("unnamed."))
-        {
-            let _ = fs::rename(from, self.unnamed());
+    /// `r` at the prompt (RFC-0023 §7): this process takes the recovered text over as its own journal at
+    /// once, at the name it will write (`doc`'s, or this process's unnamed one), so a crash, `:q!` or a
+    /// normal quit of this session finds a journal it owns. A journal of another name it came from (a
+    /// legacy sidecar, an orphaned unnamed one, a second session's `<name>.<pid>.rj`) is archived. Nothing
+    /// is lost when a step fails: the old journal is moved only once the new one is written.
+    pub fn adopt(
+        &self,
+        offer: &Available,
+        doc: Option<&Path>,
+        fmt: FileFormat,
+    ) -> io::Result<PathBuf> {
+        let canon = doc.map(canonical);
+        let target = claim(&self.path_of(doc));
+        let written = rescue(&target, canon.as_deref(), fmt, &offer.recovered, 0, 0)?;
+        if written != offer.journal {
+            self.archive(&offer.journal)?;
         }
+        Ok(written)
     }
 }
 
-/// What a journal offers at open time ([`Journals::offer`]).
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Offer {
-    /// No journal, or one with nothing that differs from the disk text.
-    None,
-    /// Recovered text that differs from the disk text, from the journal at `from` (`legacy` for an RJS0
-    /// sidecar), with warning lines for the prompt.
-    Text {
-        text: Vec<u8>,
-        from: PathBuf,
-        legacy: bool,
-        notes: Vec<String>,
-    },
-    /// A journal exists but is not offered; the status line says why.
-    Note(String),
+/// When `doc` was modified on disk after its journal at `journal` was last written (#897), its modification
+/// time (Unix milliseconds): recovering would replace a newer file.
+fn stale_since(doc: &Path, journal: &Path) -> Option<u64> {
+    if !is_stale(doc, journal) {
+        return None;
+    }
+    let t = fs::metadata(doc).and_then(|m| m.modified()).ok()?;
+    Some(
+        t.duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64),
+    )
 }
 
 /// Whether `pid` is a running process (`kill(pid, 0)`). An unknown answer counts as alive.
-fn alive(pid: u32) -> bool {
+pub(crate) fn alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
         let Ok(pid) = libc::pid_t::try_from(pid) else {
@@ -441,7 +660,19 @@ fn alive(pid: u32) -> bool {
 }
 
 /// Local wall-clock `HH:MM:SS` of Unix milliseconds `ms`.
-fn clock(ms: u64) -> String {
+pub fn clock(ms: u64) -> String {
+    let (_, time) = local(ms);
+    time
+}
+
+/// Local `YYYY-MM-DD HH:MM:SS` of Unix milliseconds `ms`.
+pub fn date_time(ms: u64) -> String {
+    let (date, time) = local(ms);
+    format!("{date} {time}")
+}
+
+/// The local date and time of `ms`; UTC (and marked so) when the local time cannot be had.
+fn local(ms: u64) -> (String, String) {
     #[cfg(unix)]
     {
         let t = (ms / 1000) as libc::time_t;
@@ -449,11 +680,33 @@ fn clock(ms: u64) -> String {
         let mut tm: libc::tm = unsafe { std::mem::zeroed() };
         // SAFETY: both pointers are valid for the call.
         if !unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
-            return format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec);
+            return (
+                format!(
+                    "{:04}-{:02}-{:02}",
+                    tm.tm_year + 1900,
+                    tm.tm_mon + 1,
+                    tm.tm_mday
+                ),
+                format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec),
+            );
         }
     }
+    // Days since the epoch to a civil date (Howard Hinnant's algorithm).
+    let days = (ms / 86_400_000) as i64;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
     let s = ms / 1000 % 86_400;
-    format!("{:02}:{:02}:{:02} UTC", s / 3600, s / 60 % 60, s % 60)
+    (
+        format!("{y:04}-{m:02}-{d:02}"),
+        format!("{:02}:{:02}:{:02} UTC", s / 3600, s / 60 % 60, s % 60),
+    )
 }
 
 fn make_private_dir(dir: &Path) -> io::Result<()> {
@@ -493,11 +746,17 @@ pub fn read_journal(path: &Path) -> io::Result<Vec<u8>> {
     Ok(raw)
 }
 
+/// Remove the journal at `path` when this process owns it (its Header names this process). Anything else
+/// is left alone: another session's journal (#1193), one without an intact Header, and a path that is not a
+/// regular file (unreadable, a FIFO, a device: the user was told it was not offered, so it was never seen).
 fn discard_file(path: &Path) {
-    if open_regular(path, OpenOptions::new().read(true)).is_ok() {
+    if read_owner(path).is_some_and(|o| o == *owner()) {
         let _ = fs::remove_file(path);
     }
 }
+
+/// A pid no process has: above every platform's pid range (Linux's `pid_max` is at most 2^22).
+pub const GONE_PID: u32 = 2_147_483_646;
 
 /// Durably replace `path` with `bytes` (temp, fsync, rename, directory fsync), owner-only: a missing target
 /// is created `0600` first, and the atomic save carries its mode over to the replacement.
@@ -522,10 +781,6 @@ pub fn is_stale(doc: &Path, journal: &Path) -> bool {
     let mtime = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
     matches!((mtime(doc), mtime(journal)), (Some(file), Some(j)) if file > j)
 }
-
-/// The open-time recovery prompt's warning line for a stale journal ([`is_stale`]).
-pub const STALE_NOTE: &str =
-    "note: the file on disk is NEWER than these changes; recovering replaces it in the buffer";
 
 /// The status line when a journal exists but could not be read (#897). The path comes last: a journal in
 /// the state directory has a long one, and the reason must stay on screen.
@@ -563,9 +818,12 @@ fn whole(
 }
 
 /// The crash-path write (panic hook, fatal signal, I/O error exit): put the exact current `text` in the
-/// journal at `journal`. A journal of this process with an intact Header gets a Checkpoint and a Marker
-/// appended after its last intact record (a torn tail is cut first: the failure being rescued may have
-/// interrupted a write); anything else is replaced by a fresh Header + Checkpoint. Synced before it returns.
+/// journal at `journal`, or, when a live other session owns that one, in this process's own beside it
+/// ([`claim`], #1193); the path written. A journal of this process with an intact Header gets a Checkpoint
+/// and a Marker appended after its last intact record (a torn tail is cut first: the failure being rescued
+/// may have interrupted a write). Anything else (a crashed session's journal, kept until this session's
+/// first sync, or a damaged one) is replaced whole and atomically, so the Header names who wrote the text
+/// and a failure part-way leaves the old journal. Synced before it returns.
 pub fn rescue(
     journal: &Path,
     canon: Option<&Path>,
@@ -573,36 +831,35 @@ pub fn rescue(
     text: &[u8],
     revision: u64,
     node: u64,
-) -> io::Result<()> {
+) -> io::Result<PathBuf> {
+    let journal = claim(journal);
     if let Some(dir) = journal.parent() {
         make_private_dir(dir)?;
     }
     let mut f = open_regular(
-        journal,
+        &journal,
         OpenOptions::new().read(true).write(true).create(true),
     )?;
     let mut raw = Vec::new();
     f.read_to_end(&mut raw)?;
     let r = rj01::replay(&raw, None);
-    let mut out = Vec::with_capacity(text.len() + 256);
-    // Appended only to a journal this process owns: another owner's (a crashed session's, kept until the
-    // writer's first sync) is replaced, so the Header names who wrote the text (#1193).
     let ours = r.header.as_ref().is_some_and(|h| h.owner == *owner());
-    let at = if ours && r.unreplayable.is_none() {
-        rj01::encode_checkpoint(&mut out, node, revision, text)?;
-        rj01::encode_marker(&mut out, now_ms())?;
-        r.last_good as u64
-    } else {
-        out = whole(canon, format, text, revision, node)?;
-        0
-    };
+    if !ours || r.unreplayable.is_some() {
+        drop(f);
+        write_private(&journal, &whole(canon, format, text, revision, node)?)?;
+        return Ok(journal);
+    }
+    let mut out = Vec::with_capacity(text.len() + 256);
+    rj01::encode_checkpoint(&mut out, node, revision, text)?;
+    rj01::encode_marker(&mut out, now_ms())?;
+    let at = r.last_good as u64;
     f.set_len(at)?;
     io::Seek::seek(&mut f, io::SeekFrom::Start(at))?;
     let written = f.write_all(&out).and_then(|()| f.sync_data());
     if written.is_err() {
         let _ = f.set_len(at);
     }
-    written
+    written.map(|()| journal)
 }
 
 /// Where a [`Writer`]'s journal is.
@@ -621,7 +878,11 @@ enum State {
 /// operation).
 #[derive(Debug)]
 pub struct Writer {
+    /// The journal this writer writes: the document's own name, or this process's `<name>.<pid>.rj` when
+    /// a live other session owns that one ([`claim`], #1193).
     journal: PathBuf,
+    /// The document's own journal name.
+    primary: PathBuf,
     /// The canonical document path (the Header's).
     doc: PathBuf,
     /// The buffer's path as the session last showed it, to notice a rename or `:cd` cheaply.
@@ -647,8 +908,10 @@ impl Writer {
     /// A writer for the buffer whose file is `path`, in `journals`.
     pub fn new(journals: &Journals, path: &Path, fmt: FileFormat) -> Writer {
         let doc = canonical(path);
+        let primary = journals.path_for_canonical(&doc);
         Writer {
-            journal: journals.path_for_canonical(&doc),
+            journal: claim(&primary),
+            primary,
             doc,
             seen: path.to_path_buf(),
             fmt,
@@ -685,7 +948,8 @@ impl Writer {
         if doc == self.doc {
             return;
         }
-        let journal = journals.path_for_canonical(&doc);
+        let primary = journals.path_for_canonical(&doc);
+        let journal = claim(&primary);
         match self.state {
             State::Idle => {}
             State::Fresh => self.rewrite = true,
@@ -701,6 +965,7 @@ impl Writer {
         }
         self.doc = doc;
         self.journal = journal;
+        self.primary = primary;
     }
 
     /// Drain `doc`'s change log into the pending records (`now` is the drain's time). Turns recording on
@@ -858,6 +1123,10 @@ impl Writer {
                 return Ok(());
             }
             self.rewrite = true; // the journal on disk is not the one this writer left
+        }
+        if self.state != State::Live {
+            // No journal of this writer on disk yet: a session that started since may own the name now.
+            self.journal = claim(&self.primary);
         }
         if let Some(dir) = self.journal.parent() {
             make_private_dir(dir)?;
@@ -1227,37 +1496,267 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// The open-time offer: nothing for no journal or one that matches the disk; the text otherwise; a
-    /// note for a newer major version, which is kept.
+    fn available(r: Recovery) -> Available {
+        match r {
+            Recovery::Available(a) => *a,
+            other => panic!("not offered: {other:?}"),
+        }
+    }
+
+    fn unreplayable(r: Recovery) -> String {
+        match r {
+            Recovery::Unreplayable { reason } => reason,
+            other => panic!("not a note: {other:?}"),
+        }
+    }
+
+    /// The open-time offer: nothing for no journal or one that matches the disk; the text otherwise, with
+    /// what the prompt shows; a note for a newer major version, which is kept.
     #[test]
     fn the_offer_follows_the_journal() {
         let (j, dir) = scratch("offer");
         let file = dir.join("f.txt");
         fs::write(&file, b"disk\n").unwrap();
-        assert_eq!(j.offer(Some(&file), b"disk\n"), Offer::None);
-        j.write_text(Some(&file), b"disk\n").unwrap();
-        assert_eq!(j.offer(Some(&file), b"disk\n"), Offer::None);
-        let journal = j.write_text(Some(&file), b"work\n").unwrap();
-        let Offer::Text {
-            text, from, legacy, ..
-        } = j.offer(Some(&file), b"disk\n")
-        else {
-            panic!("offered");
-        };
-        assert_eq!(text, b"work\n");
-        assert_eq!(from, journal);
-        assert!(!legacy);
+        assert_eq!(j.offer(Some(&file), b"disk\n"), Recovery::None);
+        j.write_crashed(Some(&file), b"disk\n").unwrap();
+        assert_eq!(j.offer(Some(&file), b"disk\n"), Recovery::None);
+        let journal = j.write_crashed(Some(&file), b"work\n").unwrap();
+        let a = available(j.offer(Some(&file), b"disk\n"));
+        assert_eq!(a.recovered, b"work\n");
+        assert_eq!(a.journal, journal);
+        assert!(!a.legacy && !a.lost_tail);
+        assert_eq!(a.base, Some(Base::Checkpoint));
+        assert_eq!(a.changes, Some(0));
+        assert_eq!(a.owner.unwrap().pid, GONE_PID);
+        assert!(a.up_to.is_some());
+        // This process's own journal (left by an earlier buffer of this session) is offered too: it is not
+        // another session's.
+        j.write_text(Some(&file), b"mine\n").unwrap();
+        assert_eq!(
+            available(j.offer(Some(&file), b"disk\n")).recovered,
+            b"mine\n"
+        );
+        j.write_crashed(Some(&file), b"work\n").unwrap();
         // A newer major version is kept and named.
         let mut raw = fs::read(&journal).unwrap();
         raw[5] = 2;
         let crc = rj01::crc32c(&raw[..12]);
         raw[12..16].copy_from_slice(&crc.to_le_bytes());
         fs::write(&journal, &raw).unwrap();
-        let Offer::Note(n) = j.offer(Some(&file), b"disk\n") else {
-            panic!("a note");
-        };
+        let n = unreplayable(j.offer(Some(&file), b"disk\n"));
         assert!(n.contains("newer ruse"), "{n}");
         assert!(journal.exists());
+        // This version never writes over it: its own journal goes beside it.
+        assert_ne!(claim(&journal), journal);
+        let mut d = opened(b"disk\n");
+        let mut w = Writer::new(&j, &file, FileFormat::default());
+        step(&mut w, &mut d);
+        insert(&mut d, 0, "x");
+        step(&mut w, &mut d);
+        assert_eq!(
+            fs::read(&journal).unwrap(),
+            raw,
+            "the newer journal is kept as it was"
+        );
+        w.discard();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A journal this process cannot read (mode 000) is reported at open and never written over: its bytes
+    /// and mode stay, and this session's records go beside it.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_journal_is_kept_and_written_beside() {
+        use std::os::unix::fs::PermissionsExt;
+        // SAFETY: geteuid has no preconditions. Root reads a mode-000 file.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let (j, dir) = scratch("unreadable");
+        let file = dir.join("f.txt");
+        fs::write(&file, b"disk\n").unwrap();
+        let journal = j.write_crashed(Some(&file), b"crash work\n").unwrap();
+        let bytes = fs::read(&journal).unwrap();
+        fs::set_permissions(&journal, fs::Permissions::from_mode(0o000)).unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let n = unreplayable(j.offer(Some(&file), b"disk\n"));
+        assert!(n.contains("unreadable"), "{n}");
+        let mut d = opened(b"disk\n");
+        let mut w = Writer::new(&j, &file, FileFormat::default());
+        step(&mut w, &mut d);
+        insert(&mut d, 0, "x");
+        step(&mut w, &mut d);
+        assert_ne!(w.journal(), journal);
+        assert_eq!(w.journal(), alternate(&journal, std::process::id()));
+        let wrote = rescue(&journal, None, FileFormat::default(), b"crash\n", 0, 0).unwrap();
+        assert_eq!(wrote, w.journal(), "the crash path writes beside it too");
+        j.discard(Some(&file));
+        j.clear(Some(&file));
+        assert_eq!(mode(&journal), 0o000, "the mode is unchanged");
+        fs::set_permissions(&journal, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(
+            fs::read(&journal).unwrap(),
+            bytes,
+            "the bytes are unchanged"
+        );
+        let r = rj01::replay(&read_journal(w.journal()).unwrap(), None);
+        assert_eq!(
+            r.text.as_deref(),
+            Some(&b"crash\n"[..]),
+            "the new records are beside it"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// RFC-0023 §7 / #1193: a journal whose owner is a live process of this host with a matching start time
+    /// is in use; the same pid with another start time (a reused pid) is a crash; this process is neither.
+    #[test]
+    fn a_live_owner_makes_the_file_in_use() {
+        let (j, dir) = scratch("inuse");
+        let file = dir.join("f.txt");
+        fs::write(&file, b"disk\n").unwrap();
+        // A live process other than this one: a child that waits.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let start = process_start_ms(pid);
+        let live = Owner {
+            pid,
+            host: owner().host.clone(),
+            start_ms: start.unwrap_or(0),
+        };
+        j.write_as(Some(&file), b"theirs\n", &live).unwrap();
+        if start.is_some() {
+            assert!(is_live_other(&live));
+            match j.offer(Some(&file), b"disk\n") {
+                Recovery::InUse { owner: o, journal } => {
+                    assert_eq!(o, live);
+                    assert_eq!(journal, j.path_for(&file));
+                }
+                other => panic!("{other:?}"),
+            }
+            // This session writes beside it, never over it, and never deletes it.
+            let alt = claim(&j.path_for(&file));
+            assert_ne!(alt, j.path_for(&file));
+            assert!(alt
+                .to_string_lossy()
+                .ends_with(&format!(".{}.rj", std::process::id())));
+            j.discard(Some(&file));
+            j.clear(Some(&file));
+            assert!(
+                j.path_for(&file).exists(),
+                "another session's journal stays"
+            );
+            let mut d = opened(b"disk\n");
+            let mut w = Writer::new(&j, &file, FileFormat::default());
+            step(&mut w, &mut d);
+            insert(&mut d, 0, "x");
+            step(&mut w, &mut d);
+            assert_eq!(w.journal(), alt);
+            assert_eq!(j.replay(Some(&file)).as_deref(), Some(&b"theirs\n"[..]));
+            let wrote = rescue(
+                &j.path_for(&file),
+                None,
+                FileFormat::default(),
+                b"crash\n",
+                0,
+                0,
+            )
+            .unwrap();
+            assert_eq!(wrote, alt, "the crash path also writes beside it");
+            assert_eq!(j.candidates(&file), [j.path_for(&file), alt.clone()]);
+            w.discard();
+            assert!(!alt.exists());
+        }
+        // The same pid with another start time is a crash: offered for recovery.
+        let reused = Owner {
+            start_ms: live.start_ms.wrapping_add(60_000),
+            ..live.clone()
+        };
+        assert!(!is_live_other(&reused));
+        j.write_as(Some(&file), b"theirs\n", &reused).unwrap();
+        assert_eq!(
+            available(j.offer(Some(&file), b"disk\n")).recovered,
+            b"theirs\n"
+        );
+        // Another host's journal cannot be checked: offered.
+        let elsewhere = Owner {
+            host: b"some-other-host".to_vec(),
+            ..live.clone()
+        };
+        assert!(!is_live_other(&elsewhere));
+        assert!(
+            !is_live_other(owner()),
+            "this process is not another session"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+        // Once it is gone, its journal is a crash.
+        assert!(!is_live_other(&live));
+        j.write_as(Some(&file), b"theirs\n", &live).unwrap();
+        assert!(matches!(
+            j.offer(Some(&file), b"disk\n"),
+            Recovery::Available(_)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn this_process_start_time_is_read_and_stable() {
+        let me = std::process::id();
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        assert!(
+            process_start_ms(me).is_some(),
+            "readable where the in-use check relies on it"
+        );
+        if let Some(t) = process_start_ms(me) {
+            assert!(t <= now_ms() && now_ms() - t < 24 * 3600 * 1000 * 30);
+            assert!(process_start_ms(me).unwrap().abs_diff(t) <= START_SLACK_MS);
+            assert!(owner().start_ms.abs_diff(t) <= START_SLACK_MS);
+        }
+        assert_eq!(process_start_ms(GONE_PID), None);
+    }
+
+    /// `r` takes the journal over as this process's own, and archives one of another name it came from.
+    #[test]
+    fn adopting_a_recovery_owns_the_journal() {
+        let (j, dir) = scratch("adopt");
+        let file = dir.join("f.txt");
+        fs::write(&file, b"disk\n").unwrap();
+        j.write_crashed(Some(&file), b"work\n").unwrap();
+        let a = available(j.offer(Some(&file), b"disk\n"));
+        let p = j.adopt(&a, Some(&file), FileFormat::default()).unwrap();
+        assert_eq!(p, j.path_for(&file));
+        assert_eq!(read_owner(&p).as_ref(), Some(owner()));
+        assert_eq!(j.replay(Some(&file)).as_deref(), Some(&b"work\n"[..]));
+        assert!(!j.archive_dir().exists(), "nothing to archive: same name");
+        // `:q!` now discards it.
+        j.discard(Some(&file));
+        assert!(!p.exists());
+        // A second session's crashed `<name>.<pid>.rj` is archived once taken over.
+        let alt = alternate(&j.path_for(&file), GONE_PID);
+        j.write_crashed(Some(&file), b"alt work\n").unwrap();
+        fs::rename(j.path_for(&file), &alt).unwrap();
+        let a = available(j.offer(Some(&file), b"disk\n"));
+        assert_eq!(a.journal, alt);
+        j.adopt(&a, Some(&file), FileFormat::default()).unwrap();
+        assert!(!alt.exists());
+        assert_eq!(fs::read_dir(j.archive_dir()).unwrap().count(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Two archives of one journal in the same millisecond do not replace each other.
+    #[test]
+    fn archives_never_replace_each_other() {
+        let (j, dir) = scratch("archive");
+        let file = dir.join("f.txt");
+        for _ in 0..3 {
+            let p = j.write_crashed(Some(&file), b"x").unwrap();
+            j.archive(&p).unwrap();
+        }
+        assert_eq!(fs::read_dir(j.archive_dir()).unwrap().count(), 3);
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1283,15 +1782,12 @@ mod tests {
             rj01::replay(&raw, None).header.unwrap().base,
             Base::Disk { .. }
         ));
-        match j.offer(Some(&file), &disk) {
-            Offer::Text { text, .. } => assert!(text.len() == disk.len() + 1 && text[0] == b'+'),
-            other => panic!("{other:?}"),
-        }
+        // The writer is this process: the journal is offered (it is not another session's).
+        let text = available(j.offer(Some(&file), &disk)).recovered;
+        assert!(text.len() == disk.len() + 1 && text[0] == b'+');
         let mut changed = disk.clone();
         changed[10] = b'b';
-        let Offer::Note(n) = j.offer(Some(&file), &changed) else {
-            panic!("a note");
-        };
+        let n = unreplayable(j.offer(Some(&file), &changed));
         assert!(
             n.contains("changed on disk") && n.contains("1 changes"),
             "{n}"
@@ -1311,21 +1807,22 @@ mod tests {
         let mut raw = rjs0::frame(b"old");
         raw.extend(rjs0::frame(b"legacy work\n"));
         fs::write(&sidecar, &raw).unwrap();
-        let Offer::Text {
-            text, from, legacy, ..
-        } = j.offer(Some(&file), b"disk\n")
-        else {
-            panic!("offered");
-        };
-        assert_eq!(text, b"legacy work\n");
-        assert!(legacy);
-        j.settle(&from, legacy, true);
+        let a = available(j.offer(Some(&file), b"disk\n"));
+        assert_eq!(a.recovered, b"legacy work\n");
+        assert!(a.legacy && a.changes.is_none() && a.owner.is_none());
+        j.adopt(&a, Some(&file), FileFormat::default()).unwrap();
         assert!(!sidecar.exists());
         assert_eq!(fs::read_dir(j.archive_dir()).unwrap().count(), 1);
-        assert_eq!(j.offer(Some(&file), b"disk\n"), Offer::None);
+        // The recovered text is now this session's RJ01 journal.
+        assert_eq!(
+            j.replay(Some(&file)).as_deref(),
+            Some(&b"legacy work\n"[..])
+        );
+        j.discard(Some(&file));
+        assert_eq!(j.offer(Some(&file), b"disk\n"), Recovery::None);
         // A sidecar holding the disk text is archived without a prompt.
         fs::write(&sidecar, rjs0::frame(b"disk\n")).unwrap();
-        assert_eq!(j.offer(Some(&file), b"disk\n"), Offer::None);
+        assert_eq!(j.offer(Some(&file), b"disk\n"), Recovery::None);
         assert!(!sidecar.exists());
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1345,9 +1842,7 @@ mod tests {
         // SAFETY: `c` is a valid NUL-terminated path.
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
         let t = Instant::now();
-        let Offer::Note(n) = j.offer(Some(&file), b"") else {
-            panic!("a note");
-        };
+        let n = unreplayable(j.offer(Some(&file), b""));
         assert!(n.contains("is not a regular file"), "{n}");
         assert!(j.write_text(Some(&file), b"x").is_err());
         let mut d = opened(b"");
@@ -1371,21 +1866,16 @@ mod tests {
         j.ensure_dir().unwrap();
         // A pid no process has: above every platform's pid range.
         let orphan = j.dir().join("unnamed.2147483646.1.rj");
-        let mine = j.write_text(None, b"unnamed work\n").unwrap();
-        fs::rename(&mine, &orphan).unwrap();
-        let Offer::Text {
-            text, from, legacy, ..
-        } = j.offer(None, b"")
-        else {
-            panic!("offered");
-        };
-        assert_eq!(text, b"unnamed work\n");
-        assert_eq!(from, orphan);
-        j.settle(&from, legacy, true);
+        let crashed = j.write_crashed(None, b"unnamed work\n").unwrap();
+        fs::rename(&crashed, &orphan).unwrap();
+        let a = available(j.offer(None, b""));
+        assert_eq!(a.recovered, b"unnamed work\n");
+        assert_eq!(a.journal, orphan);
+        j.adopt(&a, None, FileFormat::default()).unwrap();
         assert!(!orphan.exists());
-        assert!(j.unnamed().exists());
+        assert_eq!(read_owner(&j.unnamed()).as_ref(), Some(owner()));
         // This process's own unnamed journal is never offered to itself.
-        assert_eq!(j.offer(None, b""), Offer::None);
+        assert_eq!(j.offer(None, b""), Recovery::None);
         let _ = fs::remove_dir_all(&dir);
     }
 }

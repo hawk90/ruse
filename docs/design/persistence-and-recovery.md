@@ -376,6 +376,18 @@ fail cleanly.
 
 > **Decided details (D-064, [RFC-0023](../rfc/proposed/RFC-0023-per-transaction-journal.md) §6-§9):** the prompt
 > keys, the live-owner case, when a journal is deleted versus archived, retention numbers, and the status flags.
+>
+> **As built (v0.1.8, RFC-0023 slice 3, #933):** `persist::Recovery` is `None` / `Available` / `InUse` /
+> `Unreplayable` and one prompt (`apps/tui/src/ui/recovery.rs`) serves the startup file and `:e`. Where the build
+> differs from the text below: (c) `KeepInMemory` (`e`) opens the disk file and moves the journal to the archive,
+> as `k` does; the two differ only in wording until retention (#934) treats them apart. The diff is a full-screen
+> read-only view inside the prompt, not an editor buffer (the startup prompt runs before the editor exists).
+> There is no `<name>.ruse-recovered` side file. The ownership marker is the RJ01 Header's owner record; a live
+> owner is `kill(pid, 0)` plus a matching start time read from the system (`/proc/<pid>/stat`, `proc_pidinfo`),
+> and an unreadable start time counts as a crash. "Read-only" is a per-buffer flag that makes `:w`, `:wa` and
+> `ZZ` refuse with E45 unless forced; there is no `'readonly'` option yet. A session that edits anyway journals
+> to `<name>.<pid>.rj` beside the owner's and only ever deletes a journal whose Header names itself. The same
+> "beside, never over" rule holds for a journal from a newer major version and for one this process cannot read.
 
 On opening a file that has a recovery journal whose `saved_revision` point is *behind* recoverable records (a
 prior crash), recovery presents **three** materialized options and **never auto-applies** any of them
