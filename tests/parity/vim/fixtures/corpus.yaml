@@ -100034,6 +100034,4304 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "vb_dollar_h_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$hy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_y_mid",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$hy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_d",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$hd",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_c",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$hcX<Esc>",
+      "expect": {
+        "text": [
+          "aX",
+          "aX",
+          "aX"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_l_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$ly",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "vb_dollar_first_h",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "$<C-v>jjhy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "f\n   \nfgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "f\n   \nfgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_first_hh",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "$<C-v>jjhhy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "f\n  \nfg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "f\n  \nfg",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "issue_case",
+      "lines": [
+        "abcdef",
+        "abcdef"
+      ],
+      "keys": "$<C-v>jhy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "f\nf",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "f\nf",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_short_last",
+      "lines": [
+        "abcdefgh",
+        "abcdef",
+        "abc"
+      ],
+      "keys": "l<C-v>jj$hy",
+      "expect": {
+        "text": [
+          "abcdefgh",
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\nbc\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\nbc\nbc",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_d_short_last",
+      "lines": [
+        "abcdefgh",
+        "abcdef",
+        "abc"
+      ],
+      "keys": "l<C-v>jj$hd",
+      "expect": {
+        "text": [
+          "adefgh",
+          "adef",
+          "a"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\nbc\nbc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_hh_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$hhy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\nabcdefg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\nabcdefg",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_A",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$hAX<Esc>",
+      "expect": {
+        "text": [
+          "abcdef  X",
+          "abc     X",
+          "abcdefghX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_k_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "G<C-v>kk$hy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\nabcdef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\nabcdef",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_o_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$hoy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_j_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>$jjy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_dollar_j_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "lv$jy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nabc\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bcdef\nabc\n",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_dollar_j_h_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "lv$jhy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nabc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bcdef\nabc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_dollar_h_y",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "lv$hy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bcdef",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_j_dollar_k_h",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "lv$jjkhy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nabc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bcdef\nabc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_F_y",
+      "lines": [
+        "abcdefgh",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$Fhy",
+      "expect": {
+        "text": [
+          "abcdefgh",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdefgh\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdefgh\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_b_y",
+      "lines": [
+        "abc defgh",
+        "abc",
+        "abc defgh"
+      ],
+      "keys": "<C-v>jj$by",
+      "expect": {
+        "text": [
+          "abc defgh",
+          "abc",
+          "abc defgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc d\nabc\nabc d",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc d\nabc\nabc d",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_ge_y",
+      "lines": [
+        "abc defgh",
+        "abc",
+        "abc defgh"
+      ],
+      "keys": "<C-v>jj$gey",
+      "expect": {
+        "text": [
+          "abc defgh",
+          "abc",
+          "abc defgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc defgh\nabc\nabc defgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc defgh\nabc\nabc defgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_3h_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$3hy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\nabcdef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\nabcdef",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_bs_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$<BS>y",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_empty_last",
+      "lines": [
+        "abcdef",
+        "abc",
+        ""
+      ],
+      "keys": "l<C-v>jj$hy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\n",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\n",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "vb_dollar_k_h",
+      "lines": [
+        "abcdefgh",
+        "abcdef",
+        "abc"
+      ],
+      "keys": "l<C-v>jj$khy",
+      "expect": {
+        "text": [
+          "abcdefgh",
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbcdef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbcdef",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_l_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$hly",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\nabcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_esc_h",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$<Esc>hx",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefh"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_x_wide",
+      "lines": [
+        "ab中",
+        "abc",
+        "ab中中"
+      ],
+      "keys": "<C-v>jj$hy",
+      "expect": {
+        "text": [
+          "ab中",
+          "abc",
+          "ab中中"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab中\nabc\nab中中",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab中\nabc\nab中中",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_tab",
+      "lines": [
+        "ab\tc",
+        "abc",
+        "abcdefghijk"
+      ],
+      "keys": ":set ts=8<CR><C-v>j$hy",
+      "expect": {
+        "text": [
+          "ab\tc",
+          "abc",
+          "abcdefghijk"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab \nabc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab \nabc",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_dollar_h_d",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "lv$hd",
+      "expect": {
+        "text": [
+          "a",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bcdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_dollar_esc_h",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "v$<Esc>hx",
+      "expect": {
+        "text": [
+          "abcdf",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_esc_x",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>jj$<Esc>x",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefg"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "h",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_j_esc_x",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "$<C-v>jj<Esc>x",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefg"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "h",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_dollar_j_esc_x",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "$vjj<Esc>x",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefg"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "h",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_I",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$IX<Esc>",
+      "expect": {
+        "text": [
+          "aXbcdef",
+          "aXbc",
+          "aXbcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_A",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$AX<Esc>",
+      "expect": {
+        "text": [
+          "abcdefX",
+          "abcX",
+          "abcdefghX"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_o_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$oy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_O_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$Oy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefg",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_O_h_y",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$Ohy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\nabc\nabcdefg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abcdef\nabc\nabcdefg",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_r",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$rx",
+      "expect": {
+        "text": [
+          "axxxxx",
+          "axx",
+          "axxxxxxx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_J",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "<C-v>j$J",
+      "expect": {
+        "text": [
+          "abcdef abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_tilde",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$~",
+      "expect": {
+        "text": [
+          "aBCDEF",
+          "aBC",
+          "aBCDEFGH"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_gv",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$<Esc>gvy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_p",
+      "lines": [
+        "xy",
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "yljl<C-v>jj$p",
+      "expect": {
+        "text": [
+          "xy",
+          "ax",
+          "ax",
+          "ax"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_h_gv",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$h<Esc>gvy",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bcdef\nbc\nbcdefgh",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_dollar_colon_cu_cr",
+      "lines": [
+        "abcdef",
+        "abc",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jj$:<C-u><CR>x",
+      "expect": {
+        "text": [
+          "acdef",
+          "abc",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "colon_empty_line",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": ":<CR>x",
+      "expect": {
+        "text": [
+          "bcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "colon_cu_empty_line",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": ":abc<C-u><CR>x",
+      "expect": {
+        "text": [
+          "bcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "colon_empty_line_visual",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "V:<C-u><CR>x",
+      "expect": {
+        "text": [
+          "bcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "colon_empty_keeps_colon_reg",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": ":s/a/X/<CR>:<CR>\":p",
+      "expect": {
+        "text": [
+          "Xs/a/X/bcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "colon_empty_keeps_at_colon",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": ":s/b/X/<CR>:<CR>j@:",
+      "expect": {
+        "text": [
+          "aXcdef",
+          "aXc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "py_ret",
+      "lines": [
+        "def f():",
+        "    return x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_pass",
+      "lines": [
+        "def f():",
+        "    pass"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    pass",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_break",
+      "lines": [
+        "for i in r:",
+        "    if a:",
+        "        break"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "for i in r:",
+          "    if a:",
+          "        break",
+          "    q"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_raise",
+      "lines": [
+        "def f():",
+        "    raise E"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    raise E",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ret_eq",
+      "lines": [
+        "def f():",
+        "    return x",
+        "y = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "y = 1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ret_eq_deep",
+      "lines": [
+        "def f():",
+        "    return x",
+        "        y = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "y = 1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_paren_o",
+      "lines": [
+        "x = foo(a,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>ob)<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(a,",
+          "        b)"
+        ],
+        "cursor": [
+          2,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_paren_eq",
+      "lines": [
+        "x = foo(a,",
+        "b)",
+        "y = 2"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(a,",
+          "        b)",
+          "y = 2"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_paren_eq_nested",
+      "lines": [
+        "def f():",
+        "    x = foo(a,",
+        "b,",
+        "c)",
+        "    y = 2"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    x = foo(a,",
+          "            b,",
+          "            c)",
+          "    y = 2"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_paren_cr",
+      "lines": [
+        "x = foo(a,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>A<CR>b)<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(a,",
+          "        b)"
+        ],
+        "cursor": [
+          2,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_paren_empty",
+      "lines": [
+        "x = foo("
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>ob)<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(",
+          "        b)"
+        ],
+        "cursor": [
+          2,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_bracket",
+      "lines": [
+        "x = [1,",
+        "2]"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = [1,",
+          "     2]"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_brace",
+      "lines": [
+        "x = {1:",
+        "2}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = {1:",
+          "     2}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_closer_alone",
+      "lines": [
+        "x = foo(",
+        "a,",
+        ")"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(",
+          "        a,",
+          "        )"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_def_paren",
+      "lines": [
+        "def f(a,",
+        "b):",
+        "pass"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f(a,",
+          "      b):",
+          "    pass"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_else_typed",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelse:<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_elif_typed",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelif b:<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "elif b:"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_except_typed",
+      "lines": [
+        "try:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joexcept E:<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "try:",
+          "    x = 1",
+          "except E:"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_finally_typed",
+      "lines": [
+        "try:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jofinally:<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "try:",
+          "    x = 1",
+          "finally:"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_else_typed_noColon",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelse<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_cc_after_return",
+      "lines": [
+        "def f():",
+        "    return x",
+        "    y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjccq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "    y\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_S_after_return",
+      "lines": [
+        "def f():",
+        "    return x",
+        "    y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjSq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "    y\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ctrlf_after_return",
+      "lines": [
+        "def f():",
+        "    return x",
+        "    y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjA<C-f><Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "y"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_hash_after_return",
+      "lines": [
+        "def f():",
+        "    return x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo<Tab>#c<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "    #c"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_paren_close_typed",
+      "lines": [
+        "x = foo(",
+        "        a,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo)<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(",
+          "        a,",
+          "        )"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_paren_close_typed_bs",
+      "lines": [
+        "x = foo(",
+        "        a,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo<BS><BS>)<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(",
+          "        a,",
+          ")"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_colon_typed_in_paren",
+      "lines": [
+        "x = foo(a,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o<C-u>  d[1:<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(a,",
+          "  d[1:"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_else_then_space",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelse x<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else x"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_elsewhere",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelsewhere<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "elsewhere"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_after_colon_comment",
+      "lines": [
+        "if a:  # c"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>oq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:  # c",
+          "    q"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_backslash",
+      "lines": [
+        "x = a + \\"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>ob<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = a + \\",
+          "        b"
+        ],
+        "cursor": [
+          2,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_backslash2",
+      "lines": [
+        "x = a + \\",
+        "        b + \\"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joc<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = a + \\",
+          "        b + \\",
+          "        c"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_nested_paren",
+      "lines": [
+        "x = foo(bar(",
+        "a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(bar(",
+          "    a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_nested_paren_eol",
+      "lines": [
+        "x = foo(",
+        "    bar(",
+        "a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(",
+          "        bar(",
+          "            a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_after_paren_close",
+      "lines": [
+        "x = foo(",
+        "    a,",
+        "    b)",
+        "    y = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(",
+          "        a,",
+          "        b)",
+          "y = 1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_top_pass",
+      "lines": [
+        "pass",
+        "    y = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "pass",
+          "    y = 1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_top_pass_o",
+      "lines": [
+        "pass"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>oq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "pass",
+          "q"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_cr_split_after_return",
+      "lines": [
+        "def f():",
+        "    return x y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>j$i<CR><Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x ",
+          "y"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_O_after_return",
+      "lines": [
+        "def f():",
+        "    return x",
+        "    y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjOq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q",
+          "    y"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_except_typed_deep",
+      "lines": [
+        "def f():",
+        "    try:",
+        "        x = 1",
+        "        y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goexcept:<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    try:",
+          "        x = 1",
+          "        y",
+          "    except:"
+        ],
+        "cursor": [
+          5,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_dot_o_return",
+      "lines": [
+        "def f():",
+        "    return x",
+        "y = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>j.",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q",
+          "y = 1",
+          "q"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_else_undo",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelse:<Esc>u",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_else_dot",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "    y = 2"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelse:<Esc>j.",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:",
+          "    y = 2",
+          "else:"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_ctrl_t_then_else",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo<C-t>else<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "        else"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_ctrl_d_then_else",
+      "lines": [
+        "if a:",
+        "    if b:",
+        "        x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go<C-d>else<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    if b:",
+          "        x = 1",
+          "    else"
+        ],
+        "cursor": [
+          4,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_space_then_else",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo else<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "     else"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_else_after_cr",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo <CR>else<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "     ",
+          "else"
+        ],
+        "cursor": [
+          4,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_else_nested_oneliner",
+      "lines": [
+        "for x in y:",
+        "    if a: b()",
+        "    else"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gx$ae<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "for x in y:",
+          "    if a: b()",
+          "   elsee"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": " ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_dict_colon",
+      "lines": [
+        "d = {",
+        "    1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jA: 2<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "d = {",
+          "        1: 2"
+        ],
+        "cursor": [
+          2,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_hash_first",
+      "lines": [
+        "def f():",
+        "    return x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo#c<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "#c"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_hash_typed_late",
+      "lines": [
+        "def f():",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joy  #c<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    x = 1",
+          "    y  #c"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_finally",
+      "lines": [
+        "try:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jofinally:<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "try:",
+          "    x = 1",
+          "finally:"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_elif_mid_line",
+      "lines": [
+        "if a:",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joy = 1 if b elif<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "    y = 1 if b elif"
+        ],
+        "cursor": [
+          3,
+          18
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_bracket_close",
+      "lines": [
+        "x = [",
+        "    1,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo]<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = [",
+          "    1,",
+          "    ]"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_brace_open_first",
+      "lines": [
+        "def f():",
+        "    return x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo{<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "{"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_ctrl_f",
+      "lines": [
+        "def f():",
+        "    return x",
+        "        y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GA<C-f>z<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "yz"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_ik_ctrl_f_mid",
+      "lines": [
+        "def f():",
+        "x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gfx<Esc>i<C-f>z<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    zx = 1"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "py_cc_on_else",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "    else:"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gccq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "    else:\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_Vc",
+      "lines": [
+        "def f():",
+        "    return x",
+        "    y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GVcq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "    y\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_cj",
+      "lines": [
+        "def f():",
+        "    return x",
+        "    y",
+        "    z"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjcjq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "    y\n    z\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_c_dollar_blank",
+      "lines": [
+        "def f():",
+        "    return x",
+        "    y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>G^c$q<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "y",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_count_o",
+      "lines": [
+        "def f():",
+        "    return x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>j3oq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "q",
+          "q",
+          "q"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_mixed",
+      "lines": [
+        "def f(a,",
+        "b):",
+        "  if a:",
+        "   return (1 +",
+        "2)",
+        "  else:",
+        "      pass",
+        "  x = [",
+        "1, 2,",
+        "]",
+        "  y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f(a,",
+          "      b):",
+          "    if a:",
+          "        return (1 +",
+          "                2)",
+          "  else:",
+          "      pass",
+          "  x = [",
+          "          1, 2,",
+          "          ]",
+          "  y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_noet",
+      "lines": [
+        "class C:",
+        "def f(self):",
+        "if a:",
+        "return 1",
+        "x = foo(a,",
+        "b)"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "class C:",
+          "    def f(self):",
+          "\tif a:",
+          "\t    return 1",
+          "x = foo(a,",
+          "\tb)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_continuation",
+      "lines": [
+        "x = 1 + \\",
+        "2 + \\",
+        "3",
+        "y = 4"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = 1 + \\",
+          "        2 + \\",
+          "        3",
+          "y = 4"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_except_try",
+      "lines": [
+        "try:",
+        "    try:",
+        "        x",
+        "    except A:",
+        "        y",
+        "except B:",
+        "    z"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "try:",
+          "    try:",
+          "        x",
+          "    except A:",
+          "        y",
+          "except B:",
+          "    z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_O_in_paren",
+      "lines": [
+        "x = foo(a,",
+        "        b)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jOq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(a,",
+          "        q",
+          "        b)"
+        ],
+        "cursor": [
+          2,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_cr_in_paren",
+      "lines": [
+        "x = foo(a, b)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>fbi<CR><Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = foo(a, ",
+          "        b)"
+        ],
+        "cursor": [
+          2,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_blank_lines_between",
+      "lines": [
+        "def f():",
+        "    return x",
+        "",
+        ""
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    return x",
+          "",
+          "",
+          "q"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_esc_empties",
+      "lines": [
+        "def f():",
+        "    x = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    x = 1",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_count",
+      "lines": [
+        "def f():",
+        "x = 1",
+        "y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>j2==",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    x = 1",
+          "y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_syn_o_after_hash_in_string",
+      "lines": [
+        "if a == '#':"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>oq<Esc>",
+      "setup": "syntax on",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a == '#':",
+          "    q"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_syn_o_paren_in_string",
+      "lines": [
+        "x = '('",
+        "y = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "setup": "syntax on",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = '('",
+          "y = 1",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_syn_o_paren_in_comment",
+      "lines": [
+        "x = 1  # (",
+        "y = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "setup": "syntax on",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "x = 1  # (",
+          "y = 1",
+          "q"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_syn_docstring_eq",
+      "lines": [
+        "def f():",
+        "    '''a",
+        "        b",
+        "    '''",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "setup": "syntax on",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    '''a",
+          "        b",
+          "    '''",
+          "    x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_docstring_nosyntax",
+      "lines": [
+        "def f():",
+        "    '''a",
+        "        b",
+        "    '''",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    '''a",
+          "        b",
+          "    '''",
+          "    x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_close_brace",
+      "lines": [
+        "fn f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    x;",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_close_brace_nested",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_close_paren",
+      "lines": [
+        "fn f() {",
+        "    g(",
+        "        a,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go);<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    g(",
+          "        a,",
+          "    );"
+        ],
+        "cursor": [
+          4,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_close_bracket",
+      "lines": [
+        "fn f() {",
+        "    let v = [",
+        "        1,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go];<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    let v = [",
+          "        1,",
+          "    ];"
+        ],
+        "cursor": [
+          4,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_close_brace",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_close_brace_nested",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_hash",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo#define A<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "#define A"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_close_brace",
+      "lines": [
+        "function f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    x;",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_close_brace",
+      "lines": [
+        "func f() {",
+        "\tx()"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>jo}<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tx()",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_json_close_brace",
+      "lines": [
+        "{",
+        "    \"a\": 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>",
+      "file": "fixture.json",
+      "expect": {
+        "text": [
+          "{",
+          "    \"a\": 1",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_css_close_brace",
+      "lines": [
+        "a {",
+        "    color: red;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>",
+      "file": "fixture.css",
+      "expect": {
+        "text": [
+          "a {",
+          "    color: red;",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_fi",
+      "lines": [
+        "if a; then",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jofi<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "fi"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_close_brace",
+      "lines": [
+        "f() {",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "f() {",
+          "    x",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

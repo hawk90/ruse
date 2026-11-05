@@ -4086,7 +4086,9 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     }
     st.view.typed_space = match cmd {
         Command::InsertChar(' ') => true,
-        Command::InsertChar(_) | Command::DeleteBack => st.view.typed_space,
+        Command::InsertChar(_) | Command::DeleteBack | Command::SetIndentCols { .. } => {
+            st.view.typed_space
+        }
         _ => false,
     };
     update_curswant(st, cmd, entry_mode, kept_col);

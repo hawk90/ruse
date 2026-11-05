@@ -310,6 +310,9 @@ features:
     # the deleted indent on the next <CR>, `=` keeps indent characters under 'preserveindent', 'cinwords'
     # is settable, and 'equalprg' makes `=` filter through a program. Not implemented: cindent, cinkeys,
     # cinoptions, cinscopedecls, indentkeys, lisp, lispoptions, lispwords, vartabstop, varsofttabstop.
+    # #1206: no 'indentkeys'/'cinkeys' OPTION, but the keys nvim's defaults re-indent on are built in per
+    # language (F-015): Python's `<:>`, `=elif`, `=except`, `e`, `0#`, `0{`/`0}`/`0)`/`0]`, `o`, `O`, and
+    # `i_CTRL-F` (`!^F`) re-indents the line from the buffer's indenter (a no-op without one).
     # #618 (oracle-verified vs nvim v0.12.6): auto-wrap while typing past 'textwidth' / the 'wrapmargin'
     # width (the counted insert `8ia b<Esc>` wraps too), with the 'formatoptions' flags t c l 1 p and the
     # 'comments' leaders; fo r/o continue a comment leader on <CR>/o/O (a three-part comment's middle and
@@ -885,6 +888,13 @@ features:
     # exist: manual folds in apps/tui/src/folds.rs and node-depth auto-indent in apps/tui/src/indent.rs are
     # built, wired, and unit-tested — they are just not yet DRIVEN by tree-sitter queries.) The parity chain
     # (legacy NVIM-TS-*) is also not yet repointed.
+    # #1205/#1206 (oracle-verified vs nvim v0.12.6 with `filetype indent on`): a Python buffer is indented
+    # as nvim's `python#GetIndent` does, not by node depth — `=`, `o`/`O`/`<CR>`, `cc`/`S` and the Python
+    # 'indentkeys' (`else`, `elif`, `except`, `:`, a closer or `#` typed first, `i_CTRL-F`) dedent after
+    # `return`/`pass`/`break`/`continue`/`raise`, align a bracket continuation (or `shiftwidth() * 2` after
+    # a bracket ending its line), and line up `elif`/`else`/`except`/`finally`. Strings and comments come
+    # from the tree, as nvim's with `syntax on`. In brace languages a closer typed first lines up with its
+    # opener. Not built: cindent's C rules (`e`, `0#`, `:` in 'cinkeys'; #1163).
     status: planned
     depends_on: [C-DOCUMENT, C-RENDER, C-SCHEDULER]
     summary: Incremental structural highlighting from snapshots; injections; TS folds/indent.

@@ -298,11 +298,21 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
         ),
         // Block `O`: the cursor takes the anchor's column on its own row, the anchor the cursor's column on
         // its row — the other corner of the same rectangle, horizontally. Charwise/linewise `O` is `o`.
+        // A corner past a row's last char (a `$` block, #1207) rests past it on the other row too, as
+        // nvim's Visual `coladvance` may go one past the end.
         VisualOp::OtherCorner if kind == SelectKind::Blockwise => {
             let (a_col, c_col) = (vcols_at(b, anchor, ts).0, vcols_at(b, cur, ts).0);
+            let corner = |p: usize, col: usize| {
+                let ls = line_start(b, p);
+                if col >= range::line_cells(b, ls, ts) {
+                    line_end(b, ls)
+                } else {
+                    at_vcol(b, ls, col, ts)
+                }
+            };
             Plan {
-                set_anchor: Some(at_vcol(b, line_start(b, anchor), c_col, ts)),
-                ..nop(at_vcol(b, line_start(b, cur), a_col, ts), st.view.mode)
+                set_anchor: Some(corner(anchor, c_col)),
+                ..nop(corner(cur, a_col), st.view.mode)
             }
         }
         VisualOp::OtherCorner => Plan {
@@ -2632,6 +2642,16 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 let ls = line_start(b, cur);
                 let c = if cur > ls { prev_grapheme(b, cur) } else { cur };
                 nop(c, Mode::Normal)
+            } else if st.view.mode.selection().is_some() && st.view.caret == CaretGravity::OnChar {
+                // A Visual cursor past the line's last char (`v$`, `<C-v>$`, `$vj`) comes back onto it, as
+                // Normal mode never rests on the newline (#1207).
+                let (ls, le) = (line_start(b, cur), line_end(b, cur));
+                let c = if cur == le && le > ls {
+                    prev_grapheme(b, cur)
+                } else {
+                    cur
+                };
+                nop(c, Mode::Normal)
             } else {
                 nop(cur, Mode::Normal)
             }
@@ -3574,14 +3594,16 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     ts,
                 ),
                 // In charwise Visual `$` goes just past the line's last char, so the selection takes the
-                // line break (`v$d` joins the lines, #697).
+                // line break (`v$d` joins the lines, #697). In blockwise Visual too (nvim's `coladvance`
+                // puts a Visual `$` one past the end): a motion from there starts past the last char, so
+                // `<C-v>$h` rests ON it and the block still ends there, and `ge` finds that word (#1207).
                 Motion::LineEnd
                     if matches!(
                         st.view.mode,
                         Mode::Visual {
-                            kind: SelectKind::Charwise
+                            kind: SelectKind::Charwise | SelectKind::Blockwise
                         } | Mode::Select {
-                            kind: SelectKind::Charwise
+                            kind: SelectKind::Charwise | SelectKind::Blockwise
                         }
                     ) =>
                 {
@@ -3784,7 +3806,18 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             first_line,
             last_line,
             levels,
-        } => plan_set_indents(st, *first_line, *last_line, levels, hint),
+        } => {
+            let sw = st.view.indent.shift_width();
+            let cols: Vec<Option<usize>> = levels.iter().map(|l| Some(l * sw)).collect();
+            plan_set_indents(st, *first_line, *last_line, &cols, hint)
+        }
+        Command::SetIndentCols {
+            first_line,
+            last_line,
+            cols,
+        } => plan_set_indents(st, *first_line, *last_line, cols, hint),
+        // Resolved by the frontend from the buffer's indenter; unresolved it does nothing (nvim without one).
+        Command::InsertReindent => nop(cur, st.view.mode),
         // Paste reads the pending register (`"xp`) or the unnamed slot; `commit` clears the pending slot.
         Command::Paste {
             after,
@@ -4603,7 +4636,7 @@ fn plan_set_indents(
     st: &EditorState,
     first_line: usize,
     last_line: usize,
-    levels: &[usize],
+    cols: &[Option<usize>],
     hint: GroupHint,
 ) -> Plan {
     let b = st.bytes();
@@ -4616,21 +4649,29 @@ fn plan_set_indents(
     let last = last_line.min(line_starts.len().saturating_sub(1));
     let first = first_line.min(last);
     let mut edits: Vec<Edit> = Vec::new();
-    let mut first_cursor = line_starts[first];
+    let insert = st.view.mode == Mode::Insert;
+    let cur = st.view.cursor;
+    let mut first_cursor = if insert { cur } else { line_starts[first] };
     #[allow(clippy::needless_range_loop)]
     for li in first..=last {
         let ls = line_starts[li];
         let le = line_end(b, ls);
         let fnb = motion::first_non_blank(b, ls);
-        let want: Vec<u8> = if fnb >= le {
+        let want: Vec<u8> = if fnb >= le && !insert {
             Vec::new() // blank line → no indent
         } else {
-            let level = levels.get(li - first).copied().unwrap_or(0);
-            st.view
-                .indent
-                .rebuilt(&b[ls..fnb], level * st.view.indent.shift_width())
+            match cols.get(li - first).copied().unwrap_or(Some(0)) {
+                Some(c) => st.view.indent.rebuilt(&b[ls..fnb], c),
+                None => b[ls..fnb].to_vec(), // keep it
+            }
         };
-        if li == first {
+        if insert {
+            // Insert mode re-indents the caret's line (#1206): the caret keeps its place in the text, or
+            // goes to the end of the new indent when it sat in the old one (nvim's `change_indent`).
+            if (ls..=le).contains(&cur) {
+                first_cursor = ls + want.len() + cur.saturating_sub(fnb);
+            }
+        } else if li == first {
             first_cursor = ls + reindented_cursor(st, &want, &b[fnb..le]);
         }
         if b[ls..fnb] != want[..] {

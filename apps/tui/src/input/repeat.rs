@@ -421,6 +421,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::InsertCloser { .. }
         | C::BreakUndo
         | C::SetIndents { .. }
+        | C::SetIndentCols { .. }
+        | C::InsertReindent
         | C::GotoLastChange
         | C::GotoLastChangeLine
         | C::GotoChangeMarkStart
@@ -684,6 +686,8 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::OpToMark { .. }
         | C::BreakUndo
         | C::SetIndents { .. }
+        | C::SetIndentCols { .. }
+        | C::InsertReindent
         | C::PasteSelection { .. }
         | C::SetRegister(..)
         | C::SetExprRegister(..)

@@ -3042,6 +3042,11 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('t') {
             return self.action(Command::InsertIndent);
         }
+        // `i_CTRL-F` — re-indent the line (`!^F` in 'indentkeys'); the frontend resolves it from the
+        // buffer's indenter, and without one it does nothing (#1206).
+        if ctrl && key.code == KeyCode::Char('f') {
+            return self.action(Command::InsertReindent);
+        }
         // `0 CTRL-D` / `^ CTRL-D` (the `0`/`^` typed just before): delete the typed char and ALL indent of the
         // line; after `^` the next `<CR>` restores it under 'autoindent' (#617). The two edits travel in a
         // `Replay`, which bypasses the recorder, so fold them in by hand.

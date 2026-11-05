@@ -171,13 +171,15 @@ fn insert_chord_table() {
             'u' => Some(Feed::Cmd(Command::InsertDeleteToLineStart)),
             't' => Some(Feed::Cmd(Command::InsertIndent)),
             'd' => Some(Feed::Cmd(Command::InsertDedent)),
+            // Re-indent (`!^F` in 'indentkeys'), resolved by the frontend's indenter (#1206).
+            'f' => Some(Feed::Cmd(Command::InsertReindent)),
             // Prefixes: `CTRL-G`, `CTRL-R`, `CTRL-X`, `CTRL-K`, `CTRL-V`/`CTRL-Q`, `CTRL-O`, `CTRL-^`.
             'g' | 'r' | 'x' | 'k' | 'v' | 'q' | 'o' | '6' | '^' => Some(Feed::Pending),
             // `CTRL-A`/`CTRL-@` re-insert the last text (none yet); `CTRL-E`/`CTRL-Y`/`CTRL-N`/`CTRL-P`/
             // `CTRL-L` are resolved by the frontend, which needs the buffer.
             'a' | ' ' | '@' | 'e' | 'y' | 'n' | 'p' | 'l' => None,
-            // Unbound: nothing. nvim inserts `<C-b>`, `<C-f>`, `<C-l>`, `<C-z>`, `<C-_>` as raw control
-            // characters; ruse inserts nothing (`<C-v>` types one on purpose).
+            // Unbound: nothing. nvim inserts `<C-b>`, `<C-l>`, `<C-z>`, `<C-_>` (and `<C-f>` in a buffer
+            // with no indenter) as raw control characters; ruse inserts nothing (`<C-v>` types one).
             _ => Some(Feed::Ignored),
         };
         if let Some(want) = want {

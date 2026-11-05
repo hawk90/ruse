@@ -591,6 +591,20 @@ pub enum Command {
         last_line: usize,
         levels: Vec<usize>,
     },
+    /// Set the indent of each line in `[first_line, last_line]` to `cols[i]` columns, or keep it for
+    /// `None` (an indent expression's `-1`); blank lines stay empty. The frontend emits it for an indenter
+    /// that answers in columns (Python's `python#GetIndent`: a continuation line aligns with its open
+    /// bracket, #1205): for `=` in Normal mode, as `SetIndents` does, and in Insert mode for the line under
+    /// the caret, re-indented by a typed key ('indentkeys', #1206), which keeps the caret on its text.
+    SetIndentCols {
+        first_line: usize,
+        last_line: usize,
+        cols: Vec<Option<usize>>,
+    },
+    /// `i_CTRL-F` (`!^F` in 'indentkeys'): re-indent the line under the caret. The frontend resolves it
+    /// to a [`Command::SetIndentCols`] (or [`Command::SetIndents`]) from the buffer's indenter; without one
+    /// it does nothing, as in nvim without an indent expression.
+    InsertReindent,
     // editing grammar: count + motion / operator (Phase D)
     Move(u32, Motion),
     Delete(u32, Motion),
@@ -1476,6 +1490,22 @@ impl Command {
                 }
                 s
             }
+            Command::SetIndentCols {
+                first_line,
+                last_line,
+                cols,
+            } => {
+                let mut s = format!("set_indent_cols {first_line} {last_line}");
+                for c in cols {
+                    s.push(' ');
+                    match c {
+                        Some(c) => s.push_str(&c.to_string()),
+                        None => s.push('-'),
+                    }
+                }
+                s
+            }
+            Command::InsertReindent => "insert_reindent".into(),
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
@@ -1961,6 +1991,32 @@ impl Command {
                     keep_cursor,
                 });
             }
+            "set_indent_cols" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let mut num = || {
+                    it.next()
+                        .and_then(|s| s.parse().ok())
+                        .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))
+                };
+                let first_line = num()?;
+                let last_line = num()?;
+                let cols = a
+                    .split_whitespace()
+                    .skip(2)
+                    .map(|s| match s {
+                        "-" => Ok(None),
+                        s => s.parse::<usize>().map(Some),
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| CommandParseError::BadArgument(a.to_string()))?;
+                return Ok(Command::SetIndentCols {
+                    first_line,
+                    last_line,
+                    cols,
+                });
+            }
+            "insert_reindent" => Command::InsertReindent,
             "set_indents" => {
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 let mut it = a.split_whitespace();
@@ -2501,6 +2557,17 @@ mod tests {
                 last_line: 5,
                 levels: vec![0, 1, 2, 1],
             },
+            Command::SetIndentCols {
+                first_line: 1,
+                last_line: 3,
+                cols: vec![Some(0), None, Some(9)],
+            },
+            Command::SetIndentCols {
+                first_line: 0,
+                last_line: 0,
+                cols: vec![],
+            },
+            Command::InsertReindent,
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),
             Command::InsertRegister('"'),

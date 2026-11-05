@@ -16,8 +16,19 @@
 //! (Python's; Rust's starts on `{`): the `def` above it already opened the level, so counting the block as
 //! well would put the second body line a level deeper than the first. Markdown is not indented by node depth at all
 //! ([`uses_node_depth`]): its `section` nodes nest per heading, so depth says nothing about indent.
+//!
+//! Python is not indented by node depth either: [`python`] ports nvim's indent script, which answers in
+//! columns (a bracket continuation aligns with its bracket) and re-indents after the edit that triggers it
+//! (`crate::app::indent_keys`, #1205, #1206).
 
 use tree_sitter::Tree;
+
+pub mod python;
+
+/// Whether the tree is Python's, which [`python`] indents the way nvim's indent script does (#1205).
+pub fn is_python(tree: &Tree) -> bool {
+    tree.language().name() == Some("python")
+}
 
 /// The byte offset of each line start in `bytes` (line 0 starts at 0; one entry per line, including the
 /// final line after a trailing newline).

@@ -2051,6 +2051,34 @@ mod tests {
         assert_eq!(w.focused().doc.bytes(), "{\n\n    x\n".as_bytes());
     }
 
+    /// `SetIndentCols` (#1205) sets indents in columns and keeps a line for `None`; in Insert mode it
+    /// re-indents the caret's line and the caret stays on its text (#1206).
+    #[test]
+    fn set_indent_cols_sets_columns_or_keeps() {
+        let mut w = Workspace::new("a\n  b\n c\n".as_bytes().to_vec());
+        w.apply(&Command::SetIndentCols {
+            first_line: 0,
+            last_line: 2,
+            cols: vec![Some(3), None, Some(0)],
+        });
+        assert_eq!(w.focused().doc.bytes(), "   a\n  b\nc\n".as_bytes());
+        w.apply(&Command::Undo);
+        assert_eq!(w.focused().doc.bytes(), "a\n  b\n c\n".as_bytes());
+
+        // Insert mode: `    else` with the caret after it dedents and the caret follows the text.
+        let mut w = Workspace::new("if a:\n    x\n    else\n".as_bytes().to_vec());
+        w.apply(&Command::Move(2, Motion::Down));
+        w.apply(&Command::AppendLineEnd);
+        w.apply(&Command::SetIndentCols {
+            first_line: 2,
+            last_line: 2,
+            cols: vec![Some(0)],
+        });
+        assert_eq!(w.focused().doc.bytes(), "if a:\n    x\nelse\n".as_bytes());
+        assert_eq!(w.focused().view.cursor().0, 16);
+        assert_eq!(w.focused().view.mode(), crate::Mode::Insert);
+    }
+
     /// `=` reindents lines to their bracket depth (net unclosed `([{` × shiftwidth; closer-first lines
     /// dedent; blank lines stay empty), as one undo group.
     #[test]

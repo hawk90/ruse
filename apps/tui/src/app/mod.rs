@@ -8,6 +8,7 @@ pub(crate) mod ex_print;
 pub(crate) mod ex_range;
 pub(crate) mod file_cmds;
 pub(crate) mod fold_cmds;
+pub(crate) mod indent_keys;
 pub(crate) mod lsp_coordinator;
 pub(crate) mod session;
 pub(crate) mod set_exec;

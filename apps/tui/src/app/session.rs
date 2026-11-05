@@ -495,6 +495,34 @@ fn resolve_tree_aware(
             .and_then(highlight::CachedHighlight::tree)
             .filter(|t| indent::uses_node_depth(t))
     };
+    // Python indents as nvim's indent script does, after the edit (`indent_keys`), in columns (#1205).
+    let python = crate::app::indent_keys::is_python(ws, highlighters);
+    if python {
+        return match cmd {
+            Command::Reindent { count, motion } => match ws.reindent_range(motion, count) {
+                Some((first, last)) => {
+                    crate::app::indent_keys::reindent(ws, highlighters, snapshot, first, last)
+                }
+                None => Command::Reindent { count, motion },
+            },
+            Command::InsertReindent => {
+                crate::app::indent_keys::reindent_caret_line(ws, highlighters, snapshot)
+            }
+            other => other,
+        };
+    }
+    // `i_CTRL-F` re-indents the caret's line from the tree.
+    if matches!(cmd, Command::InsertReindent) {
+        if let Some(tree) = tree_of(ws) {
+            let row = line_idx.line_of(ws.focused().view.cursor().0);
+            return Command::SetIndents {
+                first_line: row,
+                last_line: row,
+                levels: indent::indent_levels(tree, snapshot, row, row),
+            };
+        }
+        return cmd;
+    }
     // `=` — resolve the reindent range + levels from the tree, else fall through to the core `=`.
     let cmd = if let Command::Reindent { count, motion } = cmd {
         match (ws.reindent_range(motion, count), tree_of(ws)) {
@@ -747,6 +775,9 @@ pub(crate) struct Session {
     /// The last executed Ex command-line (WITHOUT the leading `:`) — Vim's `":` register (`:help quote_:`),
     /// read by `C-r :`. Recorded on every `Feed::ExecuteEx`.
     last_ex_line: Option<String>,
+    /// nvim's `can_cindent` for the Python 'indentkeys' (#1206): a blank, `<Tab>` or `<BS>` typed in the
+    /// indent stops the keys re-indenting the line until the next line or Insert.
+    can_cindent: bool,
     /// The last shell command run by `:!`, `:{range}!` or `:r !` (after expansion) — what a `!` in the next
     /// one expands to, so `:!!` repeats it (`:help :!`).
     last_shell: Option<String>,
@@ -879,6 +910,7 @@ impl Session {
             config_paths: None,
             last_substitute: None,
             last_ex_line: None,
+            can_cindent: true,
             last_shell: None,
             overlay: None,
             #[cfg(unix)]
@@ -2817,10 +2849,16 @@ impl Session {
                 let first = cmds.next().and_then(|c| {
                     crate::app::fold_cmds::prepare(c, ws, fv, line_idx, snapshot, recorded)
                 });
+                // Python re-indents on the replayed keys as on the typed ones (nvim's redo re-types them).
+                let can = &mut self.can_cindent;
+                let highlighters = &self.highlighters;
                 if let Some(first) = first {
-                    run_cmd(first, ws, files, recorded, status, quit);
-                    for cmd in cmds {
+                    for cmd in std::iter::once(first).chain(cmds) {
+                        let after = crate::app::indent_keys::before(&cmd, ws, highlighters, can);
                         run_cmd(cmd, ws, files, recorded, status, quit);
+                        if let Some(fix) = crate::app::indent_keys::after(after, ws, highlighters) {
+                            run_cmd(fix, ws, files, recorded, status, quit);
+                        }
                     }
                 }
             }
@@ -2851,6 +2889,7 @@ impl Session {
             status,
             alt_file,
             folds,
+            can_cindent,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -2988,6 +3027,7 @@ impl Session {
         if crate::app::dispatch::run_prg_operator(&cmd, ws, recorded, status) {
             return;
         }
+        let indent_after = crate::app::indent_keys::before(&cmd, ws, highlighters, can_cindent);
         let cmd = resolve_tree_aware(cmd, ws, highlighters, line_idx, snapshot);
         // A completed search turns on hlsearch for that pattern (F-009 #1).
         if let Some(p) = search_pattern(&cmd) {
@@ -2997,6 +3037,10 @@ impl Session {
         // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
         sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
         run_cmd(cmd, ws, files, recorded, status, quit);
+        // Python re-indents the line its 'indentkeys' and opens leave (#1205, #1206).
+        if let Some(fix) = crate::app::indent_keys::after(indent_after, ws, highlighters) {
+            run_cmd(fix, ws, files, recorded, status, quit);
+        }
         // 'foldopen': a search, a horizontal move, a mark, undo… open the fold the cursor lands in.
         if opens_fold {
             if let Some(fv) = folds.get_mut(&ws.focused_buffer()) {
@@ -3013,6 +3057,10 @@ impl Session {
     /// in turn. As in Vim, a command that fails (an `E…:` status, `E492` if unknown) drops the rest of the
     /// line, and so do a quit and an interactive `:s///c` (which owns the keys until it ends).
     fn execute_ex(&mut self, text: String, frame: &FrameCtx) {
+        // An empty line (`:<CR>`, `:<C-u><CR>`) does nothing, as in Vim; it is no unknown command.
+        if text.trim_matches([' ', '\t', ':']).is_empty() {
+            return;
+        }
         // Record the executed command-line for Vim's `":` register (`:help quote_:`), without the
         // leading `:` (the engine already strips it). Read by `C-r :` / `":p` / `@:`.
         self.last_ex_line = Some(text.clone());

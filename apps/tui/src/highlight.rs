@@ -355,6 +355,19 @@ impl CachedHighlight {
         self.tree.as_ref()
     }
 
+    /// The cached tree lined up with `src`: when the buffer moved on since the last parse (an edit earlier in
+    /// the same frame), a copy edited by the difference, so its nodes sit at `src`'s offsets (the text that
+    /// changed is not reparsed). For the Python indenter's string and comment lookups (#1205).
+    pub fn tree_matching(&self, src: &[u8]) -> Option<Tree> {
+        let mut tree = self.tree.clone()?;
+        if self.src != src {
+            if let Some(edit) = input_edit(&self.src, src) {
+                tree.edit(&edit);
+            }
+        }
+        Some(tree)
+    }
+
     pub fn spans(&mut self, rev: Revision, src: &[u8], visible: std::ops::Range<usize>) -> &[Span] {
         self.recompute(rev, src, visible);
         &self.spans
