@@ -16,6 +16,8 @@ const PROMPT: &str = "Recovery journal for";
 /// The key line, as an 80-column terminal wraps it.
 const KEYS: &str = "[r] recover   [d] show diff   [e] edit the disk file   [k] discard (archived)";
 const IN_USE: &str = "E325: ATTENTION";
+/// The in-use prompt's key line.
+const IN_USE_KEYS: &str = "[o] open read-only   [e] edit anyway   [q] quit";
 
 fn f_txt() -> &'static Path {
     Path::new("f.txt")
@@ -40,15 +42,20 @@ fn since(ed: &Editor, from: usize) -> String {
     ed.screen_bytes()[from..].to_string()
 }
 
+/// Wait until the output after `from` holds every one of `wants`, in any order; returns that output.
+fn wait_for_all(ed: &mut Editor, from: usize, wants: &[&str]) -> String {
+    for want in wants {
+        ed.wait_for_after(from, want);
+    }
+    since(ed, from)
+}
+
 #[test]
 fn the_prompt_shows_the_rfc_keys_and_ignores_every_other_key() {
     let dir = Scratch::new();
     let (file, journal) = crashed(&dir);
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    let screen = ed.screen_bytes();
-    assert!(screen.contains(PROMPT), "{screen:?}");
-    assert!(screen.contains(KEYS), "{screen:?}");
-    assert!(screen.contains("[q] quit"), "{screen:?}");
+    wait_for_all(&mut ed, 0, &[PROMPT, KEYS, "[q] quit"]);
     // The old prompt's `y` and `D`, Enter, Space and others: nothing happens (#846).
     ed.keys("yDxR \r\u{7}o");
     assert!(ed.is_running() && journal.exists());
@@ -67,26 +74,26 @@ fn diff_then_recover() {
     let dir = Scratch::new();
     let (file, journal) = crashed(&dir);
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    let before = ed.screen_bytes().len();
+    ed.wait_for(KEYS);
+    let before = ed.mark();
     ed.keys("d");
-    let view = since(&ed, before);
-    for want in [
-        "--- f.txt (on disk)",
-        "+++ f.txt (recovered)",
-        "@@ -1,3 +1,4 @@",
-        "-two",
-        "+TWO",
-        "+four",
-        "-- recovery diff",
-    ] {
-        assert!(view.contains(want), "{want:?} in {view:?}");
-    }
+    wait_for_all(
+        &mut ed,
+        before,
+        &[
+            "--- f.txt (on disk)",
+            "+++ f.txt (recovered)",
+            "@@ -1,3 +1,4 @@",
+            "-two",
+            "+TWO",
+            "+four",
+            "-- recovery diff",
+        ],
+    );
     // Keys in the view never edit anything; `r` here is not the prompt's `r`.
     ed.keys("rjk");
     assert!(ed.is_running() && journal.exists());
-    let before = ed.screen_bytes().len();
-    ed.keys("q");
-    assert!(since(&ed, before).contains(KEYS), "back at the prompt");
+    ed.keys_then_wait_for("q", KEYS); // back at the prompt
     ed.keys("r:w\r:q\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"one\nTWO\nthree\nfour\n");
@@ -99,12 +106,14 @@ fn edit_the_disk_file_archives_and_journals_afresh() {
     let dir = Scratch::new();
     let (file, journal) = crashed(&dir);
     let mut ed = Editor::start(&dir, &[f_txt()]);
+    ed.wait_for(KEYS);
     ed.keys("e");
-    assert!(ed.is_running());
+    ed.sync(); // the editor is open on the disk file
     assert!(!journal.exists(), "no live journal");
     assert_eq!(archived(&dir), 1, "the old one is archived");
     // The buffer is the disk text, and clean: `:q` quits... after a fresh edit is journaled.
     ed.keys(&format!("ggiNEW {ESC}"));
+    ed.sync();
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     assert_eq!(
@@ -122,9 +131,8 @@ fn discard_archives_and_leaves_no_live_journal() {
     let dir = Scratch::new();
     let (file, journal) = crashed(&dir);
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    let before = ed.screen_bytes().len();
-    ed.keys("k");
-    assert!(since(&ed, before).contains("recovery discarded"));
+    ed.wait_for(KEYS);
+    ed.keys_then_wait_for("k", "recovery discarded");
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0, "the disk text is clean");
     assert!(!journal.exists());
@@ -143,8 +151,8 @@ fn discard_archives_and_leaves_no_live_journal() {
     );
     assert_eq!(std::fs::read(&file).unwrap(), b"one\ntwo\nthree\n");
     // The next start offers nothing.
-    let ed2 = Editor::start(&dir, &[f_txt()]);
-    assert!(!ed2.screen_bytes().contains(PROMPT));
+    let mut ed2 = Editor::start(&dir, &[f_txt()]);
+    assert!(!ed2.wait_for("three").contains(PROMPT));
 }
 
 /// Start ruse A on f.txt with an unsaved edit synced to its journal (`:!true` syncs before running).
@@ -172,27 +180,22 @@ fn a_second_live_session_gets_the_in_use_prompt() {
 
     // `q`, after keys that are not choices (the recovery prompt's `r`, `k`).
     let mut b = Editor::start(&dir, &[f_txt()]);
-    let screen = b.screen_bytes();
-    assert!(screen.contains(IN_USE), "{screen:?}");
-    assert!(
-        screen.contains("[o] open read-only   [e] edit anyway   [q] quit"),
-        "{screen:?}"
-    );
+    let screen = wait_for_all(&mut b, 0, &[IN_USE, IN_USE_KEYS]);
     assert!(!screen.contains(PROMPT), "not offered for recovery");
     b.keys("rkd\r");
     assert!(b.is_running());
     b.keys("q");
     assert_eq!(b.exit_status(), 0);
     let mut b = Editor::start(&dir, &[f_txt()]);
+    b.wait_for(IN_USE_KEYS);
     b.keys(ESC);
     assert_eq!(b.exit_status(), 0, "Esc is q");
 
     // `o`: read-only.
     let mut b = Editor::start(&dir, &[f_txt()]);
+    b.wait_for(IN_USE_KEYS);
     b.keys("o");
-    let before = b.screen_bytes().len();
-    b.keys(&format!("iB {ESC}:w\r"));
-    assert!(since(&b, before).contains("E45"), "{:?}", since(&b, before));
+    b.keys_then_wait_for(&format!("iB {ESC}:w\r"), "E45");
     assert_eq!(std::fs::read(&file).unwrap(), b"disk\n");
     // Its edit is journaled beside A's (`:!` syncs first), and `:q!` drops that journal, not A's.
     b.keys(":!true\r\r");
@@ -209,7 +212,9 @@ fn a_second_live_session_gets_the_in_use_prompt() {
 
     // `e`: edit anyway; the edit is journaled beside A's, and a save and a quit leave A's alone.
     let mut b = Editor::start(&dir, &[f_txt()]);
+    b.wait_for(IN_USE_KEYS);
     b.keys(&format!("eiB {ESC}"));
+    b.sync();
     b.signal(libc::SIGTERM);
     assert_eq!(b.exit_status(), -libc::SIGTERM);
     assert_eq!(std::fs::read(&journal).unwrap(), theirs, "not overwritten");
@@ -222,7 +227,8 @@ fn a_second_live_session_gets_the_in_use_prompt() {
     assert_eq!(mine.len(), 1, "B's own journal beside A's: {mine:?}");
     // B is gone now: its journal is a crash, but A's live one still wins.
     let mut b = Editor::start(&dir, &[f_txt()]);
-    assert!(b.screen_bytes().contains(IN_USE));
+    // The key line now also offers `[r]` for B's journal.
+    wait_for_all(&mut b, 0, &[IN_USE, "[r] recover its changes   [q] quit"]);
     b.keys("e:w\r:q\r");
     assert_eq!(b.exit_status(), 0);
     assert_eq!(
@@ -234,12 +240,8 @@ fn a_second_live_session_gets_the_in_use_prompt() {
     // The `:e` path asks the same.
     dir.file("other.txt", b"x\n");
     let mut b = Editor::start(&dir, &[Path::new("other.txt")]);
-    let before = b.screen_bytes().len();
-    b.keys(":e f.txt\r");
-    assert!(since(&b, before).contains(IN_USE));
-    b.keys("q");
-    let after = since(&b, before);
-    assert!(after.contains("not opened"), "{after:?}");
+    b.keys_then_wait_for(":e f.txt\r", IN_USE);
+    b.keys_then_wait_for("q", "not opened");
     b.keys(":q\r");
     assert_eq!(b.exit_status(), 0);
 
@@ -267,34 +269,30 @@ fn the_in_use_prompt_offers_a_gone_second_sessions_work() {
 
     // `q` still opens nothing and keeps both journals.
     let mut b = Editor::start(&dir, &[f_txt()]);
-    let screen = b.screen_bytes();
-    assert!(screen.contains(IN_USE), "{screen:?}");
-    assert!(
-        screen.contains("Another session that is gone (ruse pid "),
-        "{screen:?}"
+    wait_for_all(
+        &mut b,
+        0,
+        &[
+            IN_USE,
+            "Another session that is gone (ruse pid ",
+            "[r] recover its changes",
+        ],
     );
-    assert!(screen.contains("[r] recover its changes"), "{screen:?}");
     b.keys("q");
     assert_eq!(b.exit_status(), 0);
     assert!(beside.exists());
 
     // `r`, then the recovery prompt's `r`.
     let mut b = Editor::start(&dir, &[f_txt()]);
-    let before = b.screen_bytes().len();
+    b.wait_for("[r] recover its changes");
     // Each step waits for what it shows: adopting the journal fsyncs, which can keep the screen quiet past
     // the harness's settle time on a loaded runner.
-    let shows = |b: &Editor, from: usize, want: &str| {
-        wait_until(Duration::from_secs(10), || since(b, from).contains(want))
-    };
+    let before = b.mark();
     b.keys("r");
-    let ok = shows(&b, before, KEYS);
-    let prompt = since(&b, before);
-    assert!(ok && prompt.contains(PROMPT), "{prompt:?}");
-    let before = b.screen_bytes().len();
+    wait_for_all(&mut b, before, &[PROMPT, KEYS]);
+    let before = b.mark();
     b.keys("r");
-    let ok = shows(&b, before, "· also open in");
-    let after = since(&b, before);
-    assert!(ok && after.contains("gone work"), "{after:?}");
+    wait_for_all(&mut b, before, &["· also open in", "gone work"]);
     assert!(!beside.exists(), "the gone session's journal is archived");
     assert_eq!(archived(&dir), 1);
     assert_eq!(
@@ -320,11 +318,10 @@ fn a_non_utf8_recovery_is_undoable_and_traced_from_the_disk_text() {
         .write_crashed(Some(&file), b"caf\xe9 au lait \xff\nend\n")
         .unwrap();
     let mut ed = Editor::start(&dir, &[f_txt()]);
-    assert!(ed.screen_bytes().contains(PROMPT));
+    ed.wait_for(KEYS);
     ed.keys("r");
-    let before = ed.screen_bytes().len();
-    ed.keys(":q\r");
-    assert!(ed.is_running() && since(&ed, before).contains("E37"));
+    ed.keys_then_wait_for(":q\r", "E37");
+    assert!(ed.is_running());
     ed.keys(":trace save t.trace\r");
     let trace = dir.path("t.trace");
     assert!(wait_until(Duration::from_secs(5), || trace.exists()));

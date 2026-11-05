@@ -20,8 +20,11 @@ fn noshowmode_leaves_the_mode_off_the_status_line() {
     dir.file("f.txt", b"abc\n");
     let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
     ed.keys(":set nosmd\r");
-    let mark = ed.screen_bytes().len();
+    let mark = ed.mark();
     ed.keys("i");
+    // Back in Normal mode and synced: everything Insert mode drew is in the output.
+    ed.keys(ESC);
+    ed.sync();
     assert!(
         !since(&ed, mark).contains("INSERT"),
         "'noshowmode' still names the mode"

@@ -64,10 +64,7 @@ fn quit_restores_the_terminal() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"orig\n");
     let mut ed = Editor::start(&dir, &[&file]);
-    assert!(
-        ed.screen_bytes().contains("\u{1b}[?1049h"),
-        "enters the alt screen"
-    );
+    ed.wait_for("\u{1b}[?1049h"); // enters the alt screen
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
     ed.wait_for("\u{1b}[?1049l");

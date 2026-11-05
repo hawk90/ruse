@@ -20,7 +20,8 @@ fn filter_over_screen_lines_runs_the_shell_command() {
         let dir = Scratch::new();
         let file = dir.file("f.txt", b"one two three\nline2 a\nline3 b\n");
         let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-        ed.keys(keys);
+        // The filter changed the buffer before the save: a shell that failed shows in the report.
+        ed.keys_then_wait_for(keys, "[+]");
         ed.keys(":wq\r");
         assert_eq!(ed.exit_status(), 0, "{keys:?}");
         assert_eq!(std::fs::read(&file).unwrap(), want, "{keys:?}");
@@ -53,7 +54,8 @@ fn filter_over_span_commands_runs_the_shell_command() {
         let dir = Scratch::new();
         let file = dir.file("f.txt", text);
         let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-        ed.keys(keys);
+        // The filter changed the buffer before the save: a shell that failed shows in the report.
+        ed.keys_then_wait_for(keys, "[+]");
         ed.keys(":wq\r");
         assert_eq!(ed.exit_status(), 0, "{keys:?}");
         assert_eq!(std::fs::read(&file).unwrap(), want, "{keys:?}");
