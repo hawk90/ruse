@@ -294,6 +294,10 @@ for that buffer.
 On startup, at most once a day, ruse removes archives older than 14 days and keeps at most 20 archives per
 document path. It never removes a live journal. These numbers resolve D-005's "Open (tuning)" retention item.
 
+As built (#934, `persist::retention`): the last sweep's time is kept in `journal/archive-sweep`; an archive's
+age is its modification time, which archiving sets; only regular files named exactly as archives are removed,
+and no symlink is followed. `:checkhealth` reports the archive's size and last sweep.
+
 ## Slices
 
 1. Core change log and `drain_changes` with bound and overflow (no format change yet).

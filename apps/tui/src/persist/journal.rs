@@ -25,6 +25,7 @@
 //!   process's own ([`Journals::adopt`]); editing the disk file or discarding moves it to the archive.
 //! * **Legacy** (RFC §3). An `RJS0` sidecar `<file>.ruse-journal` from an older ruse is offered once and
 //!   then moved to the archive ([`super::rjs0`]). Nothing writes one any more.
+//! * **Retention** (RFC §9, #934). [`super::retention`] sweeps the archive at startup, once a day.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
@@ -433,8 +434,9 @@ impl Journals {
         discard_file(&self.path_of(doc));
     }
 
-    /// Move `path` into the archive as `<name>.<unix ms>`; the archived path. A move across filesystems (a
-    /// legacy sidecar in the project tree) copies and then removes.
+    /// Move `path` into the archive as `<name>.<unix ms>`, its modification time set to now (the age
+    /// [`super::retention`] sweeps by); the archived path. A move across filesystems (a legacy sidecar in the
+    /// project tree) copies and then removes.
     pub fn archive(&self, path: &Path) -> io::Result<PathBuf> {
         let dir = self.archive_dir();
         make_private_dir(&dir)?;
@@ -457,6 +459,10 @@ impl Journals {
             let bytes = read_journal(path)?;
             write_private(&to, &bytes)?;
             fs::remove_file(path)?;
+        }
+        // Retention counts an archive's age from now, not from the journal's last write (RFC-0023 §9).
+        if let Ok(f) = open_regular(&to, OpenOptions::new().write(true)) {
+            let _ = f.set_modified(SystemTime::now());
         }
         Ok(to)
     }
@@ -1976,6 +1982,28 @@ mod tests {
             j.archive(&p).unwrap();
         }
         assert_eq!(fs::read_dir(j.archive_dir()).unwrap().count(), 3);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// An archive's age counts from the archiving (RFC-0023 §9): a journal last written long ago is not
+    /// swept the day it is archived.
+    #[test]
+    fn archiving_restarts_the_age() {
+        let (j, dir) = scratch("archive-age");
+        let file = dir.join("f.txt");
+        let p = j.write_crashed(Some(&file), b"x").unwrap();
+        let long_ago = SystemTime::now() - Duration::from_secs(30 * 86_400);
+        fs::File::options()
+            .write(true)
+            .open(&p)
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+        let to = j.archive(&p).unwrap();
+        let age = fs::metadata(&to).unwrap().modified().unwrap().elapsed();
+        assert!(age.unwrap_or_default() < Duration::from_secs(3600));
+        assert_eq!(super::super::retention::sweep(&j, now_ms()).aged, 0);
+        assert!(to.exists());
         let _ = fs::remove_dir_all(&dir);
     }
 
