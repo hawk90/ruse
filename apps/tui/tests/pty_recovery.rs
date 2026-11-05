@@ -281,19 +281,20 @@ fn the_in_use_prompt_offers_a_gone_second_sessions_work() {
     // `r`, then the recovery prompt's `r`.
     let mut b = Editor::start(&dir, &[f_txt()]);
     let before = b.screen_bytes().len();
+    // Each step waits for what it shows: adopting the journal fsyncs, which can keep the screen quiet past
+    // the harness's settle time on a loaded runner.
+    let shows = |b: &Editor, from: usize, want: &str| {
+        wait_until(Duration::from_secs(10), || since(b, from).contains(want))
+    };
     b.keys("r");
+    let ok = shows(&b, before, KEYS);
     let prompt = since(&b, before);
-    assert!(
-        prompt.contains(PROMPT) && prompt.contains(KEYS),
-        "{prompt:?}"
-    );
+    assert!(ok && prompt.contains(PROMPT), "{prompt:?}");
     let before = b.screen_bytes().len();
     b.keys("r");
+    let ok = shows(&b, before, "· also open in");
     let after = since(&b, before);
-    assert!(
-        after.contains("gone work") && after.contains("· also open in"),
-        "{after:?}"
-    );
+    assert!(ok && after.contains("gone work"), "{after:?}");
     assert!(!beside.exists(), "the gone session's journal is archived");
     assert_eq!(archived(&dir), 1);
     assert_eq!(
