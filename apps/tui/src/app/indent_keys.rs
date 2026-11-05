@@ -1,7 +1,8 @@
 //! Python indenting on the key path (#1205, #1206): `=`, `o`/`O`/`<CR>`, `cc`/`S` and the keys of nvim's
 //! Python 'indentkeys' run [`crate::indent::python`] the way nvim runs `python#GetIndent`, after the edit
 //! that triggers it. Other languages keep the node-depth indent of `resolve_tree_aware`, and the word and
-//! character keys of their own 'indentkeys' (C, JavaScript, Go, sh: [`crate::indent::key_reindent`])
+//! character keys of their own 'indentkeys' (C, JavaScript, Go, sh, Rust, CSS:
+//! [`crate::indent::key_reindent`])
 //! re-indent the line by its depth in the tree parsed after the key.
 //!
 //! The frontend owns the tree, so it computes the indent and runs a [`Command::SetIndentCols`] after the
@@ -15,6 +16,7 @@ use ruse_core::{BytePos, Command, DocumentId, EditorOption, Mode, Workspace};
 
 use crate::highlight::CachedHighlight;
 use crate::indent::python::{self, Buf, Opts};
+use crate::indent::{IndentTree, KeyReindent};
 
 /// The focused buffer's tree lined up with `bytes`, when the buffer is Python.
 fn python_tree(
@@ -43,7 +45,7 @@ fn depth_keys_lang(
         .and_then(CachedHighlight::tree)?;
     let lang = tree.language();
     let name = lang.name()?;
-    ["c", "javascript", "go", "bash"]
+    ["c", "javascript", "go", "bash", "rust", "css"]
         .into_iter()
         .find(|&l| l == name)
 }
@@ -223,9 +225,11 @@ pub(crate) fn after(
 }
 
 /// A typed key of a node-depth language's 'indentkeys' (#1206): the line takes its depth in the tree
-/// parsed after the key, or column 0 for C's `#`. Where the tree is broken around the line even with its
-/// open blocks closed, it takes the indent of the line above, as autoindent gave it (#1214): typing on
-/// past a keyword (`fi` to `find`) undoes the keyword's re-indent.
+/// parsed after the key, or column 0 for C's `#` and jump labels. Where the tree is broken around the line
+/// even with its open blocks closed, it takes the indent of the line above, as autoindent gave it
+/// (#1214): typing on past a keyword (`fi` to `find`) undoes the keyword's re-indent. A `{` that opens
+/// the body of a statement above lines up with that statement's line, and a C `case` with the previous
+/// label of its `switch`, in the columns those lines have, as cindent reads them.
 fn depth_key_reindent(
     lang: &str,
     after: After,
@@ -242,16 +246,42 @@ fn depth_key_reindent(
     let le = line_end(b, cur).0;
     let key = crate::indent::key_reindent(lang, ch, &b[ls..cur.0], white)?;
     let row = line_of(b, BytePos(ls));
+    let ts = pane.view.tab_width();
+    let sw = pane.view.shift_width();
+    // The cached tree is only shifted by the key's edit; the line's window is parsed afresh.
+    let like = highlighters
+        .get(&ws.focused_buffer())
+        .and_then(CachedHighlight::tree);
     let cols = match key {
-        crate::indent::KeyReindent::Column0 => 0,
-        crate::indent::KeyReindent::Depth => {
-            // The cached tree is only shifted by the key's edit; the line's window is parsed afresh.
-            let like = highlighters
-                .get(&ws.focused_buffer())
-                .and_then(CachedHighlight::tree)?;
+        KeyReindent::Column0 => 0,
+        KeyReindent::GoCase => go_case_indent(b, ls, le, ts, sw),
+        KeyReindent::Label => {
+            if !c_statement_ended_above(b, ls) {
+                return None;
+            }
+            0
+        }
+        KeyReindent::Brace => {
+            let tree = key_window(like?, b, row, ls, le)?;
+            match tree.brace_align(cur.0 - 1)? {
+                Some(header) => line_indent(b, header, ts),
+                None => tree.levels(row, row)[0] * sw,
+            }
+        }
+        KeyReindent::Case => {
+            let fnb = ls + (cur.0 - ls - b[ls..cur.0].trim_ascii_start().len());
+            let tree = like.and_then(|t| key_window(t, b, row, ls, le));
+            match tree.as_ref().and_then(|t| t.previous_case_row(fnb)) {
+                Some(prev) => line_indent(b, prev, ts),
+                None => tree.map_or_else(
+                    || prev_line_indent(b, ls, ts),
+                    |t| t.levels(row, row)[0] * sw,
+                ),
+            }
+        }
+        KeyReindent::Depth => {
             let level = |bytes: &[u8], le: usize| {
-                let tree = crate::indent::IndentTree::window(like, bytes, row, ls, le)?;
-                (!tree.broken_at(le)).then(|| tree.levels(row, row)[0])
+                key_window(like?, bytes, row, ls, le).map(|t| t.levels(row, row)[0])
             };
             // A keyword that still waits for its statement (`else`, `elif`) breaks the tree by itself:
             // ask again with a statement filled in after the caret.
@@ -261,13 +291,120 @@ fn depth_key_reindent(
                     .then(|| level(&[&b[..cur.0], fill, &b[cur.0..]].concat(), le + fill.len()))
                     .flatten()
             });
-            level.map_or_else(
-                || prev_line_indent(b, ls, pane.view.tab_width()),
-                |l| l * pane.view.shift_width(),
-            )
+            level.map_or_else(|| prev_line_indent(b, ls, ts), |l| l * sw)
         }
     };
     set_line_indent(ws, row, cols)
+}
+
+/// The window tree for the line `row` (starting at `ls`, ending at `le`) of `bytes`, in the language of
+/// `like`, unless it is broken at the line's end even with its open blocks closed.
+fn key_window<'a>(
+    like: &tree_sitter::Tree,
+    bytes: &'a [u8],
+    row: usize,
+    ls: usize,
+    le: usize,
+) -> Option<IndentTree<'a>> {
+    IndentTree::window(like, bytes, row, ls, le).filter(|tree| !tree.broken_at(le))
+}
+
+/// nvim's `GoIndent` (`indent/go.vim`) for the line `[ls, le)`, as its `<:>` key runs it on a
+/// `case`/`default` label (#1206): the indent of the last non-blank line above, one `sw` more when that
+/// line ends in `(` or `{` and one more when it is a label, one less when this line starts with a closer
+/// and one less for the label itself. `//` comments are dropped first. Saturates at column 0.
+fn go_case_indent(b: &[u8], ls: usize, le: usize, ts: usize, sw: usize) -> usize {
+    let strip = |l: &[u8]| -> Vec<u8> {
+        let end = l.windows(2).position(|w| w == b"//").unwrap_or(l.len());
+        l[..end].to_vec()
+    };
+    let is_label = |l: &[u8]| {
+        let t = l.trim_ascii_start();
+        t.ends_with(b":") && (t.starts_with(b"case ") || t == b"default:")
+    };
+    let mut end = ls;
+    let mut prev = None;
+    while end > 0 {
+        let start = b[..end - 1]
+            .iter()
+            .rposition(|&c| c == b'\n')
+            .map_or(0, |i| i + 1);
+        let line = &b[start..end - 1];
+        if !line.iter().all(|&c| c.is_ascii_whitespace()) {
+            prev = Some(line);
+            break;
+        }
+        end = start;
+    }
+    let Some(prev) = prev else {
+        return 0;
+    };
+    let this = strip(&b[ls..le]);
+    let prevl = strip(prev);
+    let mut ind = indent_cols(prev, ts) as isize;
+    let sw = sw as isize;
+    if matches!(prevl.trim_ascii_end().last(), Some(b'(' | b'{')) {
+        ind += sw;
+    }
+    if is_label(&prevl) {
+        ind += sw;
+    }
+    if matches!(this.trim_ascii_start().first(), Some(b')' | b'}')) {
+        ind -= sw;
+    }
+    if is_label(&this) {
+        ind -= sw;
+    }
+    ind.max(0) as usize
+}
+
+/// The indent in columns of buffer row `row`.
+fn line_indent(b: &[u8], row: usize, ts: usize) -> usize {
+    let mut ls = 0;
+    for _ in 0..row {
+        match b[ls..].iter().position(|&c| c == b'\n') {
+            Some(i) => ls += i + 1,
+            None => return 0,
+        }
+    }
+    indent_cols(&b[ls..], ts)
+}
+
+/// Whether the C code above the line starting at `ls` ends a statement, as cindent asks before it takes
+/// `word:` for a jump label (#1206): the last line above that is not blank, a comment or a preprocessor
+/// line ends in `;`, `{`, `}` or `:` (a label), or there is none. Otherwise the line continues a statement
+/// (`if (a)`, `g(a,`) and the `:` is not a label's.
+fn c_statement_ended_above(b: &[u8], ls: usize) -> bool {
+    let mut end = ls;
+    while end > 0 {
+        let start = b[..end - 1]
+            .iter()
+            .rposition(|&c| c == b'\n')
+            .map_or(0, |i| i + 1);
+        let line = b[start..end - 1].trim_ascii();
+        end = start;
+        if line.is_empty()
+            || [&b"//"[..], b"/*", b"*", b"#"]
+                .iter()
+                .any(|p| line.starts_with(p))
+        {
+            continue;
+        }
+        let code = line
+            .windows(2)
+            .position(|w| w == b"//")
+            .map_or(line, |i| &line[..i])
+            .trim_ascii_end();
+        let code = match code.strip_suffix(b"*/") {
+            Some(c) => c
+                .windows(2)
+                .rposition(|w| w == b"/*")
+                .map_or(code, |i| c[..i].trim_ascii_end()),
+            None => code,
+        };
+        return code.last().is_none_or(|c| b";{}:".contains(c));
+    }
+    true
 }
 
 /// The indent in columns of the last non-blank line above the line starting at `ls`, or 0.
@@ -307,4 +444,48 @@ fn set_line_indent(ws: &Workspace, row: usize, cols: usize) -> Option<Command> {
         last_line: row,
         cols: vec![Some(cols)],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// #1206: cindent takes `word:` for a jump label only after a line that ends a statement.
+    #[test]
+    fn a_label_needs_an_ended_statement_above() {
+        let at = |src: &[u8]| c_statement_ended_above(src, src.len());
+        assert!(at(b""));
+        assert!(at(b"int f() {\n"));
+        assert!(at(b"    x;\n"));
+        assert!(at(b"    }\n\n"));
+        assert!(at(b"out:\n"));
+        assert!(at(b"    x;\n    /* c */\n"));
+        assert!(at(b"    x; // c\n"));
+        assert!(at(b"    x; /* c */\n"));
+        assert!(!at(b"    if (a)\n"));
+        assert!(!at(b"    g(a,\n"));
+        assert!(!at(b"    if (a) // c\n"));
+    }
+
+    /// #1206: Go's `case` key reads the line above, as `GoIndent` does.
+    #[test]
+    fn go_case_reads_the_line_above() {
+        let at = |src: &[u8]| {
+            let ls = src.iter().rposition(|&c| c == b'\n').map_or(0, |i| i + 1);
+            go_case_indent(src, ls, src.len(), 8, 8)
+        };
+        assert_eq!(at(b"\tswitch a {\n\tcase 1:"), 8);
+        assert_eq!(at(b"\tcase 1:\n\t\tx()\n\tcase 2:"), 8);
+        assert_eq!(at(b"\t\tcase 1:\n\t\t\tx()\n\n\tcase 2:"), 16);
+        assert_eq!(at(b"\tcase 1:\n\tdefault:"), 8);
+        assert_eq!(at(b"\tx() // {\n\tcase 1:"), 0);
+        assert_eq!(at(b"case 1:"), 0);
+    }
+
+    #[test]
+    fn line_indent_reads_a_row() {
+        assert_eq!(line_indent(b"a\n    b\n\tc", 1, 8), 4);
+        assert_eq!(line_indent(b"a\n    b\n\tc", 2, 8), 8);
+        assert_eq!(line_indent(b"a", 3, 8), 0);
+    }
 }

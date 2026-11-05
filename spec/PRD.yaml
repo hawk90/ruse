@@ -318,8 +318,9 @@ features:
     # 'lisp' wins over the tree indent. Not built: 'lispoptions' (only matters with an 'indentexpr', which
     # ruse has none of), the Lisp rules of `%` and showmatch, cindent and 'vartabstop'/'varsofttabstop'.
     # #1206: no 'indentkeys'/'cinkeys' OPTION, but the keys nvim's defaults re-indent on are built in per
-    # language (F-015): Python's `<:>`, `=elif`, `=except`, `e`, `0#`, `0{`/`0}`/`0)`/`0]`, `o`, `O`, and
-    # `i_CTRL-F` (`!^F`) re-indents the line from the buffer's indenter (a no-op without one).
+    # language (F-015): Python's `<:>`, `=elif`, `=except`, `e`, `0#`, `0{`/`0}`/`0)`/`0]`, `o`, `O`, the
+    # C/JavaScript/Go/sh/Rust/CSS keys listed under F-015, and `i_CTRL-F` (`!^F`) re-indents the line from
+    # the buffer's indenter (a no-op without one).
     # #618 (oracle-verified vs nvim v0.12.6): auto-wrap while typing past 'textwidth' / the 'wrapmargin'
     # width (the counted insert `8ia b<Esc>` wraps too), with the 'formatoptions' flags t c l 1 p and the
     # 'comments' leaders; fo r/o continue a comment leader on <CR>/o/O (a three-part comment's middle and
@@ -945,8 +946,13 @@ features:
     # the other node-depth languages' 'indentkeys' re-indent the line by its depth after the key: sh
     # `then`/`do`/`else`/`elif`/`fi`/`done`/`esac`/`end`/`;;`/`;&` (and `fin`... undoing `fi`), C `0#` (column
     # 0) and `e`, JavaScript `e`, `:` after `case`/`default` in C/JavaScript/Go; Go `case`/`default` line up
-    # with `switch`. Not built: `0{` (an Allman `{` would go a level too deep), sh `)`, cindent's alignment
-    # of a new `case` with the previous label, and continuation indent after an unfinished line.
+    # with `switch`. #1206 rest (`ik_*`): `0{` in C/JavaScript/Rust/CSS/sh (Go has none) lines an Allman
+    # `{` up with the statement whose body it opens (in that line's columns), and `=`/`o` lay Allman bodies
+    # one level under both; sh `)` (case patterns) re-indents by depth; C `:` after a jump label puts it in
+    # column 0 when the line above ends a statement (`=` too; its statement keeps the label's level, in
+    # JavaScript and Go as well); a typed C `case`/`default` lines up with the previous label of its
+    # switch. JSON's `e` is not built (no JSON line starts with `else`). Not built: continuation indent
+    # after an unfinished line, and the rest of cindent (`=`/`o` relative to hand-placed lines) (#1163).
     status: planned
     depends_on: [C-DOCUMENT, C-RENDER, C-SCHEDULER]
     summary: Incremental structural highlighting from snapshots; injections; TS folds/indent.

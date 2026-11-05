@@ -110998,6 +110998,2705 @@
       }
     },
     {
+      "name": "ik_c_allman_fn",
+      "lines": [
+        "int f()"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_if",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_if_closed",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "    {",
+          "}"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_block_brace",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_while",
+      "lines": [
+        "int f() {",
+        "    while (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    while (a)",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_else",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "    }",
+        "    else"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "    }",
+          "    else",
+          "    {"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_struct",
+      "lines": [
+        "struct s"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "struct s",
+          "{"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_if_deep",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "    {",
+        "        if (b)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "    {",
+          "        if (b)",
+          "        {"
+        ],
+        "cursor": [
+          5,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_brace_after_ctrl_t",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go<C-t>{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "        {"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_brace_then_text",
+      "lines": [
+        "int f()"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<CR>x;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x;"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_allman_fn",
+      "lines": [
+        "function f()"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f()",
+          "{"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_allman_if",
+      "lines": [
+        "function f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a)",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_block",
+      "lines": [
+        "function f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    x;",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_allman_if",
+      "lines": [
+        "func f() {",
+        "\tif a"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Go{<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tif a",
+          "\t{"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_block",
+      "lines": [
+        "func f() {",
+        "\tx()"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Go{<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tx()",
+          "\t{"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_allman_fn",
+      "lines": [
+        "fn f()"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f()",
+          "{"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_allman_if",
+      "lines": [
+        "fn f() {",
+        "    if a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_css_brace",
+      "lines": [
+        "a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.css",
+      "expect": {
+        "text": [
+          "a",
+          "{"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_css_brace_in",
+      "lines": [
+        "a {",
+        "    color: red;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.css",
+      "expect": {
+        "text": [
+          "a {",
+          "    color: red;",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_json_brace",
+      "lines": [
+        "[",
+        "    1,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.json",
+      "expect": {
+        "text": [
+          "[",
+          "    1,",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_brace",
+      "lines": [
+        "f()"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "f()",
+          "{"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_brace_in",
+      "lines": [
+        "if a; then",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "    {"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_case_pat",
+      "lines": [
+        "case a in",
+        "    b) x;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joc)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b) x;;",
+          "    c)"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_case_pat_first",
+      "lines": [
+        "case a in"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>ob)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b)"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_case_pat_after_body",
+      "lines": [
+        "case a in",
+        "    b)",
+        "        x",
+        "        ;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goc)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b)",
+          "        x",
+          "        ;;",
+          "    c)"
+        ],
+        "cursor": [
+          5,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_case_pat_after_body_nosemi",
+      "lines": [
+        "case a in",
+        "    b)",
+        "        x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goc)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b)",
+          "        x",
+          "        c)"
+        ],
+        "cursor": [
+          4,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_paren_subshell",
+      "lines": [
+        "f() {",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go(y)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "f() {",
+          "    x",
+          "    (y)"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_paren_mid",
+      "lines": [
+        "if a; then",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goy $(z)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "    y $(z)"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_case_pat_after_ctrl_t",
+      "lines": [
+        "case a in",
+        "    b) x;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go<C-t>c)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b) x;;",
+          "        c)"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_case_nested",
+      "lines": [
+        "f() {",
+        "    case a in",
+        "        b) x;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goc)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "f() {",
+          "    case a in",
+          "        b) x;;",
+          "        c)"
+        ],
+        "cursor": [
+          4,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_esac_after",
+      "lines": [
+        "case a in",
+        "    b)",
+        "        x",
+        "        ;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goesac<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b)",
+          "        x",
+          "        ;;",
+          "esac"
+        ],
+        "cursor": [
+          5,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_pat_alt",
+      "lines": [
+        "case a in",
+        "    b) x;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joc|d)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b) x;;",
+          "    c|d)"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_pat_star",
+      "lines": [
+        "case a in",
+        "    b) x;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo*)<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b) x;;",
+          "    *)"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out:"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_nested",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "out:"
+        ],
+        "cursor": [
+          4,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_then_stmt",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<CR>y;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out:",
+          "    y;"
+        ],
+        "cursor": [
+          4,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_eq",
+      "lines": [
+        "int f() {",
+        "x;",
+        "out:",
+        "y;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out:",
+          "    y;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_ternary_colon",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goy = a ? b : c;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    y = a ? b : c;"
+        ],
+        "cursor": [
+          3,
+          17
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_ternary_line",
+      "lines": [
+        "int f() {",
+        "    x = a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go? b<CR>: c;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x = a",
+          "        ? b",
+          "        : c;"
+        ],
+        "cursor": [
+          4,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_bitfield",
+      "lines": [
+        "struct s {",
+        "    int a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goint b:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "struct s {",
+          "    int a",
+          "        int b:"
+        ],
+        "cursor": [
+          3,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_public",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gopublic:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    public:"
+        ],
+        "cursor": [
+          3,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_top",
+      "lines": [
+        "int x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int x;",
+          "out:"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_space",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout :<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out :"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_in_switch",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "        case 1:",
+        "            x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "out:"
+        ],
+        "cursor": [
+          5,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_scope",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goa::b();<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    a::b();"
+        ],
+        "cursor": [
+          3,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_label",
+      "lines": [
+        "function f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    x;",
+          "    out:"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_obj_key",
+      "lines": [
+        "var o = {",
+        "    a: 1,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gob:<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "var o = {",
+          "    a: 1,",
+          "    b:"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_label",
+      "lines": [
+        "func f() {",
+        "\tx()"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Goout:<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tx()",
+          "\tout:"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_case_hand_switch",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "    case 1:",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "    case 1:",
+          "        x;",
+          "    case 2:"
+        ],
+        "cursor": [
+          5,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_default_hand_switch",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "    case 1:",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Godefault:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "    case 1:",
+          "        x;",
+          "    default:"
+        ],
+        "cursor": [
+          5,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_case_hand_deep",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "            case 1:",
+        "                x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "            case 1:",
+          "                x;",
+          "            case 2:"
+        ],
+        "cursor": [
+          5,
+          18
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_case_first",
+      "lines": [
+        "int f() {",
+        "    switch (a) {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 1:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "        case 1:"
+        ],
+        "cursor": [
+          3,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_case_eq_hand",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "    case 1:",
+        "        x;",
+        "case 2:",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "        case 2:",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_case_hand_after_break",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "    case 1:",
+        "        x;",
+        "        break;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "    case 1:",
+          "        x;",
+          "        break;",
+          "    case 2:"
+        ],
+        "cursor": [
+          6,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_case_hand_deep",
+      "lines": [
+        "function f() {",
+        "    switch (a) {",
+        "        case 1:",
+        "            x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "        case 2:"
+        ],
+        "cursor": [
+          5,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_case_hand_deep",
+      "lines": [
+        "func f() {",
+        "\tswitch a {",
+        "\t\tcase 1:",
+        "\t\t\tx()"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Gocase 2:<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tswitch a {",
+          "\t\tcase 1:",
+          "\t\t\tx()",
+          "\t\tcase 2:"
+        ],
+        "cursor": [
+          5,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_after_unterminated",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        out:"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_after_comment",
+      "lines": [
+        "int f() {",
+        "    x;",
+        "    /* c */"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    /* c */",
+          "out:"
+        ],
+        "cursor": [
+          4,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_after_open",
+      "lines": [
+        "int f() {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "out:"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_after_label",
+      "lines": [
+        "int f() {",
+        "out:"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goin:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "out:",
+          "in:"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_after_close",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "out:"
+        ],
+        "cursor": [
+          5,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_after_comma",
+      "lines": [
+        "int f() {",
+        "    g(a,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    g(a,",
+          "            out:"
+        ],
+        "cursor": [
+          3,
+          15
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_in_struct",
+      "lines": [
+        "struct s {",
+        "    int a;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gob:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "struct s {",
+          "    int a;",
+          "b:"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_mid_word",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:y<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out:y"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_digit",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go1:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "1:"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_o_after",
+      "lines": [
+        "int f() {",
+        "    x;",
+        "out:"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goy;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out:",
+          "    y;"
+        ],
+        "cursor": [
+          4,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_o_after_closed",
+      "lines": [
+        "int f() {",
+        "    x;",
+        "out:",
+        "    y;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joz;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out:",
+          "    y;",
+          "    z;",
+          "}"
+        ],
+        "cursor": [
+          5,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_label_eq_nested",
+      "lines": [
+        "int f() {",
+        "if (a) {",
+        "out:",
+        "y;",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "out:",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_protected",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goprivate:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    private:"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_label_eq",
+      "lines": [
+        "function f() {",
+        "x;",
+        "out:",
+        "for (;;) {}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    x;",
+          "    out:",
+          "    for (;;) {}",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_eq_allman",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a)",
+        "{",
+        "x;",
+        "}",
+        "else",
+        "{",
+        "y;",
+        "}",
+        "while (b)",
+        "{",
+        "z;",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a)",
+          "    {",
+          "        x;",
+          "    }",
+          "    else",
+          "    {",
+          "        y;",
+          "    }",
+          "    while (b)",
+          "    {",
+          "        z;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_eq_allman_struct",
+      "lines": [
+        "struct s",
+        "{",
+        "int a;",
+        "};"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "struct s",
+          "{",
+          "    int a;",
+          "};"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_eq_allman",
+      "lines": [
+        "function f()",
+        "{",
+        "if (a)",
+        "{",
+        "x;",
+        "}",
+        "else",
+        "{",
+        "y;",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f()",
+          "{",
+          "    if (a)",
+          "    {",
+          "        x;",
+          "    }",
+          "    else",
+          "    {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_eq_allman",
+      "lines": [
+        "fn f()",
+        "{",
+        "if a",
+        "{",
+        "x;",
+        "}",
+        "else",
+        "{",
+        "y;",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f()",
+          "{",
+          "    if a",
+          "    {",
+          "        x;",
+          "    }",
+          "    else",
+          "    {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_eq_allman",
+      "lines": [
+        "f()",
+        "{",
+        "x",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "f()",
+          "{",
+          "    x",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_css_eq_allman",
+      "lines": [
+        "a",
+        "{",
+        "color: red;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.css",
+      "expect": {
+        "text": [
+          "a",
+          "{",
+          "    color: red;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_o_after_brace",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "    {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gox;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "    {",
+          "        x;"
+        ],
+        "cursor": [
+          4,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_close",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "    {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "    {",
+          "        x;",
+          "    }"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_allman_hand_header",
+      "lines": [
+        "int f() {",
+        "      if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "      if (a)",
+          "      {"
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_brace_not_first",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gox {<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x {"
+        ],
+        "cursor": [
+          3,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_brace_initializer",
+      "lines": [
+        "int a[] ="
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int a[] =",
+          "{"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_brace_object_value",
+      "lines": [
+        "var o ="
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>o{<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "var o =",
+          "    {"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_case_after_open_brace",
+      "lines": [
+        "func f() {",
+        "\tswitch a {"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Gocase 1:<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tswitch a {",
+          "\tcase 1:"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_case_after_label",
+      "lines": [
+        "func f() {",
+        "\tswitch a {",
+        "\tcase 1:"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Godefault:<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tswitch a {",
+          "\tcase 1:",
+          "\tdefault:"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_scope_after_label",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gostd::y;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    std::y;"
+        ],
+        "cursor": [
+          3,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "lisp_eq_defun",
       "lines": [
         "(defun f (x)",

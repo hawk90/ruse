@@ -583,6 +583,18 @@ fn resolve_tree_aware(
                     Command::OpenAbove => ls,
                     _ => cur,
                 };
+                // Under a C jump label (in column 0) the line takes the label's statement level (#1206).
+                if at == le && !matches!(cmd, Command::OpenAbove) {
+                    let fnb =
+                        ls + snapshot[ls..le].len() - snapshot[ls..le].trim_ascii_start().len();
+                    if let Some(level) = tree.after_label(fnb, row) {
+                        let kind = match cmd {
+                            Command::OpenBelow => OpenKind::Below,
+                            _ => OpenKind::Split,
+                        };
+                        return Command::OpenLineIndent { kind, level };
+                    }
+                }
                 if tree.broken_at(at) {
                     return cmd;
                 }
