@@ -2235,15 +2235,15 @@ impl InputEngine {
 
     /// Emit `gn`/`gN` — the search-match text object. Reads the last search pattern and folds in any pending
     /// operator (`dgn`/`cgn`/`ygn`, `gUgn`, `>gn`, `gqgn`); the bare form ([`SearchOp::Move`]) selects the
-    /// match in Visual. With no prior search there is nothing to match, so the pending construct aborts
-    /// (leaking no state). Emitted as a single [`Command::SearchObject`] with the pattern baked in, so `.`
-    /// can replay `cgn`.
+    /// match in Visual. With no prior search the object carries an EMPTY pattern, which the core fails (a
+    /// beep, so `.` keeps the earlier change) and the frontend reports as E35, as nvim does (#1184).
+    /// Emitted as a single [`Command::SearchObject`] with the pattern baked in, so `.` can replay `cgn`.
     fn search_object(&mut self, backward: bool) -> Feed {
-        let Some((pattern, _, _)) = self.last_search.clone() else {
-            // No prior search — nothing to match; abort the pending construct, leaking no state.
-            self.reset();
-            return Feed::Ignored;
-        };
+        let pattern = self
+            .last_search
+            .as_ref()
+            .map(|(p, _, _)| p.clone())
+            .unwrap_or_default();
         let count = self.mcount();
         self.span_action(Command::SearchObject {
             op: self.search_op(),
@@ -2740,24 +2740,17 @@ impl InputEngine {
     /// `dk` on the first line) is cleared with `clearopbeep` before `do_pending_operator` runs `prep_redo`,
     /// and `J` on the last line, `r` past the end and `~` on an empty line bail out before theirs. A
     /// failure nvim reaches only after saving the redo (`CTRL-A` with no number, a put of an empty
-    /// register, an operator refused by its register: `"/dd`) stays the change. Call it only right after
-    /// running the command `cmd` the engine returned, before the next key.
-    pub fn change_failed(&mut self, cmd: &Command) {
-        if !repeat::fails_before_redo(cmd) {
+    /// register, an operator refused by its register: `"/dd`) stays the change; `refused` says the core
+    /// refused the operator for its register ([`ruse_core::Effect::RegisterRefused`]), which a motion
+    /// failing first never reaches (`"/dfz` with no `z` keeps the earlier change, #1184). Call it only
+    /// right after running the command `cmd` the engine returned, before the next key.
+    pub fn change_failed(&mut self, cmd: &Command, refused: bool) {
+        if refused || !repeat::fails_before_redo(cmd) {
             return;
         }
         let Some((last, recording)) = self.replaced_change.take() else {
             return;
         };
-        // The change named a register it cannot write, so the operator ran and was refused (`"/dfz` is left
-        // to that rule: the core reports both failures the same way).
-        let refused = [&self.last_change, &self.recording]
-            .into_iter()
-            .flatten()
-            .any(|c| !ruse_core::RegisterStore::is_writable(c.register));
-        if refused {
-            return;
-        }
         self.last_change = last;
         self.recording = recording;
     }

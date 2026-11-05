@@ -129,6 +129,9 @@ pub struct Workspace {
     clipboard: Box<dyn Clipboard>,
     /// A command applied since the last [`Workspace::take_beep`] failed ([`Effect::Beep`], #1085).
     beeped: bool,
+    /// An operator applied since the last [`Workspace::take_refused`] was refused by its register
+    /// ([`Effect::RegisterRefused`], #1184).
+    refused: bool,
     /// The `"+`/`"*` value the last clipboard pull wrote, when the pull changed the slot, until the frontend
     /// takes it for the trace ([`Workspace::take_clipboard_read`], RFC-0020 R6).
     clipboard_read: Option<crate::register::Register>,
@@ -164,6 +167,7 @@ impl Workspace {
             window_defaults: crate::WindowOptions::default(),
             clipboard: Box::new(NoClipboard),
             beeped: false,
+            refused: false,
             clipboard_read: None,
             registers: RegisterStore::new(),
             pins: Vec::new(),
@@ -259,6 +263,12 @@ impl Workspace {
     /// keys that were not typed (a macro's rest) when it is set, as Vim's `beep_flush` does (#1085).
     pub fn take_beep(&mut self) -> bool {
         std::mem::take(&mut self.beeped)
+    }
+
+    /// Whether an operator was refused by its register ([`Effect::RegisterRefused`]) since the last call,
+    /// clearing the flag: the failure behind a beep that nvim saves for `.` (#1184).
+    pub fn take_refused(&mut self) -> bool {
+        std::mem::take(&mut self.refused)
     }
 
     /// Record a failure the frontend found itself (an unknown key, Vim's `nv_error`), so it flushes the
@@ -531,6 +541,7 @@ impl Workspace {
         let (effects, pulled) = effects;
         self.note_clipboard_read(pulled);
         self.beeped |= effects.contains(&Effect::Beep);
+        self.refused |= effects.contains(&Effect::RegisterRefused);
         effects
     }
 
@@ -1661,6 +1672,23 @@ mod tests {
         assert!(effects.contains(&Effect::Beep), "\"/dd fails");
         assert_eq!(w.focused().doc.bytes(), b"aother.txtb\n");
         assert!(!w.registers().unnamed().is_set());
+        // #1184: refused by its register, which the frontend tells from a failed motion.
+        assert!(effects.contains(&Effect::RegisterRefused));
+        assert!(w.take_beep() && w.take_refused());
+        assert!(!w.take_refused(), "taking clears it");
+        // `"/dfz` with no `z`: the motion fails first, so the operator is never refused.
+        w.apply(&Command::SetRegister(Some('/')));
+        let effects = w.apply(&Command::Delete(
+            1,
+            Mo::FindChar {
+                ch: 'z',
+                forward: true,
+                till: false,
+                repeat: false,
+            },
+        ));
+        assert_eq!(effects, vec![Effect::Beep]);
+        assert!(w.take_beep() && !w.take_refused());
     }
 
     /// F-007 #1: splitting shows two Views of ONE Document with INDEPENDENT cursors and scroll.

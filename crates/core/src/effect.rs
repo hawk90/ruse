@@ -18,4 +18,10 @@ pub enum Effect {
     /// the keys that were not typed — the rest of a macro, a `:normal` payload, fed keys — so `@a` stops at
     /// the failure (#1085). The workspace records it ([`crate::Workspace::take_beep`]); nothing else to do.
     Beep,
+    /// The operator ran but its register cannot be written (`"/dw`, `":yy`, #1022), so it was refused; it
+    /// always comes with a [`Effect::Beep`]. Apart from a failed motion (`"/dfz`, no `z`), which beeps
+    /// before the operator runs: nvim saves the redo buffer for a refused operator, not for a failed motion,
+    /// so the frontend keeps the refused one as the `.` change and drops the other (#1184). The workspace
+    /// records it ([`crate::Workspace::take_refused`]).
+    RegisterRefused,
 }

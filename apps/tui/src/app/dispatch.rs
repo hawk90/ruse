@@ -754,7 +754,7 @@ pub(crate) fn apply_effect(
         },
         Effect::Status(s) => *status = s,
         // Recorded by the workspace; the session flushes the replayed keys (#1085).
-        Effect::Beep => {}
+        Effect::Beep | Effect::RegisterRefused => {}
     }
 }
 

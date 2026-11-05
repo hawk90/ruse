@@ -54,6 +54,8 @@ fn depth(node: Option<tree_sitter::Node<'_>>, row: usize) -> usize {
     let mut level = 0usize;
     let mut last_row: Option<usize> = None;
     let mut node = node;
+    // The node is a clause of the statement above it, which then opens no level of its own.
+    let mut in_clause = false;
     while let Some(nd) = node {
         let Some(parent) = nd.parent() else {
             break; // the root encloses every line, so it opens no level
@@ -64,12 +66,28 @@ fn depth(node: Option<tree_sitter::Node<'_>>, row: usize) -> usize {
         // Nested nodes that start on the SAME row count once (de-dup by start-row, non-increasing as we
         // walk up).
         if er > sr && sr < row && opens && Some(sr) != last_row {
-            level += 1;
+            // A statement a clause continues takes its row (a node wrapping it there counts no level
+            // either) but adds no level.
+            if !in_clause {
+                level += 1;
+            }
             last_row = Some(sr);
         }
+        in_clause = is_clause(nd.kind());
         node = Some(parent);
     }
     level
+}
+
+/// Whether a node of `kind` is a clause that continues the statement it belongs to at that statement's own
+/// level (#1142): Python's `elif`/`else`/`except`/`finally` (of `if`, `for`, `while`, `try`), Rust's
+/// `else`. The statement then opens no level for what the clause holds, so `else:` lines up with its `if`
+/// and the `else` body sits one level under both, as nvim's Python indent puts them.
+fn is_clause(kind: &str) -> bool {
+    matches!(
+        kind,
+        "else_clause" | "elif_clause" | "except_clause" | "except_group_clause" | "finally_clause"
+    )
 }
 
 /// The indent LEVEL for each line in `[first_line, last_line]` (inclusive, clamped), from the parse tree.
@@ -107,6 +125,32 @@ pub fn indent_levels(tree: &Tree, bytes: &[u8], first_line: usize, last_line: us
 /// the current line deepen the new line, so `o` after `fn f() {` indents one further.
 pub fn suggest_indent(tree: &Tree, at: usize, new_row: usize) -> usize {
     depth(tree.root_node().descendant_for_byte_range(at, at), new_row)
+}
+
+/// [`suggest_indent`] for `o` on the line `[ls, le)`. In Python a block ends with its last statement, so
+/// the line end after a block's last line lies outside the block: the line's own last character is asked
+/// instead, and `o` there stays in the block, as nvim's Python indent keeps the line's indent (#1142).
+pub fn suggest_open_below(
+    tree: &Tree,
+    bytes: &[u8],
+    ls: usize,
+    le: usize,
+    new_row: usize,
+) -> usize {
+    let at = if tree.language().name() == Some("python") {
+        let mut e = le;
+        while e > ls && matches!(bytes[e - 1], b' ' | b'\t' | b'\r') {
+            e -= 1;
+        }
+        if e > ls {
+            e - 1
+        } else {
+            le
+        }
+    } else {
+        le
+    };
+    suggest_indent(tree, at, new_row)
 }
 
 #[cfg(test)]
@@ -173,6 +217,52 @@ mod tests {
         let src = b"import os\ndef f():\n    x = 1\n    y = 2\n\nz = 3\n";
         let tree = parse(tree_sitter_python::LANGUAGE.into(), src);
         assert_eq!(indent_levels(&tree, src, 0, 5), vec![0, 0, 1, 1, 0, 0]);
+    }
+
+    /// #1142: `elif`/`else`/`except`/`finally` line up with the statement they continue, and their bodies
+    /// sit one level under it, as nvim's Python indent has them.
+    #[test]
+    fn python_clauses_line_up_with_their_statement() {
+        let py = |src: &[u8]| parse(tree_sitter_python::LANGUAGE.into(), src);
+        let src = b"if a:\n    x = 1\nelif b:\n    y = 2\nelse:\n    w = 0\nz = 3\n";
+        assert_eq!(
+            indent_levels(&py(src), src, 0, 6),
+            vec![0, 1, 0, 1, 0, 1, 0]
+        );
+        let src = b"try:\n    x\nexcept E:\n    y\nelse:\n    v\nfinally:\n    w\n";
+        assert_eq!(
+            indent_levels(&py(src), src, 0, 7),
+            vec![0, 1, 0, 1, 0, 1, 0, 1]
+        );
+        let src = b"def f():\n    for i in r:\n        x\n    else:\n        y\n    return 3\n";
+        assert_eq!(indent_levels(&py(src), src, 0, 5), vec![0, 1, 2, 1, 2, 1]);
+        // `o` on `else:` and in its body opens a body line; `O` above `else:` keeps its level, as nvim's
+        // `O` copies the indent of the `else:` line.
+        let src = b"if a:\n    x = 1\nelse:\n    y = 2\n    w = 3\nz = 3\n";
+        let tree = py(src);
+        let starts = line_starts(src);
+        let eol = |row: usize| starts[row + 1] - 1;
+        assert_eq!(suggest_indent(&tree, eol(2), 3), 1);
+        assert_eq!(suggest_indent(&tree, eol(3), 4), 1);
+        assert_eq!(suggest_indent(&tree, starts[2], 2), 0);
+        // `o` on the block's LAST line (`w = 3`, then `z = 3` one level out) stays in the block.
+        assert_eq!(suggest_open_below(&tree, src, starts[4], eol(4), 5), 1);
+        assert_eq!(suggest_open_below(&tree, src, starts[5], eol(5), 6), 0);
+        // Rust asks at the line end: `o` after a closing `}` opens outside its block.
+        let src = b"fn a() {\n    x;\n}\nfn b() {}\n";
+        let starts = line_starts(src);
+        assert_eq!(
+            suggest_open_below(&parse_rust(src), src, starts[2], starts[3] - 1, 3),
+            0
+        );
+    }
+
+    /// Rust's `else` body sits one level under the `if`, not two (#1142).
+    #[test]
+    fn rust_else_bodies_are_one_level_deep() {
+        let src = b"fn f() {\nif a {\nx;\n} else {\ny;\n}\n}\n";
+        let tree = parse_rust(src);
+        assert_eq!(indent_levels(&tree, src, 0, 6), vec![0, 1, 2, 1, 2, 1, 0]);
     }
 
     /// Markdown is not indented by node depth: its sections nest per heading (#818).

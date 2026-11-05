@@ -22,8 +22,15 @@ mod parity_ratchet;
 /// A fixture whose last line is empty is opened as a newline-TERMINATED buffer (`["", "", ""]` is
 /// `"\n\n\n"`): joined bare, its empty last line would be the slot after a final newline, which is not a
 /// line in ruse's model (as in Vim's), so the buffer would have a line fewer than nvim's (#1089).
-fn drive_ruse(lines: &[String], keys: &str) -> Headless {
-    let mut h = Headless::vim(&ruse_input(lines)).vanilla_search_case();
+///
+/// A fixture with a `file` opens its buffer under that name, so the file's type applies (#1142).
+fn drive_ruse(lines: &[String], keys: &str, file: Option<&str>) -> Headless {
+    let text = ruse_input(lines);
+    let h = match file {
+        Some(file) => Headless::vim_named(&text, file),
+        None => Headless::vim(&text),
+    };
+    let mut h = h.vanilla_search_case();
     h.keys(keys);
     h
 }
@@ -72,7 +79,7 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     let lines = as_str_vec(&fx["lines"]);
     let expect = &fx["expect"];
 
-    let mut h = drive_ruse(&lines, keys);
+    let mut h = drive_ruse(&lines, keys, fx["file"].as_str());
 
     // ruse observables.
     let r_text = ruse_text(&h, terminated(&lines));

@@ -59,6 +59,13 @@ _LUA = r"""
 local input = vim.json.decode([==[ %s ]==])
 vim.api.nvim_buf_set_lines(0, 0, -1, false, input.lines)
 vim.api.nvim_win_set_cursor(0, {1, 0})
+-- A fixture about a file type (#1142) names the buffer's file: its type and indent script then apply, as
+-- for an opened file. Nothing is read or written.
+if input.file ~= nil and input.file ~= '' then
+  vim.cmd('silent file ' .. vim.fn.fnameescape(input.file))
+  vim.cmd('filetype indent on')
+  vim.cmd('filetype detect')
+end
 if input.setup ~= nil and input.setup ~= '' then
   vim.cmd(input.setup)
 end
@@ -202,7 +209,7 @@ def _nvim(payload: dict) -> dict:
     return json.loads(proc.stdout.rsplit("\n", 1)[-1])
 
 
-def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
+def run_neovim(lines: list[str], keys: str, setup: str = "", file: str = "") -> dict:
     """Run the pinned Neovim on `lines`, feed `keys` in Normal mode, and return the settled state.
 
     Returns {text, cursor:[row1,col0], reg_unnamed:{text,type}, reg0:{text,type}, mode, emsg, failed,
@@ -210,7 +217,8 @@ def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
     why that is the whole point. `setup` is an optional ex command (e.g. `set shiftwidth=4 expandtab`)
     applied to the fresh process before the keys, so a CONFIG-DEPENDENT op can be observed under a
     config that matches ruse's defaults instead of nvim's factory defaults (see the shift_right_line
-    fixture).
+    fixture). `file` optionally names the buffer's file (`fixture.py`), so its file type and indent
+    script apply (`filetype indent on`); the comparator opens ruse's buffer under the same name (#1142).
 
     The keys are fed AS TYPED, so the keys after a failed command still run, as they do for a user.
     Two error observables (#901) record WHETHER something failed, never the message text: `emsg` is the
@@ -218,7 +226,7 @@ def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
     whether any command failed, an error or a Normal-mode beep, observed in a second fresh process as
     Vim flushing the keys queued after the failure (see the probe).
     """
-    payload = {"lines": lines, "keys": keys, "setup": setup}
+    payload = {"lines": lines, "keys": keys, "setup": setup, "file": file}
     raw = _nvim(payload)
     failed = _nvim({**payload, "probe_failed": True})["failed"]
     ru_text, ru_type = raw["reg_unnamed"]
@@ -1853,6 +1861,16 @@ FIXTURES: list[dict] = [
     {"name": "dot_kept_refused_register_dw", "lines": ["abcdef abc"], "keys": 'x"/dw.'},
     {"name": "dot_kept_put_empty_register", "lines": ["abcdef abc"], "keys": 'x"zp.'},
     {"name": "dot_kept_count_J_one_line", "lines": ["abcdef abc"], "keys": "x3J."},
+    # #1184: a refused register is saved for `.` only when the operator runs: a motion that fails first
+    # (`"/dfz` with no `z`) keeps the earlier change. `gn` with no previous pattern fails with E35.
+    {"name": "dot_fail_refused_register_dfz", "lines": ["abcdef abc"], "keys": 'x"/dfz.'},
+    {"name": "dot_fail_readonly_register_dfz", "lines": ["abcdef abc"], "keys": 'x":dfz.'},
+    {"name": "dot_fail_refused_register_d_search", "lines": ["abcdef abc"], "keys": 'x"/d/zzz<CR>.'},
+    {"name": "fail_gn_no_pattern", "lines": ["abcdef abc"], "keys": "gn"},
+    {"name": "fail_dgn_no_pattern", "lines": ["abcdef abc"], "keys": "dgn"},
+    {"name": "dot_fail_dgn_no_pattern", "lines": ["abcdef abc"], "keys": "xdgn."},
+    {"name": "dot_fail_register_dgn_no_pattern", "lines": ["abcdef abc"], "keys": 'x"adgn.'},
+    {"name": "dot_fail_cgn_no_pattern", "lines": ["abcdef abc"], "keys": "xcgnZ<Esc>."},
     {"name": "dot_kept_x_empty_line", "lines": ["", "abcdef"], "keys": "jxkx."},
     # --- #1174 a linewise operator refused because its register cannot be written stays at the start of its
     #     range: a delete at the wanted column on its first line (nvim's `do_pending_operator` coladvances to
@@ -3838,6 +3856,79 @@ FIXTURES: list[dict] = [
     {"name": "dgj_in_wrapped_line", "lines": WRAP_LINES, "keys": "3ldgj"},
     {"name": "g_dollar_in_wrapped_line", "lines": WRAP_LINES, "keys": "gjdg$"},
     {"name": "nowrap_gj_is_linewise", "lines": WRAP_LINES, "keys": ":set nowrap<CR>dgj"},
+    # --- #1180 Visual-block `>`/`<` (`:help v_b_>`): shift from the block's left column. `|` rows: a row
+    #     the left edge cuts a `<Tab>` or a wide character on (neither corner sits on it). ---------------
+    {"name": "vb_shift_right", "lines": ["abc def", "ghi jkl", "mno"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>"},
+    {"name": "vb_shift_right_merges_the_blanks_left", "lines": ["ab  cd", "ef  gh"], "keys": ":set ts=8 sw=4 et<CR>4l<C-v>j>"},
+    {"name": "vb_shift_right_merges_the_blanks_left_noet", "lines": ["ab  cd", "ef  gh"], "keys": ":set ts=8 sw=4 noet<CR>4l<C-v>j>"},
+    {"name": "vb_shift_right_from_a_blank", "lines": ["ab  cd", "ef  gh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j>"},
+    {"name": "vb_shift_right_count", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j3>"},
+    {"name": "vb_shift_right_on_a_tab", "lines": ["a\tb\tc", "d\te\tf"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>j>"},
+    {"name": "vb_shift_right_on_a_tab_noet", "lines": ["a\tb\tc", "d\te\tf"], "keys": ":set ts=8 sw=4 noet<CR>l<C-v>j>"},
+    {"name": "vb_shift_right_cuts_a_tab", "lines": ["abcdefgh", "a\tb", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>jj>"},
+    {"name": "vb_shift_right_cuts_a_tab_noet", "lines": ["abcdefgh", "a\tb", "abcdefgh"], "keys": ":set ts=8 sw=4 noet<CR>3l<C-v>jj>"},
+    {"name": "vb_shift_right_cuts_a_wide_char", "lines": ["abcdefgh", "a\u4e2d\u4e2db", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>jj>"},
+    {"name": "vb_shift_right_after_a_tab", "lines": ["ab cd ef ghijklmnop qrstuvwxyz", "gh (ij k\tl"], "keys": ":set ts=8 sw=4 et<CR>j$<C-v>>"},
+    {"name": "vb_shift_right_blank_before_a_tab", "lines": ["ab\tcd"], "keys": ":set ts=8 sw=4 et<CR>3|<C-v>>"},
+    {"name": "vb_shift_right_skips_a_short_line", "lines": ["abcdef", "ab", "abcdef"], "keys": ":set ts=8 sw=4 et<CR>4l<C-v>jj>"},
+    {"name": "vb_shift_right_at_a_line_end", "lines": ["abcd", "abcdef"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j>"},
+    {"name": "vb_shift_right_skips_an_empty_line", "lines": ["abcd", "", "abcd"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>jj>"},
+    {"name": "vb_shift_right_blank_line", "lines": ["ab", "    ", "ab"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>jj>"},
+    {"name": "vb_shift_right_dot", "lines": ["abc def", "ghi jkl", "mno pqr", "stu vwx"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>jj."},
+    {"name": "vb_shift_right_count_dot", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j2>."},
+    {"name": "vb_shift_right_undo", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>u"},
+    {"name": "vb_shift_right_from_below", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>jw<C-v>k>"},
+    {"name": "vb_shift_left", "lines": ["ab      cd", "ef      gh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<"},
+    {"name": "vb_shift_left_at_text", "lines": ["ab    cd", "ef    gh"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>j<"},
+    {"name": "vb_shift_left_short_run", "lines": ["ab  cd", "ef gh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<"},
+    {"name": "vb_shift_left_count", "lines": ["ab          cd", "ef          gh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j2<"},
+    {"name": "vb_shift_left_tabs", "lines": ["ab\t\tcd", "ef\t\tgh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<"},
+    {"name": "vb_shift_left_in_a_tab", "lines": ["abcdefghijklmnop", "a\t\tx"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>j<"},
+    {"name": "vb_shift_left_in_a_tab_count", "lines": ["abcdefghijklmnop", "a\t\tx"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>j3<"},
+    {"name": "vb_shift_left_cuts_a_tab", "lines": ["abcdefghijklmnop", "a\t\tx", "abcdefghijklmnop"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>jj<"},
+    {"name": "vb_shift_left_cuts_a_tab_far", "lines": ["abcdefghijklmnop", "a\t\tx", "abcdefghijklmnop"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>jj4<"},
+    {"name": "vb_shift_left_cuts_a_wide_char", "lines": ["abcdefgh", "a\u4e2d  b", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>jj<"},
+    {"name": "vb_shift_left_blank_tail", "lines": ["ab      ", "ab      "], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<"},
+    {"name": "vb_shift_left_dot", "lines": ["ab          cd", "ef          gh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<."},
+    # --- #1142 a block change whose Insert takes a `<CR>`: nvim's `op_change` copies what the top row grew
+    #     by into the lines below it by number, the new ones first; `I`/`A` that leave the top row copy
+    #     nothing. ------------------------------------------------------------------------------------
+    {"name": "vb_C_cr_mid", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jCx<CR>y<Esc>"},
+    {"name": "vb_C_cr_three_rows", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jjCx<CR>y<Esc>"},
+    {"name": "vb_C_cr_twice", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jjCx<CR>y<CR>z<Esc>"},
+    {"name": "vb_C_cr_first", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jC<CR>y<Esc>"},
+    {"name": "vb_C_cr_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jCx<CR>y<Esc>u"},
+    {"name": "vb_c_cr_moves_the_tail", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlcx<CR>y<Esc>"},
+    {"name": "vb_c_cr_longer_than_the_tail", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlcxyz<CR>w<Esc>"},
+    {"name": "vb_I_cr_copies_nothing", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jIx<CR>y<Esc>"},
+    {"name": "vb_A_cr_copies_nothing", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jAx<CR>y<Esc>"},
+    {"name": "vb_A_dollar_cr_copies_nothing", "lines": ["abcd", "ef", "ijkl"], "keys": "l<C-v>j$Ax<CR>y<Esc>"},
+    {"name": "vb_I_cr_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jIx<CR>y<Esc>3G."},
+    # `=` leaves the cursor at the wanted column of its first line ('nostartofline', as `>>`, #1176).
+    {"name": "eq_cursor_keeps_end_of_line", "lines": ["{", "      xyz abc", "}"], "keys": ":set ts=8 sw=4 et<CR>j$=="},
+    {"name": "eq_cursor_keeps_column", "lines": ["{", "      xyz abc", "}"], "keys": ":set ts=8 sw=4 et<CR>jfa=="},
+    {"name": "eq_cursor_keeps_column_zero", "lines": ["{", "      xyz abc", "}"], "keys": ":set ts=8 sw=4 et<CR>j0=="},
+    {"name": "eq_cursor_visual", "lines": ["{", "      xyz abc;", "  q;", "}"], "keys": ":set ts=8 sw=4 et<CR>jfaVj="},
+    {"name": "py_eq_cursor_keeps_end_of_line", "lines": ["if a:", "        xyz = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>j$=="},
+    # --- #1142 Python's `elif`/`else`/`except`/`finally` (nvim's indent/python.vim, `filetype indent on`):
+    #     the buffer is named `fixture.py` on both sides. -----------------------------------------------
+    {"name": "py_eq_keeps_if_else", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"},
+    {"name": "py_eq_keeps_elif_else", "lines": ["if a:", "    x = 1", "elif b:", "    y = 2", "else:", "    w = 0", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"},
+    {"name": "py_eq_keeps_try_clauses", "lines": ["try:", "    x = 1", "except E:", "    y = 2", "else:", "    v = 1", "finally:", "    w = 3", "z = 4"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"},
+    {"name": "py_eq_keeps_for_else", "lines": ["for i in r:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"},
+    {"name": "py_eq_keeps_while_else", "lines": ["while a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"},
+    {"name": "py_eq_keeps_nested_else", "lines": ["def f():", "    if a:", "        x = 1", "    else:", "        y = 2", "    return 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"},
+    {"name": "py_eq_fixes_deep_bodies", "lines": ["if a:", "        x = 1", "else:", "            y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"},
+    {"name": "py_eq_on_the_else_line", "lines": ["def f():", "    if a:", "        x = 1", "    else:", "        y = 2", "    return 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3j=="},
+    {"name": "py_o_on_else", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjoq<Esc>"},
+    {"name": "py_o_on_elif", "lines": ["if a:", "    x = 1", "elif b:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjoq<Esc>"},
+    {"name": "py_o_in_else_body", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "    w = 3", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"},
+    {"name": "py_o_end_of_else_body", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"},
+    {"name": "py_O_above_else", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjOq<Esc>"},
+    {"name": "py_o_in_except_body", "lines": ["try:", "    x = 1", "except E:", "    y = 2", "    u = 1", "finally:", "    w = 3", "z = 4"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"},
+    {"name": "py_o_in_finally_body", "lines": ["try:", "    x = 1", "finally:", "    w = 3", "    u = 1", "z = 4"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"},
+    {"name": "py_o_in_nested_else_body", "lines": ["def f():", "    if a:", "        x = 1", "    else:", "        y = 2", "        v = 0", "    return 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>4joq<Esc>"},
+    {"name": "py_cc_in_else_body", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "    w = 3", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3jccq<Esc>"},
 ]
 
 
@@ -3856,7 +3947,8 @@ def generate(path: Path) -> int:
     fixtures = []
     for spec in FIXTURES:
         setup = spec.get("setup", "")
-        state = run_neovim(spec["lines"], spec["keys"], setup)
+        file = spec.get("file", "")
+        state = run_neovim(spec["lines"], spec["keys"], setup, file)
         entry = {
             "name": spec["name"],
             "lines": spec["lines"],
@@ -3866,6 +3958,9 @@ def generate(path: Path) -> int:
         # config-matched (and stays byte-identical for the config-independent majority).
         if setup:
             entry["setup"] = setup
+        # Likewise `file`: the buffer's file name, which picks its type (and indent) on both sides.
+        if file:
+            entry["file"] = file
         fixtures.append(
             {
                 **entry,
