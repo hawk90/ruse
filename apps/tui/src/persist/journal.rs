@@ -379,9 +379,31 @@ impl Journals {
         self.write_as(doc, text, &gone)
     }
 
+    /// Write `text` as the journal a crashed second session left beside `doc`'s own (`<name>.<pid>.rj`,
+    /// [`claim`]), for tests of a file in use by one session after another crashed (#1210).
+    pub fn write_crashed_beside(&self, doc: &Path, text: &[u8]) -> io::Result<PathBuf> {
+        let gone = Owner {
+            pid: GONE_PID,
+            host: owner().host.clone(),
+            start_ms: 1,
+        };
+        let journal = alternate(&self.path_for(doc), GONE_PID);
+        self.write_at(&journal, Some(doc), text, &gone)
+    }
+
     /// Write `text` as `doc`'s whole journal with `who` as its owner (tests: a crashed or a live session).
     pub fn write_as(&self, doc: Option<&Path>, text: &[u8], who: &Owner) -> io::Result<PathBuf> {
-        let journal = self.path_of(doc);
+        self.write_at(&self.path_of(doc), doc, text, who)
+    }
+
+    fn write_at(
+        &self,
+        journal: &Path,
+        doc: Option<&Path>,
+        text: &[u8],
+        who: &Owner,
+    ) -> io::Result<PathBuf> {
+        let journal = journal.to_path_buf();
         let canon = doc.map(canonical);
         if let Some(dir) = journal.parent() {
             make_private_dir(dir)?;
@@ -492,19 +514,20 @@ impl Journals {
 
     /// What the journals of `doc` (or, for `None`, an orphaned unnamed buffer's) offer at open time, given
     /// the buffer's `disk` text (the file decoded with its detected format; empty for no file). A journal
-    /// whose owner is still running on this host makes the file [`Recovery::InUse`]; that wins over a
-    /// crashed one beside it, which stays for a later open. A journal replaying to the disk text offers
-    /// nothing; a journal that cannot be used says why.
+    /// whose owner is still running on this host makes the file [`Recovery::InUse`]; a crashed one beside
+    /// it is offered with it (#1210). A journal replaying to the disk text offers nothing; a journal that
+    /// cannot be used says why.
     pub fn offer(&self, doc: Option<&Path>, disk: &[u8]) -> Recovery {
         let journals = match doc {
             Some(d) => self.candidates(d),
             None => self.orphaned_unnamed().into_iter().collect(),
         };
         // A journal to recover wins over one that only gives a note (a newer ruse's beside this one's).
-        let (mut available, mut note) = (None, None);
+        let (mut available, mut note, mut in_use) = (None, None, None);
         for journal in journals {
             if let Some(o) = read_owner(&journal).filter(is_live_other) {
-                return Recovery::InUse { owner: o, journal };
+                in_use.get_or_insert((o, journal));
+                continue;
             }
             if available.is_some() {
                 continue;
@@ -516,6 +539,20 @@ impl Journals {
                     note.get_or_insert(r);
                 }
             }
+        }
+        if let Some((owner, journal)) = in_use {
+            return Recovery::InUse {
+                owner,
+                journal,
+                crashed: match available {
+                    Some(Recovery::Available(a)) => Some(a),
+                    _ => None,
+                },
+                note: match note {
+                    Some(Recovery::Unreplayable { reason }) => Some(reason),
+                    _ => None,
+                },
+            };
         }
         available
             .or(note)
@@ -1678,12 +1715,35 @@ mod tests {
         if start.is_some() {
             assert!(is_live_other(&live));
             match j.offer(Some(&file), b"disk\n") {
-                Recovery::InUse { owner: o, journal } => {
+                Recovery::InUse {
+                    owner: o,
+                    journal,
+                    crashed: None,
+                    note: None,
+                } => {
                     assert_eq!(o, live);
                     assert_eq!(journal, j.path_for(&file));
                 }
                 other => panic!("{other:?}"),
             }
+            // #1210: a crashed second session's journal beside it is offered with the in-use one.
+            let beside = j.write_crashed_beside(&file, b"gone\n").unwrap();
+            match j.offer(Some(&file), b"disk\n") {
+                Recovery::InUse {
+                    owner: o,
+                    crashed: Some(a),
+                    note: None,
+                    ..
+                } => {
+                    assert_eq!(o, live);
+                    assert_eq!(
+                        (a.recovered.as_slice(), a.journal.as_path()),
+                        (&b"gone\n"[..], beside.as_path())
+                    );
+                }
+                other => panic!("{other:?}"),
+            }
+            fs::remove_file(&beside).unwrap();
             // This session writes beside it, never over it, and never deletes it.
             let alt = claim(&j.path_for(&file));
             assert_ne!(alt, j.path_for(&file));

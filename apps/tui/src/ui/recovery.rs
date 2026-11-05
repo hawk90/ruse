@@ -7,7 +7,9 @@
 //!   read-only full-screen view and then asks again; `e` and `k` move the journal to the archive, never
 //!   delete it; `q` and `Esc` keep it where it is.
 //! * A journal whose owner is a ruse still running on this host (Neovim's E325): `[o] open read-only   [e]
-//!   edit anyway   [q] quit`. Read-only means `:w` refuses with E45 unless forced.
+//!   edit anyway   [q] quit`. Read-only means `:w` refuses with E45 unless forced. When a second session
+//!   that is gone left unsaved work beside it, the prompt says so and adds `[r] recover it`, which asks
+//!   the recovery prompt for that journal (#1210).
 //!
 //! No other key does anything (#846): a stray key can neither discard work nor dismiss the prompt. Ctrl-C
 //! answers `q`, which keeps everything. Recovery never writes the original file; only `:w` does.
@@ -47,6 +49,8 @@ pub(crate) enum InUseChoice {
     ReadOnly,
     /// `e`: open it for editing anyway; this session journals beside the other's.
     EditAnyway,
+    /// `r`: go to the recovery prompt of a gone second session's journal (only when there is one).
+    RecoverCrashed,
     /// `q`, `Esc`, Ctrl-C: open nothing.
     Quit,
 }
@@ -83,14 +87,16 @@ pub(crate) fn choice(key: KeyEvent) -> Option<Choice> {
     }
 }
 
-/// The in-use prompt's answer for one key; `None` for every key that is not a choice.
-pub(crate) fn in_use_choice(key: KeyEvent) -> Option<InUseChoice> {
+/// The in-use prompt's answer for one key; `None` for every key that is not a choice. `r` is one only
+/// when a gone session's journal is offered with it (`crashed`).
+pub(crate) fn in_use_choice(key: KeyEvent, crashed: bool) -> Option<InUseChoice> {
     if ctrl_c(&key) || key.code == KeyCode::Esc {
         return Some(InUseChoice::Quit);
     }
     match plain(&key)? {
         'o' => Some(InUseChoice::ReadOnly),
         'e' => Some(InUseChoice::EditAnyway),
+        'r' if crashed => Some(InUseChoice::RecoverCrashed),
         'q' => Some(InUseChoice::Quit),
         _ => None,
     }
@@ -166,9 +172,15 @@ pub(crate) fn lines(name: &str, a: &Available, quit: &str) -> Vec<String> {
     out
 }
 
-/// The in-use prompt's lines (Neovim's E325 for a swap file whose process is still running).
-pub(crate) fn in_use_lines(name: &str, o: &Owner, quit: &str) -> Vec<String> {
-    vec![
+/// The in-use prompt's lines (Neovim's E325 for a swap file whose process is still running), with the
+/// unsaved work of a gone second session when there is some (#1210).
+pub(crate) fn in_use_lines(
+    name: &str,
+    o: &Owner,
+    crashed: Option<&Available>,
+    quit: &str,
+) -> Vec<String> {
+    let mut out = vec![
         format!(
             "E325: ATTENTION: {} is being edited by {} (started {}, still running)",
             printable(name),
@@ -178,8 +190,32 @@ pub(crate) fn in_use_lines(name: &str, o: &Owner, quit: &str) -> Vec<String> {
         "  Another ruse may be editing the same file. Changes made in both are not merged: quit, or \
          continue with caution."
             .to_string(),
-        format!("[o] open read-only   [e] edit anyway   [q] {quit}"),
-    ]
+    ];
+    let Some(a) = crashed else {
+        out.push(format!("[o] open read-only   [e] edit anyway   [q] {quit}"));
+        return out;
+    };
+    let gone = a
+        .owner
+        .as_ref()
+        .map_or_else(|| "an older ruse".to_string(), who);
+    let when = a
+        .last_change
+        .or(a.up_to)
+        .map(|t| format!(", last change {}", date_time(t)))
+        .unwrap_or_default();
+    let what = match a.changes {
+        Some(1) => "1 unsaved change".to_string(),
+        Some(n) if n > 1 => format!("{n} unsaved changes"),
+        _ => "unsaved changes".to_string(),
+    };
+    out.push(format!(
+        "  Another session that is gone ({gone}{when}) also left {what} for this file."
+    ));
+    out.push(format!(
+        "[o] open read-only   [e] edit anyway   [r] recover its changes   [q] {quit}"
+    ));
+    out
 }
 
 /// What to open after the prompt.
@@ -217,16 +253,50 @@ pub(crate) fn resolve(
     match rec {
         Recovery::None => Ok(open(None, false, None)),
         Recovery::Unreplayable { reason } => Ok(open(None, false, Some(reason))),
-        Recovery::InUse { owner, journal } => {
-            let lines = in_use_lines(name, &owner, quit);
+        Recovery::InUse {
+            owner,
+            journal,
+            crashed,
+            note,
+        } => {
+            let lines = in_use_lines(name, &owner, crashed.as_deref(), quit);
             let also = format!("also open in {}", who(&owner));
-            Ok(match ask(out, &lines, in_use_choice)? {
+            // A journal beside it that could not be offered says why after the answer.
+            let with_note = |s: String| {
+                Some(
+                    note.as_ref()
+                        .map_or_else(|| s.clone(), |n| format!("{s} · {n}")),
+                )
+            };
+            let has_crashed = crashed.is_some();
+            Ok(match ask(out, &lines, |k| in_use_choice(k, has_crashed))? {
                 Some(InUseChoice::ReadOnly) => {
-                    open(None, true, Some(format!("[readonly]: {also}")))
+                    open(None, true, with_note(format!("[readonly]: {also}")))
                 }
                 Some(InUseChoice::EditAnyway) => {
-                    open(None, false, Some(format!("editing anyway: {also}")))
+                    open(None, false, with_note(format!("editing anyway: {also}")))
                 }
+                // The gone session's journal gets the whole recovery prompt; this session then edits
+                // beside the live one, as `e` would.
+                Some(InUseChoice::RecoverCrashed) => match crashed {
+                    Some(a) => {
+                        match resolve(out, Recovery::Available(a), name, doc, disk, fmt, quit)? {
+                            Resolved::Open {
+                                recovered,
+                                read_only,
+                                note: n,
+                            } => open(
+                                recovered,
+                                read_only,
+                                with_note(
+                                    n.map_or_else(|| also.clone(), |n| format!("{n} · {also}")),
+                                ),
+                            ),
+                            quit @ Resolved::Quit { .. } => quit,
+                        }
+                    }
+                    None => Resolved::Quit { journal },
+                },
                 Some(InUseChoice::Quit) | None => Resolved::Quit { journal },
             })
         }
@@ -484,12 +554,26 @@ mod tests {
             choice(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
             None
         );
-        assert_eq!(in_use_choice(key('o')), Some(InUseChoice::ReadOnly));
-        assert_eq!(in_use_choice(key('e')), Some(InUseChoice::EditAnyway));
-        assert_eq!(in_use_choice(key('q')), Some(InUseChoice::Quit));
-        for c in ['r', 'd', 'k', 'x'] {
-            assert_eq!(in_use_choice(key(c)), None, "{c:?}");
+        for crashed in [false, true] {
+            assert_eq!(
+                in_use_choice(key('o'), crashed),
+                Some(InUseChoice::ReadOnly)
+            );
+            assert_eq!(
+                in_use_choice(key('e'), crashed),
+                Some(InUseChoice::EditAnyway)
+            );
+            assert_eq!(in_use_choice(key('q'), crashed), Some(InUseChoice::Quit));
+            for c in ['d', 'k', 'x'] {
+                assert_eq!(in_use_choice(key(c), crashed), None, "{c:?}");
+            }
         }
+        // `r` only when a gone session's journal is offered with it (#1210).
+        assert_eq!(in_use_choice(key('r'), false), None);
+        assert_eq!(
+            in_use_choice(key('r'), true),
+            Some(InUseChoice::RecoverCrashed)
+        );
     }
 
     fn offer() -> Available {
@@ -543,7 +627,7 @@ mod tests {
             l[3]
         );
         assert!(l[4].ends_with("[q] cancel"));
-        let i = in_use_lines("notes.md", a.owner.as_ref().unwrap(), "quit");
+        let i = in_use_lines("notes.md", a.owner.as_ref().unwrap(), None, "quit");
         assert!(
             i[0].starts_with(
                 "E325: ATTENTION: notes.md is being edited by ruse pid 4182 on laptop"
@@ -552,6 +636,21 @@ mod tests {
             i[0]
         );
         assert_eq!(i[2], "[o] open read-only   [e] edit anyway   [q] quit");
+        assert_eq!(i.len(), 3);
+        // #1210: a gone second session's work is named, and `r` is offered.
+        let mut gone = offer();
+        gone.owner.as_mut().unwrap().pid = 77;
+        let i = in_use_lines("notes.md", a.owner.as_ref().unwrap(), Some(&gone), "cancel");
+        assert!(
+            i[2].starts_with("  Another session that is gone (ruse pid 77 on laptop, last change ")
+                && i[2].ends_with(") also left 37 unsaved changes for this file."),
+            "{}",
+            i[2]
+        );
+        assert_eq!(
+            i[3],
+            "[o] open read-only   [e] edit anyway   [r] recover its changes   [q] cancel"
+        );
     }
 
     #[test]
