@@ -98,6 +98,15 @@ next drain tells the writer to write a Checkpoint instead. The core does no I/O 
 journal; frontends that do not journal never drain, and the cap keeps memory bounded (INV-FAIL-BOUNDED). The
 types follow RFC-0022: positions in `EditList` are already `BytePos`.
 
+As built (slice 1): recording is **off by default** and a frontend turns it on per document
+(`Document::record_changes`), because always-on recording measurably slowed small edits (it clones both edit
+lists per change) and would hold up to the cap per document that nobody drains. `drain_changes` returns
+`ChangeDrain::Changes(entries)` or `ChangeDrain::Checkpoint { reason, text, revision, node }`, where `text` is
+the current buffer and `reason` is `NotRecording`, `Started` (recording was just turned on) or `Overflow`; after
+an overflow the log records nothing until the drain, since the Checkpoint covers it. Every revision bump is one
+entry: an undo step that crosses several nodes is one `Navigate` entry per node, and an empty transaction (a
+revision bump with no undo node, #765) is a `Navigate` to the current node with empty edit lists.
+
 ### 2. Records
 
 The layout is the one in [§2 of the design doc](../../design/persistence-and-recovery.md):

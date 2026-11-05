@@ -56,6 +56,9 @@ pub struct UndoStep {
     /// The undo group each of `edits` belongs to — a step can cross several (`g-`/`g+`), and the marks a
     /// group saved are restored after its last list (Vim's `uh_namedm`, #686).
     pub groups: Vec<u64>,
+    /// The node current after each of `edits` is applied, and the origin of the node whose edits it is —
+    /// what the change log names a navigation step by (RFC-0023 §1).
+    pub nodes: Vec<(MonotonicSeq, Option<TransactionOrigin>)>,
     /// `edits[tail..]` belong to the LAST group the step crossed — the one Vim's `u_undoredo` places the
     /// cursor from (each group it crosses overrides the previous placement).
     pub tail: usize,
@@ -214,6 +217,7 @@ impl UndoHistory {
         self.nodes[self.current.0].parent?;
         let mut out = Vec::new();
         let mut groups = Vec::new();
+        let mut nodes = Vec::new();
         let group = self.nodes[self.current.0].group;
         let mut cursor = 0;
         loop {
@@ -228,6 +232,7 @@ impl UndoHistory {
                     .expect("non-root node carries an inverse"),
             );
             groups.push(group);
+            nodes.push((self.nodes[parent.0].seq, node.origin));
             cursor = node.cursor;
             let child = self.current;
             self.nodes[parent.0].redo_child = Some(child);
@@ -237,6 +242,7 @@ impl UndoHistory {
         Some(UndoStep {
             edits: out,
             groups,
+            nodes,
             tail: 0,
             forward: false,
             cursor: BytePos(cursor),
@@ -257,6 +263,7 @@ impl UndoHistory {
         let first = self.redo_target(self.current)?;
         let group = self.nodes[first.0].group;
         let mut groups = Vec::new();
+        let mut nodes = Vec::new();
         let mut node = first;
         loop {
             out.push(
@@ -266,6 +273,7 @@ impl UndoHistory {
                     .expect("non-root node carries a forward"),
             );
             groups.push(group);
+            nodes.push((self.nodes[node.0].seq, self.nodes[node.0].origin));
             self.current = node;
             match self.redo_target(node) {
                 Some(child) if self.nodes[child.0].group == group => node = child,
@@ -276,6 +284,7 @@ impl UndoHistory {
         Some(UndoStep {
             edits: out,
             groups,
+            nodes,
             tail: 0,
             forward: true,
             cursor: BytePos(self.nodes[first.0].cursor),
@@ -308,6 +317,7 @@ impl UndoHistory {
         };
         let mut out = Vec::new();
         let mut groups = Vec::new();
+        let mut nodes = Vec::new();
         // The last group crossed: the tail of the forwards when the walk ends going down, else the tail of
         // the inverses. `tail` indexes its first list, `cursor` is its first node's `uh_cursor`.
         let mut tail = 0;
@@ -332,6 +342,7 @@ impl UndoHistory {
             let parent = self.nodes[c.0]
                 .parent
                 .expect("a node above the LCA has a parent");
+            nodes.push((self.nodes[parent.0].seq, self.nodes[c.0].origin));
             self.nodes[parent.0].redo_child = Some(c);
             c = parent;
         }
@@ -349,6 +360,7 @@ impl UndoHistory {
                 cursor = node.cursor;
             }
             groups.push(node.group);
+            nodes.push((node.seq, node.origin));
             out.push(
                 self.nodes[n.0]
                     .forward
@@ -361,6 +373,7 @@ impl UndoHistory {
         Some(UndoStep {
             edits: out,
             groups,
+            nodes,
             tail,
             forward,
             cursor: BytePos(cursor),
