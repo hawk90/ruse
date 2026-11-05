@@ -1,6 +1,8 @@
 //! Python indenting on the key path (#1205, #1206): `=`, `o`/`O`/`<CR>`, `cc`/`S` and the keys of nvim's
 //! Python 'indentkeys' run [`crate::indent::python`] the way nvim runs `python#GetIndent`, after the edit
-//! that triggers it. Other languages keep the node-depth indent of `resolve_tree_aware`.
+//! that triggers it. Other languages keep the node-depth indent of `resolve_tree_aware`, and the word and
+//! character keys of their own 'indentkeys' (C, JavaScript, Go, sh: [`crate::indent::key_reindent`])
+//! re-indent the line by its depth in the tree parsed after the key.
 //!
 //! The frontend owns the tree, so it computes the indent and runs a [`Command::SetIndentCols`] after the
 //! key's own command; the trace records both. A `.` repeat replays the typed keys without re-indenting,
@@ -25,6 +27,48 @@ fn python_tree(
         .is_some_and(crate::indent::is_python)
         .then(|| hl.tree_matching(bytes))
         .flatten()
+}
+
+/// The language of the focused buffer's tree when it is indented by node depth and has 'indentkeys' of
+/// its own ([`crate::indent::key_reindent`], #1206): not Python, Markdown or a `'lisp'` buffer.
+fn depth_keys_lang(
+    ws: &Workspace,
+    highlighters: &HashMap<DocumentId, CachedHighlight>,
+) -> Option<&'static str> {
+    if ws.focused().view.lisp() {
+        return None;
+    }
+    let tree = highlighters
+        .get(&ws.focused_buffer())
+        .and_then(CachedHighlight::tree)?;
+    let lang = tree.language();
+    let name = lang.name()?;
+    ["c", "javascript", "go", "bash"]
+        .into_iter()
+        .find(|&l| l == name)
+}
+
+/// The focused buffer's tree parsed afresh for `bytes` (the cached one is only shifted by the edit), with
+/// its open blocks closed (`indent::closed_tree`).
+fn fresh_tree(
+    ws: &Workspace,
+    highlighters: &HashMap<DocumentId, CachedHighlight>,
+    bytes: &[u8],
+) -> Option<tree_sitter::Tree> {
+    let hl = highlighters.get(&ws.focused_buffer())?;
+    let old = hl.tree_matching(bytes)?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&old.language()).ok()?;
+    let tree = parser.parse(bytes, Some(&old))?;
+    Some(crate::indent::closed_tree(&tree, bytes).into_owned())
+}
+
+/// `bytes` parsed from scratch in the language of `like`, with its open blocks closed.
+fn parse_closed(like: &tree_sitter::Tree, bytes: &[u8]) -> Option<tree_sitter::Tree> {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&like.language()).ok()?;
+    let tree = parser.parse(bytes, None)?;
+    Some(crate::indent::closed_tree(&tree, bytes).into_owned())
 }
 
 /// Whether the focused buffer is indented by the Python script.
@@ -107,7 +151,8 @@ pub(crate) fn before(
     highlighters: &HashMap<DocumentId, CachedHighlight>,
     can: &mut bool,
 ) -> After {
-    if !is_python(ws, highlighters) || ws.focused().view.lisp() {
+    let python = is_python(ws, highlighters) && !ws.focused().view.lisp();
+    if !python && depth_keys_lang(ws, highlighters).is_none() {
         return After::Nothing;
     }
     let pane = ws.focused();
@@ -140,10 +185,16 @@ pub(crate) fn before(
             ch: *ch,
             white: in_indent,
         },
+        // The other languages indent an opened or changed line in `resolve_tree_aware`.
         Command::InsertNewline if insert => {
             *can = true;
-            After::Open
+            if python {
+                After::Open
+            } else {
+                After::Nothing
+            }
         }
+        _ if !python => After::Nothing,
         Command::OpenBelow | Command::OpenAbove if !insert => After::Open,
         Command::Change(..)
         | Command::OpForced { .. }
@@ -171,6 +222,9 @@ pub(crate) fn after(
     let cur = pane.view.cursor();
     let ls = line_start(b, cur).0;
     let le = line_end(b, cur).0;
+    if let Some(lang) = depth_keys_lang(ws, highlighters) {
+        return depth_key_reindent(lang, after, ws, highlighters);
+    }
     let wanted = match after {
         After::Nothing => false,
         After::Typed { ch, white } => python::reindents_on(ch, &b[ls..cur.0], white),
@@ -188,20 +242,88 @@ pub(crate) fn after(
     let tree = python_tree(ws, highlighters, b);
     let buf = Buf::new(b, tree.as_ref(), opts(ws));
     let cols = buf.get_indent(row)?;
-    let ws_end = ls
-        + b[ls..le]
-            .iter()
-            .take_while(|&&c| c == b' ' || c == b'\t')
-            .count();
-    let now = b[ls..ws_end].iter().fold(0, |c, &x| {
-        if x == b'\t' {
-            let ts = pane.view.tab_width().max(1);
-            c + ts - c % ts
-        } else {
-            c + 1
+    set_line_indent(ws, row, cols)
+}
+
+/// A typed key of a node-depth language's 'indentkeys' (#1206): the line takes its depth in the tree
+/// parsed after the key, or column 0 for C's `#`. Where the tree is broken around the line even with its
+/// open blocks closed, it takes the indent of the line above, as autoindent gave it (#1214): typing on
+/// past a keyword (`fi` to `find`) undoes the keyword's re-indent.
+fn depth_key_reindent(
+    lang: &str,
+    after: After,
+    ws: &Workspace,
+    highlighters: &HashMap<DocumentId, CachedHighlight>,
+) -> Option<Command> {
+    let After::Typed { ch, white } = after else {
+        return None;
+    };
+    let pane = ws.focused();
+    let b = pane.doc.bytes();
+    let cur = pane.view.cursor();
+    let ls = line_start(b, cur).0;
+    let le = line_end(b, cur).0;
+    let key = crate::indent::key_reindent(lang, ch, &b[ls..cur.0], white)?;
+    let row = line_of(b, BytePos(ls));
+    let cols = match key {
+        crate::indent::KeyReindent::Column0 => 0,
+        crate::indent::KeyReindent::Depth => {
+            let tree = fresh_tree(ws, highlighters, b)?;
+            let level = if !crate::indent::broken_at(&tree, b, le) {
+                Some(crate::indent::indent_levels(&tree, b, row, row)[0])
+            } else {
+                // A keyword that still waits for its statement (`else`, `elif`) breaks the tree by
+                // itself: ask again with a statement filled in after the caret.
+                let fill = crate::indent::key_placeholder(lang, b[ls..cur.0].trim_ascii_start());
+                let probe = [&b[..cur.0], fill, &b[cur.0..]].concat();
+                (!fill.is_empty())
+                    .then(|| parse_closed(&tree, &probe))
+                    .flatten()
+                    .filter(|t| !crate::indent::broken_at(t, &probe, le + fill.len()))
+                    .map(|t| crate::indent::indent_levels(&t, &probe, row, row)[0])
+            };
+            level.map_or_else(
+                || prev_line_indent(b, ls, pane.view.tab_width()),
+                |l| l * pane.view.shift_width(),
+            )
         }
-    });
-    (cols != now).then(|| Command::SetIndentCols {
+    };
+    set_line_indent(ws, row, cols)
+}
+
+/// The indent in columns of the last non-blank line above the line starting at `ls`, or 0.
+fn prev_line_indent(b: &[u8], ls: usize, ts: usize) -> usize {
+    let mut end = ls;
+    while end > 0 {
+        let start = b[..end - 1]
+            .iter()
+            .rposition(|&c| c == b'\n')
+            .map_or(0, |i| i + 1);
+        let line = &b[start..end - 1];
+        if !line.iter().all(|&c| c.is_ascii_whitespace()) {
+            return indent_cols(line, ts);
+        }
+        end = start;
+    }
+    0
+}
+
+/// The columns the leading blanks of `line` take.
+fn indent_cols(line: &[u8], ts: usize) -> usize {
+    let ts = ts.max(1);
+    line.iter()
+        .take_while(|&&c| c == b' ' || c == b'\t')
+        .fold(0, |c, &x| if x == b'\t' { c + ts - c % ts } else { c + 1 })
+}
+
+/// A [`Command::SetIndentCols`] that gives line `row` of the focused buffer `cols` columns of indent, or
+/// `None` when it has them already.
+fn set_line_indent(ws: &Workspace, row: usize, cols: usize) -> Option<Command> {
+    let pane = ws.focused();
+    let b = pane.doc.bytes();
+    let cur = pane.view.cursor();
+    let line = &b[line_start(b, cur).0..line_end(b, cur).0];
+    (cols != indent_cols(line, pane.view.tab_width())).then(|| Command::SetIndentCols {
         first_line: row,
         last_line: row,
         cols: vec![Some(cols)],

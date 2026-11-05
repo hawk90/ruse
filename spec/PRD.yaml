@@ -924,7 +924,15 @@ features:
     # `return`/`pass`/`break`/`continue`/`raise`, align a bracket continuation (or `shiftwidth() * 2` after
     # a bracket ending its line), and line up `elif`/`else`/`except`/`finally`. Strings and comments come
     # from the tree, as nvim's with `syntax on`. In brace languages a closer typed first lines up with its
-    # opener. Not built: cindent's C rules (`e`, `0#`, `:` in 'cinkeys'; #1163).
+    # opener. Not built: cindent's C rules beyond the keys below (#1163).
+    # #1214 (oracle-verified, `unc_*`): a block not closed yet indents by the depth it will have: the tree is
+    # parsed again with the closers of its open brackets (and sh `fi`/`done`/`esac`) appended, and where it
+    # is still broken around the line `o`/`O`/`<CR>` keep the line's indent (autoindent). #1206 (`ik_*`):
+    # the other node-depth languages' 'indentkeys' re-indent the line by its depth after the key: sh
+    # `then`/`do`/`else`/`elif`/`fi`/`done`/`esac`/`end`/`;;`/`;&` (and `fin`... undoing `fi`), C `0#` (column
+    # 0) and `e`, JavaScript `e`, `:` after `case`/`default` in C/JavaScript/Go; Go `case`/`default` line up
+    # with `switch`. Not built: `0{` (an Allman `{` would go a level too deep), sh `)`, cindent's alignment
+    # of a new `case` with the previous label, and continuation indent after an unfinished line.
     status: planned
     depends_on: [C-DOCUMENT, C-RENDER, C-SCHEDULER]
     summary: Incremental structural highlighting from snapshots; injections; TS folds/indent.

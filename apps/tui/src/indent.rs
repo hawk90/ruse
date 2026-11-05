@@ -21,9 +21,128 @@
 //! columns (a bracket continuation aligns with its bracket) and re-indents after the edit that triggers it
 //! (`crate::app::indent_keys`, #1205, #1206).
 
-use tree_sitter::Tree;
+use std::borrow::Cow;
+
+use tree_sitter::{InputEdit, Node, Parser, Point, Tree};
 
 pub mod python;
+
+/// The tree to indent `bytes` by (#1214). While a block is being typed it is not closed yet, and
+/// tree-sitter's error recovery then folds the whole function into an `ERROR` node (Rust) or ends the
+/// block at the end of the file (C, JavaScript), so its depth no longer says where a line belongs. When
+/// the tree has an error, `bytes` is parsed again with the closers of its unclosed brackets appended (on
+/// lines of their own, at the end of the file), as the user is about to type them; the rows of `bytes`
+/// keep their positions. A tree without errors, or with none of its brackets left open, is used as it is.
+pub fn closed_tree<'t>(tree: &'t Tree, bytes: &[u8]) -> Cow<'t, Tree> {
+    if !tree.root_node().has_error() {
+        return Cow::Borrowed(tree);
+    }
+    let closers = unclosed_blocks(tree);
+    if closers.is_empty() {
+        return Cow::Borrowed(tree);
+    }
+    let mut patched = bytes.to_vec();
+    for c in closers.iter().rev() {
+        patched.push(b'\n');
+        patched.extend_from_slice(c.as_bytes());
+    }
+    let end = point_at_end(bytes);
+    let mut old = tree.clone();
+    old.edit(&InputEdit {
+        start_byte: bytes.len(),
+        old_end_byte: bytes.len(),
+        new_end_byte: patched.len(),
+        start_position: end,
+        old_end_position: end,
+        new_end_position: point_at_end(&patched),
+    });
+    let mut parser = Parser::new();
+    if parser.set_language(&tree.language()).is_err() {
+        return Cow::Borrowed(tree);
+    }
+    parser
+        .parse(&patched, Some(&old))
+        .map_or(Cow::Borrowed(tree), Cow::Owned)
+}
+
+/// The closers of the blocks `tree` leaves open, innermost last: its brackets, and in a shell script
+/// `if`/`do`/`case` (`fi`, `done`, `esac`). Only TOKENS count, so a `{` in a string or a comment (part of a
+/// larger leaf) opens nothing; a closer tree-sitter only assumed (`MISSING`) closes nothing.
+fn unclosed_blocks(tree: &Tree) -> Vec<&'static str> {
+    let shell = tree.language().name() == Some("bash");
+    let mut open: Vec<&'static str> = Vec::new();
+    let mut cursor = tree.walk();
+    loop {
+        let node = cursor.node();
+        if node.child_count() == 0 && !node.is_missing() {
+            let opened = match node.kind() {
+                "{" => Some("}"),
+                "(" => Some(")"),
+                "[" => Some("]"),
+                "if" if shell => Some("fi"),
+                "do" if shell => Some("done"),
+                "case" if shell => Some("esac"),
+                _ => None,
+            };
+            match opened {
+                Some(c) => open.push(c),
+                None if open.last() == Some(&node.kind()) => {
+                    open.pop();
+                }
+                None => {}
+            }
+        }
+        if cursor.goto_first_child() || cursor.goto_next_sibling() {
+            continue;
+        }
+        loop {
+            if !cursor.goto_parent() {
+                return open;
+            }
+            if cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+}
+
+/// The row and byte column just past `bytes`.
+fn point_at_end(bytes: &[u8]) -> Point {
+    let row = bytes.iter().filter(|&&c| c == b'\n').count();
+    let column = bytes.len() - bytes.iter().rposition(|&c| c == b'\n').map_or(0, |i| i + 1);
+    Point { row, column }
+}
+
+/// Whether the tree is broken where a line is opened at `at` (#1214): the node at `at`, or at the last
+/// non-blank byte before it on its line, lies in an `ERROR` node or is a `MISSING` one. The tree's depth
+/// says nothing there, so the line keeps the indent of the one it is opened from (autoindent), as nvim's
+/// indent scripts, which read the lines above rather than a tree, in effect do.
+pub fn broken_at(tree: &Tree, bytes: &[u8], at: usize) -> bool {
+    let root = tree.root_node();
+    let at = at.min(bytes.len());
+    let ls = bytes[..at]
+        .iter()
+        .rposition(|&c| c == b'\n')
+        .map_or(0, |i| i + 1);
+    let mut last = at;
+    while last > ls && matches!(bytes[last - 1], b' ' | b'\t' | b'\r') {
+        last -= 1;
+    }
+    let mut probes = vec![at];
+    if last > ls {
+        probes.push(last - 1);
+    }
+    probes.into_iter().any(|p| {
+        let mut node: Option<Node<'_>> = root.descendant_for_byte_range(p, p);
+        while let Some(nd) = node {
+            if nd.is_error() || nd.is_missing() {
+                return true;
+            }
+            node = nd.parent();
+        }
+        false
+    })
+}
 
 /// Whether the tree is Python's, which [`python`] indents the way nvim's indent script does (#1205).
 pub fn is_python(tree: &Tree) -> bool {
@@ -73,7 +192,12 @@ fn depth(node: Option<tree_sitter::Node<'_>>, row: usize) -> usize {
         };
         let sr = nd.start_position().row;
         let er = nd.end_position().row;
-        let opens = nd.kind() != "block" || nd.child(0).is_some_and(|c| !c.is_named());
+        // Go's `statement_list` is the run of statements inside a block, which already opened the level.
+        let opens = match nd.kind() {
+            "block" => nd.child(0).is_some_and(|c| !c.is_named()),
+            "statement_list" => false,
+            _ => true,
+        };
         // Nested nodes that start on the SAME row count once (de-dup by start-row, non-increasing as we
         // walk up).
         if er > sr && sr < row && opens && Some(sr) != last_row {
@@ -94,11 +218,103 @@ fn depth(node: Option<tree_sitter::Node<'_>>, row: usize) -> usize {
 /// level (#1142): Python's `elif`/`else`/`except`/`finally` (of `if`, `for`, `while`, `try`), Rust's
 /// `else`. The statement then opens no level for what the clause holds, so `else:` lines up with its `if`
 /// and the `else` body sits one level under both, as nvim's Python indent puts them.
+///
+/// Go's `case`/`default` line up with their `switch`, as nvim's Go indent puts them (#1206); C's and
+/// JavaScript's sit a level in, as cindent and nvim's JavaScript indent put them. A shell `do_group` (`do …
+/// done`) continues its `for`/`while`, so a `do` on a line of its own lines up with it.
 fn is_clause(kind: &str) -> bool {
     matches!(
         kind,
-        "else_clause" | "elif_clause" | "except_clause" | "except_group_clause" | "finally_clause"
+        "else_clause"
+            | "elif_clause"
+            | "except_clause"
+            | "except_group_clause"
+            | "finally_clause"
+            | "expression_case"
+            | "type_case"
+            | "default_case"
+            | "communication_case"
+            | "do_group"
     )
+}
+
+/// Whether `node`, the first token of a line, is a shell keyword that lines up with the statement it
+/// belongs to (#1206): `then`, `fi`, `done`, `esac`, as nvim's `GetShIndent` puts them. (`else`, `elif`
+/// and a `do` that starts its `do_group` are clauses, which [`depth`] already lines up.)
+fn closes_shell_block(tree: &Tree, node: Option<Node<'_>>) -> bool {
+    tree.language().name() == Some("bash")
+        && node
+            .is_some_and(|n| !n.is_named() && matches!(n.kind(), "then" | "fi" | "done" | "esac"))
+}
+
+/// What a typed key of nvim's default 'indentkeys' / 'cinkeys' for a tree-indented language does to its
+/// line (#1206).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum KeyReindent {
+    /// The line takes the indent of its depth in the tree.
+    Depth,
+    /// The line moves to column 0 (cindent's `0#`: a preprocessor line).
+    Column0,
+}
+
+/// Whether typing `ch` re-indents its line in the language `lang` (a tree-sitter language name), by
+/// nvim's 'indentkeys' for that file type: `before` is the line up to the caret after `ch` went in, and
+/// `white` whether only blanks preceded `ch` (`0` in the key list). The closers `0}`, `0)`, `0]` are
+/// [`ruse_core::Command::InsertCloser`]'s, and `0{` is not honoured (node depth puts an Allman-style
+/// `{` a level too deep).
+/// - C (cindent's 'cinkeys' `0{,0},0),0],:,0#,!^F,o,O,e`): `0#`, `e`, and `:` ending a `case`/`default`.
+/// - JavaScript (`indentkeys` default `+0],0)`): `e` and `:` as for C (its `0#` changes nothing).
+/// - Go (`+<:>,0=},0=)`): `:` as for C.
+/// - sh (`+0=then,0=do,0=else,0=elif,0=fi,0=esac,0=done,0=end,),0=;;,0=;&,0=fin,0=fil,0=fip,0=fir,0=fix`,
+///   `-:,0#`): the words, as the line's first word; `e`. Not `)` (case patterns).
+/// - Rust, JSON, CSS: only the brackets.
+pub fn key_reindent(lang: &str, ch: char, before: &[u8], white: bool) -> Option<KeyReindent> {
+    let word = before.trim_ascii_start();
+    let starts_case = || {
+        let w = word
+            .split(|&c| !c.is_ascii_alphabetic())
+            .next()
+            .unwrap_or(b"");
+        w == b"case" || w == b"default"
+    };
+    match (lang, ch) {
+        ("c", '#') if white => Some(KeyReindent::Column0),
+        ("c" | "javascript" | "bash", 'e') if word == b"else" => Some(KeyReindent::Depth),
+        ("c" | "javascript" | "go", ':') if starts_case() => Some(KeyReindent::Depth),
+        ("bash", _)
+            if matches!(
+                word,
+                b"then"
+                    | b"do"
+                    | b"elif"
+                    | b"fi"
+                    | b"esac"
+                    | b"done"
+                    | b"end"
+                    | b";;"
+                    | b";&"
+                    | b"fin"
+                    | b"fil"
+                    | b"fip"
+                    | b"fir"
+                    | b"fix"
+            ) =>
+        {
+            Some(KeyReindent::Depth)
+        }
+        _ => None,
+    }
+}
+
+/// A statement to fill in after a just-typed keyword `word` of `lang` that waits for one (`else`,
+/// `elif`), so the tree places the keyword's line; empty when there is none.
+pub fn key_placeholder(lang: &str, word: &[u8]) -> &'static [u8] {
+    match (lang, word) {
+        ("c" | "javascript", b"else") => b" ;",
+        ("bash", b"else" | b"then" | b"do") => b" :",
+        ("bash", b"elif") => b" :; then :",
+        _ => b"",
+    }
 }
 
 /// The indent LEVEL for each line in `[first_line, last_line]` (inclusive, clamped), from the parse tree.
@@ -118,8 +334,9 @@ pub fn indent_levels(tree: &Tree, bytes: &[u8], first_line: usize, last_line: us
         let blank = fnb >= le;
         let pos = if blank { ls } else { fnb };
 
-        let mut level = depth(root.descendant_for_byte_range(pos, pos), li);
-        if !blank && matches!(bytes[fnb], b')' | b']' | b'}') {
+        let node = root.descendant_for_byte_range(pos, pos);
+        let mut level = depth(node, li);
+        if !blank && (matches!(bytes[fnb], b')' | b']' | b'}') || closes_shell_block(tree, node)) {
             level = level.saturating_sub(1);
         }
         out.push(level);
@@ -283,6 +500,103 @@ mod tests {
         let tree = parse(tree_sitter_md::LANGUAGE.into(), src);
         assert!(!uses_node_depth(&tree));
         assert!(uses_node_depth(&parse_rust(b"fn a() {}\n")));
+    }
+
+    /// #1214: a block still being typed indents by the depth it will have once closed. Rust folds an
+    /// unclosed function into an `ERROR`, so the tree is parsed again with its closers appended.
+    #[test]
+    fn unclosed_blocks_indent_as_if_closed() {
+        let src = b"fn f() {\n    x;\n    if a {";
+        let tree = parse_rust(src);
+        assert!(tree.root_node().has_error());
+        assert_eq!(unclosed_blocks(&tree), vec!["}", "}"]);
+        let closed = closed_tree(&tree, src);
+        assert!(!closed.root_node().has_error());
+        assert!(!broken_at(&closed, src, src.len()));
+        let starts = line_starts(src);
+        assert_eq!(suggest_open_below(&closed, src, starts[2], src.len(), 3), 2);
+        assert_eq!(
+            suggest_open_below(&closed, src, starts[1], starts[2] - 1, 2),
+            1
+        );
+        // `=` over the unclosed function.
+        let src = b"fn f() {\nif a {\nx;\n}\ny;";
+        let tree = parse_rust(src);
+        assert_eq!(
+            indent_levels(&closed_tree(&tree, src), src, 0, 4),
+            vec![0, 1, 2, 1, 1]
+        );
+        // A `{` in a string opens nothing.
+        let src = b"int f() {\n    s = \"{\";";
+        let tree = parse(tree_sitter_c::LANGUAGE.into(), src);
+        assert_eq!(unclosed_blocks(&tree), vec!["}"]);
+        // A clean tree is used as it is.
+        let src = b"fn f() {}\n";
+        let tree = parse_rust(src);
+        assert!(matches!(closed_tree(&tree, src), Cow::Borrowed(_)));
+    }
+
+    /// #1214, #1206: a shell script's `if`/`do`/`case` are closed by `fi`/`done`/`esac`, and those lines,
+    /// with `then` and `do` on lines of their own, line up with their statement.
+    #[test]
+    fn shell_blocks_close_and_line_up() {
+        let sh = |src: &[u8]| parse(tree_sitter_bash::LANGUAGE.into(), src);
+        let src = b"if a; then\n    for i in b; do\n        x";
+        assert_eq!(unclosed_blocks(&sh(src)), vec!["fi", "done"]);
+        let src = b"if a; then\nx\nfi\nfor i in a; do\ny\ndone\nwhile b\ndo\nz\ndone\n";
+        assert_eq!(
+            indent_levels(&sh(src), src, 0, 9),
+            vec![0, 1, 0, 0, 1, 0, 0, 0, 1, 0]
+        );
+    }
+
+    /// Go: a body line sits one level under its `func` (its `statement_list` opens none), and
+    /// `case`/`default` line up with their `switch`.
+    #[test]
+    fn go_bodies_and_cases() {
+        let src = b"func f() {\n\tx()\n\ty()\n}\n";
+        let tree = parse(tree_sitter_go::LANGUAGE.into(), src);
+        let starts = line_starts(src);
+        assert_eq!(
+            suggest_open_below(&tree, src, starts[1], starts[2] - 1, 2),
+            1
+        );
+        let src = b"func f() {\nswitch a {\ncase 1:\nx()\ndefault:\ny()\n}\n}\n";
+        let tree = parse(tree_sitter_go::LANGUAGE.into(), src);
+        assert_eq!(
+            indent_levels(&tree, src, 0, 7),
+            vec![0, 1, 1, 2, 1, 2, 1, 0]
+        );
+    }
+
+    /// #1206: the keys of nvim's default 'indentkeys' / 'cinkeys' for the node-depth languages.
+    #[test]
+    fn indent_keys_of_the_node_depth_languages() {
+        use KeyReindent::{Column0, Depth};
+        assert_eq!(key_reindent("c", '#', b"    #", true), Some(Column0));
+        assert_eq!(key_reindent("c", '#', b"    x; #", false), None);
+        assert_eq!(key_reindent("javascript", '#', b"#", true), None);
+        assert_eq!(key_reindent("c", 'e', b"    else", false), Some(Depth));
+        assert_eq!(key_reindent("c", 'e', b"    x = else", false), None);
+        assert_eq!(key_reindent("go", ':', b"\tcase 2:", false), Some(Depth));
+        assert_eq!(key_reindent("go", ':', b"\tdefault:", false), Some(Depth));
+        assert_eq!(key_reindent("go", ':', b"\tx := 1", false), None);
+        assert_eq!(key_reindent("bash", ':', b"    case a:", false), None);
+        for w in [
+            "then", "do", "elif", "fi", "esac", "done", "fin", "fix", ";;",
+        ] {
+            let line = format!("    {w}");
+            let ch = w.chars().last().unwrap();
+            assert_eq!(
+                key_reindent("bash", ch, line.as_bytes(), false),
+                Some(Depth),
+                "{w}"
+            );
+        }
+        assert_eq!(key_reindent("bash", 'd', b"    find", false), None);
+        assert_eq!(key_reindent("rust", 'e', b"    else", false), None);
+        assert_eq!(key_placeholder("bash", b"elif"), b" :; then :");
+        assert_eq!(key_placeholder("go", b"else"), b"");
     }
 
     #[test]

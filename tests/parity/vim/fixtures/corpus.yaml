@@ -105232,6 +105232,2131 @@
       }
     },
     {
+      "name": "unc_rs_o_after_inner_close",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }",
+          "    q"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_o_after_stmt",
+      "lines": [
+        "fn f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    x;",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_o_after_stmt_deep",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "        q"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_O_above_stmt",
+      "lines": [
+        "fn f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GOq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    q",
+          "    x;"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_cr_after_stmt",
+      "lines": [
+        "fn f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GA<CR>q<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    x;",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_else_own_line",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goelse {<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }",
+          "    else {"
+        ],
+        "cursor": [
+          5,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_else_own_line_closed",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;",
+        "    }",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joelse {<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }",
+          "    else {",
+          "}"
+        ],
+        "cursor": [
+          5,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_o_after_else_open",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;",
+        "    }",
+        "    else {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }",
+          "    else {",
+          "        q"
+        ],
+        "cursor": [
+          6,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_eq",
+      "lines": [
+        "fn f() {",
+        "if a {",
+        "x;",
+        "}",
+        "y;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }",
+          "    y;"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_o_after_stmt_after_block",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;",
+        "    }",
+        "    y;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }",
+          "    y;",
+          "    q"
+        ],
+        "cursor": [
+          6,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_o_after_opener",
+      "lines": [
+        "fn f() {",
+        "    x;",
+        "    if a {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    x;",
+          "    if a {",
+          "        q"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_o_after_inner_close",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    q"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_o_after_stmt",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_o_after_stmt_deep",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "        q"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_O_above_stmt",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GOq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    q",
+          "    x;"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_else_own_line",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goelse {<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    else {"
+        ],
+        "cursor": [
+          5,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_else_own_line_closed",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;",
+        "    }",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joelse {<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    else {",
+          "}"
+        ],
+        "cursor": [
+          5,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_o_after_else_open",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;",
+        "    }",
+        "    else {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    else {",
+          "        q"
+        ],
+        "cursor": [
+          6,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_eq",
+      "lines": [
+        "int f() {",
+        "if (a) {",
+        "x;",
+        "}",
+        "y;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    y;"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_o_after_stmt_after_block",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;",
+        "    }",
+        "    y;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    y;",
+          "    q"
+        ],
+        "cursor": [
+          6,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_o_after_opener",
+      "lines": [
+        "int f() {",
+        "    x;",
+        "    if (a) {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    if (a) {",
+          "        q"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_o_after_inner_close",
+      "lines": [
+        "function f() {",
+        "    if (a) {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    q"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_o_after_stmt",
+      "lines": [
+        "function f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    x;",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_o_after_stmt_deep",
+      "lines": [
+        "function f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a) {",
+          "        x;",
+          "        q"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_O_above_stmt",
+      "lines": [
+        "function f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GOq<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    q",
+          "    x;"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_else_own_line",
+      "lines": [
+        "function f() {",
+        "    if (a) {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goelse {<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    else {"
+        ],
+        "cursor": [
+          5,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_else_own_line_closed",
+      "lines": [
+        "function f() {",
+        "    if (a) {",
+        "        x;",
+        "    }",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joelse {<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    else {",
+          "}"
+        ],
+        "cursor": [
+          5,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_o_after_else_open",
+      "lines": [
+        "function f() {",
+        "    if (a) {",
+        "        x;",
+        "    }",
+        "    else {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    else {",
+          "        q"
+        ],
+        "cursor": [
+          6,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_eq",
+      "lines": [
+        "function f() {",
+        "if (a) {",
+        "x;",
+        "}",
+        "y;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    y;"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_o_after_stmt_after_block",
+      "lines": [
+        "function f() {",
+        "    if (a) {",
+        "        x;",
+        "    }",
+        "    y;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a) {",
+          "        x;",
+          "    }",
+          "    y;",
+          "    q"
+        ],
+        "cursor": [
+          6,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_js_o_after_opener",
+      "lines": [
+        "function f() {",
+        "    x;",
+        "    if (a) {"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    x;",
+          "    if (a) {",
+          "        q"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_sh_o_in_if",
+      "lines": [
+        "if a; then",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_go_o_after_stmt",
+      "lines": [
+        "func f() {",
+        "\tx()"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>joq<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tx()",
+          "\tq"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_css_o_after_decl",
+      "lines": [
+        "a {",
+        "    color: red;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "file": "fixture.css",
+      "expect": {
+        "text": [
+          "a {",
+          "    color: red;",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_json_o_after_member",
+      "lines": [
+        "{",
+        "    \"a\": 1,"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jo\"b\"<Esc>",
+      "file": "fixture.json",
+      "expect": {
+        "text": [
+          "{",
+          "    \"a\": 1,",
+          "    \"b\""
+        ],
+        "cursor": [
+          3,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_done",
+      "lines": [
+        "for i in a; do",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jodone<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "for i in a; do",
+          "    x",
+          "done"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_esac",
+      "lines": [
+        "case a in",
+        "    b) x;;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joesac<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b) x;;",
+          "esac"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_else",
+      "lines": [
+        "if a; then",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelse<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "else"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_elif",
+      "lines": [
+        "if a; then",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joelif b; then<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "elif b; then"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_then_own_line",
+      "lines": [
+        "if a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>othen<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a",
+          "then"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_do_own_line",
+      "lines": [
+        "for i in a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>odo<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "for i in a",
+          "do"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_find_not_fi",
+      "lines": [
+        "if a; then",
+        "    x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jofind<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "    find"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_fi_nested",
+      "lines": [
+        "f() {",
+        "    if a; then",
+        "        x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gofi<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "f() {",
+          "    if a; then",
+          "        x",
+          "    fi"
+        ],
+        "cursor": [
+          4,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_done_nested",
+      "lines": [
+        "if a; then",
+        "    while b; do",
+        "        x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Godone<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    while b; do",
+          "        x",
+          "    done"
+        ],
+        "cursor": [
+          4,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_fi_after_else",
+      "lines": [
+        "if a; then",
+        "    x",
+        "else",
+        "    y"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gofi<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "else",
+          "    y",
+          "fi"
+        ],
+        "cursor": [
+          5,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_double_semi",
+      "lines": [
+        "case a in",
+        "    b)",
+        "        x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go;;<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "case a in",
+          "    b)",
+          "        x",
+          "        ;;"
+        ],
+        "cursor": [
+          4,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_hash_nested",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go#if A<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "#if A"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_hash_late",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joy; #<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "    y; #"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_else_unbraced",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goelse<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;",
+          "    else"
+        ],
+        "cursor": [
+          4,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_case",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "        case 1:",
+        "            x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "        case 2:"
+        ],
+        "cursor": [
+          5,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_default",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "        case 1:",
+        "            x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Godefault:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "        default:"
+        ],
+        "cursor": [
+          5,
+          15
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_else_unbraced",
+      "lines": [
+        "function f() {",
+        "    if (a)",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goelse<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    if (a)",
+          "        x;",
+          "    else"
+        ],
+        "cursor": [
+          4,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_case",
+      "lines": [
+        "function f() {",
+        "    switch (a) {",
+        "    case 1:",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    switch (a) {",
+          "    case 1:",
+          "        x;",
+          "        case 2:"
+        ],
+        "cursor": [
+          5,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_case",
+      "lines": [
+        "func f() {",
+        "\tswitch a {",
+        "\tcase 1:",
+        "\t\tx()"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Gocase 2:<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tswitch a {",
+          "\tcase 1:",
+          "\t\tx()",
+          "\tcase 2:"
+        ],
+        "cursor": [
+          5,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_default",
+      "lines": [
+        "func f() {",
+        "\tswitch a {",
+        "\tcase 1:",
+        "\t\tx()"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>Godefault:<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tswitch a {",
+          "\tcase 1:",
+          "\t\tx()",
+          "\tdefault:"
+        ],
+        "cursor": [
+          5,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_eq_switch",
+      "lines": [
+        "func f() {",
+        "switch a {",
+        "case 1:",
+        "x()",
+        "default:",
+        "y()",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>=G",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tswitch a {",
+          "\tcase 1:",
+          "\t\tx()",
+          "\tdefault:",
+          "\t\ty()",
+          "\t}",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_go_o_mid_body",
+      "lines": [
+        "func f() {",
+        "\tx()",
+        "\ty()",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>joq<Esc>",
+      "file": "fixture.go",
+      "expect": {
+        "text": [
+          "func f() {",
+          "\tx()",
+          "\tq",
+          "\ty()",
+          "}"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_c_eq_switch",
+      "lines": [
+        "int f() {",
+        "switch (a) {",
+        "case 1:",
+        "x;",
+        "break;",
+        "default:",
+        "y;",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "            break;",
+          "        default:",
+          "            y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_js_eq_switch",
+      "lines": [
+        "function f() {",
+        "switch (a) {",
+        "case 1:",
+        "x;",
+        "break;",
+        "default:",
+        "y;",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.js",
+      "expect": {
+        "text": [
+          "function f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "            break;",
+          "        default:",
+          "            y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_sh_eq_blocks",
+      "lines": [
+        "if a; then",
+        "x",
+        "fi",
+        "for i in a; do",
+        "y",
+        "done",
+        "while b",
+        "do",
+        "z",
+        "done"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    x",
+          "fi",
+          "for i in a; do",
+          "    y",
+          "done",
+          "while b",
+          "do",
+          "    z",
+          "done"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_rs_o_before_later_fn",
+      "lines": [
+        "fn a() {",
+        "    x;",
+        "",
+        "fn b() {",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn a() {",
+          "    x;",
+          "    q",
+          "",
+          "fn b() {",
+          "}"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_c_o_in_string_brace",
+      "lines": [
+        "int f() {",
+        "    s = \"{\";"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>joq<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    s = \"{\";",
+          "    q"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unc_sh_o_nested",
+      "lines": [
+        "if a; then",
+        "    for i in b; do",
+        "        x"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>",
+      "file": "fixture.sh",
+      "expect": {
+        "text": [
+          "if a; then",
+          "    for i in b; do",
+          "        x",
+          "        q"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ik_rs_else_no_key",
+      "lines": [
+        "fn f() {",
+        "    if a {",
+        "        x;",
+        "    }"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go<C-t>else {<Esc>",
+      "file": "fixture.rs",
+      "expect": {
+        "text": [
+          "fn f() {",
+          "    if a {",
+          "        x;",
+          "    }",
+          "        else {"
+        ],
+        "cursor": [
+          5,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "lisp_eq_defun",
       "lines": [
         "(defun f (x)",
