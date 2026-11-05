@@ -57,6 +57,14 @@ INVOKE = "nvim --headless -u NONE -i NONE -l <script>"
 # (see the shift_right_line fixture: config-dependent ops need a config-matched oracle run).
 _LUA = r"""
 local input = vim.json.decode([==[ %s ]==])
+-- A `bytes` fixture (#1232) passes its lines, and reads back its text and registers, as hex: JSON cannot
+-- carry a byte that is not UTF-8.
+local function unhex(s) return (s:gsub('..', function(h) return string.char(tonumber(h, 16)) end)) end
+local function hex(s) return (s:gsub('.', function(c) return string.format('%%02x', c:byte()) end)) end
+local function out(s) if input.hex then return hex(s) end return s end
+if input.hex then
+  for i, l in ipairs(input.lines) do input.lines[i] = unhex(l) end
+end
 vim.api.nvim_buf_set_lines(0, 0, -1, false, input.lines)
 vim.api.nvim_win_set_cursor(0, {1, 0})
 -- A fixture about a file type (#1142) names the buffer's file: its type and indent script then apply, as
@@ -84,10 +92,10 @@ end
 -- 't': as typed, the way a user's keys arrive, so a failed command does not swallow the keys after it.
 vim.api.nvim_feedkeys(tc, 'xt', false)
 io.write(vim.json.encode({
-  text        = vim.api.nvim_buf_get_lines(0, 0, -1, false),
+  text        = vim.tbl_map(out, vim.api.nvim_buf_get_lines(0, 0, -1, false)),
   cursor      = vim.api.nvim_win_get_cursor(0),
-  reg_unnamed = { vim.fn.getreg('"'), vim.fn.getregtype('"') },
-  reg0        = { vim.fn.getreg('0'), vim.fn.getregtype('0') },
+  reg_unnamed = { out(vim.fn.getreg('"')), vim.fn.getregtype('"') },
+  reg0        = { out(vim.fn.getreg('0')), vim.fn.getregtype('0') },
   mode        = vim.api.nvim_get_mode().mode,
   emsg        = vim.v.errmsg:match('^(E%%d+)') or '',
   -- Per line, nvim's fold state (#903): the closed fold holding it (`foldclosed`/`foldclosedend`, -1 for
@@ -209,7 +217,20 @@ def _nvim(payload: dict) -> dict:
     return json.loads(proc.stdout.rsplit("\n", 1)[-1])
 
 
-def run_neovim(lines: list[str], keys: str, setup: str = "", file: str = "") -> dict:
+def _latin1_lines(lines: list[str]) -> list[str]:
+    """A `bytes` fixture's lines as hex for the probe: each char of a line is one byte (Latin-1), so a line
+    can hold a byte that is not UTF-8 (#1232). `_from_latin1_hex` reads the probe's answer back."""
+    return [line.encode("latin-1").hex() for line in lines]
+
+
+def _from_latin1_hex(s: str) -> str:
+    """The probe's hex answer as a Latin-1 string: one char per byte, the spelling `bytes` fixtures use."""
+    return bytes.fromhex(s).decode("latin-1")
+
+
+def run_neovim(
+    lines: list[str], keys: str, setup: str = "", file: str = "", raw: bool = False
+) -> dict:
     """Run the pinned Neovim on `lines`, feed `keys` in Normal mode, and return the settled state.
 
     Returns {text, cursor:[row1,col0], reg_unnamed:{text,type}, reg0:{text,type}, mode, emsg, failed,
@@ -227,19 +248,26 @@ def run_neovim(lines: list[str], keys: str, setup: str = "", file: str = "") -> 
     Vim flushing the keys queued after the failure (see the probe).
     """
     payload = {"lines": lines, "keys": keys, "setup": setup, "file": file}
-    raw = _nvim(payload)
+    if raw:
+        # `raw`: the lines are Latin-1 spellings of bytes (a `bytes` fixture, #1232); they travel as hex.
+        payload = {**payload, "lines": _latin1_lines(lines), "hex": True}
+    got = _nvim(payload)
     failed = _nvim({**payload, "probe_failed": True})["failed"]
-    ru_text, ru_type = raw["reg_unnamed"]
-    r0_text, r0_type = raw["reg0"]
+    ru_text, ru_type = got["reg_unnamed"]
+    r0_text, r0_type = got["reg0"]
+    text = got["text"]
+    if raw:
+        text = [_from_latin1_hex(t) for t in text]
+        ru_text, r0_text = _from_latin1_hex(ru_text), _from_latin1_hex(r0_text)
     return {
-        "text": raw["text"],
-        "cursor": raw["cursor"],
+        "text": text,
+        "cursor": got["cursor"],
         "reg_unnamed": {"text": ru_text, "type": _regtype(ru_type)},
         "reg0": {"text": r0_text, "type": _regtype(r0_type)},
-        "mode": raw["mode"],
-        "emsg": raw["emsg"],
+        "mode": got["mode"],
+        "emsg": got["emsg"],
         "failed": failed,
-        "folds": raw["folds"],
+        "folds": got["folds"],
         "nvim_version": nvim_version(),
     }
 
@@ -4235,6 +4263,45 @@ FIXTURES: list[dict] = [
     {"name": "lisp_eq_lispwords_empty", "lines": ["(defun f (x)", "x)"], "keys": ":set lisp ts=8 sw=4 et lispwords=<CR>=G"},
     {"name": "lisp_eq_paren_in_comment_line", "lines": ["(foo", "; (", ";", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"},
     {"name": "lisp_eq_noai", "lines": ["(foo a", "b)"], "keys": ":set lisp noai ts=8 sw=4 et<CR>=G"},
+    # #1232: a byte that is not UTF-8 is a cell of its own, and the valid text around it keeps its grapheme
+    # clusters (a base with a combining mark, a ZWJ emoji). `bytes` fixtures spell each line in Latin-1, one
+    # char per byte, because a JSON string cannot hold an invalid byte (see `_latin1_lines`).
+    {"name": "inv_l_keeps_cluster_after", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "llll", "bytes": True},
+    {"name": "inv_l_onto_invalid", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "ll", "bytes": True},
+    {"name": "inv_dollar_h", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "$hh", "bytes": True},
+    {"name": "inv_x_cluster_before", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "x", "bytes": True},
+    {"name": "inv_x_invalid_byte", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "llx", "bytes": True},
+    {"name": "inv_dollar_x_cluster", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "$x", "bytes": True},
+    {"name": "inv_3x", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "3x", "bytes": True},
+    {"name": "inv_w_invalid_is_a_word", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "w", "bytes": True},
+    {"name": "inv_ww", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "ww", "bytes": True},
+    {"name": "inv_dw", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "wdw", "bytes": True},
+    {"name": "inv_yl_register", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "llyl", "bytes": True},
+    {"name": "inv_f_cluster_base", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "fe", "bytes": True},
+    {"name": "inv_F_cluster_base", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "$hhFe", "bytes": True},
+    {"name": "inv_t_cluster", "lines": ["e\xcc\x81 \xff e\xcc\x81x"], "keys": "tx", "bytes": True},
+    {"name": "inv_mid_l", "lines": ["a\xffe\xcc\x81b"], "keys": "lll", "bytes": True},
+    {"name": "inv_mid_dollar_h", "lines": ["a\xffe\xcc\x81b"], "keys": "$h", "bytes": True},
+    {"name": "inv_mid_llx", "lines": ["a\xffe\xcc\x81b"], "keys": "llx", "bytes": True},
+    {"name": "inv_mark_after_invalid_l", "lines": ["\xff\xcc\x81a"], "keys": "ll", "bytes": True},
+    {"name": "inv_mark_after_invalid_x", "lines": ["\xff\xcc\x81a"], "keys": "x", "bytes": True},
+    {"name": "inv_mark_after_invalid_lx", "lines": ["\xff\xcc\x81a"], "keys": "lx", "bytes": True},
+    {"name": "inv_cut_char_l", "lines": ["\xea\xb0a\xcc\x81"], "keys": "ll", "bytes": True},
+    {"name": "inv_cut_char_x", "lines": ["\xea\xb0a\xcc\x81"], "keys": "x", "bytes": True},
+    {"name": "inv_cut_char_dollar_h", "lines": ["\xea\xb0a\xcc\x81"], "keys": "$h", "bytes": True},
+    {"name": "inv_stray_continuation_l", "lines": ["a\x80\xcc\x81b"], "keys": "lll", "bytes": True},
+    {"name": "inv_stray_continuation_x", "lines": ["a\x80\xcc\x81b"], "keys": "x", "bytes": True},
+    {"name": "inv_stray_continuation_lx", "lines": ["a\x80\xcc\x81b"], "keys": "lx", "bytes": True},
+    {"name": "inv_zwj_l", "lines": ["\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9 \xff \xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9"], "keys": "lll", "bytes": True},
+    {"name": "inv_zwj_x", "lines": ["\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9 \xff \xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9"], "keys": "x", "bytes": True},
+    {"name": "inv_zwj_dollar_h", "lines": ["\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9 \xff \xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9"], "keys": "$h", "bytes": True},
+    {"name": "inv_in_word_w", "lines": ["ab\xffcd ef"], "keys": "w", "bytes": True},
+    {"name": "inv_in_word_e", "lines": ["ab\xffcd ef"], "keys": "e", "bytes": True},
+    {"name": "inv_in_word_dollar_b", "lines": ["ab\xffcd ef"], "keys": "$bb", "bytes": True},
+    {"name": "inv_in_word_diw", "lines": ["ab\xffcd ef"], "keys": "ldiw", "bytes": True},
+    {"name": "inv_ge", "lines": ["e\xcc\x81 \xff e\xcc\x81"], "keys": "$ge", "bytes": True},
+    {"name": "inv_two_lines_j", "lines": ["e\xcc\x81\xffx", "e\xcc\x81\xffy"], "keys": "llj", "bytes": True},
+    {"name": "inv_r_cluster", "lines": ["e\xcc\x81 \xff"], "keys": "rZ", "bytes": True},
 ]
 
 
@@ -4254,12 +4321,16 @@ def generate(path: Path) -> int:
     for spec in FIXTURES:
         setup = spec.get("setup", "")
         file = spec.get("file", "")
-        state = run_neovim(spec["lines"], spec["keys"], setup, file)
+        raw = bool(spec.get("bytes"))
+        state = run_neovim(spec["lines"], spec["keys"], setup, file, raw)
         entry = {
             "name": spec["name"],
             "lines": spec["lines"],
             "keys": spec["keys"],
         }
+        # `bytes`: the lines, text and register texts spell bytes in Latin-1, one char per byte (#1232).
+        if raw:
+            entry["bytes"] = True
         # Emit `setup` only for the fixtures that carry one, so the corpus records exactly which runs were
         # config-matched (and stays byte-identical for the config-independent majority).
         if setup:
@@ -4302,6 +4373,10 @@ def generate(path: Path) -> int:
             "folds_note": (
                 "folds is recorded only for fixtures about folds: per line, "
                 "[foldclosed(l), foldclosedend(l), foldlevel(l)]."
+            ),
+            "bytes_note": (
+                "a fixture with bytes: true spells its lines, text and register texts in Latin-1, one "
+                "char per byte, so a line can hold bytes that are not UTF-8."
             ),
             "feed": "nvim_feedkeys(keys, 'xt'): as typed, so keys after a failed command still run",
             "error_note": (

@@ -24,9 +24,13 @@ mod parity_ratchet;
 /// line in ruse's model (as in Vim's), so the buffer would have a line fewer than nvim's (#1089).
 ///
 /// A fixture with a `file` opens its buffer under that name, so the file's type applies (#1142).
-fn drive_ruse(lines: &[String], keys: &str, file: Option<&str>) -> Headless {
+///
+/// A `bytes` fixture (#1232) spells each byte of its lines as one Latin-1 char, so a line can hold bytes
+/// that are not UTF-8 ([`latin1_bytes`]); its text and registers are read back the same way.
+fn drive_ruse(lines: &[String], keys: &str, file: Option<&str>, raw: bool) -> Headless {
     let text = ruse_input(lines);
     let h = match file {
+        _ if raw => Headless::vim_bytes(&latin1_bytes(&text)),
         Some(file) => Headless::vim_named(&text, file),
         None => Headless::vim(&text),
     };
@@ -48,9 +52,25 @@ fn ruse_input(lines: &[String]) -> String {
     text
 }
 
+/// A `bytes` fixture's Latin-1 spelling as the bytes it stands for: one byte per char.
+fn latin1_bytes(s: &str) -> Vec<u8> {
+    s.chars()
+        .map(|c| u8::try_from(u32::from(c)).expect("a bytes fixture spells bytes in Latin-1"))
+        .collect()
+}
+
+/// Bytes in a `bytes` fixture's spelling: one Latin-1 char per byte.
+fn latin1_string(b: &[u8]) -> String {
+    b.iter().map(|&c| char::from(c)).collect()
+}
+
 /// ruse's buffer as the oracle's lines. A terminated fixture's final newline ends its last line.
-fn ruse_text(h: &Headless, terminated: bool) -> Vec<String> {
-    let text = h.text();
+fn ruse_text(h: &Headless, terminated: bool, raw: bool) -> Vec<String> {
+    let text = if raw {
+        latin1_string(&h.bytes())
+    } else {
+        h.text()
+    };
     let text = if terminated {
         text.strip_suffix('\n').unwrap_or(&text)
     } else {
@@ -60,7 +80,11 @@ fn ruse_text(h: &Headless, terminated: bool) -> Vec<String> {
 }
 
 /// ruse's register `name` as the oracle's `(text, type)`.
-fn ruse_reg(h: &mut Headless, name: char) -> (String, String) {
+fn ruse_reg(h: &mut Headless, name: char, raw: bool) -> (String, String) {
+    if raw {
+        let (bytes, kind) = h.register_bytes(name);
+        return (latin1_string(&bytes), kind.to_string());
+    }
     let (text, kind) = h.register(name);
     (text, kind.to_string())
 }
@@ -79,14 +103,15 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     let lines = as_str_vec(&fx["lines"]);
     let expect = &fx["expect"];
 
-    let mut h = drive_ruse(&lines, keys, fx["file"].as_str());
+    let raw = fx["bytes"].as_bool().unwrap_or(false);
+    let mut h = drive_ruse(&lines, keys, fx["file"].as_str(), raw);
 
     // ruse observables.
-    let r_text = ruse_text(&h, terminated(&lines));
+    let r_text = ruse_text(&h, terminated(&lines), raw);
     let (r_row, r_col) = h.cursor_row_col();
     let (r_row, r_col) = (r_row as i64, r_col as i64);
-    let (r_reg_text, r_reg_type) = ruse_reg(&mut h, '"');
-    let (r_reg0_text, r_reg0_type) = ruse_reg(&mut h, '0');
+    let (r_reg_text, r_reg_type) = ruse_reg(&mut h, '"', raw);
+    let (r_reg0_text, r_reg0_type) = ruse_reg(&mut h, '0', raw);
     let r_emsg = h.emsg().to_string();
 
     // oracle observables.

@@ -50,18 +50,25 @@ benches:
                                     # 1.94 s, w/100col 87 us, dollar/16m 87 ms. Left: one UTF-8 check of the
                                     # line per command when a step meets non-ASCII text (#1232), and the
                                     # O(buffer) cost of an edit (i_ctrl_w).
-    long_line_motions/w/1m: "12.9 ms"
-    long_line_motions/b/1m: "20.8 ms"
-    long_line_motions/w/16m: "22.9 ms"
-    long_line_motions/b/16m: "2.2 us"
+                                    # #1232 (2026-11-05): a step reads a window of the valid run around it,
+                                    # with no UTF-8 check of the line, and `f`/`t` walk from the cursor.
+                                    # Before (#1231): w/1m 13.3 ms, w/16m 22.7 ms, B/16m 83 ms, f_semicolon/1m
+                                    # 4.4 ms; sentence_fwd/64k 1.26 ms (now ~1.3x slower: a per-step window
+                                    # in place of one whole-line check).
+    long_line_motions/w/1m: "12.9 us"
+    long_line_motions/b/1m: "15.3 us"
+    long_line_motions/w/16m: "1.7 us"
+    long_line_motions/b/16m: "2.6 us"
+    long_line_motions/B/16m: "5.9 us"
     long_line_motions/i_ctrl_w/16m: "328 ms"
     long_line_motions/w/100col: "12.6 us"
-    long_line_motions/b/100col: "10.6 us"
-    long_line_motions/one_word_e/1m: "3.8 ms"
-    long_line_motions/one_word_i_ctrl_w/16m: "86 ms"
-    long_line_motions/sentence_fwd/64k: "1.27 ms"  # 3 x `)`; was 7.7 s before #1224
-    long_line_motions/sentence_fwd/100col: "5.4 us" # was 166 us before #1224
-    long_line_motions/dollar/16m: "5.9 ms"
+    long_line_motions/b/100col: "10.7 us"
+    long_line_motions/one_word_e/1m: "3.9 ms"
+    long_line_motions/one_word_i_ctrl_w/16m: "88 ms"
+    long_line_motions/sentence_fwd/64k: "1.6 ms"  # 3 x `)`; was 7.7 s before #1224
+    long_line_motions/sentence_fwd/100col: "6.9 us" # was 166 us before #1224
+    long_line_motions/dollar/16m: "6.0 ms"
+    long_line_motions/f_semicolon/1m: "3.2 us"
   word_search:                      # #745 `*`/`#`/hlsearch: compile + scan of `\<word\>` over mixed Latin/Hangul/
                                     # CJK lines, edges checked with Vim's classes. DEV-PROFILE (2026-11-03, no
                                     # release build). Before (Unicode \b{start}/\b{end} in the engine), same

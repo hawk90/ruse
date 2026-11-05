@@ -63,7 +63,14 @@ impl Headless {
     /// writes it only on an explicit `:w`.
     #[must_use]
     pub fn vim_named(text: &str, file: &str) -> Headless {
-        Headless::build(Profile::Vim, text, 80, 24, Some(file.into()))
+        Headless::build(Profile::Vim, text.as_bytes(), 80, 24, Some(file.into()))
+    }
+
+    /// A Vim-profile session over raw `bytes`, which need not be UTF-8 (the oracle's `bytes` fixtures,
+    /// #1232).
+    #[must_use]
+    pub fn vim_bytes(bytes: &[u8]) -> Headless {
+        Headless::build(Profile::Vim, bytes, 80, 24, None)
     }
 
     /// An Emacs-profile session over `text`.
@@ -75,12 +82,12 @@ impl Headless {
     /// A session on a `cols`x`rows` terminal (the status line takes the last row).
     #[must_use]
     pub fn with_size(profile: Profile, text: &str, cols: u16, rows: u16) -> Headless {
-        Headless::build(profile, text, cols, rows, None)
+        Headless::build(profile, text.as_bytes(), cols, rows, None)
     }
 
     fn build(
         profile: Profile,
-        text: &str,
+        text: &[u8],
         cols: u16,
         rows: u16,
         path: Option<std::path::PathBuf>,
@@ -93,7 +100,7 @@ impl Headless {
         let mut s = Session::new(SessionInit {
             path,
             fmt: crate::persist::encoding::FileFormat::default(),
-            initial: text.as_bytes().to_vec(),
+            initial: text.to_vec(),
             status: String::new(),
             profile,
             term: TermInfo::default(),
@@ -229,6 +236,12 @@ impl Headless {
         String::from_utf8_lossy(self.s.ws.focused().doc.bytes()).into_owned()
     }
 
+    /// The focused buffer's bytes, as they are (not necessarily UTF-8).
+    #[must_use]
+    pub fn bytes(&self) -> Vec<u8> {
+        self.s.ws.focused().doc.bytes().to_vec()
+    }
+
     /// The focused view's cursor, a byte offset.
     #[must_use]
     pub fn cursor(&self) -> usize {
@@ -339,18 +352,25 @@ impl Headless {
     /// `"linewise"` or `"blockwise"`, and an empty register is `("", "")`.
     #[must_use]
     pub fn register(&mut self, name: char) -> (String, &'static str) {
+        let (bytes, kind) = self.register_bytes(name);
+        (String::from_utf8_lossy(&bytes).into_owned(), kind)
+    }
+
+    /// [`Headless::register`] with the text's bytes as they are (not necessarily UTF-8).
+    #[must_use]
+    pub fn register_bytes(&mut self, name: char) -> (Vec<u8>, &'static str) {
         self.s
             .ws
             .register_snapshot()
             .into_iter()
             .find(|(n, _, _)| *n == name)
-            .map_or((String::new(), ""), |(_, kind, bytes)| {
+            .map_or((Vec::new(), ""), |(_, kind, bytes)| {
                 let kind = match kind {
                     RegKind::Charwise => "charwise",
                     RegKind::Linewise => "linewise",
                     RegKind::Blockwise => "blockwise",
                 };
-                (String::from_utf8_lossy(&bytes).into_owned(), kind)
+                (bytes, kind)
             })
     }
 

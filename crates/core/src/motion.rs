@@ -201,8 +201,44 @@ pub enum Motion {
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
 
+/// The length of the UTF-8 char that starts at `i`, or `None` when the bytes there are not one: an invalid
+/// lead, a stray continuation byte, a cut, overlong or surrogate sequence (#1232).
+pub(crate) fn char_len_at(b: &[u8], i: usize) -> Option<usize> {
+    let lead = *b.get(i)?;
+    // The lead's length and the range its second byte must fall in (no overlong form, no surrogate, nothing
+    // past U+10FFFF), as `std::str::from_utf8` checks.
+    let (w, lo, hi) = match lead {
+        0x00..=0x7F => return Some(1),
+        0xC2..=0xDF => (2, 0x80, 0xBF),
+        0xE0 => (3, 0xA0, 0xBF),
+        0xED => (3, 0x80, 0x9F),
+        0xE1..=0xEF => (3, 0x80, 0xBF),
+        0xF0 => (4, 0x90, 0xBF),
+        0xF4 => (4, 0x80, 0x8F),
+        0xF1..=0xF3 => (4, 0x80, 0xBF),
+        _ => return None,
+    };
+    let rest = b.get(i + 1..i + w)?;
+    let ok = (lo..=hi).contains(&rest[0]) && rest[1..].iter().all(|&c| c & 0xC0 == 0x80);
+    ok.then_some(w)
+}
+
+/// Whether `i` is on a continuation byte of a valid char (strictly inside it). A continuation byte that no
+/// valid char owns is a cell of its own, as in nvim (#1232). Looks at most 3 bytes back.
+fn inside_char(b: &[u8], i: usize) -> bool {
+    if i == 0 || i >= b.len() || b[i] & 0xC0 != 0x80 {
+        return false;
+    }
+    (i.saturating_sub(3)..i)
+        .rev()
+        .find(|&j| b[j] & 0xC0 != 0x80)
+        .is_some_and(|j| char_len_at(b, j).is_some_and(|w| j + w > i))
+}
+
+/// Whether `i` is a char boundary: not strictly inside a valid UTF-8 char. A byte that belongs to no valid
+/// char is a char of its own (#1232), as nvim counts it; on valid text this is the lead-byte test.
 pub(crate) fn is_boundary(b: &[u8], i: usize) -> bool {
-    i == 0 || i == b.len() || (b[i] & 0xC0) != 0x80
+    i == 0 || i == b.len() || !inside_char(b, i)
 }
 
 pub(crate) fn prev_boundary(b: &[u8], pos: usize) -> usize {
@@ -227,39 +263,38 @@ pub(crate) fn next_boundary(b: &[u8], pos: usize) -> usize {
 /// The byte offset of the next **grapheme cluster** boundary after `pos` (F-002): one `l`/`MoveRight`
 /// step crosses a whole user-perceived character — an emoji ZWJ sequence, a base+combining mark, a
 /// wide CJK glyph — not a single `char`, so the cursor never desyncs from the logical text (UAX#29).
-/// Falls back to the char boundary if the line is not valid UTF-8 (a binary file has no graphemes).
+/// A byte that is not UTF-8 is a cell of its own, and the valid text around it keeps its clusters (#1232).
 ///
-/// One call costs O(line): it finds and validates the line. A loop that steps many times holds one
-/// [`Steps`] instead, which pays that once per line it enters (#1224).
+/// A call costs the cluster it crosses ([`Steps`]).
 pub(crate) fn next_grapheme(b: &[u8], pos: usize) -> usize {
     Steps::new(b).next(pos)
 }
 
 /// The byte offset of the previous grapheme-cluster boundary before `pos` (the `h`/`MoveLeft` step).
-/// One call costs O(line), as [`next_grapheme`]; loops use [`Steps`].
 pub(crate) fn prev_grapheme(b: &[u8], pos: usize) -> usize {
     Steps::new(b).prev(pos)
 }
 
-/// A grapheme-cluster stepper over `b` that remembers the line it last stepped on: its bounds and whether
-/// it is valid UTF-8. Finding, validating and segmenting the current line on every step made a word
-/// motion over a multi-megabyte line O(line²): a 64 MiB line ran for minutes (#1224). Through `Steps` a
-/// step costs the cluster it crosses (the segmenter reads only the text around `pos`), and a line is found
-/// and validated once, when the walk enters it.
+/// How many bytes either side of a position a cluster step reads first; doubled while the segmenter asks
+/// for more (a long ZWJ sequence, a run of flags, many combining marks).
+const STEP_WINDOW: usize = 16;
+
+/// A grapheme-cluster stepper over `b`, with the bounds of the line it last asked about.
 ///
-/// The answers are those of the one-shot functions, which are this with a fresh cache. A grapheme cluster
-/// never crosses a line break (UAX#29 always breaks around LF), so segmenting the current line equals
-/// segmenting the buffer. At a line's end (its `\n`) or start the step crosses the newline by the
-/// char-boundary fallback (LF is one byte, so char == grapheme there). A line that is not valid UTF-8
-/// steps by char boundary throughout, as do positions inside a char.
+/// A step reads only the text around `pos` (#1224, #1232). The cells of a line are its valid UTF-8 runs,
+/// each segmented into extended grapheme clusters (UAX#29) as if it stood alone, and the bytes that belong
+/// to no valid char, one cell each (nvim's `utfc_ptr2len` gives such a byte length 1, and a combining mark
+/// after it does not join it). A run ends at a `\n` (a cluster never crosses a line break), at a byte that
+/// is not UTF-8, or at the buffer's ends; the segmenter is told so, and is given a window of the run that
+/// grows only while it asks for more context ([`GraphemeCursor`]'s chunk protocol). At a line's end (its
+/// `\n`) or start a step crosses the newline by the char-boundary fallback, and a position strictly inside
+/// a valid char steps to the next or previous char boundary.
 ///
-/// The cache is in `Cell`s so a shared `&Steps` (the text objects' buffer view) can step too.
+/// The line-bounds cache is in a `Cell` so a shared `&Steps` (the text objects' buffer view) can use it.
 pub(crate) struct Steps<'a> {
     b: &'a [u8],
     /// The cached line `[ls, le]`, `le` being its `\n` or the buffer end; empty (`ls > le`) before first use.
     span: Cell<(usize, usize)>,
-    /// The cached line's text, `None` when it is not valid UTF-8.
-    text: Cell<Option<&'a str>>,
 }
 
 impl<'a> Steps<'a> {
@@ -267,24 +302,20 @@ impl<'a> Steps<'a> {
         Steps {
             b,
             span: Cell::new((1, 0)),
-            text: Cell::new(None),
         }
     }
 
-    /// The line holding `pos` (clamped to the buffer) as `(start, end, text)`, from the cache when `pos` is
-    /// on the cached line: [`line_start`] and [`line_end`] give the same line for every offset in `[ls, le]`.
-    fn line(&self, pos: usize) -> (usize, usize, Option<&'a str>) {
+    /// The line holding `pos` (clamped to the buffer) as `(start, end)`, from the cache when `pos` is on
+    /// the cached line: [`line_start`] and [`line_end`] give the same line for every offset in `[ls, le]`.
+    fn line(&self, pos: usize) -> (usize, usize) {
         let p = pos.min(self.b.len());
         let (ls, le) = self.span.get();
         if ls <= p && p <= le {
-            return (ls, le, self.text.get());
+            return (ls, le);
         }
-        let ls = line_start(self.b, p);
-        let le = line_end(self.b, p);
-        let text = std::str::from_utf8(&self.b[ls..le]).ok();
-        self.span.set((ls, le));
-        self.text.set(text);
-        (ls, le, text)
+        let span = (line_start(self.b, p), line_end(self.b, p));
+        self.span.set(span);
+        span
     }
 
     /// [`line_start`] of `pos`.
@@ -300,25 +331,48 @@ impl<'a> Steps<'a> {
     /// [`next_grapheme`] of `pos`.
     pub(crate) fn next(&self, pos: usize) -> usize {
         // Two ASCII bytes always have a cluster boundary between them inside a line (no ASCII char extends,
-        // prepends or joins; the CR LF pair spans the line end, which is a boundary anyway), and the
-        // char-boundary fallback of a non-UTF-8 line answers the same. So the common step needs no line.
+        // prepends or joins; the CR LF pair spans the line end, which is a boundary anyway).
         let b = self.b;
         if pos < b.len() && b[pos] < 0x80 && b.get(pos + 1).is_none_or(|&c| c < 0x80) {
             return pos + 1;
         }
-        let (ls, _, text) = self.line(pos);
-        let rel = pos.saturating_sub(ls);
-        match text {
-            Some(s) if s.is_char_boundary(rel.min(s.len())) => {
-                let mut gc = GraphemeCursor::new(rel.min(s.len()), s.len(), true);
-                match gc.next_boundary(s, 0).ok().flatten() {
-                    Some(r) => ls + r,
-                    None => next_boundary(self.b, pos), // line exhausted: cross the newline
+        // The buffer's end, a line's NUL slot, or inside a char: the char step.
+        if pos >= b.len() || b[pos] == b'\n' || inside_char(b, pos) {
+            return next_boundary(b, pos);
+        }
+        // A byte that is not UTF-8 is a cell of its own.
+        let Some(w) = char_len_at(b, pos) else {
+            return pos + 1;
+        };
+        // A char followed by ASCII (or the line's end): no ASCII char extends, joins or is joined, so the
+        // pair alone decides; only a Prepend char would take the ASCII char, which the full step handles.
+        let after = pos + w;
+        // The run ends after it (the line's end, a byte that is not UTF-8): a cluster ends there.
+        if at_nul(b, after) || char_len_at(b, after).is_none() {
+            return after;
+        }
+        // An ASCII char followed by a non-ASCII one: an ASCII char takes part in no rule that looks further
+        // back (it is no Prepend, ZWJ, regional indicator or InCB linker), so the pair alone decides whether
+        // the next char joins it; a join takes the full step.
+        if w == 1 {
+            if let Some(d) = char_len_at(b, after) {
+                if let Ok(s) = std::str::from_utf8(&b[pos..after + d]) {
+                    if let Ok(Some(1)) = GraphemeCursor::new(0, s.len(), true).next_boundary(s, 0) {
+                        return after;
+                    }
                 }
             }
-            // Not text, or `pos` inside a char: the char step is the safe answer.
-            _ => next_boundary(self.b, pos),
         }
+        if b[after] < 0x80 {
+            if let Ok(s) = std::str::from_utf8(&b[pos..=after]) {
+                if let Ok(Some(r)) = GraphemeCursor::new(0, s.len(), true).next_boundary(s, 0) {
+                    if r == w {
+                        return after;
+                    }
+                }
+            }
+        }
+        cluster_step(b, pos, true)
     }
 
     /// [`prev_grapheme`] of `pos`.
@@ -334,17 +388,122 @@ impl<'a> Steps<'a> {
         {
             return pos - 1;
         }
-        let (ls, _, text) = self.line(pos);
-        let rel = pos.saturating_sub(ls);
-        match text {
-            Some(s) if s.is_char_boundary(rel.min(s.len())) => {
-                let mut gc = GraphemeCursor::new(rel.min(s.len()), s.len(), true);
-                match gc.prev_boundary(s, 0).ok().flatten() {
-                    Some(r) => ls + r,
-                    None => prev_boundary(self.b, pos), // line exhausted: cross back over the newline
+        let pos = pos.min(b.len());
+        // The buffer's start, a line's start (the step crosses back over its `\n`), or inside a char.
+        if pos == 0 || b[pos - 1] == b'\n' || inside_char(b, pos) {
+            return prev_boundary(b, pos);
+        }
+        let q = prev_boundary(b, pos);
+        // The cell before is a byte that is not UTF-8.
+        if char_len_at(b, q).is_none() {
+            return q;
+        }
+        // An ASCII char before `pos` after a non-ASCII one: it extends nothing, so it starts a cluster unless
+        // the char before it is a Prepend char, which the pair alone tells.
+        if q + 1 == pos && !at_bol(b, q) {
+            let p = prev_boundary(b, q);
+            if let Some(s) = char_len_at(b, p).and_then(|_| std::str::from_utf8(&b[p..pos]).ok()) {
+                let mut gc = GraphemeCursor::new(s.len(), s.len(), true);
+                if let Ok(Some(r)) = gc.prev_boundary(s, 0) {
+                    if p + r == q {
+                        return q;
+                    }
                 }
             }
-            _ => prev_boundary(self.b, pos),
+        }
+        // The char before `pos` starts its run (a line's start, after a byte that is not UTF-8), or has
+        // ASCII before it that nothing before can join (its own predecessor is ASCII or the line's start):
+        // the text from there to `pos` alone decides.
+        let start = if at_bol(b, q) || char_len_at(b, prev_boundary(b, q)).is_none() {
+            Some(q)
+        } else if b[q - 1] < 0x80 && (at_bol(b, q - 1) || b[q - 2] < 0x80) {
+            Some(q - 1)
+        } else {
+            None
+        };
+        if let Some(start) = start {
+            if let Ok(s) = std::str::from_utf8(&b[start..pos]) {
+                let mut gc = GraphemeCursor::new(s.len(), s.len(), true);
+                if let Ok(Some(r)) = gc.prev_boundary(s, 0) {
+                    return start + r;
+                }
+            }
+        }
+        cluster_step(b, pos, false)
+    }
+}
+
+/// The valid UTF-8 run holding `pos`, as far as `limit` bytes either side: `(start, start_known, text,
+/// end_known)`. A side is known when it is the run's real edge (a buffer end, a `\n`, a byte that is not
+/// UTF-8) rather than where the window stopped. `pos` is a char boundary inside the run or at its end.
+fn utf8_run(b: &[u8], pos: usize, limit: usize) -> (usize, bool, &str, bool) {
+    let lo = pos.saturating_sub(limit);
+    let hi = (pos + limit).min(b.len());
+    let (mut c, mut start_known) = match b[lo..pos].iter().rposition(|&x| x == b'\n') {
+        Some(i) => (lo + i + 1, true),
+        None => (lo, lo == 0),
+    };
+    let (e, mut end_known) = match b[pos..hi].iter().position(|&x| x == b'\n') {
+        Some(i) => (pos + i, true),
+        None => (hi, hi == b.len()),
+    };
+    if !start_known {
+        // The window may cut a char: start at the next char's first byte.
+        while c < pos && b[c] & 0xC0 == 0x80 {
+            c += 1;
+        }
+    }
+    loop {
+        match std::str::from_utf8(&b[c..e]) {
+            Ok(s) => return (c, start_known, s, end_known),
+            Err(err) => {
+                let bad = c + err.valid_up_to();
+                let cut = err.error_len().is_none() && !end_known;
+                if bad >= pos {
+                    // The first fault is at or after `pos`: the run ends there, at a byte that is not UTF-8,
+                    // or at a char the window's end cut (the run goes on past the window).
+                    end_known = !cut;
+                    let s = std::str::from_utf8(&b[c..bad]).unwrap_or_default();
+                    return (c, start_known, s, end_known);
+                }
+                // A byte before `pos` that is not UTF-8: the run starts after it.
+                c = bad + err.error_len().unwrap_or(e - bad);
+                start_known = true;
+            }
+        }
+    }
+}
+
+/// The cluster boundary after (`forward`) or before `pos`, a char boundary inside a valid run (after a
+/// valid char, going back). The segmenter sees a window of the run: where the window's edge is not the
+/// run's, the text is said to go on (an offset far from 0, a length far past the window), so it asks for
+/// more context instead of breaking there, and the window doubles.
+fn cluster_step(b: &[u8], pos: usize, forward: bool) -> usize {
+    const FAR: usize = 1 << 40;
+    let char_step = || {
+        if forward {
+            next_boundary(b, pos)
+        } else {
+            prev_boundary(b, pos)
+        }
+    };
+    let mut limit = STEP_WINDOW;
+    loop {
+        let (ws, start_known, chunk, end_known) = utf8_run(b, pos, limit);
+        let base = if start_known { 0 } else { FAR };
+        let len = base + chunk.len() + if end_known { 0 } else { FAR };
+        let mut gc = GraphemeCursor::new(base + (pos - ws), len, true);
+        let step = if forward {
+            gc.next_boundary(chunk, base)
+        } else {
+            gc.prev_boundary(chunk, base)
+        };
+        match step {
+            Ok(Some(r)) => return ws + (r - base),
+            // Unreachable: a valid char lies on the stepped side of `pos`. The char step is the safe answer.
+            Ok(None) => return char_step(),
+            Err(_) if start_known && end_known => return char_step(),
+            Err(_) => limit *= 2,
         }
     }
 }
@@ -1437,37 +1596,51 @@ fn find_char_target(
     count: u32,
 ) -> Option<usize> {
     let n = count.max(1) as usize;
-    let ls = line_start(b, cursor);
-    let le = line_end(b, cursor); // newline / end position for this line
-    let line = std::str::from_utf8(b.get(ls..le)?).ok()?;
     // A target matches the FIRST char of a cluster only: `f` to a combining mark, an emoji modifier or the
     // second flag letter finds nothing inside a cluster, as nvim v0.12.6 (`f\u{301}` on `xáb` fails; #909).
-    let starts = line
-        .grapheme_indices(true)
-        .filter_map(|(i, g)| g.chars().next().map(|c| (ls + i, c)));
+    // The cells are walked from the cursor as the motions step them, so a byte that is not UTF-8 is a cell
+    // of its own that matches no char, and the rest of the line is still searched (#1232).
+    let steps = Steps::new(b);
+    let first_char = |p: usize| {
+        char_len_at(b, p)
+            .and_then(|w| std::str::from_utf8(&b[p..p + w]).ok())
+            .and_then(|s| s.chars().next())
+    };
     // `t`/`T` stop one CHARACTER short of the match: a base with its marks, a flag, a ZWJ sequence (#909).
     let skip = (repeat && till && n == 1).then(|| {
         if forward {
-            next_grapheme(b, cursor)
+            steps.next(cursor)
         } else {
-            prev_grapheme(b, cursor)
+            steps.prev(cursor)
         }
     });
+    let is_hit = |p: usize| first_char(p) == Some(ch) && Some(p) != skip;
+    let mut left = n;
+    let mut p = cursor.min(b.len());
     if forward {
-        // Matches strictly after the cursor, in order; take the n-th.
-        let hit = starts
-            .filter(|&(pos, c)| pos > cursor && c == ch && Some(pos) != skip)
-            .nth(n - 1)?
-            .0;
-        Some(if till { prev_grapheme(b, hit) } else { hit })
+        // Cell starts strictly after the cursor, in order, up to the line's end; take the n-th match.
+        while !at_nul(b, p) {
+            p = steps.next(p);
+            if !at_nul(b, p) && is_hit(p) {
+                left -= 1;
+                if left == 0 {
+                    return Some(if till { steps.prev(p) } else { p });
+                }
+            }
+        }
+        None
     } else {
-        // Matches strictly before the cursor; take the n-th counting backward.
-        let hit = starts
-            .filter(|&(pos, c)| pos < cursor && c == ch && Some(pos) != skip)
-            .rev()
-            .nth(n - 1)?
-            .0;
-        Some(if till { next_grapheme(b, hit) } else { hit })
+        // Cell starts strictly before the cursor, back to the line's start; take the n-th match.
+        while !at_bol(b, p) {
+            p = steps.prev(p);
+            if is_hit(p) {
+                left -= 1;
+                if left == 0 {
+                    return Some(if till { steps.next(p) } else { p });
+                }
+            }
+        }
+        None
     }
 }
 
@@ -2861,46 +3034,68 @@ mod windowed_grapheme_tests {
 
 #[cfg(test)]
 mod steps_tests {
-    //! #1224: [`Steps`] caches the current line; its answers must equal the per-call line-windowed stepping
-    //! it replaced, for any order of queries over any bytes (lines that are not UTF-8, positions inside a
-    //! char, CRLF, combining marks, ZWJ and flag sequences), and a word walk over a long line must cost the
-    //! text it crosses.
-    use super::{line_end, line_start, next_boundary, prev_boundary, target, Motion, Steps};
+    //! #1224, #1232: [`Steps`] reads a bounded window around a position; its answers must equal segmenting
+    //! the whole line into its cells, for any order of queries over any bytes (bytes that are not UTF-8,
+    //! positions inside a char, CRLF, combining marks, ZWJ and flag sequences longer than the first window),
+    //! and a word walk over a long line must cost the text it crosses.
+    use super::{
+        char_len_at, inside_char, line_end, line_start, next_boundary, prev_boundary, target,
+        Motion, Steps,
+    };
     use proptest::prelude::*;
-    use unicode_segmentation::GraphemeCursor;
+    use unicode_segmentation::UnicodeSegmentation;
 
-    /// The pre-#1224 `next_grapheme`, verbatim: find, validate and segment the line on every call.
-    fn next_ref(b: &[u8], pos: usize) -> usize {
-        let ls = line_start(b, pos);
-        let le = line_end(b, pos);
-        match std::str::from_utf8(&b[ls..le]) {
-            Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
-                let mut gc =
-                    GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
-                match gc.next_boundary(s, 0).ok().flatten() {
-                    Some(rel) => ls + rel,
-                    None => next_boundary(b, pos),
+    /// The reference cells of the line `[ls, le)`: each byte that belongs to no valid char alone, and each
+    /// maximal run of valid chars cut into extended grapheme clusters as a string of its own. Returns the
+    /// cell starts.
+    fn cell_starts(b: &[u8], ls: usize, le: usize) -> Vec<usize> {
+        let mut out = Vec::new();
+        let mut i = ls;
+        while i < le {
+            if char_len_at(b, i).is_none() {
+                out.push(i);
+                i += 1;
+                continue;
+            }
+            let mut j = i;
+            while j < le {
+                match char_len_at(b, j) {
+                    Some(w) => j += w,
+                    None => break,
                 }
             }
-            _ => next_boundary(b, pos),
+            let run = std::str::from_utf8(&b[i..j]).expect("a run of valid chars");
+            out.extend(run.grapheme_indices(true).map(|(k, _)| i + k));
+            i = j;
         }
+        out
     }
 
-    /// The pre-#1224 `prev_grapheme`, verbatim.
-    fn prev_ref(b: &[u8], pos: usize) -> usize {
-        let ls = line_start(b, pos);
-        let le = line_end(b, pos);
-        match std::str::from_utf8(&b[ls..le]) {
-            Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
-                let mut gc =
-                    GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
-                match gc.prev_boundary(s, 0).ok().flatten() {
-                    Some(rel) => ls + rel,
-                    None => prev_boundary(b, pos),
-                }
-            }
-            _ => prev_boundary(b, pos),
+    /// The reference `next_grapheme`: the first cell start after `pos` on its line, else the line end;
+    /// the char step at a line's end, past the buffer, or inside a char.
+    fn next_ref(b: &[u8], pos: usize) -> usize {
+        if pos >= b.len() || b[pos] == b'\n' || inside_char(b, pos) {
+            return next_boundary(b, pos);
         }
+        let (ls, le) = (line_start(b, pos), line_end(b, pos));
+        cell_starts(b, ls, le)
+            .into_iter()
+            .find(|&s| s > pos)
+            .unwrap_or(le)
+    }
+
+    /// The reference `prev_grapheme`: the last cell start before `pos` on its line; the char step at a
+    /// line's start or inside a char.
+    fn prev_ref(b: &[u8], pos: usize) -> usize {
+        let pos = pos.min(b.len());
+        if pos == 0 || b[pos - 1] == b'\n' || inside_char(b, pos) {
+            return prev_boundary(b, pos);
+        }
+        let ls = line_start(b, pos);
+        cell_starts(b, ls, pos)
+            .into_iter()
+            .next_back()
+            .expect("a cell before pos")
     }
 
     /// Text pieces that exercise the segmenter and the fallbacks.
@@ -2927,6 +3122,12 @@ mod steps_tests {
         b"\x80",
         b"\xe0\x80",
         b"\xea\xb0", // a cut 3-byte char
+        b"\xed\xa0\x80", // a surrogate: three bytes that are not UTF-8
+        b"\xc0\xaf",     // an overlong `/`
+        // Clusters longer than the first window: the segmenter asks for more context.
+        "👨\u{200d}👩\u{200d}👧\u{200d}👦👨\u{200d}👩\u{200d}👧\u{200d}👦👨\u{200d}👩\u{200d}👧\u{200d}👦".as_bytes(),
+        "a\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}".as_bytes(),
+        "🇰🇷🇯🇵🇺🇸🇰🇷🇯🇵🇺🇸🇰🇷🇯🇵🇺🇸".as_bytes(), // nine flags: a prev step counts back over them
     ];
 
     fn bytes(picks: &[usize]) -> Vec<u8> {
@@ -2939,10 +3140,10 @@ mod steps_tests {
     proptest! {
         #![proptest_config(crate::test_cases(512))]
 
-        /// One `Steps` answers like the reference at every offset (char boundary or not, and one past the
+        /// One `Steps` answers like the whole-line cells at every offset (char boundary or not, and one past the
         /// end), queried in an arbitrary order that jumps between lines and directions.
         #[test]
-        fn steps_equal_the_per_call_reference(
+        fn steps_equal_the_whole_line_cells(
             picks in proptest::collection::vec(0usize..64, 0..40),
             order in proptest::collection::vec((0usize..400, any::<bool>()), 0..80),
         ) {
@@ -2973,6 +3174,58 @@ mod steps_tests {
                 p = q;
             }
         }
+    }
+
+    proptest! {
+        #![proptest_config(crate::test_cases(2048))]
+
+        /// The hand-rolled UTF-8 char check equals the standard library's on any bytes.
+        #[test]
+        fn char_len_at_equals_std(b in proptest::collection::vec(any::<u8>(), 1..6)) {
+            let head = &b[..b.len().min(4)];
+            let std_len = match std::str::from_utf8(head) {
+                Ok(s) => s.chars().next().map(char::len_utf8),
+                Err(e) if e.valid_up_to() > 0 => {
+                    std::str::from_utf8(&head[..e.valid_up_to()]).ok().and_then(|s| s.chars().next()).map(char::len_utf8)
+                }
+                Err(_) => None,
+            };
+            prop_assert_eq!(char_len_at(&b, 0), std_len, "{:x?}", b);
+        }
+    }
+
+    /// #1232, the cells nvim v0.12.6 steps (`l` from the line start, then `h` back from its end; captured
+    /// headless, `nvim_win_get_cursor` byte columns): a byte that is not UTF-8 is one cell, and a
+    /// combining mark or ZWJ sequence next to it still groups with its own valid text.
+    #[test]
+    fn invalid_bytes_are_cells_of_their_own() {
+        let walk = |b: &[u8]| {
+            let s = Steps::new(b);
+            let mut fwd = vec![0];
+            while *fwd.last().unwrap() < b.len() {
+                fwd.push(s.next(*fwd.last().unwrap()));
+            }
+            let mut back = vec![b.len()];
+            while *back.last().unwrap() > 0 {
+                back.push(s.prev(*back.last().unwrap()));
+            }
+            (fwd, back)
+        };
+        // `é ÿ é` with a decomposed é and a lone 0xFF: l lands on 3, 4, 5, 6.
+        let (fwd, back) = walk(b"e\xcc\x81 \xff e\xcc\x81");
+        assert_eq!(fwd, [0, 3, 4, 5, 6, 9]);
+        assert_eq!(back, [9, 6, 5, 4, 3, 0]);
+        // A combining mark after the invalid byte does not join it: `\xff\u{301}a` is three cells.
+        assert_eq!(walk(b"\xff\xcc\x81a").0, [0, 1, 3, 4]);
+        // A cut char is one cell per byte, and a stray continuation byte is a cell (and a char boundary).
+        assert_eq!(walk(b"\xea\xb0a\xcc\x81").0, [0, 1, 2, 5]);
+        assert_eq!(walk(b"a\x80\xcc\x81b").0, [0, 1, 2, 4, 5]);
+        assert!(super::is_boundary(b"a\x80", 1));
+        assert!(!super::is_boundary("é".as_bytes(), 1));
+        // A ZWJ family beside an invalid byte stays one cell.
+        let fam = "👨\u{200d}👩".as_bytes();
+        let b = [fam, b" \xff ", fam].concat();
+        assert_eq!(walk(&b).0, [0, 11, 12, 13, 14, 25]);
     }
 
     /// Word motions over one 512 KiB line cross it in one pass: before #1224 every cluster re-validated the
@@ -3424,6 +3677,91 @@ mod line_pass_tests {
                         if let Some(&t) = memo.get() {
                             prop_assert_eq!(t, target(&b, p, m, count), "memo {:?} at {}", m, p);
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod find_char_tests {
+    //! #1232: `f`/`t`/`F`/`T` walk the cells from the cursor instead of segmenting the whole line. On
+    //! valid UTF-8 they must answer as the line-segmenting version they replaced, copied here verbatim.
+    use super::*;
+    use proptest::prelude::*;
+
+    /// The pre-#1232 `find_char_target`, verbatim.
+    fn old_find_char_target(
+        b: &[u8],
+        cursor: usize,
+        ch: char,
+        forward: bool,
+        till: bool,
+        repeat: bool,
+        count: u32,
+    ) -> Option<usize> {
+        let n = count.max(1) as usize;
+        let ls = line_start(b, cursor);
+        let le = line_end(b, cursor); // newline / end position for this line
+        let line = std::str::from_utf8(b.get(ls..le)?).ok()?;
+        // A target matches the FIRST char of a cluster only: `f` to a combining mark, an emoji modifier or the
+        // second flag letter finds nothing inside a cluster, as nvim v0.12.6 (`f\u{301}` on `xáb` fails; #909).
+        let starts = line
+            .grapheme_indices(true)
+            .filter_map(|(i, g)| g.chars().next().map(|c| (ls + i, c)));
+        // `t`/`T` stop one CHARACTER short of the match: a base with its marks, a flag, a ZWJ sequence (#909).
+        let skip = (repeat && till && n == 1).then(|| {
+            if forward {
+                next_grapheme(b, cursor)
+            } else {
+                prev_grapheme(b, cursor)
+            }
+        });
+        if forward {
+            // Matches strictly after the cursor, in order; take the n-th.
+            let hit = starts
+                .filter(|&(pos, c)| pos > cursor && c == ch && Some(pos) != skip)
+                .nth(n - 1)?
+                .0;
+            Some(if till { prev_grapheme(b, hit) } else { hit })
+        } else {
+            // Matches strictly before the cursor; take the n-th counting backward.
+            let hit = starts
+                .filter(|&(pos, c)| pos < cursor && c == ch && Some(pos) != skip)
+                .rev()
+                .nth(n - 1)?
+                .0;
+            Some(if till { next_grapheme(b, hit) } else { hit })
+        }
+    }
+
+    proptest! {
+        #![proptest_config(crate::test_cases(256))]
+
+        /// Every char search, from every char boundary, with any count, equals the old one on valid text.
+        #[test]
+        fn find_char_equals_the_line_segmenting_search(
+            text in "[ab \n\u{301}가👍🏽🇰🇷x]{0,20}",
+            count in 1u32..4,
+        ) {
+            let b = text.as_bytes();
+            for cur in (0..=b.len()).filter(|&p| text.is_char_boundary(p)) {
+                for ch in ['a', 'b', ' ', '가', 'x', '\u{301}', '👍', '🇰'] {
+                    for (forward, till, repeat) in [
+                        (true, false, false),
+                        (true, true, false),
+                        (true, true, true),
+                        (false, false, false),
+                        (false, true, false),
+                        (false, true, true),
+                    ] {
+                        prop_assert_eq!(
+                            find_char_target(b, cur, ch, forward, till, repeat, count),
+                            old_find_char_target(b, cur, ch, forward, till, repeat, count),
+                            "{:?} at {} ch={:?} fwd={} till={} rep={} n={}",
+                            text, cur, ch, forward, till, repeat, count
+                        );
                     }
                 }
             }

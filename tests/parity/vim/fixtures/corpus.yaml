@@ -26,6 +26,7 @@
       "folds"
     ],
     "folds_note": "folds is recorded only for fixtures about folds: per line, [foldclosed(l), foldclosedend(l), foldlevel(l)].",
+    "bytes_note": "a fixture with bytes: true spells its lines, text and register texts in Latin-1, one char per byte, so a line can hold bytes that are not UTF-8.",
     "feed": "nvim_feedkeys(keys, 'xt'): as typed, so keys after a failed command still run",
     "error_note": "emsg is the E-number of the last error message the keys raised (v:errmsg), or ''. failed is whether any command failed (an error, or a Normal-mode beep), observed as Vim flushing the keys queued after it when they are fed not as typed. Best effort: a failure inside a macro replay is not seen. failed is captured but not compared: ruse has no bell (#901)."
   },
@@ -108748,6 +108749,980 @@
         "text": [
           "(foo a",
           "     b)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_l_keeps_cluster_after",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "llll",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_l_onto_invalid",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "ll",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_dollar_h",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "$hh",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_x_cluster_before",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "x",
+      "bytes": true,
+      "expect": {
+        "text": [
+          " ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "eÌ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_x_invalid_byte",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "llx",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ  eÌ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "ÿ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_dollar_x_cluster",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "$x",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ "
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "eÌ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_3x",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "3x",
+      "bytes": true,
+      "expect": {
+        "text": [
+          " eÌ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "eÌ ÿ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_w_invalid_is_a_word",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "w",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_ww",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "ww",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_dw",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "wdw",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ eÌ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "ÿ ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_yl_register",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "llyl",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "ÿ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ÿ",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_f_cluster_base",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "fe",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_F_cluster_base",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "$hhFe",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_t_cluster",
+      "lines": [
+        "eÌ ÿ eÌx"
+      ],
+      "keys": "tx",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌx"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_mid_l",
+      "lines": [
+        "aÿeÌb"
+      ],
+      "keys": "lll",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿeÌb"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_mid_dollar_h",
+      "lines": [
+        "aÿeÌb"
+      ],
+      "keys": "$h",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿeÌb"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_mid_llx",
+      "lines": [
+        "aÿeÌb"
+      ],
+      "keys": "llx",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿb"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "eÌ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_mark_after_invalid_l",
+      "lines": [
+        "ÿÌa"
+      ],
+      "keys": "ll",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ÿÌa"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_mark_after_invalid_x",
+      "lines": [
+        "ÿÌa"
+      ],
+      "keys": "x",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "Ìa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ÿ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_mark_after_invalid_lx",
+      "lines": [
+        "ÿÌa"
+      ],
+      "keys": "lx",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ÿa"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "Ì",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_cut_char_l",
+      "lines": [
+        "ê°aÌ"
+      ],
+      "keys": "ll",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ê°aÌ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_cut_char_x",
+      "lines": [
+        "ê°aÌ"
+      ],
+      "keys": "x",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "°aÌ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ê",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_cut_char_dollar_h",
+      "lines": [
+        "ê°aÌ"
+      ],
+      "keys": "$h",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ê°aÌ"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_stray_continuation_l",
+      "lines": [
+        "aÌb"
+      ],
+      "keys": "lll",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÌb"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_stray_continuation_x",
+      "lines": [
+        "aÌb"
+      ],
+      "keys": "x",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "Ìb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_stray_continuation_lx",
+      "lines": [
+        "aÌb"
+      ],
+      "keys": "lx",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÌb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_zwj_l",
+      "lines": [
+        "ð¨âð© ÿ ð¨âð©"
+      ],
+      "keys": "lll",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ð¨âð© ÿ ð¨âð©"
+        ],
+        "cursor": [
+          1,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_zwj_x",
+      "lines": [
+        "ð¨âð© ÿ ð¨âð©"
+      ],
+      "keys": "x",
+      "bytes": true,
+      "expect": {
+        "text": [
+          " ÿ ð¨âð©"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ð¨âð©",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_zwj_dollar_h",
+      "lines": [
+        "ð¨âð© ÿ ð¨âð©"
+      ],
+      "keys": "$h",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ð¨âð© ÿ ð¨âð©"
+        ],
+        "cursor": [
+          1,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_in_word_w",
+      "lines": [
+        "abÿcd ef"
+      ],
+      "keys": "w",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abÿcd ef"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_in_word_e",
+      "lines": [
+        "abÿcd ef"
+      ],
+      "keys": "e",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abÿcd ef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_in_word_dollar_b",
+      "lines": [
+        "abÿcd ef"
+      ],
+      "keys": "$bb",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abÿcd ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_in_word_diw",
+      "lines": [
+        "abÿcd ef"
+      ],
+      "keys": "ldiw",
+      "bytes": true,
+      "expect": {
+        "text": [
+          " ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abÿcd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_ge",
+      "lines": [
+        "eÌ ÿ eÌ"
+      ],
+      "keys": "$ge",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌ ÿ eÌ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_two_lines_j",
+      "lines": [
+        "eÌÿx",
+        "eÌÿy"
+      ],
+      "keys": "llj",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "eÌÿx",
+          "eÌÿy"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_r_cluster",
+      "lines": [
+        "eÌ ÿ"
+      ],
+      "keys": "rZ",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "Z ÿ"
         ],
         "cursor": [
           1,

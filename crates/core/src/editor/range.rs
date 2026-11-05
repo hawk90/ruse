@@ -511,10 +511,9 @@ pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: usize) 
 
 /// The end of the grapheme cluster that starts at the cluster boundary `i` of a line ending at `le`.
 /// Segments a small window after `i`, doubled until the cluster ends inside it, so the cost is the
-/// cluster's length, not the line's: [`motion::next_grapheme`] re-validates and re-segments the whole line
-/// on every call, which made walking a long non-ASCII line quadratic (#1109). A window cut inside a
-/// character is trimmed to the last whole one; bytes that are not UTF-8 are one cluster each, like the
-/// char-boundary fallback.
+/// cluster's length, not the line's (#1109; `motion::next_grapheme` re-segmented the whole line then). A
+/// window cut inside a character is trimmed to the last whole one; bytes that are not UTF-8 are one cluster
+/// each, as the motions count them since #1232.
 fn grapheme_end(b: &[u8], i: usize, le: usize) -> usize {
     use unicode_segmentation::GraphemeCursor;
     let le = le.min(b.len()).max(i + 1);

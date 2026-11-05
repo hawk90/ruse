@@ -3912,6 +3912,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         if st.view.cursor == le && ls < le {
             st.view.cursor = motion::prev_grapheme(b, le);
         }
+        // An edit can join the text around the cursor into one cluster: deleting a byte that is not UTF-8
+        // from between a base and a combining mark (#1232). The cursor goes to the cluster's start, as
+        // nvim's `mb_adjust_cursor` puts it on a char's head.
+        let cur = st.view.cursor;
+        if cur < b.len() && b[cur] != b'\n' {
+            let head = motion::prev_grapheme(b, motion::next_grapheme(b, cur));
+            if head < cur {
+                st.view.cursor = head;
+            }
+        }
     }
     // The phantom slot after the final newline is not a line (#677): an on-char caret outside text entry
     // never rests there, whatever put it there (a motion running off the end, a linewise delete of the last
