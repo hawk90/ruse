@@ -6,7 +6,8 @@
 //!   directory `0700` and every file `0600`. A file's journal is `<basename>.<16 hex of sha256(canonical
 //!   path)>.rj`, the basename shortened so the name fits `NAME_MAX` even once archived (#1196). The unnamed
 //!   start buffer's is `unnamed.<pid>.<start ms>.rj`, fixed when the process starts, so a later `:cd` does
-//!   not move it (#1192). Archives go to `journal/archive/<name>.<unix ms>`.
+//!   not move it (#1192). Archives go to `journal/archive/<name>@<unix ms>` ([`ARCHIVE_MARK`]), the name
+//!   shortened to fit `NAME_MAX` when it must be (a long legacy sidecar's).
 //! * **Writes** (RFC §4). After each command the session drains the document's change log into the writer's
 //!   in-memory buffer; the buffer is written and `fdatasync`ed after [`IDLE`] without a change, after
 //!   [`SYNC_EVERY`] changes, or before a risky operation, and each sync ends with a Marker. A failed write
@@ -25,6 +26,7 @@
 //!   process's own ([`Journals::adopt`]); editing the disk file or discarding moves it to the archive.
 //! * **Legacy** (RFC §3). An `RJS0` sidecar `<file>.ruse-journal` from an older ruse is offered once and
 //!   then moved to the archive ([`super::rjs0`]). Nothing writes one any more.
+//! * **Retention** (RFC §9, #934). [`super::retention`] sweeps the archive at startup, once a day.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
@@ -52,8 +54,11 @@ pub const COMPACT_AFTER: u64 = 1 << 20;
 const PENDING_CAP: usize = 8 << 20;
 /// The longest file name the common filesystems accept.
 const NAME_MAX: usize = 255;
-/// Room kept for the archive suffix (`.<unix ms>`, 14 bytes) on top of a journal name.
+/// Room kept for the archive suffix (`@<unix ms>`, 14 bytes) on top of a journal name.
 const ARCHIVE_SUFFIX: usize = 14;
+/// What separates an archive's name from its time: `<name>@<unix ms>`. Only [`Journals::archive`] writes it,
+/// so [`super::retention`] owns every file in the archive named `<stem>@<digits>`, a shortened stem too.
+pub const ARCHIVE_MARK: u8 = b'@';
 /// The extension and hash part of a journal name: `.<16 hex>.rj`.
 const HASH_SUFFIX: usize = 1 + 16 + 3;
 /// Room for the `.<pid>` of a second session's journal ([`claim`]).
@@ -433,18 +438,22 @@ impl Journals {
         discard_file(&self.path_of(doc));
     }
 
-    /// Move `path` into the archive as `<name>.<unix ms>`; the archived path. A move across filesystems (a
-    /// legacy sidecar in the project tree) copies and then removes.
+    /// Move `path` into the archive as `<name>@<unix ms>` ([`ARCHIVE_MARK`]; `<name>` shortened to fit
+    /// `NAME_MAX` when it must be), its modification time set to now (the age [`super::retention`] sweeps
+    /// by); the archived path. A move across filesystems (a legacy sidecar in the
+    /// project tree) copies and then removes.
     pub fn archive(&self, path: &Path) -> io::Result<PathBuf> {
         let dir = self.archive_dir();
         make_private_dir(&dir)?;
         let name = path
             .file_name()
-            .map_or_else(Vec::new, |n| path_bytes(Path::new(n)));
+            .map(|n| path_bytes(Path::new(n)))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| b"journal".to_vec());
         // A fresh name: a rename would replace an archive made in the same millisecond.
         let mut ms = now_ms();
         let to = loop {
-            let suffix = format!(".{ms}");
+            let suffix = format!("{}{ms}", char::from(ARCHIVE_MARK));
             let mut n = shorten(&name, NAME_MAX - suffix.len()).to_vec();
             n.extend_from_slice(suffix.as_bytes());
             let to = dir.join(os_name(n));
@@ -457,6 +466,10 @@ impl Journals {
             let bytes = read_journal(path)?;
             write_private(&to, &bytes)?;
             fs::remove_file(path)?;
+        }
+        // Retention counts an archive's age from now, not from the journal's last write (RFC-0023 §9).
+        if let Ok(f) = open_regular(&to, OpenOptions::new().write(true)) {
+            let _ = f.set_modified(SystemTime::now());
         }
         Ok(to)
     }
@@ -1976,6 +1989,28 @@ mod tests {
             j.archive(&p).unwrap();
         }
         assert_eq!(fs::read_dir(j.archive_dir()).unwrap().count(), 3);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// An archive's age counts from the archiving (RFC-0023 §9): a journal last written long ago is not
+    /// swept the day it is archived.
+    #[test]
+    fn archiving_restarts_the_age() {
+        let (j, dir) = scratch("archive-age");
+        let file = dir.join("f.txt");
+        let p = j.write_crashed(Some(&file), b"x").unwrap();
+        let long_ago = SystemTime::now() - Duration::from_secs(30 * 86_400);
+        fs::File::options()
+            .write(true)
+            .open(&p)
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+        let to = j.archive(&p).unwrap();
+        let age = fs::metadata(&to).unwrap().modified().unwrap().elapsed();
+        assert!(age.unwrap_or_default() < Duration::from_secs(3600));
+        assert_eq!(super::super::retention::sweep(&j, now_ms()).aged, 0);
+        assert!(to.exists());
         let _ = fs::remove_dir_all(&dir);
     }
 

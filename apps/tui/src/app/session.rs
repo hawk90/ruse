@@ -969,17 +969,13 @@ impl Session {
         }
     }
 
-    /// Put the start buffer's recovered text over the disk text it opened with (#863, #1194): as a recorded
-    /// edit ([`crate::app::dispatch::apply_recovery`]), so the buffer is modified (`:q` refuses with E37), `u`
-    /// goes back to the disk text, and a saved trace starts from the disk text and replays the recovery. In
-    /// the rare case no recorded edit can carry the change, the buffer loads the recovered bytes as its
-    /// text, still marked modified, and the trace starts from them.
+    /// Put the start buffer's recovered text over the disk text it opened with (#863, #1194): as recorded
+    /// commands that undo as one step ([`crate::app::dispatch::apply_recovery`]), so the buffer is modified
+    /// (`:q` refuses with E37), `u` goes back to the disk text, and a saved trace starts from the disk text
+    /// and replays the recovery.
     pub(crate) fn apply_recovered(&mut self, rec: Vec<u8>) {
-        if crate::app::dispatch::apply_recovery(&mut self.ws, rec.clone(), &mut self.recorded) {
-            crate::app::dispatch::place_cursor(&mut self.ws, &mut self.recorded, 0);
-        } else {
-            self.initial = rec;
-        }
+        crate::app::dispatch::apply_recovery(&mut self.ws, rec, &mut self.recorded);
+        crate::app::dispatch::place_cursor(&mut self.ws, &mut self.recorded, 0);
     }
 
     /// Remove the journal of every buffer this session could have journaled (#862), on a normal quit: each
@@ -5085,6 +5081,7 @@ fn journal_health(
         .collect();
     health::Journaling::On {
         dir: j.dir().display().to_string(),
+        archive: persist::retention::stats(j),
         buffers,
     }
 }
@@ -5154,6 +5151,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
     // but cannot be read or replayed is reported on the status line, never silently skipped (#897). The
     // owner (and the unnamed buffer's journal name) is fixed now, at startup (#1192).
     let _ = persist::journal::owner();
+    // RFC-0023 §9 (#934): at most once a day, old archives go; live journals are never touched.
+    if let Some(j) = persist::journal::current() {
+        let _ = persist::retention::sweep_if_due(j, persist::journal::now_ms());
+    }
     let offer = persist::journal::current()
         .map_or(persist::Recovery::None, |j| j.offer(path.as_deref(), &disk));
 

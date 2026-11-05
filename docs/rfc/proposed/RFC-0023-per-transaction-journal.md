@@ -144,7 +144,7 @@ XDG path, as Neovim uses). The directory is created `0700`, files `0600`. A file
 `<basename>.<16 hex of sha256(canonical absolute path)>.rj`, so two `notes.md` in different trees do not
 collide and a human can still tell what it is. A pathless buffer uses `unnamed.<pid>.<start time>.rj`.
 Archives go to `journal/archive/` with the same name plus a timestamp. As built (slice 2): the basename is
-shortened at a character boundary so the name, plus the archive's `.<unix ms>` suffix, fits `NAME_MAX` (#1196);
+shortened at a character boundary so the name, plus the archive's `@<unix ms>` suffix, fits `NAME_MAX` (#1196);
 the start time in the unnamed name is the process's own startup clock in Unix milliseconds, fixed when the
 session starts (#1192); a pathless start offers the newest `unnamed.*.rj` whose pid is no longer running, and
 recovering it renames it to this process's unnamed journal. A legacy sidecar holding exactly the disk text is
@@ -242,6 +242,12 @@ text applied as one change, so `[+]` is set, `:q` gives E37, and `u` goes back t
 trace baseline is the disk text. The diff view is a line-based unified diff (Myers) in a read-only scratch
 buffer, computed in `persist`; no crate is added. Recovery never writes the original path; only `:w` does.
 
+As built (#1191, #1194; `persist::recovery_commands`): the change is the trace's existing records, so the
+trace format is unchanged. A UTF-8 span is one `ex_edits`. Otherwise the bytes go in as lines: `ex_filter`
+over every line, or `ex_read 0` when the disk text is empty. Both keep the buffer's final newline, so when
+the recovered text's differs, a one-character `ex_edits` follows. Two records are wrapped in an
+`ex_begin macro` / `ex_end` group, which replays as one undo step, as it runs live.
+
 ### 8. Status
 
 The status line shows a flag only when something needs attention:
@@ -287,6 +293,12 @@ for that buffer.
 
 On startup, at most once a day, ruse removes archives older than 14 days and keeps at most 20 archives per
 document path. It never removes a live journal. These numbers resolve D-005's "Open (tuning)" retention item.
+
+As built (#934, `persist::retention`): the last sweep's time is kept in `journal/archive-sweep`; an archive's
+age is its modification time, which archiving sets. An archive is named `<name>@<unix ms>`; the `@` is
+written only by archiving, so the sweep owns every `<stem>@<digits>` file, a name shortened to fit `NAME_MAX`
+too, and nothing else (plus the exact `<journal name>.<unix ms>` names of the first build). Only regular files
+are removed, and no symlink is followed. `:checkhealth` reports the archive's size and last sweep.
 
 ## Slices
 

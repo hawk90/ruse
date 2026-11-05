@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{
     BytePos, Command, DocumentId, Effect, ExCmd, ExOutcome, Mode, Register, Revision, SubRange,
-    TransactionOrigin, Workspace,
+    Workspace,
 };
 
 use crate::highlight;
@@ -140,36 +140,31 @@ pub(crate) fn open_file_with(
 }
 
 /// Put a recovered text over the focused buffer's disk text (#863, #1194) so the buffer is modified (`:q`
-/// refuses with E37) and `u` goes back to the disk text: as one edit of the span that differs, or, when that
-/// span is not UTF-8, as a line filter of the whole buffer (whose output is bytes). The rare text neither can
-/// carry (a non-UTF-8 change to an empty file, or one that also adds or drops the final newline) is loaded as
-/// the buffer instead, still marked modified. The edit goes through [`run_ex`] into `recorded`; `false` for
-/// that last case, where nothing is recorded and a trace must start from the recovered text.
-pub(crate) fn apply_recovery(
-    ws: &mut Workspace,
-    rec: Vec<u8>,
-    recorded: &mut Vec<Command>,
-) -> bool {
-    let disk = ws.focused().doc.bytes();
-    let ex = match persist::recovery_edit(disk, &rec) {
-        Some((start, end, text)) => ExCmd::Edits {
-            origin: TransactionOrigin::UserInput,
-            edits: vec![(BytePos(start), BytePos(end), text)],
-        },
-        None if persist::recovery_by_lines(disk, &rec) => ExCmd::FilterReplace {
-            first: 1,
-            last: persist::line_count(disk),
-            bytes: rec.clone(),
-        },
-        None => {
-            ws.reload_focused(rec);
-            ws.focused_doc_mut().mark_unsaved();
-            return false;
-        }
-    };
-    run_ex(ex, ws, recorded);
+/// refuses with E37) and `u` goes back to the disk text: the commands [`persist::recovery_commands`] gives
+/// (one text edit, or a filter or read of the bytes plus a final-newline edit), run through [`run_ex`] into
+/// `recorded` as one undo step. Two of them are an `ex_begin`/`ex_end` group, so a saved trace replays them
+/// as one step too. The group is labelled `macro` (keys that were not typed: one undo step); the trace has
+/// no kind of its own for a recovery, and adding one would change its format.
+pub(crate) fn apply_recovery(ws: &mut Workspace, rec: Vec<u8>, recorded: &mut Vec<Command>) {
+    let cmds = persist::recovery_commands(ws.focused().doc.bytes(), &rec);
+    let group = cmds.len() > 1;
+    let opened = group && !ws.focused().doc.in_undo_block();
+    if opened {
+        ws.focused_doc_mut().begin_undo_block();
+    }
+    if group {
+        note_ex(ExCmd::Begin(ruse_core::GroupKind::Macro), recorded);
+    }
+    for ex in cmds {
+        run_ex(ex, ws, recorded);
+    }
+    if group {
+        note_ex(ExCmd::End, recorded);
+    }
+    if opened {
+        ws.focused_doc_mut().end_undo_block();
+    }
     debug_assert_eq!(ws.focused().doc.bytes(), &rec[..]);
-    true
 }
 
 /// Give buffer `id` its file on disk: record `path` and `fmt` in the file registry and attach the
@@ -1675,5 +1670,84 @@ mod dispatch_tests {
         let (bytes, cur) = run_filter_oracle("one two\n", 0, "!!", "tr \" \" \"\\n\"");
         assert_eq!(bytes, "one\ntwo\n");
         assert_eq!(cur, 0);
+    }
+
+    /// #1194: recover `rec` over the disk text `disk` as the session does, and check it is the disk text plus
+    /// one change: modified, one `u` back to the clean disk text, and a saved trace that replays from the
+    /// disk text to `rec` with the same single undo step. The commands recorded, for the caller to inspect.
+    fn recovers_as_one_change(disk: &[u8], rec: &[u8]) -> Vec<Command> {
+        let mut ws = Workspace::new(disk.to_vec());
+        ws.focused_doc_mut().mark_saved();
+        let mut recorded = Vec::new();
+        apply_recovery(&mut ws, rec.to_vec(), &mut recorded);
+        assert_eq!(ws.focused().doc.bytes(), rec);
+        assert!(ws.focused().doc.is_modified(), "`:q` gives E37");
+        ws.focused_doc_mut().undo();
+        assert_eq!(
+            ws.focused().doc.bytes(),
+            disk,
+            "one `u` reaches the disk text"
+        );
+        assert!(!ws.focused().doc.is_modified());
+        let text = ruse_core::Trace::record(disk, recorded.clone()).to_text();
+        let mut st = ruse_core::Trace::from_text(&text)
+            .unwrap()
+            .replay(disk)
+            .unwrap();
+        assert_eq!(st.doc.bytes(), rec, "the trace replays the recovery");
+        st.doc.undo();
+        assert_eq!(st.doc.bytes(), disk, "and replays it as one undo step");
+        recorded
+    }
+
+    /// #1194's two remaining cases: an empty disk text (no line to filter: a read above line 1, then the
+    /// final newline), and a non-UTF-8 change whose final newline differs (a filter, then a one-character
+    /// edit). Both are one `ex_begin macro` group.
+    #[test]
+    fn a_recovery_the_line_filter_cannot_carry_is_still_one_change() {
+        for (disk, rec) in [
+            (&b""[..], &b"\xff\n"[..]),
+            (b"", b"a\n\xff\n\n"),
+            (b"a\n", b"\xff"),
+            (b"a\nb\n", b"a\nb\xff"),
+            (b"a", b"a\xff\n"),
+            (b"caf\xe9", b"caf\xe9 \xff\n"),
+        ] {
+            let cmds = recovers_as_one_change(disk, rec);
+            assert_eq!(cmds.len(), 4, "{disk:?} -> {rec:?}: {cmds:?}");
+            assert_eq!(
+                cmds[0],
+                Command::Ex(ExCmd::Begin(ruse_core::GroupKind::Macro))
+            );
+            assert_eq!(cmds[3], Command::Ex(ExCmd::End));
+        }
+        // A UTF-8 change stays one edit, and a read or filter that leaves the right final newline is one
+        // command, with no group.
+        assert_eq!(recovers_as_one_change(b"", b"new\n").len(), 1);
+        assert_eq!(recovers_as_one_change(b"", b"\xff").len(), 1);
+        assert_eq!(
+            recovers_as_one_change(b"caf\xe9\n", b"caf\xe9 au lait\n").len(),
+            1
+        );
+    }
+
+    mod recovery_fuzz {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(crate::test_cases(256))]
+
+            /// #1194: every recovery, whatever the bytes, is the disk text plus one undoable change that a
+            /// saved trace replays.
+            #[test]
+            fn every_recovery_is_the_disk_text_plus_one_change(
+                disk in proptest::collection::vec(prop_oneof![Just(b'a'), Just(b'\n'), Just(0xC3u8), Just(0xA9u8), Just(0xFFu8), Just(0x80u8)], 0..16),
+                rec in proptest::collection::vec(prop_oneof![Just(b'b'), Just(b'a'), Just(b'\n'), Just(0xC3u8), Just(0xA9u8), Just(0xFFu8)], 0..16),
+            ) {
+                prop_assume!(disk != rec);
+                recovers_as_one_change(&disk, &rec);
+            }
+        }
     }
 }

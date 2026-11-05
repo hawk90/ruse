@@ -582,13 +582,6 @@ impl Document {
         self.undo.sync();
     }
 
-    /// Mark the buffer as differing from disk with no undo state matching it: the text was loaded from
-    /// somewhere other than the file (a crash-recovery journal whose change cannot be applied as an edit,
-    /// #863), so no undo step leads back to the disk text and only a save makes it clean again.
-    pub fn mark_unsaved(&mut self) {
-        self.saved_node = None;
-    }
-
     /// Close the current undo group (Vim's `u_sync`): the next change starts a new undo step even when its
     /// transaction asks to continue the group. The frontend syncs before every typed command outside text
     /// entry, so each Normal or Ex command undoes on its own while an Insert session stays one step (#678).

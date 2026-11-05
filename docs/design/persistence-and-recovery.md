@@ -380,7 +380,7 @@ fail cleanly.
 > **As built (v0.1.8, RFC-0023 slice 3, #933):** `persist::Recovery` is `None` / `Available` / `InUse` /
 > `Unreplayable` and one prompt (`apps/tui/src/ui/recovery.rs`) serves the startup file and `:e`. Where the build
 > differs from the text below: (c) `KeepInMemory` (`e`) opens the disk file and moves the journal to the archive,
-> as `k` does; the two differ only in wording until retention (#934) treats them apart. The diff is a full-screen
+> as `k` does; the two differ only in wording, and retention (#934) treats their archives alike. The diff is a full-screen
 > read-only view inside the prompt, not an editor buffer (the startup prompt runs before the editor exists).
 > There is no `<name>.ruse-recovered` side file. The ownership marker is the RJ01 Header's owner record; a live
 > owner is `kill(pid, 0)` plus a matching start time read from the system (`/proc/<pid>/stat`, `proc_pidinfo`),
@@ -420,6 +420,18 @@ honored.
 - have a **retention window** (default 14 days) and a **count cap** per file; a GC sweep removes journals whose
   save-point is fully durable and older than the window, and archives (not deletes) journals with unrecovered
   tails until the user resolves them;
+
+  > **As built (#934, RFC-0023 §9, `apps/tui/src/persist/retention.rs`):** a journal with unrecovered work is
+  > never swept while live: it stays in `journal/` until the prompt resolves it, and `e`/`k` move it to
+  > `journal/archive/`. The sweep covers only that archive: on startup, at most once a day (the time in
+  > `journal/archive-sweep`), it removes archives older than 14 days, counted from the archiving (the move sets
+  > the file's modification time), and then keeps the newest 20 per document path (`<base>.<path hash>`; a
+  > second session's `<name>.<pid>.rj` counts with the owner's; unnamed buffers count as one path; a legacy
+  > sidecar by its basename; a name shortened to fit `NAME_MAX` by its shortened stem). Archives are named
+  > `<name>@<unix ms>`, and only archiving writes the `@`, so the sweep owns exactly those names (and the
+  > `<journal name>.<unix ms>` names of the first build) and no archive escapes it. It removes only regular
+  > files, follows no symlink, and does not sweep a symlinked archive directory. The numbers are fixed (no config key).
+  > `:checkhealth` shows the archive's file count, size and last sweep.
 - carry document *content*, so they are treated as sensitive (INV-TRUST-1): excluded from diagnostic bundles by
   default, redaction-preview before any export (D-017), never logged, and never synced off-box without consent.
   A path-redaction option stores only reversible-locally content for high-sensitivity workspaces (Open questions
