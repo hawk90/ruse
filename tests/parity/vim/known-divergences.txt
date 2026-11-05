@@ -8,4 +8,3 @@ sc_edge_empty_dd # the oracle's set_lines({''}) is one real empty line, where dd
 sc_edge_empty_Vd # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lines buffer (#906)
 sc_edge_empty_ex_delete # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lines buffer (#906)
 fold_ex_range_takes_a_closed_fold_whole # an Ex range does not grow to whole closed folds (#819 follow-up)
-vb_C_cr_then_esc # nvim copies the text typed before a <CR> in a block change onto the next line; ruse replicates nothing (pre-existing)

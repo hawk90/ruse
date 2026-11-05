@@ -8738,6 +8738,104 @@ mod visual_op_tests {
         assert_eq!(text(&st), "    a\nb");
     }
 
+    /// Visual-block `>`/`<` from `cursor` over the next `down` lines, `count` levels, at ts=8 sw=4 (#1180).
+    fn block_shift(
+        initial: &str,
+        cursor: usize,
+        down: usize,
+        left: bool,
+        count: u32,
+        et: bool,
+    ) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        st.view.indent.tab_width = 8;
+        st.view.indent.style = if et {
+            crate::editor::IndentStyle::Space
+        } else {
+            crate::editor::IndentStyle::Tab
+        };
+        st.set_cursor(BytePos(cursor));
+        apply_command(&mut st, &visual(BLOCK));
+        for _ in 0..down {
+            apply_command(&mut st, &Command::MoveDown);
+        }
+        apply_command(&mut st, &Command::VisualOp(VisualOp::Shift { left, count }));
+        st
+    }
+
+    /// #1180: the nvim v0.12.6 bytes of `:help v_b_>` / `v_b_<` (the `vb_shift_*` oracle fixtures).
+    #[test]
+    fn block_shift_works_from_the_left_column() {
+        // `w<C-v>j>`: from column 4, the lines before it stay.
+        let st = block_shift("abc def\nghi jkl\nmno", 4, 1, false, 1, true);
+        assert_eq!(text(&st), "abc     def\nghi     jkl\nmno");
+        assert_eq!(st.cursor().0, 4);
+        assert_eq!(st.mode(), Mode::Normal);
+        // The blanks just left of the block join the shifted run: tabs from where it starts under noet.
+        let st = block_shift("ab  cd\nef  gh", 4, 1, false, 1, false);
+        assert_eq!(text(&st), "ab\tcd\nef\tgh");
+        // On a tab: its width counts, then the count's levels.
+        let st = block_shift("a\tb\tc\nd\te\tf", 1, 1, false, 1, true);
+        assert_eq!(text(&st), "a           b\tc\nd           e\tf");
+        // A row the edge cuts a tab on (neither corner sits on it) shifts from the tab's start.
+        let st = block_shift("abcdefgh\na\tb\nabcdefgh", 3, 2, false, 1, false);
+        assert_eq!(text(&st), "abc    defgh\na\t    b\nabc    defgh");
+        // A cut wide character: the shift goes in before it.
+        let st = block_shift("abcdefgh\na中中b\nabcdefgh", 2, 2, false, 1, true);
+        assert_eq!(text(&st), "ab    cdefgh\na    中中b\nab    cdefgh");
+        // A short row and an empty one are left alone.
+        let st = block_shift("abcdef\nab\n\nabcdef", 4, 3, false, 1, true);
+        assert_eq!(text(&st), "abcd    ef\nab\n\nabcd    ef");
+        // `<` removes blanks from the edge only, up to the next text; a count; a tab it splits.
+        let st = block_shift("ab      cd\nef      gh", 3, 1, true, 1, true);
+        assert_eq!(text(&st), "ab  cd\nef  gh");
+        let st = block_shift("ab    cd\nef    gh", 1, 1, true, 1, true);
+        assert_eq!(text(&st), "ab    cd\nef    gh");
+        let st = block_shift("ab\t\tcd\nef\t\tgh", 2, 1, true, 1, true);
+        assert_eq!(text(&st), "ab\t    cd\nef\t    gh");
+        let st = block_shift("abcdefghijklmnop\na\t\tx", 10, 1, true, 3, true);
+        assert_eq!(text(&st), "abcdefghijklmnop\na\tx");
+        assert_eq!(st.cursor().0, 8);
+    }
+
+    /// #1142: a block change broken by `<CR>` copies what the top row grew by into the lines below it by
+    /// number (the new line first), as nvim's `op_change`; `I` that leaves the top row copies nothing.
+    #[test]
+    fn block_change_with_a_newline_copies_the_top_row_growth() {
+        let typed = |op: Command, keys: &str| {
+            let mut cmds = vec![Command::MoveRight, visual(BLOCK), Command::MoveDown, op];
+            for c in keys.chars() {
+                cmds.push(match c {
+                    '\n' => Command::InsertNewline,
+                    c => Command::InsertChar(c),
+                });
+            }
+            cmds.push(Command::EnterNormal);
+            cmds
+        };
+        // `l<C-v>jCx<CR>y<Esc>`: the `x` goes into the `y` line; `ijkl` is not a block row any more.
+        let st = run(
+            "abcd\nefgh\nijkl",
+            &typed(
+                Command::VisualOp(VisualOp::BlockToEol(OpKind::Change)),
+                "x\ny",
+            ),
+        );
+        assert_eq!(text(&st), "ax\nyx\ne\nijkl");
+        assert_eq!(st.cursor().0, 3, "on the `y`, where <Esc> left it");
+        // `c` over two columns: the top row did not grow (its tail moved down), so nothing is copied.
+        let mut cmds = typed(Command::ChangeSelection, "x\ny");
+        cmds.insert(3, Command::MoveRight);
+        let st = run("abcd\nefgh\nijkl", &cmds);
+        assert_eq!(text(&st), "ax\nyd\neh\nijkl");
+        // `I`: the insert left the top row, so nothing is copied.
+        let st = run(
+            "abcd\nefgh\nijkl",
+            &typed(Command::BlockInsert(BlockInsertKind::Insert), "x\ny"),
+        );
+        assert_eq!(text(&st), "ax\nybcd\nefgh\nijkl");
+    }
+
     #[test]
     fn join_covers_the_selected_lines_and_a_single_line_joins_the_next() {
         let st = run(

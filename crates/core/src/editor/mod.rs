@@ -1390,6 +1390,9 @@ struct BlockInsert {
     top_left: usize,
     /// Byte offset of the top block row's line start — the stable anchor to walk down from at `<Esc>`.
     top_line_start: usize,
+    /// The top row's length in bytes when Insert began (after a change's delete; nvim's `pre_textlen`):
+    /// what a block change measures the text typed on it against when a `<CR>` ended that row (#1142).
+    top_len: usize,
     /// Virtual (screen) column at which each lower row receives the typed text (left edge for `I`/`c`,
     /// right edge+1 for `A`).
     target_col: usize,
@@ -4254,7 +4257,7 @@ fn refuse_unwritable_register(st: &EditorState, cmd: &Command, p: &Plan) -> Opti
         cursor: start.min(st.doc.bytes().len()),
         mode,
         is_edit: false,
-        effects: vec![Effect::Beep],
+        effects: vec![Effect::Beep, Effect::RegisterRefused],
         set_register: None,
         set_anchor: None,
         set_mark: None,

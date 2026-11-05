@@ -9,6 +9,8 @@
 //!
 //! Differences from the binary, all deliberate:
 //! - The buffer has no file. `:w` declines (`E32`); read the result with [`Headless::text`].
+//!   [`Headless::vim_named`] names one, for its file type (highlighting, tree-aware indent), but never
+//!   reads or writes it.
 //! - The crash-rescue store and the recovery journal are not touched (they are process-global).
 //! - The system clipboard is not installed; `"+`/`"*` stay a no-op.
 //! - Language servers never start: the workspace is untrusted.
@@ -56,6 +58,14 @@ impl Headless {
         Headless::new(Profile::Vim, text)
     }
 
+    /// A Vim-profile session over `text` in a buffer named `file` (`fixture.py`): the file's type picks the
+    /// highlighter and the tree-aware indent, as for an opened file. The file is not read, and the session
+    /// writes it only on an explicit `:w`.
+    #[must_use]
+    pub fn vim_named(text: &str, file: &str) -> Headless {
+        Headless::build(Profile::Vim, text, 80, 24, Some(file.into()))
+    }
+
     /// An Emacs-profile session over `text`.
     #[must_use]
     pub fn emacs(text: &str) -> Headless {
@@ -65,13 +75,23 @@ impl Headless {
     /// A session on a `cols`x`rows` terminal (the status line takes the last row).
     #[must_use]
     pub fn with_size(profile: Profile, text: &str, cols: u16, rows: u16) -> Headless {
+        Headless::build(profile, text, cols, rows, None)
+    }
+
+    fn build(
+        profile: Profile,
+        text: &str,
+        cols: u16,
+        rows: u16,
+        path: Option<std::path::PathBuf>,
+    ) -> Headless {
         let profile = match profile {
             Profile::Vim => "vim",
             Profile::Emacs => "emacs",
             Profile::Native => "native",
         };
         let mut s = Session::new(SessionInit {
-            path: None,
+            path,
             fmt: crate::persist::encoding::FileFormat::default(),
             initial: text.as_bytes().to_vec(),
             status: String::new(),
@@ -146,6 +166,11 @@ impl Headless {
     /// Run the frame work the event loop runs between keys (the render itself is skipped).
     fn settle(s: &mut Session, cols: u16, rows: u16) -> FrameCtx {
         let frame = s.pre_frame(cols, rows);
+        // The paint reparses the focused buffer's syntax tree, which the tree-aware indent reads (#1142);
+        // nothing is drawn, so the whole buffer stands for the viewport.
+        if let Some(h) = s.highlighters.get_mut(&s.ws.focused_buffer()) {
+            h.spans(frame.revision, &frame.snapshot, 0..frame.snapshot.len());
+        }
         s.post_render(&frame);
         frame
     }

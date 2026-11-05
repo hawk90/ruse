@@ -48,3 +48,22 @@ fn a_change_saved_before_it_fails_stays_the_change() {
     // `CTRL-A` without a number is saved first too.
     assert_eq!(after("jx<C-a>."), "abcdef abc\nh ij\n");
 }
+
+#[test]
+fn a_refused_register_with_a_failed_motion_keeps_the_earlier_change() {
+    // `"/dfz` with no `z`: the motion fails before the operator could be refused, so `.` repeats the `x`
+    // (#1184), where `"/dw` above repeats itself.
+    assert_eq!(after("jx\"/dfz."), "abcdef abc\n ij\n");
+    assert_eq!(after("jx\":dfz."), "abcdef abc\n ij\n");
+}
+
+#[test]
+fn gn_with_no_previous_pattern_fails_with_e35() {
+    // nvim v0.12.6: E35, no change, and `.` keeps the earlier change (#1184).
+    for keys in ["gn", "dgn", "jxdgn", "jxcgnZ<Esc>"] {
+        let mut h = Headless::vim(TEXT);
+        h.keys(keys);
+        assert_eq!(h.emsg(), "E35", "{keys}");
+    }
+    assert_eq!(after("jxdgn."), "abcdef abc\n ij\n");
+}

@@ -42340,6 +42340,214 @@
       }
     },
     {
+      "name": "dot_fail_refused_register_dfz",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "x\"/dfz.",
+      "expect": {
+        "text": [
+          "cdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "dot_fail_readonly_register_dfz",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "x\":dfz.",
+      "expect": {
+        "text": [
+          "cdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "dot_fail_refused_register_d_search",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "x\"/d/zzz<CR>.",
+      "expect": {
+        "text": [
+          "cdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_gn_no_pattern",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "gn",
+      "expect": {
+        "text": [
+          "abcdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_dgn_no_pattern",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "dgn",
+      "expect": {
+        "text": [
+          "abcdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "dot_fail_dgn_no_pattern",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "xdgn.",
+      "expect": {
+        "text": [
+          "cdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "dot_fail_register_dgn_no_pattern",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "x\"adgn.",
+      "expect": {
+        "text": [
+          "cdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "dot_fail_cgn_no_pattern",
+      "lines": [
+        "abcdef abc"
+      ],
+      "keys": "xcgnZ<Esc>.",
+      "expect": {
+        "text": [
+          "cdef abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
       "name": "dot_kept_x_empty_line",
       "lines": [
         "",
@@ -97767,6 +97975,2056 @@
         ],
         "reg_unnamed": {
           "text": "first\nword00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>",
+      "expect": {
+        "text": [
+          "abc     def",
+          "ghi     jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_merges_the_blanks_left",
+      "lines": [
+        "ab  cd",
+        "ef  gh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>4l<C-v>j>",
+      "expect": {
+        "text": [
+          "ab      cd",
+          "ef      gh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_merges_the_blanks_left_noet",
+      "lines": [
+        "ab  cd",
+        "ef  gh"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>4l<C-v>j>",
+      "expect": {
+        "text": [
+          "ab\tcd",
+          "ef\tgh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_from_a_blank",
+      "lines": [
+        "ab  cd",
+        "ef  gh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j>",
+      "expect": {
+        "text": [
+          "ab      cd",
+          "ef      gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_count",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j3>",
+      "expect": {
+        "text": [
+          "abc             def",
+          "ghi             jkl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_on_a_tab",
+      "lines": [
+        "a\tb\tc",
+        "d\te\tf"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>l<C-v>j>",
+      "expect": {
+        "text": [
+          "a           b\tc",
+          "d           e\tf"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_on_a_tab_noet",
+      "lines": [
+        "a\tb\tc",
+        "d\te\tf"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>l<C-v>j>",
+      "expect": {
+        "text": [
+          "a\t    b\tc",
+          "d\t    e\tf"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_cuts_a_tab",
+      "lines": [
+        "abcdefgh",
+        "a\tb",
+        "abcdefgh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3l<C-v>jj>",
+      "expect": {
+        "text": [
+          "abc    defgh",
+          "a           b",
+          "abc    defgh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_cuts_a_tab_noet",
+      "lines": [
+        "abcdefgh",
+        "a\tb",
+        "abcdefgh"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>3l<C-v>jj>",
+      "expect": {
+        "text": [
+          "abc    defgh",
+          "a\t    b",
+          "abc    defgh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_cuts_a_wide_char",
+      "lines": [
+        "abcdefgh",
+        "a中中b",
+        "abcdefgh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>2l<C-v>jj>",
+      "expect": {
+        "text": [
+          "ab    cdefgh",
+          "a    中中b",
+          "ab    cdefgh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_after_a_tab",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij k\tl"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>j$<C-v>>",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij k            l"
+        ],
+        "cursor": [
+          2,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_blank_before_a_tab",
+      "lines": [
+        "ab\tcd"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3|<C-v>>",
+      "expect": {
+        "text": [
+          "ab          cd"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_skips_a_short_line",
+      "lines": [
+        "abcdef",
+        "ab",
+        "abcdef"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>4l<C-v>jj>",
+      "expect": {
+        "text": [
+          "abcd    ef",
+          "ab",
+          "abcd    ef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_at_a_line_end",
+      "lines": [
+        "abcd",
+        "abcdef"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j>",
+      "expect": {
+        "text": [
+          "abc    d",
+          "abc    def"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_skips_an_empty_line",
+      "lines": [
+        "abcd",
+        "",
+        "abcd"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>l<C-v>jj>",
+      "expect": {
+        "text": [
+          "a    bcd",
+          "",
+          "a    bcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_blank_line",
+      "lines": [
+        "ab",
+        "    ",
+        "ab"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>l<C-v>jj>",
+      "expect": {
+        "text": [
+          "a    b",
+          "        ",
+          "a    b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_dot",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr",
+        "stu vwx"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>jj.",
+      "expect": {
+        "text": [
+          "abc     def",
+          "ghi     jkl",
+          "mno     pqr",
+          "stu     vwx"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_count_dot",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j2>.",
+      "expect": {
+        "text": [
+          "abc                 def",
+          "ghi                 jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_undo",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>u",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_right_from_below",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jw<C-v>k>",
+      "expect": {
+        "text": [
+          "abc     def",
+          "ghi     jkl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left",
+      "lines": [
+        "ab      cd",
+        "ef      gh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<",
+      "expect": {
+        "text": [
+          "ab  cd",
+          "ef  gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_at_text",
+      "lines": [
+        "ab    cd",
+        "ef    gh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>l<C-v>j<",
+      "expect": {
+        "text": [
+          "ab    cd",
+          "ef    gh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_short_run",
+      "lines": [
+        "ab  cd",
+        "ef gh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_count",
+      "lines": [
+        "ab          cd",
+        "ef          gh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j2<",
+      "expect": {
+        "text": [
+          "ab  cd",
+          "ef  gh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_tabs",
+      "lines": [
+        "ab\t\tcd",
+        "ef\t\tgh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<",
+      "expect": {
+        "text": [
+          "ab\t    cd",
+          "ef\t    gh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_in_a_tab",
+      "lines": [
+        "abcdefghijklmnop",
+        "a\t\tx"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>10l<C-v>j<",
+      "expect": {
+        "text": [
+          "abcdefghijklmnop",
+          "a\t    x"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_in_a_tab_count",
+      "lines": [
+        "abcdefghijklmnop",
+        "a\t\tx"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>10l<C-v>j3<",
+      "expect": {
+        "text": [
+          "abcdefghijklmnop",
+          "a\tx"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_cuts_a_tab",
+      "lines": [
+        "abcdefghijklmnop",
+        "a\t\tx",
+        "abcdefghijklmnop"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>10l<C-v>jj<",
+      "expect": {
+        "text": [
+          "abcdefghijklmnop",
+          "a\t    x",
+          "abcdefghijklmnop"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_cuts_a_tab_far",
+      "lines": [
+        "abcdefghijklmnop",
+        "a\t\tx",
+        "abcdefghijklmnop"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>10l<C-v>jj4<",
+      "expect": {
+        "text": [
+          "abcdefghijklmnop",
+          "a\t  x",
+          "abcdefghijklmnop"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_cuts_a_wide_char",
+      "lines": [
+        "abcdefgh",
+        "a中  b",
+        "abcdefgh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>2l<C-v>jj<",
+      "expect": {
+        "text": [
+          "abcdefgh",
+          "a b",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_blank_tail",
+      "lines": [
+        "ab      ",
+        "ab      "
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<",
+      "expect": {
+        "text": [
+          "ab  ",
+          "ab  "
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_shift_left_dot",
+      "lines": [
+        "ab          cd",
+        "ef          gh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<.",
+      "expect": {
+        "text": [
+          "ab  cd",
+          "ef  gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_C_cr_mid",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jCx<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "ax",
+          "yx",
+          "e",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bcd\nfgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_C_cr_three_rows",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "<C-v>jjCx<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "x",
+          "xy",
+          "x",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\ncd\nef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_C_cr_twice",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "<C-v>jjCx<CR>y<CR>z<Esc>",
+      "expect": {
+        "text": [
+          "x",
+          "xy",
+          "xz",
+          "",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\ncd\nef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_C_cr_first",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jC<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "a",
+          "y",
+          "e",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bcd\nfgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_C_cr_undo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jCx<CR>y<Esc>u",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcd\nfgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_c_cr_moves_the_tail",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jlcx<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "ax",
+          "yd",
+          "eh",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_c_cr_longer_than_the_tail",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jlcxyz<CR>w<Esc>",
+      "expect": {
+        "text": [
+          "axyz",
+          "wxyd",
+          "eh",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_I_cr_copies_nothing",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jIx<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "ax",
+          "ybcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_A_cr_copies_nothing",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jAx<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "abx",
+          "ycd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_A_dollar_cr_copies_nothing",
+      "lines": [
+        "abcd",
+        "ef",
+        "ijkl"
+      ],
+      "keys": "l<C-v>j$Ax<CR>y<Esc>",
+      "expect": {
+        "text": [
+          "abcdx",
+          "y",
+          "ef",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vb_I_cr_dot",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop"
+      ],
+      "keys": "l<C-v>jIx<CR>y<Esc>3G.",
+      "expect": {
+        "text": [
+          "ax",
+          "ybcd",
+          "x",
+          "yefgh",
+          "ijkl",
+          "mnop"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "eq_cursor_keeps_end_of_line",
+      "lines": [
+        "{",
+        "      xyz abc",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>j$==",
+      "expect": {
+        "text": [
+          "{",
+          "    xyz abc",
+          "}"
+        ],
+        "cursor": [
+          2,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "eq_cursor_keeps_column",
+      "lines": [
+        "{",
+        "      xyz abc",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jfa==",
+      "expect": {
+        "text": [
+          "{",
+          "    xyz abc",
+          "}"
+        ],
+        "cursor": [
+          2,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "eq_cursor_keeps_column_zero",
+      "lines": [
+        "{",
+        "      xyz abc",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>j0==",
+      "expect": {
+        "text": [
+          "{",
+          "    xyz abc",
+          "}"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "eq_cursor_visual",
+      "lines": [
+        "{",
+        "      xyz abc;",
+        "  q;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jfaVj=",
+      "expect": {
+        "text": [
+          "{",
+          "    xyz abc;",
+          "    q;",
+          "}"
+        ],
+        "cursor": [
+          2,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_cursor_keeps_end_of_line",
+      "lines": [
+        "if a:",
+        "        xyz = 1"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>j$==",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    xyz = 1"
+        ],
+        "cursor": [
+          2,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_keeps_if_else",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:",
+          "    y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_keeps_elif_else",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "elif b:",
+        "    y = 2",
+        "else:",
+        "    w = 0",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "elif b:",
+          "    y = 2",
+          "else:",
+          "    w = 0",
+          "z = 3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_keeps_try_clauses",
+      "lines": [
+        "try:",
+        "    x = 1",
+        "except E:",
+        "    y = 2",
+        "else:",
+        "    v = 1",
+        "finally:",
+        "    w = 3",
+        "z = 4"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "try:",
+          "    x = 1",
+          "except E:",
+          "    y = 2",
+          "else:",
+          "    v = 1",
+          "finally:",
+          "    w = 3",
+          "z = 4"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_keeps_for_else",
+      "lines": [
+        "for i in r:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "for i in r:",
+          "    x = 1",
+          "else:",
+          "    y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_keeps_while_else",
+      "lines": [
+        "while a:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "while a:",
+          "    x = 1",
+          "else:",
+          "    y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_keeps_nested_else",
+      "lines": [
+        "def f():",
+        "    if a:",
+        "        x = 1",
+        "    else:",
+        "        y = 2",
+        "    return 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    if a:",
+          "        x = 1",
+          "    else:",
+          "        y = 2",
+          "    return 3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_fixes_deep_bodies",
+      "lines": [
+        "if a:",
+        "        x = 1",
+        "else:",
+        "            y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:",
+          "    y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_eq_on_the_else_line",
+      "lines": [
+        "def f():",
+        "    if a:",
+        "        x = 1",
+        "    else:",
+        "        y = 2",
+        "    return 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3j==",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    if a:",
+          "        x = 1",
+          "    else:",
+          "        y = 2",
+          "    return 3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_on_else",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjoq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:",
+          "    q",
+          "    y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_on_elif",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "elif b:",
+        "    y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjoq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "elif b:",
+          "    q",
+          "    y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_in_else_body",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "    w = 3",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:",
+          "    y = 2",
+          "    q",
+          "    w = 3",
+          "z = 3"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_end_of_else_body",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:",
+          "    y = 2",
+          "    q",
+          "z = 3"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_O_above_else",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjOq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "q",
+          "else:",
+          "    y = 2",
+          "z = 3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_in_except_body",
+      "lines": [
+        "try:",
+        "    x = 1",
+        "except E:",
+        "    y = 2",
+        "    u = 1",
+        "finally:",
+        "    w = 3",
+        "z = 4"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "try:",
+          "    x = 1",
+          "except E:",
+          "    y = 2",
+          "    q",
+          "    u = 1",
+          "finally:",
+          "    w = 3",
+          "z = 4"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_in_finally_body",
+      "lines": [
+        "try:",
+        "    x = 1",
+        "finally:",
+        "    w = 3",
+        "    u = 1",
+        "z = 4"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "try:",
+          "    x = 1",
+          "finally:",
+          "    w = 3",
+          "    q",
+          "    u = 1",
+          "z = 4"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_o_in_nested_else_body",
+      "lines": [
+        "def f():",
+        "    if a:",
+        "        x = 1",
+        "    else:",
+        "        y = 2",
+        "        v = 0",
+        "    return 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>4joq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "def f():",
+          "    if a:",
+          "        x = 1",
+          "    else:",
+          "        y = 2",
+          "        q",
+          "        v = 0",
+          "    return 3"
+        ],
+        "cursor": [
+          6,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "py_cc_in_else_body",
+      "lines": [
+        "if a:",
+        "    x = 1",
+        "else:",
+        "    y = 2",
+        "    w = 3",
+        "z = 3"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3jccq<Esc>",
+      "file": "fixture.py",
+      "expect": {
+        "text": [
+          "if a:",
+          "    x = 1",
+          "else:",
+          "    q",
+          "    w = 3",
+          "z = 3"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "    y = 2\n",
           "type": "linewise"
         },
         "reg0": {

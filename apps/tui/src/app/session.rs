@@ -528,7 +528,7 @@ fn resolve_tree_aware(
             Some(tree) => {
                 let cur = ws.focused().view.cursor().0;
                 let row = line_idx.line_of(cur);
-                let (kind, at, new_row) = match cmd {
+                let (kind, level) = match cmd {
                     Command::OpenBelow => {
                         let next = line_idx.nth_line_start(row + 1);
                         let le = if next > 0 && snapshot.get(next - 1) == Some(&b'\n') {
@@ -536,12 +536,16 @@ fn resolve_tree_aware(
                         } else {
                             snapshot.len()
                         };
-                        (OpenKind::Below, le, row + 1)
+                        let ls = line_idx.nth_line_start(row);
+                        let level = indent::suggest_open_below(tree, snapshot, ls, le, row + 1);
+                        (OpenKind::Below, level)
                     }
-                    Command::OpenAbove => (OpenKind::Above, line_idx.nth_line_start(row), row),
-                    _ => (OpenKind::Split, cur, row + 1),
+                    Command::OpenAbove => (
+                        OpenKind::Above,
+                        indent::suggest_indent(tree, line_idx.nth_line_start(row), row),
+                    ),
+                    _ => (OpenKind::Split, indent::suggest_indent(tree, cur, row + 1)),
                 };
-                let level = indent::suggest_indent(tree, at, new_row);
                 Command::OpenLineIndent { kind, level }
             }
             None => cmd,
@@ -2720,10 +2724,13 @@ impl Session {
             // macro and `:normal` abort read after the key.
             Feed::Cmd(cmd) => {
                 let beeped_before = self.ws.take_beep();
+                self.ws.take_refused();
                 self.run_resolved_cmd(cmd.clone(), frame);
                 let beeped = self.ws.take_beep();
+                // A refused register beeps after nvim saved the redo; a failed motion before (#1184).
+                let refused = self.ws.take_refused();
                 if beeped {
-                    self.engine.change_failed(&cmd);
+                    self.engine.change_failed(&cmd, refused);
                 }
                 if beeped_before || beeped {
                     self.ws.beep();
@@ -5136,9 +5143,13 @@ fn note_word_search(
 
 const E35: &str = "E35: No previous regular expression";
 
-/// Whether `cmd` is a search the engine issued with no previous pattern to repeat (an empty one, #1173).
+/// Whether `cmd` is a search the engine issued with no previous pattern to repeat (an empty one, #1173),
+/// or a `gn`/`gN` with none to match (#1184).
 fn no_previous_pattern(cmd: &Command) -> bool {
-    matches!(cmd, Command::Search { pattern, .. } if pattern.is_empty())
+    matches!(
+        cmd,
+        Command::Search { pattern, .. } | Command::SearchObject { pattern, .. } if pattern.is_empty()
+    )
 }
 
 /// Whether `cmd` is a search whose pattern matches nowhere in the focused buffer; if so the status gets

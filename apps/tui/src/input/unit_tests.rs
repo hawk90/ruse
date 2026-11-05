@@ -3878,13 +3878,13 @@ mod dot_repeat_tests {
         let Feed::Cmd(dfz) = e.feed(k('z'), Mode::Normal) else {
             panic!("dfz is one command");
         };
-        e.change_failed(&dfz);
+        e.change_failed(&dfz, false);
         assert_eq!(
             e.feed(k('.'), Mode::Normal),
             Feed::Replay(vec![Command::DeleteUnder(1)])
         );
         // Only the command just recorded is forgotten: a second report changes nothing.
-        e.change_failed(&dfz);
+        e.change_failed(&dfz, false);
         assert_eq!(
             e.feed(k('.'), Mode::Normal),
             Feed::Replay(vec![Command::DeleteUnder(1)])
@@ -3899,7 +3899,7 @@ mod dot_repeat_tests {
         let Feed::Cmd(add) = e.feed(ctrl('a'), Mode::Normal) else {
             panic!("CTRL-A is one command");
         };
-        e.change_failed(&add);
+        e.change_failed(&add, false);
         assert_eq!(e.feed(k('.'), Mode::Normal), Feed::Replay(vec![add]));
         for key in [k('"'), k('/'), k('d')] {
             e.feed(key, Mode::Normal);
@@ -3907,7 +3907,7 @@ mod dot_repeat_tests {
         let Feed::Cmd(dw) = e.feed(k('w'), Mode::Normal) else {
             panic!("dw is one command");
         };
-        e.change_failed(&dw);
+        e.change_failed(&dw, true);
         assert_eq!(
             e.feed(k('.'), Mode::Normal),
             Feed::Replay(vec![Command::SetRegister(Some('/')), dw])
@@ -4385,9 +4385,17 @@ mod search_tests {
     #[test]
     fn gn_and_gn_backward_emit_the_search_object_with_the_last_pattern() {
         let mut e = InputEngine::new();
-        // Before any search, `gn` finds no pattern and aborts cleanly.
+        // Before any search, `gn` carries an empty pattern, which the core fails (E35, #1184).
         assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
-        assert_eq!(e.feed(k('n'), Mode::Normal), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Cmd(Command::SearchObject {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: String::new(),
+                backward: false,
+            })
+        );
         // After a search, bare `gn` = the Move (Visual-select) object; `gN` sets backward.
         e.set_last_search("foo".into(), true);
         assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);

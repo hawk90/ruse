@@ -81,10 +81,17 @@ fn plan_block_insert(
         (at, if append { top.ds } else { at })
     };
 
+    // The top row's length once a change has deleted its part of the block, before anything is typed.
+    let top_len = if change {
+        (top.le - top.ls) - (top.de - top.ds) + top.out_l + top.out_r
+    } else {
+        top.le - top.ls
+    };
     let session = BlockInsert {
         insert_start,
         top_left,
         top_line_start: top_ls,
+        top_len,
         target_col,
         rows_below,
         append,
@@ -231,6 +238,16 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
             block_op(b, &block_geom(b, anchor, cur, ts, true), k, hint)
         }
         VisualOp::BlockToEol(k) => plan_selection_span(st, b, anchor, cur, k, true, hint),
+        VisualOp::Shift { left, count } if kind == SelectKind::Blockwise => {
+            normal(plan_block_shift(
+                st,
+                b,
+                &block_geom(b, anchor, cur, ts, false),
+                left,
+                count,
+                hint,
+            ))
+        }
         VisualOp::Shift { left, count } => normal(plan_shift_times(
             st,
             line_start(b, lo),
@@ -1159,8 +1176,12 @@ fn plan_search_object(
     backward: bool,
     hint: GroupHint,
 ) -> Plan {
-    let Some((s, e)) = search_object_match(st, b, cur, count, pattern, backward) else {
-        // No match: nvim's `current_search` fails (`clearopbeep`), so `dgn` is no change for `.` (#1179).
+    let found = (!pattern.is_empty())
+        .then(|| search_object_match(st, b, cur, count, pattern, backward))
+        .flatten();
+    let Some((s, e)) = found else {
+        // No match, or no previous pattern (empty, #1184): nvim's `current_search` fails (`clearopbeep`),
+        // so `dgn` is no change for `.` (#1179).
         return beep(cur, st.view.mode);
     };
     match op {
@@ -4610,7 +4631,7 @@ fn plan_set_indents(
                 .rebuilt(&b[ls..fnb], level * st.view.indent.shift_width())
         };
         if li == first {
-            first_cursor = ls + want.len();
+            first_cursor = ls + reindented_cursor(st, &want, &b[fnb..le]);
         }
         if b[ls..fnb] != want[..] {
             edits.push(Edit::replace(BytePos(ls), fnb - ls, want));
@@ -4886,7 +4907,7 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
             st.view.indent.rebuilt(&b[ls..fnb], cols)
         };
         if li == first_line {
-            first_cursor = ls + want.len();
+            first_cursor = ls + reindented_cursor(st, &want, &b[fnb..le]);
         }
         if b[ls..fnb] != want[..] {
             edits.push(Edit::replace(BytePos(ls), fnb - ls, want));
@@ -4908,6 +4929,19 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
         set_anchor: None,
         set_mark: None,
     }
+}
+
+/// Where `=` leaves the cursor on its first line, reindented to `indent` before `text` (the line from its
+/// first non-blank): nvim's `op_reindent` ends with `beginline(BL_SOL | BL_FIX)`, which under
+/// 'nostartofline' is `coladvance(curswant)`, as for `>>` (#1176): `j$==` stays at the end, `0==` at the
+/// start. A blank line rests on its start.
+fn reindented_cursor(st: &EditorState, indent: &[u8], text: &[u8]) -> usize {
+    if text.is_empty() {
+        return 0;
+    }
+    let mut line = indent.to_vec();
+    line.extend_from_slice(text);
+    line_col_cursor(&line, st.view.curswant, st.view.indent.tab_width)
 }
 
 /// The byte offset in `line` (one line's bytes, no newline) of a Normal-mode cursor at the wanted column
@@ -5065,6 +5099,123 @@ fn plan_shift_times(
     }
 }
 
+/// Visual-block `>`/`<` (`:help v_b_>`, `v_b_<`, #1180): each row is shifted from the block's LEFT column
+/// by `count` shiftwidths, as nvim's `shift_block`; the text left of the block and the block's right edge
+/// play no part. A row that ends before the block, or an empty one, is left alone.
+///
+/// - `>`: the white space just left of the block (a `<Tab>` the left edge cuts included) and the white
+///   space from the left edge up to the first non-blank are rebuilt as one run, `count × sw` columns wider,
+///   from where that run starts: tabs and spaces under `noexpandtab`, spaces under `expandtab`.
+/// - `<`: the white space from the left edge up to the first non-blank shrinks by `count × sw` columns, or
+///   to nothing; what of it still fits stays as it was, and a `<Tab>` that no longer fits becomes spaces.
+///
+/// The cursor goes to the top row at the byte column the block's top-left character had (nvim's
+/// `block_col`).
+fn plan_block_shift(
+    st: &EditorState,
+    b: &[u8],
+    block: &Block,
+    left: bool,
+    count: u32,
+    hint: GroupHint,
+) -> Plan {
+    let ind = st.view.indent;
+    let ts = ind.tab_width.max(1);
+    let total = ind.shift_width().saturating_mul(count.max(1) as usize);
+    let lo = block.lo;
+    let is_white = |c: u8| c == b' ' || c == b'\t';
+    let mut edits: Vec<Edit> = Vec::new();
+    for row in &block.rows {
+        let (ls, le) = (row.ls, row.le);
+        if ls == le || row.short(lo) {
+            continue;
+        }
+        // The characters that start before the left edge (a straddler included) and, among them, where the
+        // run of white space they end with starts (`ws`, at virtual column `ws_v`).
+        let (mut i, mut v) = (ls, 0usize);
+        let (mut ws, mut ws_v) = (ls, 0usize);
+        let (mut prev, mut prev_v) = (ls, 0usize);
+        while i < le && v < lo {
+            let (j, w) = range::cluster_cells(b, i, le, v, ts);
+            if !is_white(b[i]) {
+                (ws, ws_v) = (j, v + w);
+            }
+            (prev, prev_v) = (i, v);
+            i = j;
+            v += w;
+        }
+        // `i` (at `v`): the first character at or right of the edge, past a straddler. `nw` (at `nw_v`): the
+        // first non-blank from there.
+        let (mut nw, mut nw_v) = (i, v);
+        while nw < le && is_white(b[nw]) {
+            let (j, w) = range::cluster_cells(b, nw, le, nw_v, ts);
+            nw = j;
+            nw_v += w;
+        }
+        // nvim's `tabstop_fromto`: the white space filling virtual columns `from..to`, tabs first under
+        // `noexpandtab`.
+        let blanks = |from: usize, to: usize| {
+            let mut out = Vec::new();
+            let mut c = from;
+            if ind.style == IndentStyle::Tab {
+                while (c / ts + 1) * ts <= to {
+                    out.push(b'\t');
+                    c = (c / ts + 1) * ts;
+                }
+            }
+            out.extend(std::iter::repeat_n(b' ', to - c));
+            out
+        };
+        let (from, to, fill) = if left {
+            let dest = nw_v - total.min(nw_v.saturating_sub(lo));
+            // Keep what stands from the edge (from a straddler the edge cuts) while it fits before `dest`.
+            let (mut k, mut kv) = if v > lo { (prev, prev_v) } else { (i, v) };
+            while k < nw && kv < dest {
+                let (j, w) = range::cluster_cells(b, k, le, kv, ts);
+                if kv + w > dest {
+                    break;
+                }
+                k = j;
+                kv += w;
+            }
+            (k, nw, vec![b' '; dest - kv])
+        } else if v > lo && b[prev] != b'\t' {
+            // The edge cuts a wide character: the shift goes in before it, its tabs laid out as from
+            // column 0 (nvim's `ws_vcol = 0`).
+            (prev, prev, blanks(0, total))
+        } else {
+            (ws, nw, blanks(ws_v, nw_v + total))
+        };
+        if b[from..to] != fill[..] {
+            edits.push(Edit::replace(BytePos(from), to - from, fill));
+        }
+    }
+    // The top row's byte column at the edge, kept on the shifted line (clamped onto it).
+    let top = block.rows[0];
+    let col = range::at_vcol(b, top.ls, lo, ts) - top.ls;
+    let delta: isize = edits
+        .iter()
+        .take_while(|e| e.pos.0 < top.le)
+        .map(|e| e.ins.len() as isize - e.del as isize)
+        .sum();
+    let new_len = (top.le - top.ls).saturating_add_signed(delta);
+    let cursor = top.ls + col.min(new_len.saturating_sub(1));
+    if edits.is_empty() {
+        return nop(cursor, st.mode());
+    }
+    let edits = EditList::new(edits).expect("one edit per block row, top to bottom: disjoint");
+    Plan {
+        action: Action::Txn { edits, hint },
+        cursor,
+        mode: st.mode(),
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+        set_mark: None,
+    }
+}
+
 /// Blockwise (`CTRL-V`) yank/delete/change over the rectangle whose corners are the byte offsets `c1` and
 /// `c2` (a Visual-block selection's anchor+cursor, or an operator's cursor+motion-target — e.g.
 /// `c<C-v>{motion}`). Yank and Delete capture the per-row slices into a blockwise [`Register`]; the cursor
@@ -5144,6 +5295,7 @@ fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> Plan {
                 insert_start: top_left,
                 top_left,
                 top_line_start: top.ls,
+                top_len: (top.le - top.ls) - (top.de - top.ds) + top.out_l + top.out_r,
                 target_col: block.lo,
                 rows_below: block.rows.len().saturating_sub(1),
                 append: false,
@@ -5227,7 +5379,11 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
     // replicated, as Vim's `op_insert` gives up when the cursor's line changed, and the cursor steps left
     // as a plain `<Esc>` does. `insert_start` and `top_left` no longer point into that line.
     let cur_ls = line_start(b, cur);
-    if cur_ls != session.top_line_start {
+    let tls = session.top_line_start;
+    if session.change && cur_ls > tls && line_start(b, tls) == tls {
+        return block_change_split(b, cur, &session, hint, ts);
+    }
+    if cur_ls != tls {
         return nop(motion::prev_boundary(b, cur).max(cur_ls));
     }
     // The cursor rests at the block's top-left when the session ends — for `I`/`A`, and for a `c` where the
@@ -5283,6 +5439,72 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
     Plan {
         action: Action::Txn { edits: list, hint },
         cursor: rest_cursor,
+        mode: Mode::Normal,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+        set_mark: None,
+    }
+}
+
+/// A block change (`c`/`C`) whose Insert broke the top row with a `<CR>` (#1142), as nvim's `op_change`:
+/// the text the top row GREW by (its length now less its length when Insert began), taken from the insert
+/// column, goes into the lines BELOW the top row by line number, the rows the block had: the lines the
+/// `<CR>` opened come first, so `x<CR>y` over two rows writes the `x` into the `y` line too. A line that
+/// ends before the block's left column is skipped. The cursor stays where `<Esc>` leaves it, at its byte
+/// column.
+fn block_change_split(
+    b: &[u8],
+    cur: usize,
+    session: &BlockInsert,
+    hint: GroupHint,
+    ts: usize,
+) -> Plan {
+    let cur_ls = line_start(b, cur);
+    let rest = motion::prev_boundary(b, cur).max(cur_ls);
+    let tls = session.top_line_start;
+    let tle = line_end(b, tls);
+    let at = session.insert_start.clamp(tls, tle);
+    let grew = (tle - tls).saturating_sub(session.top_len);
+    let mut end = (at + grew).min(tle);
+    // nvim copies bytes; a character the cut would split is left out.
+    while end > at && end < tle && (b[end] & 0xC0) == 0x80 {
+        end -= 1;
+    }
+    if end <= at {
+        return nop(rest, Mode::Normal);
+    }
+    let text = &b[at..end];
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut rs = tls;
+    for _ in 0..session.rows_below {
+        let le = line_end(b, rs);
+        if le >= b.len() {
+            break;
+        }
+        rs = le + 1;
+        if line_cells(b, rs, ts) < session.target_col {
+            continue;
+        }
+        edits.push(Edit::insert(
+            BytePos(range::want_col(b, rs, session.target_col, ts)),
+            text.to_vec(),
+        ));
+    }
+    if edits.is_empty() {
+        return nop(rest, Mode::Normal);
+    }
+    // The lines above the cursor's grew; its own line keeps the cursor's byte column.
+    let shift: usize = edits
+        .iter()
+        .filter(|e| e.pos.0 < cur_ls)
+        .map(|e| e.ins.len())
+        .sum();
+    let list = EditList::new(edits).expect("one insert per line, top to bottom: disjoint");
+    Plan {
+        action: Action::Txn { edits: list, hint },
+        cursor: rest + shift,
         mode: Mode::Normal,
         is_edit: true,
         effects: Vec::new(),
