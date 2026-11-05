@@ -654,7 +654,8 @@ features:
     # #938 (RFC-0023 slice 4, second part; persist/disk.rs, tests/pty_disk_changed.rs): `[disk changed]`
     # when the file differs from what ruse read or saved (stat, confirmed by a content hash), checked on
     # the 4000 ms idle timer, after a shell command, on `:checkt[ime]` and before a save; W11/W12 once
-    # per change (no reload offer); a save without `!` into a changed file is refused.
+    # per change (no reload offer); a save without `!` into a changed file is refused. #1221: a deleted
+    # file gives nvim's E211 once (no flag), and `:w >> %` is ruse's own write, not a disk change.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.

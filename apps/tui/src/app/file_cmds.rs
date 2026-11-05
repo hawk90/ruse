@@ -195,6 +195,20 @@ pub(crate) fn adopt_file(
     attach_file(files, highlighters, id, PathBuf::from(name), fmt);
 }
 
+/// Whether a `:w`-family file argument names the buffer `id`'s own file `own`: no argument, the name it is
+/// open under, or another spelling of the same file (`:w ./f.txt`).
+fn names_own(files: &Files, id: DocumentId, name: Option<&str>, own: Option<&Path>) -> bool {
+    let Some(own) = own else {
+        return false;
+    };
+    let Some(n) = name else {
+        return true;
+    };
+    let canon = |p: &Path| fs::canonicalize(p).ok();
+    buffer_for_path(files, Path::new(n)) == Some(id)
+        || canon(Path::new(n)).is_some_and(|c| Some(c) == canon(own))
+}
+
 /// Append `bytes` to the existing regular file `path` and sync it (`:w >>`). A missing file is an error, as
 /// in nvim (`E212`), and so is a FIFO or device.
 fn append_to(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -254,29 +268,38 @@ pub(crate) fn ex_write(
                 }
             };
             let (source, disk) = encode(&text, fmt, fixeol);
+            // An append to the buffer's own file is ruse's own write, not a change on disk (#1221).
+            let before = names_own(
+                files,
+                id,
+                name.as_deref(),
+                own.as_ref().map(|o| o.0.as_path()),
+            )
+            .then(|| persist::disk::check(&path));
             match append_to(&path, &disk) {
-                Ok(()) => Ok(write_report(
-                    &path.display().to_string(),
-                    false,
-                    &source,
-                    disk.len(),
-                    "appended",
-                )),
+                Ok(()) => {
+                    if let Some(before) = before {
+                        persist::disk::appended(&path, before);
+                    }
+                    Ok(write_report(
+                        &path.display().to_string(),
+                        false,
+                        &source,
+                        disk.len(),
+                        "appended",
+                    ))
+                }
                 Err(e) => Err(format!("E212: Can't open file for writing: {e}")),
             }
         }
         WriteTarget::File(name) => {
-            let to_own = match (name, &own) {
-                (None, _) => true,
-                (Some(n), Some((p, _))) => {
-                    buffer_for_path(files, Path::new(n)) == Some(id) || {
-                        // Not open under this spelling, but the same file (`:w ./f.txt`).
-                        let canon = |p: &Path| fs::canonicalize(p).ok();
-                        canon(Path::new(n)).is_some_and(|c| Some(c) == canon(p))
-                    }
-                }
-                (Some(_), None) => false,
-            };
+            let to_own = name.is_none()
+                || names_own(
+                    files,
+                    id,
+                    name.as_deref(),
+                    own.as_ref().map(|o| o.0.as_path()),
+                );
             let (source, disk) = encode(&text, fmt, fixeol);
             if to_own {
                 match &own {

@@ -91,3 +91,44 @@ fn the_idle_timer_notices_a_change() {
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
 }
+
+/// A file deleted under the buffer is nvim's E211 (probed headless with `:checktime`, modified or not),
+/// shown once and without the `[disk changed]` flag; a save writes it again without `!` (#1221).
+#[test]
+fn a_deleted_file_is_e211_not_a_change() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"one\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.keys("x");
+    std::fs::remove_file(&file).unwrap();
+    ed.keys_then_wait_for(":checktime\r", "E211: File \"f.txt\" no longer available");
+    let b = bar(&mut ed);
+    assert!(b.contains("f.txt [+]    tabstop=4"), "{b:?}");
+    // Once per deletion: a second look says nothing.
+    ed.keys(":checktime\r");
+    let b = bar(&mut ed);
+    assert!(!b.contains("E211"), "{b:?}");
+    ed.keys(":w\r");
+    support::wait_for_file(&file, b"ne\n");
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+}
+
+/// `:w >> %` appends the buffer to its own file: ruse's own write, so no W11 and no flag (nvim v0.12.6
+/// fires no FileChangedShell for it), and a later `:w` needs no `!` (#1221).
+#[test]
+fn an_append_to_the_own_file_is_not_a_change() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"one\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.keys_then_wait_for(":w >> %\r", "appended");
+    assert_eq!(std::fs::read(&file).unwrap(), b"one\none\n");
+    ed.keys(":checktime\r");
+    let b = bar(&mut ed);
+    assert!(b.contains("f.txt    tabstop=4"), "{b:?}");
+    ed.keys("x");
+    ed.keys(":w\r");
+    support::wait_for_file(&file, b"ne\n");
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+}

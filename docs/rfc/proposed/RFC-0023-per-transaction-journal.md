@@ -268,13 +268,20 @@ per canonical path, what this process last read from the file or saved to it: it
 time, inode, device) and a content hash (SipHash of the bytes, a change detector, not a security boundary).
 Every read of a buffer's file (startup, `:e`, `:e!`) and every save record it. A check stats the file and
 hashes it only when the stat moved, so a `touch` is not a change and an mtime alone is never trusted; a file
-that is gone or unreadable differs. Checks run on the 4000 ms idle timer, after a shell command (`:!` and the
+that is unreadable differs. Checks run on the 4000 ms idle timer, after a shell command (`:!` and the
 other risky operations, as nvim checks after a shell command), on `:checktime`, on focus gain (ruse does not
 yet ask the terminal for focus reports: DECSET 1004 is not in the F-010 probe), and before every save. A
 newly changed file gives nvim's W11 (buffer unmodified) or W12 (modified) on the status line, once per
 change; no reload is offered. A save without `!` into a changed file is refused with nvim's warning ("The
 file has been changed since reading it!!!") plus "(add ! to write anyway)", where nvim asks y/n (design doc
 §5: never silently overwrite an externally changed file); `:w!` writes, and the save records the new text.
+A file that is gone (deleted, renamed away, a dangling link) is not "changed" (#1221): it gives nvim's
+`E211: File "<name>" no longer available` once, modified buffer or not, with no `[disk changed]` flag, and a
+save writes it again without `!`. A file that comes back is compared by content again (nvim forgets a deleted
+file's timestamp and stays silent; ruse warns if the returned file differs). `:w >> %` (an append to the
+buffer's own file, under any spelling) records the appended file as ruse's own write, as nvim does, unless
+the file had already changed under ruse before the append; an append to another buffer's file is a change
+for that buffer.
 
 ### 9. Retention
 

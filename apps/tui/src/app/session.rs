@@ -708,8 +708,9 @@ pub(crate) struct Session {
     /// File buffers whose file on disk differs from what ruse last read or saved (`[disk changed]`,
     /// RFC-0023 §8), as of the last [`Session::check_disk`].
     disk_changed: HashSet<DocumentId>,
-    /// The ones of them W11/W12 was shown for, once per change.
-    disk_warned: HashSet<DocumentId>,
+    /// The file buffers W11/W12 (changed) or E211 (gone) was shown for, and for which state: once per
+    /// change.
+    disk_warned: HashMap<DocumentId, persist::disk::State>,
     /// The last key or paste, and the last disk check: the idle check runs [`persist::journal::IDLE`]
     /// after both.
     last_input: std::time::Instant,
@@ -891,7 +892,7 @@ impl Session {
             journal_writers: HashMap::new(),
             journal_failed: HashSet::new(),
             disk_changed: HashSet::new(),
-            disk_warned: HashSet::new(),
+            disk_warned: HashMap::new(),
             last_input: std::time::Instant::now(),
             disk_checked: std::time::Instant::now(),
             readonly: crate::app::dispatch::ReadOnly::default(),
@@ -1414,7 +1415,8 @@ impl Session {
 
     /// Look at every file buffer's file again (RFC-0023 §8): a stat, and a hash when it moved. A buffer
     /// whose file newly differs from what ruse read or saved gets nvim's W11 (unmodified) or W12 (modified
-    /// too) on the status line when `announce`, the focused buffer first. ruse does not offer to reload.
+    /// too) on the status line when `announce`, the focused buffer first; one whose file is gone gets
+    /// nvim's E211 and no `[disk changed]` flag. ruse does not offer to reload.
     pub(crate) fn check_disk(&mut self, announce: bool) {
         self.disk_checked = std::time::Instant::now();
         let focused = self.ws.focused_buffer();
@@ -1425,27 +1427,31 @@ impl Session {
             let Some(bf) = self.files.get(&id) else {
                 continue;
             };
-            if persist::disk::check(&bf.path) {
+            let state = persist::disk::check(&bf.path);
+            if state == persist::disk::State::Changed {
                 self.disk_changed.insert(id);
-                if !self.disk_warned.contains(&id) && first.is_none() {
-                    first = Some(id);
-                }
             } else {
                 self.disk_changed.remove(&id);
+            }
+            if state == persist::disk::State::Same {
                 self.disk_warned.remove(&id);
+            } else if self.disk_warned.get(&id) != Some(&state) && first.is_none() {
+                first = Some((id, state));
             }
         }
         self.disk_changed.retain(|id| self.files.contains_key(id));
-        self.disk_warned.retain(|id| self.files.contains_key(id));
-        let Some(id) = first.filter(|_| announce) else {
+        self.disk_warned.retain(|id, _| self.files.contains_key(id));
+        let Some((id, state)) = first.filter(|_| announce) else {
             return;
         };
-        self.disk_warned.insert(id);
+        self.disk_warned.insert(id, state);
         let (Some(bf), Some(doc)) = (self.files.get(&id), self.ws.document(id)) else {
             return;
         };
         let name = bf.path.display();
-        self.status = if doc.is_modified() {
+        self.status = if state == persist::disk::State::Gone {
+            format!("E211: File \"{name}\" no longer available")
+        } else if doc.is_modified() {
             format!(
                 "W12: Warning: File \"{name}\" has changed and the buffer was changed in Vim as well"
             )
