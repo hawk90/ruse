@@ -16,15 +16,9 @@ fn a_long_line_wraps_and_number_shows_the_gutter() {
     let line = format!("{}TAILMARK\nsecond\n", "a".repeat(100));
     dir.file("w.txt", line.as_bytes());
     let mut ed = Editor::start(&dir, &[Path::new("w.txt")]);
-    let shown = ed.screen_bytes();
-    assert!(
-        shown.contains("TAILMARK"),
-        "the wrapped tail is drawn: {shown}"
-    );
-    ed.keys(":set nu\r");
-    let shown = ed.screen_bytes();
-    assert!(shown.contains("  2 "), "the number column: {shown}");
-    // `gj` moves to the wrapped row, so `x` deletes there.
+    ed.wait_for("TAILMARK"); // the wrapped tail is drawn
+    ed.keys_then_wait_for(":set nu\r", "  2 "); // the number column
+                                                // `gj` moves to the wrapped row, so `x` deletes there.
     ed.keys("gggjx:wq\r");
     assert_eq!(ed.exit_status(), 0);
     let text = std::fs::read_to_string(dir.path("w.txt")).unwrap();
@@ -45,7 +39,8 @@ fn control_chars_never_reach_the_terminal_raw() {
         "a\u{1b}]0;PWNED\u{7}b\u{1b}[2Jc\u{9b}31md\n".as_bytes(),
     );
     let mut ed = Editor::start(&dir, &[Path::new("c.txt")]);
-    let shown = ed.screen_bytes();
+    // The last transcription on the line: the whole line has been drawn once it shows.
+    let shown = ed.wait_for("31md");
     // The printed text, without the SGR runs that colour the transcriptions.
     let mut text = String::new();
     let mut it = shown.chars().peekable();

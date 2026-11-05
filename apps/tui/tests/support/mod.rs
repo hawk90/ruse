@@ -20,6 +20,54 @@ use std::time::{Duration, Instant};
 
 const QUIET: Duration = Duration::from_millis(200);
 const MAX_WAIT: Duration = Duration::from_secs(10);
+/// The first frame waits longer than a redraw: a debug binary starting while other suites build or run
+/// is slow to load, and a wait that ends early only turns "slow" into a false failure.
+const FIRST_FRAME_WAIT: Duration = Duration::from_secs(20);
+
+/// Whether `hay` holds `needle`.
+fn contains(hay: &[u8], needle: &[u8]) -> bool {
+    needle.is_empty() || hay.windows(needle.len()).any(|w| w == needle)
+}
+
+/// Terminal output as rough text for a failure message: CSI and OSC sequences dropped, cursor
+/// positioning turned into line breaks, other control bytes dropped.
+fn screen_text(bytes: &[u8]) -> String {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            0x1b if bytes.get(i + 1) == Some(&b'[') => {
+                let mut j = i + 2;
+                while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
+                    j += 1;
+                }
+                if bytes.get(j) == Some(&b'H') && out.last() != Some(&b'\n') {
+                    out.push(b'\n');
+                }
+                i = j + 1;
+            }
+            0x1b if bytes.get(i + 1) == Some(&b']') => {
+                let mut j = i + 2;
+                while j < bytes.len() && bytes[j] != 0x07 && bytes[j] != 0x1b {
+                    j += 1;
+                }
+                // BEL ends it, or ST (`ESC \`).
+                i = j + if bytes.get(j) == Some(&0x1b) { 2 } else { 1 };
+            }
+            0x1b => i += 2,
+            b'\n' => {
+                out.push(b'\n');
+                i += 1;
+            }
+            b if b < 0x20 || b == 0x7f => i += 1,
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
 
 /// A unique scratch directory, removed on drop.
 pub struct Scratch(pub PathBuf);
@@ -146,9 +194,24 @@ impl Editor {
         };
         let size_ptr: *mut libc::winsize = &mut size; // Fits both the apple and linux signatures.
         let mut fd = -1;
-        // SAFETY: `fd` is a valid out-pointer, name and termios are NULL (defaults), winsize is initialised.
-        let pid = unsafe { libc::forkpty(&mut fd, ptr::null_mut(), ptr::null_mut(), size_ptr) };
-        assert!(pid >= 0, "forkpty failed");
+        // Pseudo-terminals are a system-wide pool (macOS allows 511 by default): suites running side by
+        // side can drain it for a moment, so a failed forkpty is retried (bounded) before it fails the test.
+        let started = Instant::now();
+        let pid = loop {
+            // SAFETY: `fd` is a valid out-pointer, name and termios are NULL (defaults), winsize is
+            // initialised.
+            let pid = unsafe { libc::forkpty(&mut fd, ptr::null_mut(), ptr::null_mut(), size_ptr) };
+            if pid >= 0 {
+                break pid;
+            }
+            let err = std::io::Error::last_os_error();
+            assert!(
+                started.elapsed() < FIRST_FRAME_WAIT,
+                "forkpty failed for {:.2?}: {err}",
+                started.elapsed()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        };
         if pid == 0 {
             // SAFETY: only async-signal-safe calls; all pointers were built before the fork.
             unsafe {
@@ -210,22 +273,115 @@ impl Editor {
 
     fn wait_for_first_frame(&mut self, drawn: &[u8]) {
         let start = Instant::now();
-        while self.output_len() == 0
-            || !self
-                .output
-                .lock()
-                .unwrap()
-                .windows(drawn.len().max(1))
-                .any(|w| drawn.is_empty() || w == drawn)
-        {
-            assert!(start.elapsed() < MAX_WAIT, "ruse drew nothing");
+        let seen = |out: &[u8]| !out.is_empty() && (drawn.is_empty() || contains(out, drawn));
+        while !seen(&self.output.lock().unwrap()) {
+            if self.try_status().is_some() {
+                // An editor that refuses to start exits after printing why; the caller checks that. Let
+                // the reader drain what the child wrote before it exited.
+                self.drain_after_exit();
+                if self.output_len() > 0 {
+                    return;
+                }
+                panic!("{}", self.report("ruse exited without output", start));
+            }
+            if start.elapsed() >= FIRST_FRAME_WAIT {
+                panic!("{}", self.report("ruse drew no first frame", start));
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
         self.settle();
     }
 
+    /// After the child exited: wait (bounded) for the reader thread to reach the end of the stream, so
+    /// everything the child wrote is in `output`.
+    fn drain_after_exit(&mut self) {
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(1)
+            && self.reader.as_ref().is_some_and(|r| !r.is_finished())
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn output_len(&self) -> usize {
         self.output.lock().unwrap().len()
+    }
+
+    /// Wait (bounded by [`MAX_WAIT`]) until the output holds `text`, then return all of it, as
+    /// [`Editor::screen_bytes`] does. Fails with a [`Editor::report`] if `text` never appears or the child
+    /// exits first. Use this, not a bare [`Editor::settle`], before asserting on a redraw: on a loaded
+    /// machine the editor can go quiet for longer than the settle window before it draws.
+    pub fn wait_for(&mut self, text: &str) -> String {
+        self.wait_for_after(0, text)
+    }
+
+    /// Type `keys` (as [`Editor::keys`] does), then wait until the output written AFTER them holds `text`,
+    /// and return all the output. Text already on the screen before the keys does not count, so this cannot
+    /// pass on a stale frame; when the keys may leave an identical message that the renderer need not
+    /// redraw, use [`Editor::wait_for`].
+    pub fn keys_then_wait_for(&mut self, keys: &str, text: &str) -> String {
+        let mark = self.mark();
+        self.keys(keys);
+        self.wait_for_after(mark, text)
+    }
+
+    /// A position in the output, for [`Editor::wait_for_after`]: how many bytes have arrived so far.
+    pub fn mark(&self) -> usize {
+        self.output_len()
+    }
+
+    /// Type `:set ts?<CR>` and wait for its reply. Keys are handled in order, so once it shows, every
+    /// key typed before it has been applied: for a check that reads no screen text (a signal, a journal,
+    /// the file on disk). Only from Normal mode, and only with a short (relative) file name, or the
+    /// reply is pushed off the status line (#831); it leaves the reply there.
+    pub fn sync(&mut self) {
+        self.keys_then_wait_for(":set ts?\r", "tabstop=");
+    }
+
+    /// As [`Editor::wait_for`], but only output after `mark` counts.
+    pub fn wait_for_after(&mut self, mark: usize, text: &str) -> String {
+        let start = Instant::now();
+        loop {
+            {
+                let out = self.output.lock().unwrap();
+                if contains(&out[mark.min(out.len())..], text.as_bytes()) {
+                    return String::from_utf8_lossy(&out).into_owned();
+                }
+            }
+            // A child that exited cannot draw any more; say so at once instead of waiting out the limit.
+            // The reader may still hold its last bytes, so look once more after it drained them.
+            let exited = self.try_status().is_some();
+            if exited || start.elapsed() >= MAX_WAIT {
+                if exited {
+                    self.drain_after_exit();
+                    let out = self.output.lock().unwrap();
+                    if contains(&out[mark.min(out.len())..], text.as_bytes()) {
+                        return String::from_utf8_lossy(&out).into_owned();
+                    }
+                }
+                panic!("{}", self.report(&format!("no {text:?} on screen"), start));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// A failure message that tells "slow" from "never": how long the wait ran, how many bytes the child
+    /// wrote, whether it is still running (or its exit status), and the end of the screen as text.
+    pub fn report(&mut self, what: &str, since: Instant) -> String {
+        let status = match self.try_status() {
+            None => "still running".to_string(),
+            Some(s) if s < 0 => format!("killed by signal {}", -s),
+            Some(s) => format!("exited with status {s}"),
+        };
+        let out = self.output.lock().unwrap().clone();
+        let tail = &out[out.len().saturating_sub(4096)..];
+        format!(
+            "{what}: after {:.2?}, {} bytes received, child {status}\n--- screen text (tail) ---\n{}\n--- raw tail ---\n{:?}",
+            since.elapsed(),
+            out.len(),
+            screen_text(tail),
+            String::from_utf8_lossy(&out[out.len().saturating_sub(1024)..]),
+        )
     }
 
     /// Everything the child has written to the terminal so far, lossily decoded.
@@ -282,7 +438,9 @@ impl Editor {
             if let Some(status) = self.try_status() {
                 return status;
             }
-            assert!(start.elapsed() < MAX_WAIT, "ruse did not exit");
+            if start.elapsed() >= MAX_WAIT {
+                panic!("{}", self.report("ruse did not exit", start));
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -377,7 +535,9 @@ impl Editor {
                 if !self.is_running() {
                     return; // `exit_status` reports the outcome.
                 }
-                assert!(start.elapsed() < MAX_WAIT, "ruse stopped reading its input");
+                if start.elapsed() >= MAX_WAIT {
+                    panic!("{}", self.report("ruse stopped reading its input", start));
+                }
             }
             // A write error means the child already exited; `exit_status` reports that outcome.
             if self.master.write_all(piece).is_err() {
@@ -447,17 +607,30 @@ pub fn run_detached(
 /// test can give the binary a terminal on one side only.
 pub fn open_pty() -> (File, File) {
     let (mut master, mut slave) = (-1, -1);
-    // SAFETY: both out-pointers are valid; name, termios and winsize may be NULL.
-    let rc = unsafe {
-        libc::openpty(
-            &mut master,
-            &mut slave,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-        )
-    };
-    assert_eq!(rc, 0, "openpty failed");
+    let started = Instant::now();
+    loop {
+        // SAFETY: both out-pointers are valid; name, termios and winsize may be NULL.
+        let rc = unsafe {
+            libc::openpty(
+                &mut master,
+                &mut slave,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        };
+        if rc == 0 {
+            break;
+        }
+        // Retried for the same reason as `forkpty` in `Editor::spawn`: the pool can be drained briefly.
+        let err = std::io::Error::last_os_error();
+        assert!(
+            started.elapsed() < FIRST_FRAME_WAIT,
+            "openpty failed for {:.2?}: {err}",
+            started.elapsed()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
     // SAFETY: openpty returned two fresh fds that nothing else owns.
     unsafe { (File::from_raw_fd(master), File::from_raw_fd(slave)) }
 }

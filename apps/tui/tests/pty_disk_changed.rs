@@ -9,31 +9,20 @@
 mod support;
 
 use std::path::Path;
-use std::time::Duration;
 
-use support::{wait_until, Editor, Scratch};
+use support::{Editor, Scratch};
 
 /// The starts of nvim's W11 (`… has changed since editing started`) and W12 (`… has changed and the
 /// buffer was changed in Vim as well`): the 80-column status line cuts the rest after the flags.
 const W11: &str = "W11: Warning: File \"f.txt\" has changed since edit";
 const W12: &str = "W12: Warning: File \"f.txt\" has changed and the";
 
-fn since(ed: &Editor, from: usize) -> String {
-    ed.screen_bytes()[from..].to_string()
-}
-
-/// Whether `want` is drawn after `from` within 10 s: a shell or a save's fsync can keep the screen quiet
-/// past the harness's settle time on a loaded runner, so every check waits for what it looks for.
-fn shows(ed: &Editor, from: usize, want: &str) -> bool {
-    wait_until(Duration::from_secs(10), || since(ed, from).contains(want))
-}
-
 /// The status line, drawn whole once its `tabstop=4` is there (a command line gives it back whole).
+/// Every check waits for what it looks for: a shell or a save's fsync can keep the screen quiet past the
+/// harness's settle time on a loaded runner.
 fn bar(ed: &mut Editor) -> String {
-    let before = ed.screen_bytes().len();
-    ed.keys(":set ts?\r");
-    assert!(shows(ed, before, "tabstop=4"), "{:?}", since(ed, before));
-    since(ed, before)
+    let before = ed.mark();
+    ed.keys_then_wait_for(":set ts?\r", "tabstop=4")[before..].to_string()
 }
 
 /// The file changes under an unmodified buffer: W11 after the shell command that changed it, the flag
@@ -48,9 +37,7 @@ fn an_external_write_flags_an_unmodified_buffer() {
         !bar(&mut ed).contains("[disk changed]"),
         "a touch is not a change"
     );
-    let before = ed.screen_bytes().len();
-    ed.keys(":!printf 'two\\n' > f.txt\r");
-    assert!(shows(&ed, before, W11), "{:?}", since(&ed, before));
+    ed.keys_then_wait_for(":!printf 'two\\n' > f.txt\r", W11);
     ed.keys("\r");
     assert!(
         bar(&mut ed).contains("f.txt [disk changed]    tabstop=4"),
@@ -73,18 +60,10 @@ fn a_save_over_an_external_change_needs_a_bang() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys("x");
     std::fs::write(&file, b"theirs\n").unwrap();
-    let before = ed.screen_bytes().len();
-    ed.keys(":checktime\r");
-    assert!(shows(&ed, before, W12), "{:?}", since(&ed, before));
+    ed.keys_then_wait_for(":checktime\r", W12);
     assert!(bar(&mut ed).contains("f.txt [+][disk changed]    tabstop=4"));
-    let before = ed.screen_bytes().len();
-    ed.keys(":w\r");
-    assert!(
-        // nvim's warning, then ruse's `(add ! to write anyway)`, past the 80 columns here.
-        shows(&ed, before, "WARNING: The fil"),
-        "{:?}",
-        since(&ed, before)
-    );
+    // nvim's warning, then ruse's `(add ! to write anyway)`, past the 80 columns here.
+    ed.keys_then_wait_for(":w\r", "WARNING: The fil");
     assert_eq!(
         std::fs::read(&file).unwrap(),
         b"theirs\n",
@@ -106,13 +85,9 @@ fn the_idle_timer_notices_a_change() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"one\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    let before = ed.screen_bytes().len();
+    let before = ed.mark();
     std::fs::write(&file, b"two, longer\n").unwrap();
-    assert!(
-        wait_until(Duration::from_secs(10), || since(&ed, before).contains(W11)),
-        "{:?}",
-        since(&ed, before)
-    );
+    ed.wait_for_after(before, W11);
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
 }

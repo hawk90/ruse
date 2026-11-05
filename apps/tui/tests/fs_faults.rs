@@ -25,6 +25,16 @@ fn chmod(p: &Path, mode: u32) {
     std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode)).unwrap();
 }
 
+/// Makes a directory writable again on drop, so a failing wait cannot leave a scratch directory that
+/// cannot be removed.
+struct Unlock<'a>(&'a Path);
+
+impl Drop for Unlock<'_> {
+    fn drop(&mut self) {
+        chmod(self.0, 0o755);
+    }
+}
+
 fn mkfifo(p: &Path) {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(p.as_os_str().as_bytes()).unwrap();
@@ -69,22 +79,14 @@ fn write_into_a_read_only_directory() {
     let file = locked.join("f.txt");
     std::fs::write(&file, b"orig\n").unwrap();
     chmod(&locked, 0o555);
+    let _unlock = Unlock(&locked);
     let mut ed = Editor::start(&dir, &[Path::new("ro/f.txt")]);
-    ed.keys(&format!("inew {ESC}:w\r"));
-    let written = ed.screen_bytes();
-    ed.keys(&format!(":e ro/g.txt\rinew {ESC}:w\r"));
-    let failed = ed.screen_bytes();
-    ed.keys(":q\r");
-    let running = ed.is_running();
+    ed.keys_then_wait_for(&format!("inew {ESC}:w\r"), "\"ro/f.txt\" 1L, 9B written");
+    assert_eq!(support::wait_for_file(&file, b"new orig\n"), b"new orig\n");
+    ed.keys_then_wait_for(&format!(":e ro/g.txt\rinew {ESC}:w\r"), "write failed");
+    ed.keys_then_wait_for(":q\r", "E37: No write since last change");
+    assert!(ed.is_running(), ":q must refuse the unsaved edit");
     drop(ed);
-    chmod(&locked, 0o755);
-    assert!(
-        written.contains("\"ro/f.txt\" 1L, 9B written"),
-        "{written:?}"
-    );
-    assert_eq!(std::fs::read(&file).unwrap(), b"new orig\n");
-    assert!(failed.contains("write failed"), "visible error: {failed:?}");
-    assert!(running, ":q must refuse the unsaved edit");
     assert!(!locked.join("g.txt").exists());
 }
 
@@ -115,22 +117,14 @@ fn read_only_file_needs_a_bang() {
     let file = dir.file("r.txt", b"ro\n");
     chmod(&file, 0o444);
     let mut ed = Editor::start(&dir, &[Path::new("r.txt")]);
-    ed.keys(&format!("Ax{ESC}:w\r"));
-    let e505 = "E505: \"r.txt\" is read-only (add ! to override)";
-    let shown = support::wait_until(Duration::from_secs(10), || ed.screen_bytes().contains(e505));
-    assert!(shown, "{:?}", ed.screen_bytes());
-    assert_eq!(std::fs::read(&file).unwrap(), b"ro\n");
-    ed.keys(":q\r");
-    assert!(ed.is_running(), ":q must refuse the unsaved edit");
-    ed.keys(":w!\r");
-    // The durable save's fsyncs can keep the screen quiet past the harness's settle time: wait for it.
-    assert!(
-        support::wait_until(Duration::from_secs(10), || ed
-            .screen_bytes()
-            .contains("\"r.txt\" 1L, 4B written")),
-        "{:?}",
-        ed.screen_bytes()
+    ed.keys_then_wait_for(
+        &format!("Ax{ESC}:w\r"),
+        "E505: \"r.txt\" is read-only (add ! to override)",
     );
+    assert_eq!(std::fs::read(&file).unwrap(), b"ro\n");
+    ed.keys_then_wait_for(":q\r", "E37: No write since last change");
+    assert!(ed.is_running(), ":q must refuse the unsaved edit");
+    ed.keys_then_wait_for(":w!\r", "\"r.txt\" 1L, 4B written");
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"rox\n");
@@ -150,13 +144,8 @@ fn write_after_the_directory_disappears_keeps_the_edit() {
     let mut ed = Editor::start(&dir, &[Path::new("gone/f.txt")]);
     ed.keys(&format!("inew {ESC}"));
     std::fs::remove_dir_all(&sub).unwrap();
-    ed.keys(":w\r");
-    assert!(
-        ed.screen_bytes().contains("write failed"),
-        "visible error: {:?}",
-        ed.screen_bytes()
-    );
-    ed.keys(":q\r");
+    ed.keys_then_wait_for(":w\r", "write failed");
+    ed.keys_then_wait_for(":q\r", "E37: No write since last change");
     assert!(ed.is_running(), ":q must refuse the unsaved edit");
     std::fs::create_dir(&sub).unwrap();
     ed.keys(":wq\r");
@@ -195,12 +184,10 @@ fn journal_append_failure_is_visible() {
     let jdir = dir.journals().dir().to_path_buf();
     std::fs::create_dir_all(&jdir).unwrap();
     chmod(&jdir, 0o555);
+    let _unlock = Unlock(&jdir);
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    ed.keys(&burst);
-    let shown = ed.screen_bytes();
+    ed.keys_then_wait_for(&burst, "E303");
     drop(ed);
-    chmod(&jdir, 0o755);
-    assert!(shown.contains("E303"), "journal failure shown: {shown:?}");
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
 }
 
@@ -218,57 +205,32 @@ fn a_failing_journal_shows_journal_bang_until_a_sync_works() {
     let jdir = dir.journals().dir().to_path_buf();
     std::fs::create_dir_all(&jdir).unwrap();
     chmod(&jdir, 0o555);
+    let unlock = Unlock(&jdir);
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     // 200 changes trigger a sync; the first failure is shown (the journal path follows the error, past
     // the 80 columns here; the unit test `journal_outcome_names_the_journal` reads it).
-    // Each step waits for what it shows: a sync (fsync) or a shell can keep the screen quiet past the
-    // harness's settle time on a loaded runner.
-    let wait = 10;
-    let shows = |ed: &Editor, from: usize, want: &str| {
-        support::wait_until(Duration::from_secs(wait), || {
-            ed.screen_bytes()[from..].contains(want)
-        })
-    };
-    let before = ed.screen_bytes().len();
-    ed.keys(&format!("i{}{ESC}", "x".repeat(200)));
-    let named = shows(
-        &ed,
-        before,
+    ed.keys_then_wait_for(
+        &format!("i{}{ESC}", "x".repeat(200)),
         "E303: unable to write the recovery journal for",
     );
-    let shown = ed.screen_bytes()[before..].to_string();
     // A command line gives the status line back whole.
-    let before = ed.screen_bytes().len();
-    ed.keys(":set ts?\r");
-    let flagged = shows(&ed, before, "f.txt [+][journal!]    tabstop=4");
-    let bar = ed.screen_bytes()[before..].to_string();
-    let before = ed.screen_bytes().len();
-    ed.keys(":checkhealth\r");
-    let warned = shows(&ed, before, "WARN journal: f.txt: last write failed");
-    let health = ed.screen_bytes()[before..].to_string();
+    ed.keys_then_wait_for(":set ts?\r", "f.txt [+][journal!]    tabstop=4");
+    ed.keys_then_wait_for(":checkhealth\r", "WARN journal: f.txt: last write failed");
     ed.keys(ESC);
-    chmod(&jdir, 0o755);
-    assert!(named, "{shown:?}");
-    assert!(flagged, "{bar:?}");
-    assert!(warned, "{health:?}");
-    let before = ed.screen_bytes().len();
+    drop(unlock);
+    let before = ed.mark();
     ed.keys(":!true\r");
-    assert!(support::wait_until(Duration::from_secs(wait), || journal.exists()));
-    assert!(shows(&ed, before, ":!true"));
+    assert!(support::wait_until(Duration::from_secs(10), || journal.exists()));
+    ed.wait_for_after(before, ":!true");
     ed.keys(":checkhealth\r");
-    let synced = shows(&ed, before, "OK   journal: f.txt: ");
-    let after = ed.screen_bytes()[before..].to_string();
+    let after = ed.wait_for_after(before, "OK   journal: f.txt: ")[before..].to_string();
     assert!(
-        synced && after.contains(" bytes, synced "),
+        after.contains(" bytes, synced "),
         "{:?}",
         &after[after.len().saturating_sub(1500)..]
     );
     ed.keys(ESC);
-    let before = ed.screen_bytes().len();
-    ed.keys(":set ts?\r");
-    let cleared = shows(&ed, before, "f.txt [+]    tabstop=4");
-    let bar = ed.screen_bytes()[before..].to_string();
-    assert!(cleared, "{bar:?}");
+    ed.keys_then_wait_for(":set ts?\r", "f.txt [+]    tabstop=4");
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
 }
@@ -318,13 +280,11 @@ fn edit_of_hostile_paths_reports_and_keeps_the_session() {
         ("sub", "is a directory"),
     ] {
         let t = Instant::now();
-        ed.keys(&format!(":e {arg}\r"));
-        assert!(t.elapsed() < Duration::from_secs(5), ":e {arg} hung");
-        let shown = ed.screen_bytes();
-        assert!(
-            shown.contains(&format!("E484: can't open {arg}: {why}")),
-            "{arg}: {shown:?}"
+        ed.keys_then_wait_for(
+            &format!(":e {arg}\r"),
+            &format!("E484: can't open {arg}: {why}"),
         );
+        assert!(t.elapsed() < Duration::from_secs(5), ":e {arg} hung");
         assert!(ed.is_running());
     }
     ed.keys(&format!("ix{ESC}:wq\r"));
@@ -366,7 +326,8 @@ fn round_trips(dir: &Scratch, name: &Path) {
             ed.is_running()
         );
     }
-    ed.keys(&format!("iy{ESC}"));
+    // The edit must be applied before the signal, or the journal rightly lacks it.
+    ed.keys_then_wait_for(&format!("iy{ESC}"), "yxorig");
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     assert_eq!(

@@ -50,8 +50,9 @@ fn keys_typed_during_the_startup_probe_are_not_lost() {
 fn q_refuses_a_dirty_buffer_and_q_bang_discards_it() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"orig\n");
-    let mut ed = Editor::start(&dir, &[&file]);
-    ed.keys(&format!("ix{ESC}:q\r"));
+    // A relative path keeps the status message on screen (#831 pushes it off after a long name).
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+    ed.keys_then_wait_for(&format!("ix{ESC}:q\r"), "E37: No write since last change");
     assert!(ed.is_running(), ":q must refuse while the buffer is dirty");
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
@@ -69,11 +70,7 @@ fn quit_restores_the_terminal() {
     );
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
-    ed.settle();
-    assert!(
-        ed.screen_bytes().contains("\u{1b}[?1049l"),
-        "leaves the alt screen"
-    );
+    ed.wait_for("\u{1b}[?1049l");
 }
 
 /// #842: a failed write must keep the editor, and the unsaved edit, alive. The write is of a NEW file in a
@@ -90,13 +87,19 @@ fn wq_stays_open_when_the_write_fails() {
     std::fs::create_dir(&locked).unwrap();
     let file = locked.join("f.txt");
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    // Writable again on drop, also when a wait below fails, so the scratch directory can be removed.
+    struct Unlock<'a>(&'a std::path::Path);
+    impl Drop for Unlock<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::set_permissions(self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+    let _unlock = Unlock(&locked);
 
-    let mut ed = Editor::start(&dir, &[&file]);
-    ed.keys(&format!("inew {ESC}:wq\r"));
-    let running = ed.is_running();
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("locked/f.txt")]);
+    ed.keys_then_wait_for(&format!("inew {ESC}:wq\r"), "write failed");
+    assert!(ed.is_running(), ":wq must not exit after a failed write");
     drop(ed);
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(running, ":wq must not exit after a failed write");
     assert!(!file.exists());
 }
 
@@ -189,21 +192,11 @@ fn palette_quit_refuses_a_dirty_buffer() {
     let file = dir.file("f.txt", b"orig\n");
     // A relative path keeps the status message on screen (#831 pushes it off after a long name).
     let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
-    ed.keys(&format!("iUNSAVED{ESC}\u{10}quit\r"));
+    ed.keys_then_wait_for(&format!("iUNSAVED{ESC}\u{10}quit\r"), "E162");
     assert!(
         ed.is_running(),
         "palette Quit must refuse while a buffer is dirty"
     );
-    let screen = ed.screen_bytes();
-    let tail: String = screen
-        .chars()
-        .rev()
-        .take(600)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    assert!(screen.contains("E162"), "{tail:?}");
     ed.keys(":w\r\u{10}quit\r");
     assert_eq!(ed.exit_status(), 0, "palette Quit exits once saved");
     assert_eq!(std::fs::read(&file).unwrap(), b"UNSAVEDorig\n");
@@ -228,12 +221,11 @@ fn close_keeps_a_modified_buffer_and_q_refuses() {
     let b = dir.file("b.txt", b"two\n");
     // Relative paths keep the status message on screen (#831).
     let mut ed = Editor::start(&dir, &[std::path::Path::new("a.txt")]);
-    ed.keys(":split\r:e b.txt\rx:close\r:q\r");
+    ed.keys_then_wait_for(":split\r:e b.txt\rx:close\r:q\r", "E162");
     assert!(
         ed.is_running(),
         ":q must refuse while the hidden b.txt is modified"
     );
-    assert!(ed.screen_bytes().contains("E162"));
     ed.keys(":b 2\r:w\r:q\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&b).unwrap(), b"wo\n");
@@ -258,8 +250,7 @@ fn failing_filter_keeps_its_stderr_and_reports_the_exit_code() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"one\ntwo\n");
     let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
-    ed.keys(":%!echo out; echo err >&2; exit 3\r");
-    assert!(ed.screen_bytes().contains("shell returned 3"));
+    ed.keys_then_wait_for(":%!echo out; echo err >&2; exit 3\r", "shell returned 3");
     ed.keys(":wq\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"out\nerr\n");
@@ -354,17 +345,12 @@ fn edit_offers_recovery_for_a_journaled_file() {
         .write_crashed(Some(&b), b"UNSAVED B\n")
         .unwrap();
     let mut ed = Editor::start(&dir, &[std::path::Path::new("a.txt")]);
-    let before = ed.screen_bytes().len();
-    ed.keys(":e b.txt\r");
-    assert!(
-        ed.screen_bytes()[before..].contains("Recovery journal for"),
-        ":e must offer recovery"
-    );
-    ed.keys("q:e b.txt\r");
+    ed.keys_then_wait_for(":e b.txt\r", "Recovery journal for");
+    ed.keys_then_wait_for("q:e b.txt\r", "Recovery journal for");
     assert!(ed.is_running());
     assert!(journal.exists(), "q keeps the journal");
     assert_eq!(std::fs::read(&b).unwrap(), b"on disk\n");
-    ed.keys("r:q\r");
+    ed.keys_then_wait_for("r:q\r", "E37: No write since last change");
     assert!(ed.is_running(), "the recovered text is an unsaved change");
     ed.keys(":w\r:q\r");
     assert_eq!(ed.exit_status(), 0);
@@ -376,15 +362,12 @@ fn edit_offers_recovery_for_a_journaled_file() {
 fn signal_rescues_the_edit(sig: libc::c_int) {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"orig\n");
-    let mut ed = Editor::start(&dir, &[&file]);
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
     ed.keys(&format!("iabcde{ESC}"));
+    ed.sync(); // the edit is applied before the signal arrives
     ed.signal(sig);
     assert_eq!(ed.exit_status(), -sig, "exits as killed by signal {sig}");
-    ed.settle();
-    assert!(
-        ed.screen_bytes().contains("\u{1b}[?1049l"),
-        "leaves the alt screen on signal {sig}"
-    );
+    ed.wait_for("\u{1b}[?1049l");
     assert_eq!(
         dir.journals().replay(Some(&file)).as_deref(),
         Some(&b"abcdeorig\n"[..]),
@@ -409,9 +392,10 @@ fn signal_journals_every_modified_buffer() {
     let dir = Scratch::new();
     let a = dir.file("a.txt", b"a\n");
     let b = dir.file("b.txt", b"b\n");
-    let mut ed = Editor::start(&dir, &[&a]);
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("a.txt")]);
     ed.keys(&format!("iAA{ESC}:e b.txt\r"));
     ed.keys(&format!("iBB{ESC}:b 1\r"));
+    ed.sync();
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
     let j = dir.journals();
@@ -450,18 +434,41 @@ fn cmdline_shows_control_chars_and_its_caret() {
     let file = dir.file("f.txt", b"x\n");
     let mut ed = Editor::start(&dir, &[&file]);
     ed.keys(":ab");
-    let before = ed.screen_bytes().len();
-    ed.keys("\u{16}\r");
     // The frame diff repaints only the changed cells: the two cells of `^M`.
-    let shown = ed.screen_bytes()[before..].to_string();
-    assert!(shown.contains("^M"), "{shown:?}");
+    ed.keys_then_wait_for("\u{16}\r", "^M");
     ed.keys("cd");
-    let before = ed.screen_bytes().len();
+    let before = ed.mark();
     // Two `<Left>` arrows, each in one read so they decode as arrows, not as `<Esc>` and text.
     ed.raw_chunks(&[b"\x1b[D", b"\x1b[D"]);
     // `:ab^M` is five cells, so the caret is in column 6 of the last row (1-based).
-    let after = ed.screen_bytes()[before..].to_string();
-    assert!(after.contains("\u{1b}[24;6H"), "{after:?}");
+    ed.wait_for_after(before, "\u{1b}[24;6H");
     ed.keys(&format!("{ESC}:q\r"));
     assert_eq!(ed.exit_status(), 0);
+}
+
+/// #1198: a wait that gives up says what a flake report needs: how long it waited, how many bytes came,
+/// whether the child is still running, and the screen as text. A child that exited fails the wait at once.
+#[test]
+fn a_failed_wait_reports_time_bytes_status_and_screen() {
+    let dir = Scratch::new();
+    dir.file("f.txt", b"visible\n");
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+    let started = std::time::Instant::now();
+    // On its own thread, so the wait's panic comes back as that thread's result.
+    let err = std::thread::spawn(move || ed.wait_for("never drawn"))
+        .join()
+        .expect_err("the text never appears");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    let msg = err.downcast_ref::<String>().expect("a formatted message");
+    assert!(
+        msg.contains("no \"never drawn\" on screen: after "),
+        "{msg}"
+    );
+    assert!(
+        msg.contains(" bytes received, child exited with status 0"),
+        "{msg}"
+    );
+    assert!(msg.contains("visible"), "{msg}");
 }

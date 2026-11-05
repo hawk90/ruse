@@ -9,7 +9,6 @@ mod support;
 
 use std::fs;
 use std::path::Path;
-use std::time::Duration;
 
 use support::{Editor, Scratch};
 
@@ -30,32 +29,23 @@ fn write_variants_reach_the_right_files() {
     dir.file("f.txt", b"a\nb\nc\n");
     dir.file("g.txt", b"x\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    ed.keys(":w g.txt\r");
-    assert!(ed.screen_bytes().contains("E13: File exists"));
+    ed.keys_then_wait_for(":w g.txt\r", "E13: File exists");
     assert_eq!(
         read_written(&dir, "g.txt", "x\n"),
         "x\n",
         "E13 leaves the file alone"
     );
-    ed.keys(":w new.txt\r");
-    assert!(ed
-        .screen_bytes()
-        .contains("\"new.txt\" [New] 3L, 6B written"));
-    ed.keys(":w >> g.txt\r");
-    assert!(ed.screen_bytes().contains("\"g.txt\" 3L, 6B appended"));
+    ed.keys_then_wait_for(":w new.txt\r", "\"new.txt\" [New] 3L, 6B written");
+    ed.keys_then_wait_for(":w >> g.txt\r", "\"g.txt\" 3L, 6B appended");
     assert_eq!(read_written(&dir, "g.txt", "x\na\nb\nc\n"), "x\na\nb\nc\n");
-    ed.keys(":2,3w\r");
-    assert!(ed
-        .screen_bytes()
-        .contains("E140: Use ! to write partial buffer"));
+    ed.keys_then_wait_for(":2,3w\r", "E140: Use ! to write partial buffer");
     ed.keys(":2,3w! part.txt\r");
     assert_eq!(read_written(&dir, "part.txt", "b\nc\n"), "b\nc\n");
     ed.keys(":2w !cat > piped.txt\r");
     assert_eq!(read_written(&dir, "piped.txt", "b\n"), "b\n");
     ed.keys(":w %:r.bak\r");
     assert_eq!(read_written(&dir, "f.bak", "a\nb\nc\n"), "a\nb\nc\n");
-    ed.keys(":w >> nofile.txt\r");
-    assert!(ed.screen_bytes().contains("E212"), "append needs the file");
+    ed.keys_then_wait_for(":w >> nofile.txt\r", "E212");
     assert!(!dir.path("nofile.txt").exists());
     assert_eq!(
         read_written(&dir, "f.txt", "a\nb\nc\n"),
@@ -75,13 +65,8 @@ fn update_saveas_and_exit_write() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys("x:up\r");
     assert_eq!(read_written(&dir, "f.txt", "bc\n"), "bc\n");
-    ed.keys(":sav\r");
-    assert!(ed.screen_bytes().contains("E471: Argument required"));
-    ed.keys(":sav moved.txt\r");
-    // The durable save's fsyncs can keep the screen quiet past the harness's settle time: wait for it.
-    assert!(support::wait_until(Duration::from_secs(10), || ed
-        .screen_bytes()
-        .contains("\"moved.txt\" [New] 1L, 3B written")));
+    ed.keys_then_wait_for(":sav\r", "E471: Argument required");
+    ed.keys_then_wait_for(":sav moved.txt\r", "\"moved.txt\" [New] 1L, 3B written");
     ed.keys("x:x\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(read_written(&dir, "moved.txt", "c\n"), "c\n");
@@ -107,18 +92,14 @@ fn edit_variants() {
         "a\nc\n",
         "+2 put the cursor on line 2"
     );
-    ed.keys("dd:e\r");
-    assert!(ed
-        .screen_bytes()
-        .contains("E37: No write since last change"));
+    ed.keys_then_wait_for("dd:e\r", "E37: No write since last change");
     ed.keys(":e!\r:w\r");
     assert_eq!(
         read_written(&dir, "g.txt", "a\nc\n"),
         "a\nc\n",
         ":e! dropped the change"
     );
-    ed.keys(":e new.txt\r");
-    assert!(ed.screen_bytes().contains("\"new.txt\" [New]"));
+    ed.keys_then_wait_for(":e new.txt\r", "\"new.txt\" [New]");
     ed.keys(&format!("ihello{ESC}:w\r"));
     // A new file has 'endofline', so it gets a final newline, as in nvim (#1107).
     assert_eq!(read_written(&dir, "new.txt", "hello\n"), "hello\n");
@@ -147,8 +128,7 @@ fn write_all_writes_every_modified_buffer() {
 fn unnamed_buffer_takes_the_name_it_is_written_to() {
     let dir = Scratch::new();
     let mut ed = Editor::start(&dir, &[]);
-    ed.keys(&format!("ihi{ESC}:wa\r"));
-    assert!(ed.screen_bytes().contains("E141: No file name for buffer"));
+    ed.keys_then_wait_for(&format!("ihi{ESC}:wa\r"), "E141: No file name for buffer");
     ed.keys(":w out.txt\r");
     assert_eq!(
         read_written(&dir, "out.txt", "hi\n"),
@@ -209,8 +189,7 @@ fn writes_and_renames_set_the_alternate_file() {
         "moved.txtother.txt\n",
         ":file renames the buffer and keeps the old name as `#`"
     );
-    ed.keys(":0file\r:w\r");
-    assert!(ed.screen_bytes().contains("E32: No file name"));
+    ed.keys_then_wait_for(":0file\r:w\r", "E32: No file name");
     ed.keys(":qa!\r");
     assert_eq!(ed.exit_status(), 0);
 }
@@ -225,10 +204,7 @@ fn find_drop_and_visual_open_files() {
     dir.file("sub/g.txt", b"g\n");
     dir.file("sub/h.txt", b"h\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    ed.keys(":find g.txt\r");
-    assert!(ed
-        .screen_bytes()
-        .contains("E345: Can't find file \"g.txt\" in path"));
+    ed.keys_then_wait_for(":find g.txt\r", "E345: Can't find file \"g.txt\" in path");
     ed.keys(&format!(":find sub/g.txt\rA1{ESC}:w\r"));
     assert_eq!(read_written(&dir, "sub/g.txt", "g1\n"), "g1\n");
     ed.keys(&format!(":find h.txt\rA2{ESC}:w\r"));
@@ -280,10 +256,10 @@ fn cd_keeps_buffers_on_their_files() {
         "f13\n",
         "`:cd -` went back"
     );
-    ed.keys(":cd nosuch\r");
-    assert!(ed
-        .screen_bytes()
-        .contains("E344: Can't find directory \"nosuch\" in cdpath"));
+    ed.keys_then_wait_for(
+        ":cd nosuch\r",
+        "E344: Can't find directory \"nosuch\" in cdpath",
+    );
     ed.keys(":qa!\r");
     assert_eq!(ed.exit_status(), 0);
 }

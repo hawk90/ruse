@@ -33,8 +33,8 @@ fn tab_completes_the_file_edit_opens() {
 fn several_matches_show_the_popup_menu() {
     let dir = tree();
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    let before = ed.screen_bytes().len();
-    ed.keys(":e d/f\t");
+    let before = ed.mark();
+    ed.keys_then_wait_for(":e d/f\t", "foobar.rs");
     let shown = ed.screen_bytes()[before..].to_string();
     // Both tails are painted (the menu), and the line holds the first match.
     assert!(shown.contains("fa.txt"), "{shown:?}");
@@ -47,10 +47,7 @@ fn several_matches_show_the_popup_menu() {
 fn ctrl_d_lists_the_matches_above_the_line() {
     let dir = tree();
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    let before = ed.screen_bytes().len();
-    ed.keys(":e d/\x04");
-    let shown = ed.screen_bytes()[before..].to_string();
-    assert!(shown.contains("fa.txt     foobar.rs"), "{shown:?}");
+    ed.keys_then_wait_for(":e d/\x04", "fa.txt     foobar.rs");
     ed.keys("\x1b:q\r");
     assert_eq!(ed.exit_status(), 0);
 }

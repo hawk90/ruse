@@ -45,16 +45,13 @@ fn user_config_sets_options_and_a_bad_key_only_warns() {
     assert_eq!(shifted(&dir, ""), "  x\n");
     // The unknown key is reported once, at startup, and `:verbose set` names the file and line.
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    let start = ed.screen_bytes();
-    assert!(start.contains("unknown key editor.tabwidth"), "{start}");
-    ed.keys(":verbose set sw?\r");
-    let shown = ed.screen_bytes();
-    assert!(shown.contains("Last set from"), "{shown}");
-    assert!(
-        // `~/ruse/…` or `home/ruse/…`: the scratch HOME lies inside the working directory.
-        shown.contains("ruse/config.toml line 2 (user config)"),
-        "{shown}"
+    ed.wait_for("unknown key editor.tabwidth");
+    // `~/ruse/…` or `home/ruse/…`: the scratch HOME lies inside the working directory.
+    let shown = ed.keys_then_wait_for(
+        ":verbose set sw?\r",
+        "ruse/config.toml line 2 (user config)",
     );
+    assert!(shown.contains("Last set from"), "{shown}");
     ed.keys(&format!("{ESC}:q\r"));
     assert_eq!(ed.exit_status(), 0);
 }

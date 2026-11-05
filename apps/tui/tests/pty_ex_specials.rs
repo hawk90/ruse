@@ -44,9 +44,7 @@ fn edit_percent_rereads_an_unmodified_buffer() {
 fn edit_percent_refuses_over_unsaved_changes() {
     let dir = Scratch::new();
     let mut ed = open(&dir);
-    ed.keys("x:e %\r");
-    ed.settle();
-    assert!(ed.screen_bytes().contains("E37"), "{}", ed.screen_bytes());
+    ed.keys_then_wait_for("x:e %\r", "E37");
     assert_eq!(saved(&dir, &mut ed), "bc\n");
 }
 
@@ -62,9 +60,7 @@ fn bang_bang_repeats_the_previous_shell_command() {
 fn escaped_bang_is_literal_and_a_bang_without_history_is_e34() {
     let dir = Scratch::new();
     let mut ed = open(&dir);
-    ed.keys(":!!\r");
-    ed.settle();
-    assert!(ed.screen_bytes().contains("E34"), "{}", ed.screen_bytes());
+    ed.keys_then_wait_for(":!!\r", "E34");
     ed.keys(":r !echo a\\!b\r");
     assert_eq!(saved(&dir, &mut ed), "abc\na!b\n");
 }

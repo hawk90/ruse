@@ -178,6 +178,16 @@ impl Trace {
     /// Replay this trace onto a document with `initial` bytes, returning the final editor state. Fails if
     /// the initial bytes don't match the recorded `doc_hash` (the determinism contract's precondition).
     pub fn replay(&self, initial: &[u8]) -> Result<EditorState, TraceError> {
+        self.replay_until(initial, |_| false)
+    }
+
+    /// [`Trace::replay`], stopping after the first command once `stop` holds for the state it left (a
+    /// group then stays open). For fuzz tests that must bound the work a generated trace can ask for.
+    pub(crate) fn replay_until(
+        &self,
+        initial: &[u8],
+        mut stop: impl FnMut(&EditorState) -> bool,
+    ) -> Result<EditorState, TraceError> {
         let actual = doc_hash(initial);
         if actual != self.doc_hash {
             return Err(TraceError::HashMismatch {
@@ -206,6 +216,9 @@ impl Trace {
                 _ => {
                     let _effects = apply_command(&mut st, c);
                 }
+            }
+            if stop(&st) {
+                break;
             }
         }
         Ok(st)
@@ -313,6 +326,41 @@ mod tests {
         }
         assert!(slow.is_empty(), "slow replays: {slow:#?}");
         assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    }
+
+    /// The largest document a fuzzed replay goes on editing. A hostile count makes one put grow the buffer
+    /// to its 64 MiB bound (`MAX_PUT_BYTES`); a word motion on that one long line then costs O(line²),
+    /// because each grapheme step segments the whole line (#1213: one such case ran past CI's 20-minute
+    /// job limit). The fuzz checks that parsing and replay never panic, not long-line speed, so the replay
+    /// stops once the document is past this size.
+    const FUZZ_DOC_LIMIT: usize = 4 << 10;
+
+    /// Replay `cmds` on `initial` as [`Trace::replay`] does, stopping once the document passes
+    /// [`FUZZ_DOC_LIMIT`].
+    fn fuzz_replay(initial: &[u8], cmds: Vec<Command>) -> Result<EditorState, TraceError> {
+        Trace::record(initial, cmds).replay_until(initial, |st| st.bytes().len() > FUZZ_DOC_LIMIT)
+    }
+
+    /// #1213: the case that hung CI's `rust` job. A put with a maximal count fills the buffer with one
+    /// 64 MiB line; `i_CTRL-W` on it then ran for minutes. The fuzz replay stops after the put.
+    #[test]
+    fn fuzz_replay_stops_once_a_put_grows_the_buffer() {
+        let cmds = [
+            "set_expr_register 0",
+            "paste_after 4294967295",
+            "insert_delete_word_back",
+        ]
+        .iter()
+        .map(|l| Command::from_line(l).unwrap())
+        .collect();
+        let started = std::time::Instant::now();
+        let st = fuzz_replay(b"ab\nc d", cmds).unwrap();
+        assert!(st.bytes().len() > FUZZ_DOC_LIMIT, "the put ran");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     /// A `v1` trace written before RFC-0020 (no `ex_*` verbs, no starting options) still parses and
@@ -511,7 +559,7 @@ mod tests {
                 }
             }
             let _ = Trace::from_text(&text);
-            let _ = Trace::record(initial.as_bytes(), cmds).replay(initial.as_bytes());
+            let _ = fuzz_replay(initial.as_bytes(), cmds);
         }
     }
 }

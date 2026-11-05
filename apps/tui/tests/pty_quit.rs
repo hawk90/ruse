@@ -52,9 +52,8 @@ fn quit_in_a_split_closes_the_window_and_keeps_the_edit() {
     let mut ed = open(&dir);
     ed.keys(":split\rx:q\r");
     assert!(ed.is_running(), ":q in a split closes only the window");
-    ed.keys(":q\r");
+    ed.keys_then_wait_for(":q\r", "E37");
     assert!(ed.is_running(), ":q on the last window refuses (E37)");
-    assert!(ed.screen_bytes().contains("E37"));
     ed.keys(":wq\r");
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(dir.path("f.txt")).unwrap(), b"bc\n");
@@ -70,7 +69,7 @@ fn quit_bang_refuses_over_a_modified_hidden_buffer() {
         ed.keys(quit);
         assert!(ed.is_running(), "{quit:?} must not drop g.txt's change");
     }
-    assert!(ed.screen_bytes().contains("E162"));
+    ed.wait_for("E162");
     ed.keys(&format!("{ESC}:qa!\r"));
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(dir.path("g.txt")).unwrap(), b"ghi\n");

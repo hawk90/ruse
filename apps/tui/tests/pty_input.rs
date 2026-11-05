@@ -100,16 +100,12 @@ fn kitty_protocol_is_pushed_and_its_keys_decode() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"abc\n");
     let mut ed = Editor::start_env(&dir, &[Path::new("f.txt")], KITTY);
-    assert!(
-        ed.screen_bytes().contains("\u{1b}[>3u"),
-        "TERM=xterm-kitty pushes the kitty flags"
-    );
-    // Esc arrives as `CSI 27 u`; a key release (`:3`) is not a second keypress.
+    ed.wait_for("\u{1b}[>3u"); // TERM=xterm-kitty pushes the kitty flags
+                               // Esc arrives as `CSI 27 u`; a key release (`:3`) is not a second keypress.
     ed.raw_chunks(&[b"ix\x1b[120;1:3u", b"\x1b[27u", b":wq\r"]);
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"xabc\n");
-    ed.settle();
-    assert!(ed.screen_bytes().contains("\u{1b}[<u"), "pops them on exit");
+    ed.wait_for("\u{1b}[<u"); // pops them on exit
 }
 
 #[test]
@@ -136,8 +132,9 @@ fn modify_other_keys_is_never_requested() {
         let mut ed = Editor::start_env(&dir, &[Path::new("f.txt")], &[term]);
         ed.raw_chunks(&[b":q\r"]);
         assert_eq!(ed.exit_status(), 0, "{term}");
-        ed.settle();
-        assert!(!ed.screen_bytes().contains("\u{1b}[>4;"), "{term}");
+        // Everything up to the teardown, so the check below sees the whole session.
+        let shown = ed.wait_for("\u{1b}[?1049l");
+        assert!(!shown.contains("\u{1b}[>4;"), "{term}");
     }
 }
 
