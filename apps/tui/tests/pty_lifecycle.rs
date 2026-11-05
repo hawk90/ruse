@@ -307,8 +307,15 @@ fn unreadable_journal_is_reported_and_kept() {
         screen.contains("unreadable"),
         "names the unreadable journal"
     );
-    ed.keys(":q\r");
+    // An edit synced (`:!` syncs first) goes beside the unreadable journal, never over it.
+    let bytes_mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    ed.keys(&format!("iNEW {ESC}:!true\r\r"));
+    let beside = || dir.journals().candidates(&file).len();
+    assert!(support::wait_until(Duration::from_secs(5), || beside() == 2));
+    assert_eq!(bytes_mode(&journal), 0o000, "its mode is unchanged");
+    ed.keys(":q!\r");
     let status = ed.exit_status();
+    assert_eq!(beside(), 1, ":q! drops this session's own journal only");
     std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o644)).unwrap();
     assert_eq!(status, 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");

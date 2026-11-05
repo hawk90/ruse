@@ -386,7 +386,8 @@ fail cleanly.
 > owner is `kill(pid, 0)` plus a matching start time read from the system (`/proc/<pid>/stat`, `proc_pidinfo`),
 > and an unreadable start time counts as a crash. "Read-only" is a per-buffer flag that makes `:w`, `:wa` and
 > `ZZ` refuse with E45 unless forced; there is no `'readonly'` option yet. A session that edits anyway journals
-> to `<name>.<pid>.rj` beside the owner's and only ever deletes a journal whose Header names itself.
+> to `<name>.<pid>.rj` beside the owner's and only ever deletes a journal whose Header names itself. The same
+> "beside, never over" rule holds for a journal from a newer major version and for one this process cannot read.
 
 On opening a file that has a recovery journal whose `saved_revision` point is *behind* recoverable records (a
 prior crash), recovery presents **three** materialized options and **never auto-applies** any of them

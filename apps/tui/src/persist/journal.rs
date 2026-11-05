@@ -161,14 +161,20 @@ fn read_head(path: &Path) -> Option<Result<(rj01::Record, usize), rj01::Stop>> {
 const HEADER_MAX: u64 = 64 << 10;
 
 /// The journal this process may write for a document whose journal is `journal`: that file, unless a live
-/// other session owns it (#1193) or a newer ruse wrote it (kept for that version, RFC-0023 §7), in which case
-/// this process's own `<name>.<pid>.rj` beside it.
+/// other session owns it (#1193), a newer ruse wrote it (kept for that version, RFC-0023 §7), or it is a
+/// regular file this process cannot read (mode 000, another user's: it may hold a crash's unsaved work, and
+/// the open reported it as kept), in which case this process's own `<name>.<pid>.rj` beside it. Anything
+/// else at the path that is not a regular file (a FIFO, a device) keeps the name, and the write fails
+/// visibly (#869).
 pub fn claim(journal: &Path) -> PathBuf {
     match read_head(journal) {
         Some(Ok((rj01::Record::Header(h), _))) if is_live_other(&h.owner) => {
             alternate(journal, owner().pid)
         }
         Some(Err(rj01::Stop::NewerMajor(_))) => alternate(journal, owner().pid),
+        None if fs::symlink_metadata(journal).is_ok_and(|m| m.is_file()) => {
+            alternate(journal, owner().pid)
+        }
         _ => journal.to_path_buf(),
     }
 }
@@ -1553,6 +1559,52 @@ mod tests {
             "the newer journal is kept as it was"
         );
         w.discard();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A journal this process cannot read (mode 000) is reported at open and never written over: its bytes
+    /// and mode stay, and this session's records go beside it.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_journal_is_kept_and_written_beside() {
+        use std::os::unix::fs::PermissionsExt;
+        // SAFETY: geteuid has no preconditions. Root reads a mode-000 file.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let (j, dir) = scratch("unreadable");
+        let file = dir.join("f.txt");
+        fs::write(&file, b"disk\n").unwrap();
+        let journal = j.write_crashed(Some(&file), b"crash work\n").unwrap();
+        let bytes = fs::read(&journal).unwrap();
+        fs::set_permissions(&journal, fs::Permissions::from_mode(0o000)).unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let n = unreplayable(j.offer(Some(&file), b"disk\n"));
+        assert!(n.contains("unreadable"), "{n}");
+        let mut d = opened(b"disk\n");
+        let mut w = Writer::new(&j, &file, FileFormat::default());
+        step(&mut w, &mut d);
+        insert(&mut d, 0, "x");
+        step(&mut w, &mut d);
+        assert_ne!(w.journal(), journal);
+        assert_eq!(w.journal(), alternate(&journal, std::process::id()));
+        let wrote = rescue(&journal, None, FileFormat::default(), b"crash\n", 0, 0).unwrap();
+        assert_eq!(wrote, w.journal(), "the crash path writes beside it too");
+        j.discard(Some(&file));
+        j.clear(Some(&file));
+        assert_eq!(mode(&journal), 0o000, "the mode is unchanged");
+        fs::set_permissions(&journal, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(
+            fs::read(&journal).unwrap(),
+            bytes,
+            "the bytes are unchanged"
+        );
+        let r = rj01::replay(&read_journal(w.journal()).unwrap(), None);
+        assert_eq!(
+            r.text.as_deref(),
+            Some(&b"crash\n"[..]),
+            "the new records are beside it"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
