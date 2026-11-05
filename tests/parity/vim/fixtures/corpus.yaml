@@ -64283,6 +64283,904 @@
       }
     },
     {
+      "name": "exn_nosuch",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":nosuch<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_nox",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":nox<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_sefoo",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":sefoo<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_sexy",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":sexy<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_wqq",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":wqq<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_wqx",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":wqx<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_nosuch_arg",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":nosuch arg<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_nosuch_bang",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":nosuch!<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_nosuch_range",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":2nosuch<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_nosuch_then_bar",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":nosuch|d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_nosuch_then_keys_run",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":nosuch<CR>x",
+      "expect": {
+        "text": [
+          "1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_upper_no_user_command",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":Xfoo<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_upper_single",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":W<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_delete_glued_word",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":dx<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_deletex",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":deletex<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_yank_glued_word",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":yx<CR>p",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E353",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_join_glued_word",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":jx<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_move_glued_word",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":mx<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_copy_glued_word",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":copyx<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_normx",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":normx<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_sortx",
+      "lines": [
+        "b2",
+        "a1",
+        "a3"
+      ],
+      "keys": ":%sortx<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a1",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_nohx",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":nohx<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_k_glued_mark",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":3ka<CR>'a",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exn_ke_is_mark_e",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":3ke<CR>'e",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exn_k_glued_word_trailing",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":kfoo<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_k_glued_two_letters",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":3kax<CR>'a",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_k_spaced_trailing",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":k ax<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "exn_kee_is_keepmarks",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":kee d<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exn_keepmarks_full",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":keepmarks 2d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exn_keex",
+      "lines": [
+        "a1",
+        "b2",
+        "a3"
+      ],
+      "keys": ":keex<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
       "name": "sc_err_p_empty_unnamed",
       "lines": [
         "abc"

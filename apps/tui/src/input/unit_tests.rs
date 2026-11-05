@@ -730,6 +730,57 @@ mod tests {
         assert!(matches!(parse_ex("put ab"), Ex::Unknown(_)));
     }
 
+    /// #1234: the command name is the whole run of letters, so a word that only starts like a command is
+    /// E492 (nvim v0.12.6, the `exn_*` oracle fixtures) and never runs that command.
+    #[test]
+    fn parse_whole_word_command_names() {
+        for line in [
+            "nosuch",
+            "nox",
+            "sefoo",
+            "sexy",
+            "wqq",
+            "wqx",
+            "nosuch arg",
+            "nosuch!",
+            "2nosuch",
+            "Xfoo",
+            "W",
+            "dx",
+            "deletex",
+            "yx",
+            "jx",
+            "mx",
+            "copyx",
+            "normx",
+            "%sortx",
+            "nohx",
+            "keex",
+            "trace savex",
+        ] {
+            assert!(matches!(parse_ex(line), Ex::Unknown(_)), ":{line}");
+        }
+        // `:k` alone takes its argument glued on, but not as `:kee…` (`:keepmarks`).
+        assert_eq!(
+            parse_ex("3ke"),
+            Ex::Mark {
+                range: SubRange::Lines(3, 3),
+                name: 'e'
+            }
+        );
+        for (line, rest) in [("kfoo", "foo"), ("3kax", "ax"), ("k ax", "ax")] {
+            assert_eq!(
+                parse_ex(line),
+                Ex::Fail(format!("E488: Trailing characters: {rest}")),
+                ":{line}"
+            );
+        }
+        let (_, rest) = strip_modifiers("kee d");
+        assert_eq!(rest, "d");
+        let (_, rest) = strip_modifiers("keepmarks 2d");
+        assert_eq!(rest, "2d");
+    }
+
     #[test]
     fn parse_edit_reload() {
         use crate::input::{EditSpec, FileOpts};

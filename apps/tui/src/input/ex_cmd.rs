@@ -143,6 +143,9 @@ enum Modifier {
     KeepJumps,
     KeepPatterns,
     KeepAlt,
+    /// Accepted with no effect (#1234): in Vim `:keepmarks` only changes how a filter (`:{range}!`)
+    /// adjusts marks; ruse does not honour it there yet.
+    KeepMarks,
     Filter,
 }
 
@@ -155,6 +158,7 @@ const MODIFIERS: &[(&str, usize, Modifier)] = &[
     ("keepjumps", 5, Modifier::KeepJumps),
     ("keeppatterns", 5, Modifier::KeepPatterns),
     ("keepalt", 5, Modifier::KeepAlt),
+    ("keepmarks", 3, Modifier::KeepMarks),
     ("filter", 4, Modifier::Filter),
 ];
 
@@ -324,7 +328,7 @@ pub fn strip_modifiers(line: &str) -> (ExModifiers, &str) {
                 mods.silent_errors = false;
             }
             Modifier::Verbose => mods.verbose = true,
-            Modifier::NoAutocmd => {}
+            Modifier::NoAutocmd | Modifier::KeepMarks => {}
             Modifier::KeepJumps => mods.keep_jumps = true,
             Modifier::KeepPatterns => mods.keep_patterns = true,
             Modifier::KeepAlt => mods.keep_alt = true,
@@ -434,11 +438,10 @@ mod tests {
         let (mods, rest) = strip_modifiers("keepj keepp keepa 2d");
         assert!(mods.keep_jumps && mods.keep_patterns && mods.keep_alt);
         assert_eq!(rest, "2d");
-        assert_eq!(
-            strip_modifiers("keep d").1,
-            "keep d",
-            "too short for :keepjumps"
-        );
+        // Too short for `:keepjumps`, so nvim reads `:keep` as `:keepmarks` (`fullcommand('keep')`).
+        let (mods, rest) = strip_modifiers("keep d");
+        assert!(!mods.keep_jumps);
+        assert_eq!(rest, "d");
         let (mods, rest) = strip_modifiers("filter /a b/ %p");
         assert_eq!(mods.filter, Some(("a b".to_string(), false)));
         assert_eq!(rest, "%p");

@@ -392,7 +392,10 @@ features:
     # grammar (& first, g/c/e toggle, r, p/#/l, [count], E488 on anything else), and an inner :s in :g sets
     # the last pattern even when it changes nothing. Ex commands that end with Vim's beginline() reset the
     # wanted column. Not yet: :earlier {N}s/m/h/f (needs undo timestamps), :append/:insert/:change,
-    # :keepmarks/:lockmarks, :confirm, and :filter on the listing pickers (:ls, :marks, :jumps, :reg).
+    # :lockmarks, :confirm, and :filter on the listing pickers (:ls, :marks, :jumps, :reg).
+    # #1234: a command name is the whole run of letters (`:nosuch`, `:sefoo`, `:wqq` are E492, never a
+    # prefix match); the one exception is `:k{a-z}` with its argument glued on (`:kfoo` is E488), except
+    # `:kee…`, which is `:keepmarks` (accepted with no effect). Oracle fixtures `exn_*`.
     # #613: `:` completion at nvim's defaults (wildmode=full, wildoptions=pum): <Tab>/<S-Tab> complete
     # (input/complete.rs: Ex command names, file/directory names with %/# and escaping, buffer names,
     # :set option names and values), the wildmenu cycles with <Tab>/CTRL-N/<Right> and back, CTRL-E/CTRL-Y

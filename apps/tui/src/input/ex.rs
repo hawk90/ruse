@@ -1215,7 +1215,11 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(ex) = super::ex_extra::parse(line) {
                 ex
-            } else if let Some(rest) = line.strip_prefix("trace save") {
+            } else if let Some(rest) = line
+                .strip_prefix("trace save")
+                .filter(|r| r.is_empty() || r.starts_with([' ', '\t']))
+            {
+                // A whole word, as every command name is (#1234): `:trace savex` is no command.
                 Ex::SaveTrace(rest.trim().to_string())
             } else if let Some(ex) = parse_mark(line) {
                 ex
@@ -1490,16 +1494,17 @@ fn parse_mark(line: &str) -> Option<Ex> {
         rest.strip_prefix(v)
             .filter(|a| a.is_empty() || a.starts_with(' '))
     });
-    let arg = spelled.or_else(|| rest.strip_prefix('k'))?;
-    // `:kfoo` is another command; `:k foo` and `:mark foo` are a `:mark` with trailing characters.
-    let spaced = spelled.is_some() || arg.starts_with(' ');
+    // Vim's one exception to reading the whole word as the command name (`find_ex_command`): a `k` not
+    // followed by `ee` is `:k` with its argument glued on (`:ka` is `:k a`, `:kfoo` is `:k foo`), while
+    // `:kee…` is `:keepmarks` and its longer spellings (#1234).
+    let arg = spelled.or_else(|| rest.strip_prefix('k').filter(|a| !a.starts_with("ee")))?;
     let arg = arg.trim();
     let mut chars = arg.chars();
     let Some(name) = chars.next() else {
         return Some(Ex::Fail(ARGUMENT_REQUIRED.into()));
     };
     if chars.next().is_some() {
-        return spaced.then(|| Ex::Fail(format!("E488: Trailing characters: {arg}")));
+        return Some(Ex::Fail(format!("E488: Trailing characters: {arg}")));
     }
     if !name.is_ascii_alphabetic() {
         return None;
