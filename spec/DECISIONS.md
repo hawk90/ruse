@@ -1017,3 +1017,25 @@ related:
   `ruse-core` appears (a plugin host or GUI).
 - Refs: [RFC-0022](../docs/rfc/proposed/RFC-0022-typed-positions-at-the-core-boundary.md), RFC-0008, D-023,
   INV-POS-TYPED, ENG-POS-001, F-002, #889.
+
+## D-064 — The recovery journal is per-transaction RJ01 in the state dir · decided (design)
+- **Decision:** Refines D-005. The journal is a stream of `RJ01` records (layout of persistence-and-recovery.md
+  §2, CRC32C, `schema_ver` = major.minor): a Header (owner pid/host/start time, path, file format, base), a
+  Checkpoint or, above 32 MiB, a `DiskBase` (length + SHA-256 of the disk file), one Edit record per applied
+  change with forward and inverse edits and metadata, Meta save-points and fsync Markers. The core exposes a
+  bounded drainable change log and does no I/O; the frontend writes it, synced after 4000 ms idle, 200
+  changes, or before a risky operation, never per keystroke. Journals live in `$XDG_STATE_HOME/ruse/journal/`
+  (`0700`/`0600`), named `<basename>.<path hash>.rj`, not next to the file. A clean buffer, `:q!`, `:bd!` and
+  `:e!` delete the journal; discard from the recovery prompt archives it (14 days, 20 per path). Recovery
+  offers recover / diff / edit the disk file / discard / quit, or open read-only when a live owner holds it;
+  a recovered buffer is the disk text plus one change, so it is modified and undoable. The status line adds
+  `[journal!]` and `[disk changed]` only. Legacy `RJS0` sidecars are read once and archived. Full design:
+  [RFC-0023](../docs/rfc/proposed/RFC-0023-per-transaction-journal.md).
+- **Reason:** #932/#933/#938: the shipped snapshot journal has no version, metadata or inverse edits, loses up
+  to N changes on a hard kill, writes into the project tree, and recovery is two-way with a destructive
+  discard. Neovim's state-dir swap and Vim's `updatetime`/`updatecount` batching are the standard answers.
+- **Re-evaluate if:** persistent undo is designed (compaction must keep the tree); multi-client or remote
+  journals arrive (Header gains a peer identity); measured sync cost or loss window contradicts the defaults.
+- Refs: [RFC-0023](../docs/rfc/proposed/RFC-0023-per-transaction-journal.md), D-005, D-034, RFC-0007,
+  INV-ADDITIVE, INV-TXN, INV-UNDO, INV-BUFFER-KIND, INV-TRUST-1, PERSIST-003/005/007/009, F-008, #932, #933,
+  #938.

@@ -183,6 +183,11 @@ magnitude**. (Vim's `[+]` behaves the same via `undofile` seq.)
 
 ### 2. Append-only transaction journal
 
+> **Decided details (D-064, [RFC-0023](../rfc/proposed/RFC-0023-per-transaction-journal.md)):** the core change
+> log the journal drains, the state-dir location and naming, the sync policy, the 32 MiB `DiskBase` mode, the
+> legacy `RJS0` migration, and SHA-256 (not BLAKE3) for content hashes. Where this section and the RFC differ, the
+> RFC wins.
+
 One journal file per editable Document, path derived deterministically and namespaced by workspace + a hash of
 the absolute file path (so two files with the same basename don't collide), stored under the recovery dir
 (§ *Recovery files*). Opened `O_APPEND` (POSIX) / `FILE_APPEND_DATA` (Windows); a single writer (the
@@ -330,6 +335,9 @@ Cross-device / same-directory: the temp **must** be in the target's directory (a
 fails cleanly rather than falling back to a non-atomic path silently.
 
 ### 4. Three-way crash recovery
+
+> **Decided details (D-064, [RFC-0023](../rfc/proposed/RFC-0023-per-transaction-journal.md) §6-§9):** the prompt
+> keys, the live-owner case, when a journal is deleted versus archived, retention numbers, and the status flags.
 
 On opening a file that has a recovery journal whose `saved_revision` point is *behind* recoverable records (a
 prior crash), recovery presents **three** materialized options and **never auto-applies** any of them
