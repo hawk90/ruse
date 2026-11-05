@@ -43,6 +43,8 @@ use super::{Available, Recovery};
 pub const IDLE: Duration = Duration::from_millis(4000);
 /// Sync once this many changes are buffered (Vim's `updatecount` default).
 pub const SYNC_EVERY: usize = 200;
+/// How often the event loop looks again while a large document's base hash runs (#1203).
+const HASH_POLL: Duration = Duration::from_millis(20);
 /// Compaction threshold: the edit payload since the last Checkpoint must pass this and the Checkpoint's size.
 pub const COMPACT_AFTER: u64 = 1 << 20;
 /// Buffered records past this are dropped for a Checkpoint of the current text, so a journal that keeps
@@ -899,6 +901,55 @@ pub fn rescue(
     written.map(|()| journal)
 }
 
+/// The SHA-256 of a large document's base text (RFC-0023 §5), computed off the input path (#1203): about
+/// 100 ms for 33 MiB, which the first keystroke would otherwise wait for.
+#[derive(Debug)]
+enum BaseHash {
+    Ready([u8; 32]),
+    Running(std::thread::JoinHandle<[u8; 32]>),
+}
+
+impl BaseHash {
+    /// Start hashing `text` on a thread of its own; inline when no thread can be started.
+    fn start(text: Arc<Vec<u8>>) -> BaseHash {
+        let t = Arc::clone(&text);
+        match std::thread::Builder::new()
+            .name("ruse-journal-hash".into())
+            .spawn(move || rj01::sha256(&t))
+        {
+            Ok(h) => BaseHash::Running(h),
+            Err(_) => BaseHash::Ready(rj01::sha256(&text)),
+        }
+    }
+
+    fn is_ready(&self) -> bool {
+        match self {
+            BaseHash::Ready(_) => true,
+            BaseHash::Running(h) => h.is_finished(),
+        }
+    }
+
+    /// The hash, waiting for the thread if it is still running.
+    fn wait(&mut self, text: &[u8]) -> [u8; 32] {
+        let h = match std::mem::replace(self, BaseHash::Ready([0; 32])) {
+            BaseHash::Ready(h) => h,
+            BaseHash::Running(t) => t.join().unwrap_or_else(|_| rj01::sha256(text)),
+        };
+        *self = BaseHash::Ready(h);
+        h
+    }
+}
+
+/// A large document's journal Header, held back until its base hash is known (#1203). The Edit records
+/// buffer behind it; the Header is written first, so no Edit reaches disk before its `DiskBase`.
+#[derive(Debug)]
+struct HeldHeader {
+    base: Arc<Vec<u8>>,
+    hash: BaseHash,
+    /// The format the base text is decoded with, as the journal began.
+    fmt: FileFormat,
+}
+
 /// Where a [`Writer`]'s journal is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum State {
@@ -938,6 +989,10 @@ pub struct Writer {
     checkpoint_len: u64,
     /// The journal's base is the disk text (RFC-0023 §5): no compaction.
     large: bool,
+    /// The hash of a large clean text, started when the writer first saw it (#1203).
+    hashing: Option<HeldHeader>,
+    /// A large document's fresh journal waits for its base hash: its Header is not in `pending` yet.
+    held: Option<HeldHeader>,
     seq: u64,
     /// When the last write and sync succeeded, for `:checkhealth` (RFC-0023 §8).
     last_sync: Option<Instant>,
@@ -983,6 +1038,8 @@ impl Writer {
             since_checkpoint: 0,
             checkpoint_len: 0,
             large: false,
+            hashing: None,
+            held: None,
             seq: 0,
             last_sync: None,
             failures: 0,
@@ -1054,7 +1111,22 @@ impl Writer {
         let drain = doc.drain_changes();
         if !doc.is_modified() {
             self.discard();
-            self.base = Some(doc.text_arc());
+            let text = doc.text_arc();
+            if text.len() <= rj01::LARGE_FILE {
+                self.hashing = None;
+            } else if !self
+                .hashing
+                .as_ref()
+                .is_some_and(|h| Arc::ptr_eq(&h.base, &text))
+            {
+                // Hash a large text now, off the input path, for the journal its first change starts.
+                self.hashing = Some(HeldHeader {
+                    hash: BaseHash::start(Arc::clone(&text)),
+                    base: Arc::clone(&text),
+                    fmt: self.fmt,
+                });
+            }
+            self.base = Some(text);
             return;
         }
         if fmt != self.fmt {
@@ -1119,22 +1191,30 @@ impl Writer {
             (e.base_revision.0, node)
         });
         self.large = base.len() > rj01::LARGE_FILE;
-        let b = if self.large {
-            Base::Disk {
-                len: base.len() as u64,
-                sha256: rj01::sha256(&base),
-            }
-        } else {
-            Base::Checkpoint
-        };
-        let ok = rj01::encode_header(&mut self.pending, &header(Some(&self.doc), self.fmt, b))
-            .is_ok()
-            && (self.large
-                || rj01::encode_checkpoint(&mut self.pending, node, revision, &base).is_ok());
+        if self.large {
+            // The Header waits for the base hash, which runs off the input path (#1203).
+            let fmt = self.fmt;
+            self.held = Some(match self.hashing.take() {
+                Some(h) if Arc::ptr_eq(&h.base, &base) && h.fmt == fmt => h,
+                _ => HeldHeader {
+                    hash: BaseHash::start(Arc::clone(&base)),
+                    base,
+                    fmt,
+                },
+            });
+            self.checkpoint_len = 0;
+            return;
+        }
+        let ok = rj01::encode_header(
+            &mut self.pending,
+            &header(Some(&self.doc), self.fmt, Base::Checkpoint),
+        )
+        .is_ok()
+            && rj01::encode_checkpoint(&mut self.pending, node, revision, &base).is_ok();
         if !ok {
             self.rewrite = true;
         }
-        self.checkpoint_len = if self.large { 0 } else { base.len() as u64 };
+        self.checkpoint_len = base.len() as u64;
     }
 
     fn touch(&mut self, now: Instant, n: usize) {
@@ -1144,13 +1224,22 @@ impl Writer {
 
     /// Whether records wait to be written.
     pub fn unsynced(&self) -> bool {
-        self.state != State::Idle && (self.rewrite || !self.pending.is_empty())
+        self.state != State::Idle
+            && (self.rewrite || self.held.is_some() || !self.pending.is_empty())
+    }
+
+    /// Whether a large document's journal still waits for its base hash.
+    fn hash_running(&self) -> bool {
+        !self.rewrite && self.held.as_ref().is_some_and(|h| !h.hash.is_ready())
     }
 
     /// Whether the sync policy asks for a flush now: [`IDLE`] since the last change, or [`SYNC_EVERY`]
     /// changes buffered.
+    /// A journal whose base hash is still running is not due yet; a risky operation's
+    /// [`Writer::flush`] waits for it.
     pub fn due(&self, now: Instant) -> bool {
         self.unsynced()
+            && !self.hash_running()
             && (self.pending_changes >= SYNC_EVERY
                 || self
                     .last_change
@@ -1162,9 +1251,14 @@ impl Writer {
         if !self.unsynced() {
             return None;
         }
-        Some(self.last_change.map_or(Duration::ZERO, |t| {
+        let wait = self.last_change.map_or(Duration::ZERO, |t| {
             IDLE.saturating_sub(now.saturating_duration_since(t))
-        }))
+        });
+        Some(if self.hash_running() {
+            wait.max(HASH_POLL)
+        } else {
+            wait
+        })
     }
 
     /// Write the pending records and a Marker, then `fdatasync`. On failure the records stay pending and
@@ -1224,10 +1318,27 @@ impl Writer {
                 doc.history().current_seq().0,
             )?;
             write_private(&self.journal, &bytes)?;
+            self.held = None;
             self.large = false;
             self.since_checkpoint = 0;
             self.checkpoint_len = text.len() as u64;
             self.on_disk = bytes.len() as u64;
+            return Ok(());
+        }
+        if let Some(held) = self.held.as_mut() {
+            // A large document's fresh journal: its Header and `DiskBase` first, then the records.
+            let hash = held.hash.wait(&held.base);
+            let base = Base::Disk {
+                len: held.base.len() as u64,
+                sha256: hash,
+            };
+            let mut out = Vec::with_capacity(self.pending.len() + 256);
+            rj01::encode_header(&mut out, &header(Some(&self.doc), held.fmt, base))?;
+            out.extend_from_slice(&self.pending);
+            rj01::encode_marker(&mut out, now_ms())?;
+            write_private(&self.journal, &out)?;
+            self.held = None;
+            self.on_disk = out.len() as u64;
             return Ok(());
         }
         // A fresh journal: the pending records start with its Header.
@@ -1275,6 +1386,7 @@ impl Writer {
         }
         self.state = State::Idle;
         self.rewrite = false;
+        self.held = None;
         self.pending = Vec::new();
         self.pending_changes = 0;
         self.last_change = None;
@@ -1901,6 +2013,46 @@ mod tests {
         );
         assert!(!w.journal().exists(), "archived");
         assert_eq!(fs::read_dir(j.archive_dir()).unwrap().count(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// #1203: the base hash of a large document starts when the writer first sees the clean text, and the
+    /// first change only buffers its record behind a held Header; the flush writes the Header and its
+    /// `DiskBase` first, waiting for the hash if it still runs. A risky operation's flush always writes.
+    #[test]
+    fn a_large_base_is_hashed_off_the_input_path() {
+        let (j, dir) = scratch("large-hash");
+        let file = dir.join("big.txt");
+        let disk = vec![b'a'; rj01::LARGE_FILE + 1];
+        let mut d = opened(&disk);
+        let mut w = Writer::new(&j, &file, FileFormat::default());
+        w.absorb(&mut d, FileFormat::default(), Instant::now());
+        assert!(w.hashing.is_some(), "hashing began at the clean text");
+        // Another clean frame reuses that hash rather than start another one.
+        let first = w.hashing.as_ref().map(|h| Arc::as_ptr(&h.base));
+        w.absorb(&mut d, FileFormat::default(), Instant::now());
+        assert_eq!(w.hashing.as_ref().map(|h| Arc::as_ptr(&h.base)), first);
+        insert(&mut d, 0, "+");
+        let now = Instant::now();
+        w.absorb(&mut d, FileFormat::default(), now);
+        assert!(w.held.is_some() && w.hashing.is_none());
+        assert!(!w.journal().exists(), "nothing is on disk before the hash");
+        if w.hash_running() {
+            assert!(!w.due(now + IDLE), "not due while the hash runs");
+            assert!(w.wake_in(now + IDLE) >= Some(HASH_POLL));
+        }
+        w.flush(&d).unwrap();
+        assert!(w.held.is_none());
+        let raw = read_journal(w.journal()).unwrap();
+        let r = rj01::replay(&raw, Some(&disk));
+        assert!(matches!(
+            r.header.unwrap().base,
+            Base::Disk { len, sha256 } if len == disk.len() as u64 && sha256 == rj01::sha256(&disk)
+        ));
+        assert_eq!(
+            r.text.as_deref().map(|t| (t.len(), t[0])),
+            Some((disk.len() + 1, b'+'))
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

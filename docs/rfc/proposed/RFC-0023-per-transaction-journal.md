@@ -186,8 +186,9 @@ text by temp, fsync and rename; nothing is ever appended behind bytes this write
 (`journal::rescue`) appends a Checkpoint and a Marker after the last intact record, cutting a torn tail first,
 or writes a fresh Header + Checkpoint when no intact Header is there. A failed write keeps the records and
 retries on the next trigger; past 8 MiB buffered they are replaced by a Checkpoint of the current text, so a
-journal that keeps failing holds bounded memory. Risky operations are `:!`, `:{range}!`, `:r !`, `:w !` and
-`:terminal`; ruse has no `C-z` suspend and no plugin edit batch yet. The save-point Meta record is in the format
+journal that keeps failing holds bounded memory. Risky operations are `:!`, `:{range}!`, `:r !`, `:w !`,
+`:terminal` and an LSP edit batch (format edits, a rename, a code action's edit, a server's
+`workspace/applyEdit`; #1202); ruse has no `C-z` suspend and no plugin edit batch yet. The save-point Meta record is in the format
 and the reader but is not written in this slice: a save leaves the buffer clean, which deletes the journal (§6),
 so a save point would only matter for a save followed by an edit within one command. A rename (`:saveas`,
 `:file`) moves the journal to the new name and appends a Meta rename; a file-format change appends a Meta
@@ -204,6 +205,11 @@ large record) rather than lose the changes. Replay first checks the disk file ag
 the deltas are applied to it. If it does not, recovery cannot rebuild the text. It says so ("the file changed
 on disk since the journal began; the 37 changes cannot be replayed"), archives the journal and opens the
 disk file. Compaction is skipped for these documents; a save starts a new journal with a new `DiskBase`.
+As built (#1203), the hash is computed on a thread of its own, started when the writer first sees the clean
+text (at open, after a save), so the first keystroke does not wait for it (about 90 ms for 33 MiB on an
+arm64 laptop, now a few microseconds). The first change's records buffer behind a held Header; the sync
+writes the Header and its `DiskBase` first, so no Edit record reaches disk before it. The idle and change-count
+triggers wait for the hash; a risky operation's sync waits for it to finish.
 
 ### 6. When the journal is deleted
 

@@ -531,6 +531,23 @@ impl LspCoordinator {
         }
     }
 
+    /// Whether [`LspCoordinator::apply_pending`] has an edit batch to apply (format edits, a rename, a
+    /// server's `workspace/applyEdit`): the session syncs the journal before it (RFC-0023 §4).
+    pub(crate) fn has_edit_batch(&self) -> bool {
+        !self.pending_edits.is_empty()
+            || !self.pending_rename.is_empty()
+            || self
+                .pending_server_edits
+                .iter()
+                .any(|(_, _, e)| !e.is_empty())
+    }
+
+    /// Queue format edits as a server's formatting response does, for a test without a server.
+    #[cfg(test)]
+    pub(crate) fn queue_format_edits(&mut self, edits: Vec<(BytePos, BytePos, String)>) {
+        self.pending_edits = edits;
+    }
+
     /// The references locations resolved this frame (the loop opens its generic picker from these).
     pub(crate) fn take_refs(&mut self) -> Option<Vec<(String, u32, u32)>> {
         self.pending_refs.take()

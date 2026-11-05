@@ -975,9 +975,9 @@ impl Session {
     }
 
     /// Sync every buffer's pending journal records now: before a risky operation (`:!`, a filter, `:r !`,
-    /// `:w !`, `:terminal`), so a hang or a kill inside it loses nothing that was typed (RFC-0023 §4).
+    /// `:w !`, `:terminal`, an LSP edit batch), so a hang or a kill inside it loses nothing that was typed
+    /// (RFC-0023 §4).
     pub(crate) fn sync_journals(&mut self) {
-        let now = std::time::Instant::now();
         let Session {
             ws,
             files,
@@ -986,16 +986,7 @@ impl Session {
             status,
             ..
         } = self;
-        for (id, w) in journal_writers.iter_mut() {
-            let (Some(doc), Some(bf)) = (ws.document_mut(*id), files.get(id)) else {
-                continue;
-            };
-            w.absorb(doc, bf.fmt, now); // the changes made since the frame began, too
-            if w.unsynced() {
-                let r = w.flush(doc);
-                journal_outcome(r, *id, &bf.path, w.journal(), journal_failed, status);
-            }
-        }
+        sync_journals(ws, files, journal_writers, journal_failed, status);
     }
 
     /// How long until a buffered journal sync is due, for the event loop's poll timeout.
@@ -1354,6 +1345,11 @@ impl Session {
     /// mutates `highlighters`, which the frame's highlight spans borrowed until render ended), then open the
     /// references / code-action pickers it collected.
     pub(crate) fn post_render(&mut self, frame: &FrameCtx) {
+        // An LSP edit batch (format, rename, a server's `workspace/applyEdit`) is a risky operation: the
+        // typing before it reaches the journal first (RFC-0023 §4, #1202).
+        if self.lsp.has_edit_batch() {
+            self.sync_journals();
+        }
         let recorded = &mut self.recorded;
         self.lsp.apply_pending(
             &mut self.ws,
@@ -1819,6 +1815,8 @@ impl Session {
             alt_file,
             screen_want,
             scroll_valid,
+            journal_writers,
+            journal_failed,
             ..
         } = self;
         let (revision, text_rows) = (frame.revision, frame.text_rows);
@@ -2020,6 +2018,10 @@ impl Session {
                 // F-014: the code-action picker applies the selected action's WorkspaceEdit (inline, as
                 // the `spans` borrow is released post-render — like the references jump).
                 Some(Accepted::Action(action)) => {
+                    if !action.edit.is_empty() {
+                        // An LSP edit batch syncs the journal first (RFC-0023 §4, #1202).
+                        sync_journals(ws, files, journal_writers, journal_failed, status);
+                    }
                     lsp.apply_code_action(
                         &action,
                         ws,
@@ -5009,6 +5011,27 @@ fn journal_health(
     }
 }
 
+/// [`Session::sync_journals`] over the session's fields, for a caller that holds them borrowed apart.
+fn sync_journals(
+    ws: &mut Workspace,
+    files: &Files,
+    journal_writers: &mut HashMap<DocumentId, persist::journal::Writer>,
+    journal_failed: &mut HashSet<DocumentId>,
+    status: &mut String,
+) {
+    let now = std::time::Instant::now();
+    for (id, w) in journal_writers.iter_mut() {
+        let (Some(doc), Some(bf)) = (ws.document_mut(*id), files.get(id)) else {
+            continue;
+        };
+        w.absorb(doc, bf.fmt, now); // the changes made since the frame began, too
+        if w.unsynced() {
+            let r = w.flush(doc);
+            journal_outcome(r, *id, &bf.path, w.journal(), journal_failed, status);
+        }
+    }
+}
+
 /// Report a journal sync: a failure is shown once per failing run, as Neovim's E303 is, rather than
 /// silently leaving the work unprotected (#907); the records stay buffered for the next try.
 /// The status line then shows `[journal!]` until a write succeeds (RFC-0023 §8).
@@ -5760,5 +5783,69 @@ mod info_tests {
     fn non_info_command_is_none() {
         let ws = Workspace::new(&b"x\n"[..]);
         assert!(info_status(&Command::Undo, &ws).is_none());
+    }
+}
+
+#[cfg(test)]
+mod journal_tests {
+    use super::*;
+
+    /// A session on `f.txt` in a scratch directory whose buffer is journaled into the scratch state home,
+    /// as the binary journals a file buffer (the test does not touch the process-global rescue store).
+    fn journaled(
+        tag: &str,
+        text: &[u8],
+    ) -> (Session, &'static persist::journal::Journals, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("ruse-session-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("f.txt");
+        std::fs::write(&file, text).unwrap();
+        let mut s = Session::new(SessionInit {
+            path: Some(file.clone()),
+            fmt: persist::encoding::FileFormat::default(),
+            initial: text.to_vec(),
+            status: String::new(),
+            profile: "vim",
+            term: TermInfo::default(),
+            cwd: dir.clone(),
+            trusted: false,
+            rescue: false,
+        });
+        let j: &'static persist::journal::Journals = Box::leak(Box::new(
+            persist::journal::Journals::in_state_home(&dir.join("state")),
+        ));
+        s.journals = Some(j);
+        let id = s.ws.focused_buffer();
+        let fmt = persist::encoding::FileFormat::default();
+        let mut w = persist::journal::Writer::new(j, &file, fmt);
+        w.absorb(
+            s.ws.document_mut(id).unwrap(),
+            fmt,
+            std::time::Instant::now(),
+        );
+        s.journal_writers.insert(id, w);
+        (s, j, file)
+    }
+
+    /// #1202: an LSP edit batch is a risky operation (RFC-0023 §4). The typing before it reaches the journal
+    /// before the batch applies, with no idle wait.
+    #[test]
+    fn an_lsp_edit_batch_syncs_the_journal_first() {
+        let (mut s, j, file) = journaled("lsp-batch", b"fn main() {}\n");
+        let typed = vec![(BytePos(0), BytePos(0), "pub ".to_string())];
+        assert!(s.ws.apply_edits(&typed, TransactionOrigin::UserInput));
+        assert!(!j.path_for(&file).exists(), "nothing is due yet");
+        s.lsp
+            .queue_format_edits(vec![(BytePos(0), BytePos(0), "// f\n".to_string())]);
+        let frame = s.pre_frame(80, 24);
+        s.post_render(&frame);
+        assert_eq!(
+            j.replay(Some(&file)).as_deref(),
+            Some(&b"pub fn main() {}\n"[..]),
+            "the typing, synced before the batch"
+        );
+        assert_eq!(s.ws.focused().doc.bytes(), b"// f\npub fn main() {}\n");
+        let _ = std::fs::remove_dir_all(file.parent().unwrap());
     }
 }
