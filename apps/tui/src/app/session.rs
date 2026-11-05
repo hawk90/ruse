@@ -705,6 +705,15 @@ pub(crate) struct Session {
     journal_writers: HashMap<DocumentId, persist::journal::Writer>,
     /// Buffers whose last journal write failed, so the E303 warning shows once per failing run (#907).
     journal_failed: HashSet<DocumentId>,
+    /// File buffers whose file on disk differs from what ruse last read or saved (`[disk changed]`,
+    /// RFC-0023 §8), as of the last [`Session::check_disk`].
+    disk_changed: HashSet<DocumentId>,
+    /// The ones of them W11/W12 was shown for, once per change.
+    disk_warned: HashSet<DocumentId>,
+    /// The last key or paste, and the last disk check: the idle check runs [`persist::journal::IDLE`]
+    /// after both.
+    last_input: std::time::Instant,
+    disk_checked: std::time::Instant,
     /// `ruse` with no file: the start buffer has no path, but a crash rescues it into this process's unnamed
     /// journal, which the next pathless start offers (#856). Only the crash paths write it: the buffer can
     /// never be saved, so a periodic journal would outlive every `:q!`.
@@ -879,6 +888,10 @@ impl Session {
             },
             journal_writers: HashMap::new(),
             journal_failed: HashSet::new(),
+            disk_changed: HashSet::new(),
+            disk_warned: HashSet::new(),
+            last_input: std::time::Instant::now(),
+            disk_checked: std::time::Instant::now(),
             unnamed_start: path.is_none().then_some(file_buf),
             rescue,
             profile_name: profile,
@@ -1370,8 +1383,12 @@ impl Session {
         if poll_ms.is_none() && self.lsp.has_live_client() {
             poll_ms = Some(LSP_TICK_MS);
         }
-        // Wake for a journal sync that falls due while no key arrives (RFC-0023 §4's idle trigger).
-        if let Some(ms) = self.journal_wake_ms() {
+        // Wake for a journal sync that falls due while no key arrives (RFC-0023 §4's idle trigger), and
+        // for the idle look at the files on disk (§8).
+        for ms in [self.journal_wake_ms(), self.disk_wake_ms()]
+            .into_iter()
+            .flatten()
+        {
             poll_ms = Some(poll_ms.map_or(ms, |p| p.min(ms)));
         }
         poll_ms
@@ -1385,7 +1402,77 @@ impl Session {
         if self.journal_failed.contains(&id) && self.ws.focused().doc.is_modified() {
             flags.push_str("[journal!]");
         }
+        if self.disk_changed.contains(&id) {
+            flags.push_str("[disk changed]");
+        }
         flags
+    }
+
+    /// Look at every file buffer's file again (RFC-0023 §8): a stat, and a hash when it moved. A buffer
+    /// whose file newly differs from what ruse read or saved gets nvim's W11 (unmodified) or W12 (modified
+    /// too) on the status line when `announce`, the focused buffer first. ruse does not offer to reload.
+    pub(crate) fn check_disk(&mut self, announce: bool) {
+        self.disk_checked = std::time::Instant::now();
+        let focused = self.ws.focused_buffer();
+        let mut ids: Vec<DocumentId> = self.files.keys().copied().collect();
+        ids.sort_by_key(|id| (*id != focused, id.0));
+        let mut first = None;
+        for id in ids {
+            let Some(bf) = self.files.get(&id) else {
+                continue;
+            };
+            if persist::disk::check(&bf.path) {
+                self.disk_changed.insert(id);
+                if !self.disk_warned.contains(&id) && first.is_none() {
+                    first = Some(id);
+                }
+            } else {
+                self.disk_changed.remove(&id);
+                self.disk_warned.remove(&id);
+            }
+        }
+        self.disk_changed.retain(|id| self.files.contains_key(id));
+        self.disk_warned.retain(|id| self.files.contains_key(id));
+        let Some(id) = first.filter(|_| announce) else {
+            return;
+        };
+        self.disk_warned.insert(id);
+        let (Some(bf), Some(doc)) = (self.files.get(&id), self.ws.document(id)) else {
+            return;
+        };
+        let name = bf.path.display();
+        self.status = if doc.is_modified() {
+            format!(
+                "W12: Warning: File \"{name}\" has changed and the buffer was changed in Vim as well"
+            )
+        } else {
+            format!("W11: Warning: File \"{name}\" has changed since editing started")
+        };
+    }
+
+    /// The idle trigger of [`Session::check_disk`]: once [`persist::journal::IDLE`] passed since the last
+    /// key and the last check. Only a session with files on disk to watch (the binary's) runs it.
+    pub(crate) fn idle_disk_check(&mut self) {
+        let idle = persist::journal::IDLE;
+        if self.rescue
+            && !self.files.is_empty()
+            && self.last_input.elapsed() >= idle
+            && self.disk_checked.elapsed() >= idle
+        {
+            self.check_disk(true);
+        }
+    }
+
+    /// How long until [`Session::idle_disk_check`] is due, for the poll timeout.
+    fn disk_wake_ms(&self) -> Option<u64> {
+        if !self.rescue || self.files.is_empty() {
+            return None;
+        }
+        let idle = persist::journal::IDLE;
+        let wait = idle
+            .saturating_sub(self.last_input.elapsed())
+            .max(idle.saturating_sub(self.disk_checked.elapsed()));
+        Some((wait.as_millis() as u64).max(1))
     }
 
     /// Whether keys of a macro replay are still to run (the event loop paints less often meanwhile).
@@ -1460,6 +1547,7 @@ impl Session {
         frame: &FrameCtx,
     ) -> Flow {
         let status_before = self.status.clone();
+        self.last_input = std::time::Instant::now();
         if !from_replay {
             // A typed key comes after any replay drained; a block left open would join this key's change.
             self.end_macro_undo();
@@ -1508,6 +1596,7 @@ impl Session {
     /// a picker or a `:s///c` confirm loop declines it with a message; everything else goes through
     /// [`InputEngine::paste`]. A paste does not end a macro recording and is not recorded into it.
     pub(crate) fn on_paste(&mut self, raw: &str, frame: &FrameCtx) -> Flow {
+        self.last_input = std::time::Instant::now();
         let text = crate::input::paste_text(raw);
         if text.is_empty() {
             return Flow::Continue;
@@ -3214,9 +3303,18 @@ impl Session {
     /// every `Ex` variant has exactly one arm here, so a new command cannot land in a match that never sees
     /// it.
     fn execute_ex_one(&mut self, text: String, frame: &FrameCtx) {
-        if runs_external(&parse_ex(&text)) {
+        let parsed = parse_ex(&text);
+        let external = runs_external(&parsed);
+        if external {
             self.sync_journals();
         }
+        self.execute_ex_parsed(text, frame);
+        // The files may have changed: after another program ran (nvim checks after a shell command), and
+        // after a write, which may have been refused because one did (RFC-0023 §8). `:checktime` asks.
+        self.check_disk(external || parsed == Ex::CheckTime);
+    }
+
+    fn execute_ex_parsed(&mut self, text: String, frame: &FrameCtx) {
         let Session {
             ws,
             files,
@@ -3662,6 +3760,8 @@ impl Session {
             }
             // `:earlier`/`:later` walk chronological undo time by recording + applying N of the
             // g-/g+ commands (done HERE so they land in `recorded` for trace fidelity).
+            // `:checktime`: the look itself follows the command ([`Session::execute_ex_one`]).
+            Ex::CheckTime => {}
             Ex::Earlier(n) => time_travel(true, n, ws, files, recorded, status, quit),
             Ex::Later(n) => time_travel(false, n, ws, files, recorded, status, quit),
             // `:e[!] [++ff] [+cmd] [{file}]` (F-007, #610): open a file into a buffer (shared with the file
@@ -5055,6 +5155,14 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         trusted,
         rescue: true,
     });
+    // What the start buffer's file held as ruse read it, for `[disk changed]` (RFC-0023 §8).
+    if let Some(p) = s
+        .files
+        .get(&s.ws.focused_buffer())
+        .map(|bf| bf.path.clone())
+    {
+        persist::disk::saw(&p, &raw);
+    }
     s.config = config;
     s.config_paths = Some(config_paths);
     s.apply_config(true);
@@ -5095,6 +5203,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             break;
         }
         let (cols, term_rows) = ct_terminal::size().unwrap_or((80, 24));
+        s.idle_disk_check();
         let frame = s.pre_frame(cols, term_rows);
         // A macro replay repaints at most every `REPLAY_PAINT`, not once per replayed key: nvim does not
         // redraw while it executes typeahead, and a frame per key made a 100,000-key replay take half a
@@ -5291,6 +5400,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // A bracketed paste (mode 2004) arrives as one event and never as keys (#600).
                     Event::Paste(text) => {
                         s.on_paste(&text, &frame);
+                        continue;
+                    }
+                    // Focus gain looks at the files on disk again (RFC-0023 §8). ruse does not ask the
+                    // terminal for focus reports yet (DECSET 1004 is not in the F-010 probe), so this
+                    // arrives only from a terminal that sends them unasked.
+                    Event::FocusGained => {
+                        s.check_disk(true);
                         continue;
                     }
                     _ => continue,

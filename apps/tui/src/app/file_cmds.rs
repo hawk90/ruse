@@ -78,6 +78,8 @@ pub(crate) enum FileError {
     Directory { shown: String, bang: bool },
     /// `E13`: the target exists and there is no `!`.
     Exists,
+    /// The file changed on disk since ruse read or saved it, and there is no `!` (RFC-0023 §8, #938).
+    ChangedOnDisk,
 }
 
 impl std::fmt::Display for FileError {
@@ -92,6 +94,7 @@ impl std::fmt::Display for FileError {
                 write!(f, "E17: \"{shown}\" is a directory")
             }
             FileError::Exists => f.write_str("E13: File exists (add ! to override)"),
+            FileError::ChangedOnDisk => f.write_str(persist::disk::CHANGED_SINCE_READ),
         }
     }
 }
@@ -115,8 +118,13 @@ fn write_own(
     mark_saved: bool,
     force: bool,
 ) -> Result<String, FileError> {
+    // A file changed by another program since ruse read or saved it is not overwritten without `!`.
+    if !force && persist::disk::conflicts(path) {
+        return Err(FileError::ChangedOnDisk);
+    }
     match persist::atomic::write(path, disk, force) {
         Ok(method) => {
+            persist::disk::saw(path, disk);
             if mark_saved {
                 if let Some(doc) = ws.document_mut(id) {
                     doc.mark_saved();
@@ -292,6 +300,7 @@ pub(crate) fn ex_write(
                             // A buffer with no file takes the name it is first written to (Vim's
                             // 'cpoptions' `F`); written whole, it is then saved.
                             if own.is_none() {
+                                persist::disk::saw(&target, &disk);
                                 adopt_file(ws, files, highlighters, id, name, fmt);
                                 if whole {
                                     ws.focused_doc_mut().mark_saved();
@@ -358,6 +367,7 @@ pub(crate) fn ex_saveas(
     let (source, disk) = encode(ws.focused().doc.bytes(), fmt, fixeol);
     match persist::atomic::write(&target, &disk, bang) {
         Ok(method) => {
+            persist::disk::saw(&target, &disk);
             if let Some((old, _)) = &own {
                 persist::journal::clear(Some(old)); // the changes are on disk under the new name
             }
@@ -429,6 +439,7 @@ pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: F
     };
     match persist::read_file(&path) {
         Ok(raw) => {
+            persist::disk::saw(&path, &raw);
             let fmt = with_ff(FileFormat::detect(&raw), opts);
             ws.reload_focused(fmt.to_buffer(&raw));
             // The changes were thrown away on purpose (`:e!`); a journal of them must not be offered on

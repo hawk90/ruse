@@ -128,6 +128,7 @@ pub(crate) fn open_file_with(
         None if new => format!("\"{file}\" [New]"),
         None => format!("\"{file}\" {} bytes", raw.len()),
     };
+    persist::disk::saw(&p, &raw);
     attach_file(files, highlighters, id, p, f);
     if let Some(bf) = files.get_mut(&id) {
         bf.read_only = read_only;
@@ -809,9 +810,15 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
     }
     // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
     let bytes = bf.fmt.to_disk(&source);
-    // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is.
+    // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is, and a file
+    // changed on disk since ruse read or saved it is not overwritten (RFC-0023 §8).
+    if persist::disk::conflicts(&bf.path) {
+        *status = persist::disk::CHANGED_SINCE_READ.into();
+        return false;
+    }
     match persist::atomic::write(&bf.path, &bytes, false) {
         Ok(method) => {
+            persist::disk::saw(&bf.path, &bytes);
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());

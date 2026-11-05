@@ -6,6 +6,7 @@
 //!   * [`journal`]  — where journals live, the writer, the crash-path rescue, the open-time offer. (#4)
 //!   * [`rjs0`]     — the legacy snapshot journal, read once and archived.
 //!   * [`diff`]     — the line-based unified diff the recovery prompt's `d` shows.
+//!   * [`disk`]     — whether a file still holds what ruse read or saved (`[disk changed]`, RFC-0023 §8).
 //!   * [`Recovery`] — the open-time offer; recovery never auto-overwrites. (#3, #4)
 //!
 //! The format and the decisions are pure over bytes, so the persistence contract is unit-testable; only
@@ -15,6 +16,7 @@ use std::path::PathBuf;
 
 pub mod atomic;
 pub mod diff;
+pub mod disk;
 pub mod encoding;
 pub mod journal;
 pub mod rj01;

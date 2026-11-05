@@ -157,6 +157,9 @@ pub enum Ex {
     },
     /// `:checkhealth` / `:che` — report the running editor's health (F-030 / CAP-HEALTHCHECK).
     CheckHealth,
+    /// `:checkt[ime]`: look at every file buffer's file on disk again (`[disk changed]`, W11/W12; RFC-0023
+    /// §8). No reload is offered.
+    CheckTime,
     /// `:enew` / `:ene` — open a new empty (scratch) buffer in the focused window (F-007 multi-buffer).
     Enew,
     /// `:e[dit][!] [++opt] [+cmd] [{file}]` — open `{file}` into a buffer and focus it (F-007), or, with no
@@ -1182,6 +1185,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "ascii" | "as" => Ex::Ascii,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
+        "checktime" | "checktim" | "checkti" | "checkt" => Ex::CheckTime,
         "enew" | "ene" => Ex::Enew,
         "ls" | "buffers" | "files" => Ex::Buffers,
         "bnext" | "bn" => Ex::BufferNext,

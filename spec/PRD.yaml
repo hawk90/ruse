@@ -643,7 +643,11 @@ features:
     # (`#`, `"#`, `:e #`, `:b#`), `:f[ile] [{name}]`/`:0file`, `:fin[d]`/`:sf[ind]` over the default
     # `'path'` (`.,,`), `:dr[op]`, `:vi[sual]`, `:pw[d]`, `:cd`/`:chd[ir]` (`-`, `~`; buffer paths follow).
     # Not modeled yet: `:view`/`:sview` (no 'readonly'), `:lcd`/`:tcd` (no window-local directory),
-    # `:oldfiles`/`#<n` (no viminfo/shada), `:checktime`, and `:file`'s `[Not edited]` state.
+    # `:oldfiles`/`#<n` (no viminfo/shada), and `:file`'s `[Not edited]` state.
+    # #938 (RFC-0023 slice 4, second part; persist/disk.rs, tests/pty_disk_changed.rs): `[disk changed]`
+    # when the file differs from what ruse read or saved (stat, confirmed by a content hash), checked on
+    # the 4000 ms idle timer, after a shell command, on `:checkt[ime]` and before a save; W11/W12 once
+    # per change (no reload offer); a save without `!` into a changed file is refused.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.

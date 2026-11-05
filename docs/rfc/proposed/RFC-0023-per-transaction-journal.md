@@ -251,7 +251,19 @@ failure of a failing run keeps #907's E303 text and adds the journal path after 
 are quiet. `:checkhealth` lists every check (one `OK`/`WARN`/`n/a` line each) with the summary on the status
 line; its journal part names the journal directory (WARN without a state directory) and, per file buffer,
 the size, last sync age, waiting changes and failed writes, then the path (WARN while the last write failed).
-`[disk changed]` comes in the second part.
+
+As built (slice 4, second part, #938): `[disk changed]` follows `[+]` and `[journal!]`. `persist::disk` keeps,
+per canonical path, what this process last read from the file or saved to it: its stat (size, modification
+time, inode, device) and a content hash (SipHash of the bytes, a change detector, not a security boundary).
+Every read of a buffer's file (startup, `:e`, `:e!`) and every save record it. A check stats the file and
+hashes it only when the stat moved, so a `touch` is not a change and an mtime alone is never trusted; a file
+that is gone or unreadable differs. Checks run on the 4000 ms idle timer, after a shell command (`:!` and the
+other risky operations, as nvim checks after a shell command), on `:checktime`, on focus gain (ruse does not
+yet ask the terminal for focus reports: DECSET 1004 is not in the F-010 probe), and before every save. A
+newly changed file gives nvim's W11 (buffer unmodified) or W12 (modified) on the status line, once per
+change; no reload is offered. A save without `!` into a changed file is refused with nvim's warning ("The
+file has been changed since reading it!!!") plus "(add ! to write anyway)", where nvim asks y/n (design doc
+§5: never silently overwrite an externally changed file); `:w!` writes, and the save records the new text.
 
 ### 9. Retention
 

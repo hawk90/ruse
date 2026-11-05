@@ -55,6 +55,7 @@ const COMMANDS: &[ExCommand] = &[
     cmd("ascii", 2, "ascii"),
     cmd("nohlsearch", 3, "nohlsearch"),
     cmd("checkhealth", 3, "checkhealth"),
+    cmd("checktime", 6, "checktime"),
     cmd("edit", 1, "edit"),
     cmd("enew", 3, "enew"),
     cmd("ls", 2, "ls"),

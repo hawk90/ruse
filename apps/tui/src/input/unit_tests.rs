@@ -3725,6 +3725,8 @@ mod tests {
         // `:checkhealth` and its `:che` prefix both parse (F-030).
         assert_eq!(parse_ex("checkhealth"), Ex::CheckHealth);
         assert_eq!(parse_ex("che"), Ex::CheckHealth);
+        assert_eq!(parse_ex("checktime"), Ex::CheckTime);
+        assert_eq!(parse_ex("checkt"), Ex::CheckTime);
         // `:rename {new}` / `:rn {new}` (F-014 LSP rename); a bare verb or a whitespaced name stays Unknown.
         assert_eq!(parse_ex("rename widget"), Ex::Rename("widget".into()));
         assert_eq!(parse_ex("rn widget"), Ex::Rename("widget".into()));
