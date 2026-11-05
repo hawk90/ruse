@@ -5,40 +5,63 @@
 //!   * [`rj01`]     — the per-transaction journal record format and its replay (RFC-0023, D-064). (#4)
 //!   * [`journal`]  — where journals live, the writer, the crash-path rescue, the open-time offer. (#4)
 //!   * [`rjs0`]     — the legacy snapshot journal, read once and archived.
-//!   * [`assess_recovery`] — the pure open-time decision; recovery never auto-overwrites. (#3, #4)
+//!   * [`diff`]     — the line-based unified diff the recovery prompt's `d` shows.
+//!   * [`Recovery`] — the open-time offer; recovery never auto-overwrites. (#3, #4)
 //!
 //! The format and the decisions are pure over bytes, so the persistence contract is unit-testable; only
 //! the journal's thin file wrappers and the atomic save touch the disk.
 
+use std::path::PathBuf;
+
 pub mod atomic;
+pub mod diff;
 pub mod encoding;
 pub mod journal;
 pub mod rj01;
 pub mod rjs0;
 
-/// What a document's journal offers at open time, once compared against the on-disk file.
+/// What a document's journal offers at open time (RFC-0023 §7), once compared against the disk text. The
+/// prompt renders it ([`crate::ui::recovery`]); the original file is never written here or there.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Recovery {
-    /// No journal, or its latest record already matches the disk file — nothing to recover.
+    /// No journal, or one whose text is the disk text: nothing to recover.
     None,
-    /// Unsaved changes were found that differ from disk. The user chooses: keep the recovered
-    /// buffer, or discard it and use the disk file. The original file is NEVER auto-overwritten —
-    /// recovered bytes go into the editor buffer only, so a save is an explicit later act.
-    Available(Vec<u8>),
+    /// Unsaved changes from a session that is gone, differing from the disk text.
+    Available(Box<Available>),
+    /// The journal's owner is a ruse process still running on this host (its pid answers `kill(pid, 0)` and
+    /// its start time matches the Header's): another session is editing the file (#1193).
+    InUse {
+        owner: rj01::Owner,
+        journal: PathBuf,
+    },
+    /// A journal exists but cannot be offered: from a newer major version (kept), not readable (kept), or a
+    /// large-file journal whose disk text changed (archived, RFC-0023 §5). `reason` is the status line.
+    Unreplayable { reason: String },
 }
 
-/// The open-time recovery decision (F-008 #3/#4), pure over the two byte sources so it is testable
-/// without a filesystem. `disk` is the file's current content (the editor's cold-open buffer, after
-/// [`encoding::FileFormat::to_buffer`]); `recovered` is what the journal replays to.
-///
-/// A recovery is offered only when the journal holds work that genuinely differs from disk — a stale
-/// journal left after a clean exit (its last record == disk) yields `None`, so the user is not
-/// nagged about nothing.
-pub fn assess_recovery(disk: &[u8], recovered: Option<&[u8]>) -> Recovery {
-    match recovered {
-        Some(r) if r != disk => Recovery::Available(r.to_vec()),
-        _ => Recovery::None,
-    }
+/// An [`Recovery::Available`] offer: what the prompt shows and what each answer acts on.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Available {
+    /// The text the journal replays to.
+    pub recovered: Vec<u8>,
+    /// What the journal's edits applied to; `None` for a legacy RJS0 snapshot.
+    pub base: Option<rj01::Base>,
+    /// Edit records after the base; `None` for a legacy snapshot, which does not count them.
+    pub changes: Option<usize>,
+    /// The last replayed edit's time, Unix milliseconds.
+    pub last_change: Option<u64>,
+    /// The last sync Marker's time: what the journal is "recovered up to".
+    pub up_to: Option<u64>,
+    /// A torn or corrupt tail was dropped: later changes could not be recovered.
+    pub lost_tail: bool,
+    /// The disk file's modification time, Unix milliseconds, when it is newer than the journal (#897).
+    pub stale: Option<u64>,
+    /// Who wrote the journal (a session that is gone, or one on another host); `None` for a legacy one.
+    pub owner: Option<rj01::Owner>,
+    /// The journal file the answer acts on.
+    pub journal: PathBuf,
+    /// The journal is a legacy RJS0 sidecar in the project tree.
+    pub legacy: bool,
 }
 
 /// The recovered text as one edit over the disk text (#863): `(start, end, text)` replaces `disk[start..end]`
@@ -72,6 +95,31 @@ pub fn recovery_edit(disk: &[u8], recovered: &[u8]) -> Option<(usize, usize, Str
     }
     let text = String::from_utf8(recovered[pre..recovered.len() - suf].to_vec()).ok()?;
     Some((pre, disk.len() - suf, text))
+}
+
+/// #1194: whether replacing every line of `disk` with `recovered`, as a line filter does (`:%!`, the
+/// trace's byte-carrying `ex_filter`), gives exactly `recovered`. It is the way a recovery whose change is
+/// not UTF-8 still opens as the disk text plus one undoable change. It does not when the disk text is empty
+/// (a filter needs a line) or when the final newline differs (a filter keeps the buffer's).
+pub fn recovery_by_lines(disk: &[u8], recovered: &[u8]) -> bool {
+    if disk.is_empty() {
+        return false;
+    }
+    let mut lines: Vec<&[u8]> = recovered.split(|&b| b == b'\n').collect();
+    if recovered.last() == Some(&b'\n') || recovered.is_empty() {
+        lines.pop();
+    }
+    let mut out = lines.join(&b'\n');
+    if disk.ends_with(b"\n") && !out.is_empty() {
+        out.push(b'\n');
+    }
+    out == recovered
+}
+
+/// The number of lines of `text`, as a line range counts them (a final line without `\n` counts).
+pub fn line_count(text: &[u8]) -> usize {
+    text.iter().filter(|&&b| b == b'\n').count()
+        + usize::from(!text.is_empty() && !text.ends_with(b"\n"))
 }
 
 /// Read a file to open it as a buffer, refusing paths that are not files instead of hanging or reading
@@ -252,21 +300,19 @@ mod tests {
     }
 
     #[test]
-    fn no_journal_means_no_recovery() {
-        assert_eq!(assess_recovery(b"disk", None), Recovery::None);
-    }
-
-    #[test]
-    fn journal_matching_disk_is_not_offered() {
-        // A clean exit can leave a journal whose last record equals what was saved — do not nag.
-        assert_eq!(assess_recovery(b"same", Some(b"same")), Recovery::None);
-    }
-
-    #[test]
-    fn diverging_unsaved_work_is_offered() {
-        assert_eq!(
-            assess_recovery(b"on disk", Some(b"unsaved edits")),
-            Recovery::Available(b"unsaved edits".to_vec())
+    fn a_line_filter_reproduces_most_recoveries() {
+        assert!(recovery_by_lines(b"caf\xe9\n", b"caf\xe9 au lait\n"));
+        assert!(recovery_by_lines(b"a", b"b\xff"));
+        assert!(recovery_by_lines(b"a\n", b""));
+        assert!(recovery_by_lines(b"a\nb\n", b"\nx\n"));
+        assert!(!recovery_by_lines(b"", b"\xff\n"), "a filter needs a line");
+        assert!(
+            !recovery_by_lines(b"a\n", b"\xff"),
+            "the final newline is the buffer's"
         );
+        assert!(!recovery_by_lines(b"a\n", b"\n"));
+        assert_eq!(line_count(b""), 0);
+        assert_eq!(line_count(b"a\nb"), 2);
+        assert_eq!(line_count(b"a\n"), 1);
     }
 }

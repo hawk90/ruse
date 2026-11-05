@@ -104,7 +104,7 @@ fn recover_write(e: &Entry) -> Recovery {
         e.revision,
         e.node,
     ) {
-        Ok(()) => Recovery::Written(e.journal.clone()),
+        Ok(written) => Recovery::Written(written),
         Err(err) => Recovery::Failed(err.to_string()),
     }
 }

@@ -221,6 +221,7 @@ pub(crate) fn ex_write(
         _ => ws.focused().doc.bytes().to_vec(),
     };
     let own = files.get(&id).map(|bf| (bf.path.clone(), bf.fmt));
+    let read_only = files.get(&id).is_some_and(|bf| bf.read_only);
     let fmt = with_ff(own.as_ref().map(|o| o.1).unwrap_or_default(), spec.opts);
     let result = match &spec.target {
         // `:w !cmd`: the lines go to the command's stdin; its output is shown and the buffer is untouched.
@@ -272,6 +273,9 @@ pub(crate) fn ex_write(
             if to_own {
                 match &own {
                     None => Err("E32: No file name".to_string()),
+                    Some(_) if read_only && !spec.bang => {
+                        Err(crate::app::dispatch::E45.to_string())
+                    }
                     Some(_) if !whole && !spec.bang => {
                         Err("E140: Use ! to write partial buffer".to_string())
                     }
@@ -390,6 +394,10 @@ pub(crate) fn ex_write_all(
             error = Some(format!("E141: No file name for buffer {}", b.id.0));
             continue;
         };
+        if bf.read_only {
+            error = Some(crate::app::dispatch::E45.to_string());
+            continue;
+        }
         let Some(text) = ws.document(b.id).map(|d| d.bytes().to_vec()) else {
             continue;
         };

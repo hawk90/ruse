@@ -9,8 +9,9 @@ use std::time::Instant;
 
 use ruse_core::{BytePos, Document, DocumentId, Edit, EditList, Transaction, TransactionOrigin};
 use ruse_tui::persist::encoding::FileFormat;
-use ruse_tui::persist::journal::{self, Journals, Offer, Writer};
+use ruse_tui::persist::journal::{self, Journals, Writer};
 use ruse_tui::persist::rj01;
+use ruse_tui::persist::Recovery;
 
 fn scratch() -> PathBuf {
     static N: AtomicU32 = AtomicU32::new(0);
@@ -71,10 +72,9 @@ fn a_journal_cut_at_every_byte_of_its_last_sync_offers_the_previous_text() {
             b"1disk\n"
         };
         match j.offer(Some(&file), b"disk\n") {
-            Offer::Text { text, notes, .. } => {
-                assert_eq!(text, want, "cut at {cut}");
-                let damaged = notes.iter().any(|n| n.contains("damaged"));
-                assert_eq!(damaged, cut != r.last_good, "cut at {cut}: {notes:?}");
+            Recovery::Available(a) => {
+                assert_eq!(a.recovered, want, "cut at {cut}");
+                assert_eq!(a.lost_tail, cut != r.last_good, "cut at {cut}");
             }
             other => panic!("cut at {cut}: {other:?}"),
         }
@@ -94,12 +94,13 @@ fn a_journal_cut_anywhere_offers_a_real_text_or_nothing() {
     for cut in 0..raw.len() {
         std::fs::write(&path, &raw[..cut]).unwrap();
         match j.offer(Some(&file), b"disk\n") {
-            Offer::None => {}
-            Offer::Text { text, .. } => assert!(
-                text == b"1disk\n" || text == b"21disk\n",
-                "cut at {cut}: {text:?}"
+            Recovery::None => {}
+            Recovery::Available(a) => assert!(
+                a.recovered == b"1disk\n" || a.recovered == b"21disk\n",
+                "cut at {cut}: {:?}",
+                a.recovered
             ),
-            Offer::Note(n) => panic!("cut at {cut}: {n}"),
+            other => panic!("cut at {cut}: {other:?}"),
         }
     }
     // Zeros after an intact journal (power loss) are a torn tail, not a record.
@@ -107,7 +108,7 @@ fn a_journal_cut_anywhere_offers_a_real_text_or_nothing() {
     zeros.extend(vec![0u8; 4096]);
     std::fs::write(&path, &zeros).unwrap();
     match j.offer(Some(&file), b"disk\n") {
-        Offer::Text { text, .. } => assert_eq!(text, b"21disk\n"),
+        Recovery::Available(a) => assert_eq!(a.recovered, b"21disk\n"),
         other => panic!("{other:?}"),
     }
     let _ = std::fs::remove_dir_all(&dir);

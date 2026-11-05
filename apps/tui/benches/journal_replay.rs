@@ -12,8 +12,9 @@ use ruse_core::{
     BytePos, ChangeEntry, ChangeKind, Edit, EditList, GroupHint, Revision, TransactionOrigin,
 };
 use ruse_tui::persist::encoding::FileFormat;
-use ruse_tui::persist::journal::{self, Journals, Offer};
+use ruse_tui::persist::journal::{self, Journals};
 use ruse_tui::persist::rj01::{self, Base, Header};
+use ruse_tui::persist::Recovery;
 
 /// A journal over `disk` (a Checkpoint, or the disk base when `large`) followed by `edits` single-byte
 /// inserts at the front, each with its inverse; and the text it replays to.
@@ -91,7 +92,9 @@ fn bench_recovery_scan(c: &mut Criterion) {
         let (j, doc, disk) = setup(name, disk_len, edits, large);
         g.bench_function(name, |b| {
             b.iter(|| match j.offer(Some(&doc), &disk) {
-                Offer::Text { text, .. } => assert_eq!(text.len(), disk.len() + edits as usize),
+                Recovery::Available(a) => {
+                    assert_eq!(a.recovered.len(), disk.len() + edits as usize)
+                }
                 other => panic!("{other:?}"),
             })
         });

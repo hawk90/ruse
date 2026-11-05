@@ -10,8 +10,9 @@ use std::time::Instant;
 use proptest::prelude::*;
 use ruse_core::{BytePos, Document, DocumentId, Edit, EditList, Transaction, TransactionOrigin};
 use ruse_tui::persist::encoding::{Eol, FileFormat};
-use ruse_tui::persist::journal::{self, Journals, Offer, Writer};
+use ruse_tui::persist::journal::{self, Journals, Writer};
 use ruse_tui::persist::rj01::{self, Record};
+use ruse_tui::persist::Recovery;
 
 fn scratch() -> PathBuf {
     static N: AtomicU32 = AtomicU32::new(0);
@@ -219,7 +220,7 @@ fn the_header_and_meta_records_round_trip_through_the_offer() {
         "the Meta format change"
     );
     match j.offer(Some(&file), b"a\n") {
-        Offer::Text { text, .. } => assert_eq!(text, b"cba\n"),
+        Recovery::Available(a) => assert_eq!(a.recovered, b"cba\n"),
         other => panic!("{other:?}"),
     }
     let _ = std::fs::remove_dir_all(&dir);

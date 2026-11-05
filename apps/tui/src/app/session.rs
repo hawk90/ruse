@@ -32,7 +32,7 @@ use crate::terminal::guard::TermGuard;
 use crate::ui::overlay::{Accepted, Overlay};
 use crate::ui::palette::focused_context;
 use crate::ui::picker::PickOutcome;
-use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm, RecoveryChoice};
+use crate::ui::prompts::{confirm_key, confirm_prompt, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::window_view::{HScroll, PaneLines, PaneText, WinView};
 use crate::ui::{
@@ -890,33 +890,26 @@ impl Session {
         }
     }
 
-    /// Put the start buffer's recovered text over the disk text it opened with (#863): as a recorded edit,
-    /// so the buffer is modified (`:q` refuses with E37), `u` goes back to the disk text, and a saved trace
-    /// starts from the disk text and replays the recovery. A change whose recovered side is not UTF-8 cannot
-    /// travel as a text edit; the buffer then loads the recovered bytes as its text, still marked modified,
-    /// and the trace starts from them.
+    /// Put the start buffer's recovered text over the disk text it opened with (#863, #1194): as a recorded
+    /// edit ([`crate::app::dispatch::apply_recovery`]), so the buffer is modified (`:q` refuses with E37), `u`
+    /// goes back to the disk text, and a saved trace starts from the disk text and replays the recovery. In
+    /// the rare case no recorded edit can carry the change, the buffer loads the recovered bytes as its
+    /// text, still marked modified, and the trace starts from them.
     pub(crate) fn apply_recovered(&mut self, rec: Vec<u8>) {
-        match persist::recovery_edit(self.ws.focused().doc.bytes(), &rec) {
-            Some((start, end, text)) => {
-                let ex = ExCmd::Edits {
-                    origin: TransactionOrigin::UserInput,
-                    edits: vec![(BytePos(start), BytePos(end), text)],
-                };
-                crate::app::dispatch::run_ex(ex, &mut self.ws, &mut self.recorded);
-                crate::app::dispatch::place_cursor(&mut self.ws, &mut self.recorded, 0);
-            }
-            None => {
-                self.ws.reload_focused(rec.clone());
-                self.ws.focused_doc_mut().mark_unsaved();
-                self.initial = rec;
-            }
+        if crate::app::dispatch::apply_recovery(&mut self.ws, rec.clone(), &mut self.recorded) {
+            crate::app::dispatch::place_cursor(&mut self.ws, &mut self.recorded, 0);
+        } else {
+            self.initial = rec;
         }
     }
 
     /// Remove the journal of every buffer this session could have journaled (#862), on a normal quit: each
-    /// file buffer's, and the unnamed start buffer's. A journal the session could not read is kept
-    /// ([`persist::journal::Journals::discard`]).
-    pub(crate) fn discard_journals(&self) {
+    /// writer's (also one beside a live other session's, #1193), each file buffer's, and the unnamed start
+    /// buffer's. Only journals this process owns go ([`persist::journal::Journals::discard`]).
+    pub(crate) fn discard_journals(&mut self) {
+        for w in self.journal_writers.values_mut() {
+            w.discard();
+        }
         let Some(j) = self.journals else {
             return;
         };
@@ -4840,9 +4833,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // but cannot be read or replayed is reported on the status line, never silently skipped (#897). The
     // owner (and the unnamed buffer's journal name) is fixed now, at startup (#1192).
     let _ = persist::journal::owner();
-    let offer = persist::journal::current().map_or(persist::journal::Offer::None, |j| {
-        j.offer(path.as_deref(), &disk)
-    });
+    let offer = persist::journal::current()
+        .map_or(persist::Recovery::None, |j| j.offer(path.as_deref(), &disk));
 
     // hlsearch/incsearch match spans, cached on (revision, viewport, pattern) like the syntax highlighter
     // — no full-buffer regex per frame (F-009 #1).
@@ -4856,36 +4848,36 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let _ = event::poll(std::time::Duration::ZERO);
     crate::signals::install();
 
-    // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
-    // The buffer always starts as the disk text, which is also the trace's starting text; a recovery is
-    // applied over it once the session exists, as an edit (#863).
-    let (recovered, status) = match offer {
-        persist::journal::Offer::Text {
-            text,
-            from,
-            legacy,
-            notes,
-        } => {
-            let notes = notes.join("\n");
-            let note = (!notes.is_empty()).then_some(notes.as_str());
-            let choice = prompt_recovery(&mut out, "q: quit and keep them", note)?;
-            if let (Some(j), true) = (persist::journal::current(), choice != RecoveryChoice::Quit) {
-                j.settle(&from, legacy, choice == RecoveryChoice::Recover);
-            }
-            match choice {
-                RecoveryChoice::Recover => (
-                    Some(text),
-                    String::from("ruse — recovered unsaved changes (:w to save)"),
-                ),
-                RecoveryChoice::Discard => (
-                    None,
-                    String::from("ruse — recovery discarded; opened disk version"),
-                ),
-                RecoveryChoice::Quit => return Ok(()), // the journal stays for the next start
-            }
-        }
-        persist::journal::Offer::Note(note) => (None, format!("ruse — {note}")),
-        persist::journal::Offer::None => (None, String::from("ruse — :q to quit")),
+    // Open-time crash recovery (F-008 #3/#4, RFC-0023 §7): the user picks; the original file is never
+    // touched. The buffer always starts as the disk text, which is also the trace's starting text; a
+    // recovery is applied over it once the session exists, as an edit (#863).
+    let shown = path.as_ref().map_or_else(
+        || "the unnamed buffer".to_string(),
+        |p| p.display().to_string(),
+    );
+    let (recovered, read_only, status) = match crate::ui::recovery::resolve(
+        &mut out,
+        offer,
+        &shown,
+        path.as_deref(),
+        &disk,
+        fmt,
+        "quit",
+    )? {
+        crate::ui::recovery::Resolved::Open {
+            recovered,
+            read_only,
+            note,
+        } => (
+            recovered,
+            read_only,
+            note.map_or_else(
+                || String::from("ruse — :q to quit"),
+                |n| format!("ruse — {n}"),
+            ),
+        ),
+        // The journal stays for the next start.
+        crate::ui::recovery::Resolved::Quit { .. } => return Ok(()),
     };
     let initial = disk;
 
@@ -4949,6 +4941,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     s.apply_config(true);
     if let Some(rec) = recovered {
         s.apply_recovered(rec);
+    }
+    if read_only {
+        for bf in s.files.values_mut() {
+            bf.read_only = true; // the start buffer is the only one with a file yet
+        }
     }
     // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run

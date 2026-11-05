@@ -16,7 +16,6 @@ use ruse_core::{
 
 use crate::highlight;
 use crate::persist;
-use crate::ui::prompts::{prompt_recovery, RecoveryChoice};
 
 /// The per-buffer syntax-highlighter registry (F-007 / F-015), keyed by [`DocumentId`]. Shared by the
 /// session loop and the LSP coordinator (both open buffers that need a highlighter).
@@ -90,76 +89,86 @@ pub(crate) fn open_file_with(
     };
     let f = format(persist::encoding::FileFormat::detect(&raw));
     let disk = f.to_buffer(&raw);
-    let journals = persist::journal::current();
-    let offer = journals.map_or(persist::journal::Offer::None, |j| j.offer(Some(&p), &disk));
-    let mut journal_error = None;
-    let recovered = match offer {
-        persist::journal::Offer::None => None,
-        persist::journal::Offer::Note(note) => {
-            journal_error = Some(note);
-            None
+    // The same prompt as at startup (RFC-0023 §7); `q` cancels this open and keeps the journal.
+    let offer =
+        persist::journal::current().map_or(persist::Recovery::None, |j| j.offer(Some(&p), &disk));
+    let resolved =
+        crate::ui::recovery::resolve(&mut io::stdout(), offer, file, Some(&p), &disk, f, "cancel");
+    let (recovered, read_only, note) = match resolved {
+        Ok(crate::ui::recovery::Resolved::Open {
+            recovered,
+            read_only,
+            note,
+        }) => (recovered, read_only, note),
+        Ok(crate::ui::recovery::Resolved::Quit { journal }) => {
+            return Opened {
+                status: format!(
+                    "\"{file}\" not opened: recovery journal kept ({})",
+                    journal.display()
+                ),
+                id: None,
+            }
         }
-        persist::journal::Offer::Text {
-            text,
-            from,
-            legacy,
-            notes,
-        } => {
-            let notes = notes.join("\n");
-            let note = (!notes.is_empty()).then_some(notes.as_str());
-            match prompt_recovery(&mut io::stdout(), "q: cancel the open and keep them", note) {
-                Ok(choice @ (RecoveryChoice::Recover | RecoveryChoice::Discard)) => {
-                    let recover = choice == RecoveryChoice::Recover;
-                    if let Some(j) = journals {
-                        j.settle(&from, legacy, recover); // discarded on the user's say-so
-                    }
-                    recover.then_some(text)
-                }
-                Ok(RecoveryChoice::Quit) | Err(_) => {
-                    return Opened {
-                        status: format!(
-                            "\"{file}\" not opened: recovery journal kept ({})",
-                            from.display()
-                        ),
-                        id: None,
-                    }
-                }
+        Err(e) => {
+            return Opened {
+                status: format!("\"{file}\" not opened: the recovery prompt failed: {e}"),
+                id: None,
             }
         }
     };
     let id = ws.add_buffer(disk, Some(file.to_string()));
     ws.focus_buffer(id);
-    let status = match recovered {
-        Some(rec) => {
-            // Apply the recovered text as an edit over the disk version, so the buffer is modified (a
-            // `:q` refuses) and `u` returns to what is on disk. A change that is not UTF-8 cannot travel
-            // through a text edit; load it as the buffer instead, still modified, as the startup path does.
-            match persist::recovery_edit(ws.focused().doc.bytes(), &rec) {
-                Some((start, end, text)) => {
-                    ws.apply_edits(
-                        &[(BytePos(start), BytePos(end), text)],
-                        TransactionOrigin::UserInput,
-                    );
-                }
-                None => {
-                    ws.reload_focused(rec);
-                    ws.focused_doc_mut().mark_unsaved();
-                }
-            }
-            ws.place_focused_cursor(BytePos(0));
-            format!("\"{file}\" recovered unsaved changes (:w to save)")
-        }
-        None => match journal_error {
-            Some(note) => format!("\"{file}\" {note}"),
-            None if new => format!("\"{file}\" [New]"),
-            None => format!("\"{file}\" {} bytes", raw.len()),
-        },
+    if let Some(rec) = recovered {
+        // A buffer opened later is not part of a trace (it starts from the startup buffer).
+        apply_recovery(ws, rec, &mut Vec::new());
+        ws.place_focused_cursor(BytePos(0));
+    }
+    let status = match note {
+        Some(note) => format!("\"{file}\" {note}"),
+        None if new => format!("\"{file}\" [New]"),
+        None => format!("\"{file}\" {} bytes", raw.len()),
     };
     attach_file(files, highlighters, id, p, f);
+    if let Some(bf) = files.get_mut(&id) {
+        bf.read_only = read_only;
+    }
     Opened {
         status,
         id: Some(id),
     }
+}
+
+/// Put a recovered text over the focused buffer's disk text (#863, #1194) so the buffer is modified (`:q`
+/// refuses with E37) and `u` goes back to the disk text: as one edit of the span that differs, or, when that
+/// span is not UTF-8, as a line filter of the whole buffer (whose output is bytes). The rare text neither can
+/// carry (a non-UTF-8 change to an empty file, or one that also adds or drops the final newline) is loaded as
+/// the buffer instead, still marked modified. The edit goes through [`run_ex`] into `recorded`; `false` for
+/// that last case, where nothing is recorded and a trace must start from the recovered text.
+pub(crate) fn apply_recovery(
+    ws: &mut Workspace,
+    rec: Vec<u8>,
+    recorded: &mut Vec<Command>,
+) -> bool {
+    let disk = ws.focused().doc.bytes();
+    let ex = match persist::recovery_edit(disk, &rec) {
+        Some((start, end, text)) => ExCmd::Edits {
+            origin: TransactionOrigin::UserInput,
+            edits: vec![(BytePos(start), BytePos(end), text)],
+        },
+        None if persist::recovery_by_lines(disk, &rec) => ExCmd::FilterReplace {
+            first: 1,
+            last: persist::line_count(disk),
+            bytes: rec.clone(),
+        },
+        None => {
+            ws.reload_focused(rec);
+            ws.focused_doc_mut().mark_unsaved();
+            return false;
+        }
+    };
+    run_ex(ex, ws, recorded);
+    debug_assert_eq!(ws.focused().doc.bytes(), &rec[..]);
+    true
 }
 
 /// Give buffer `id` its file on disk: record `path` and `fmt` in the file registry and attach the
@@ -184,7 +193,14 @@ pub(crate) fn attach_file(
             highlighters.remove(&id);
         }
     }
-    files.insert(id, BufferFile { path, fmt });
+    files.insert(
+        id,
+        BufferFile {
+            path,
+            fmt,
+            read_only: false,
+        },
+    );
 }
 
 /// Whether `key` is `CTRL-<c>`. Shared frontend key predicate. A C0 punctuation chord also matches the key
@@ -201,7 +217,13 @@ pub(crate) fn is_ctrl(key: KeyEvent, c: char) -> bool {
 pub(crate) struct BufferFile {
     pub(crate) path: PathBuf,
     pub(crate) fmt: persist::encoding::FileFormat,
+    /// Opened read-only from the recovery prompt while another session edits the file (Vim's
+    /// `'readonly'`): a write to it without `!` is `E45`.
+    pub(crate) read_only: bool,
 }
+
+/// Neovim's message for a write to a `'readonly'` buffer without `!`.
+pub(crate) const E45: &str = "E45: 'readonly' option is set (add ! to override)";
 
 /// The per-buffer file registry: which buffers have a file on disk (a scratch `:enew` buffer has none, so
 /// `:w` on it declines). Replaces the old single `path`/`fmt`/`file_buf` triple (F-007 multi-buffer).
@@ -772,6 +794,10 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
         *status = "E32: No file name".into();
         return false;
     };
+    if bf.read_only {
+        *status = E45.into();
+        return false;
+    }
     // `:set fixeol` (opt-in) ADDS a trailing `\n` when the buffer lacks one. Append it to the SOURCE bytes
     // BEFORE `to_disk` so the encoding step (BOM/CRLF re-application) treats the newline like any other —
     // e.g. a CRLF file gets `\r\n`. Default (byte-preserve) leaves the bytes untouched.
