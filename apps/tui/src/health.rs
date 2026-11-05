@@ -46,6 +46,86 @@ pub struct HealthInputs {
     pub buffers: usize,
     /// Number of commands recorded on the replay trace so far.
     pub trace_commands: usize,
+    /// The recovery journals (RFC-0023 §8, #938).
+    pub journaling: Journaling,
+}
+
+/// Where the session's recovery journals stand, for the journal rows.
+pub enum Journaling {
+    /// This session does not journal (a headless session).
+    Off,
+    /// Journaling is on but there is no state directory to write to.
+    NoStateDir,
+    /// The journal directory and one entry per file buffer.
+    On {
+        dir: String,
+        buffers: Vec<JournalInput>,
+    },
+}
+
+/// One file buffer's journal.
+pub struct JournalInput {
+    /// The buffer's file, as the session shows it.
+    pub file: String,
+    pub modified: bool,
+    /// Its writer's health; `None` before the buffer's first frame.
+    pub health: Option<crate::persist::journal::Health>,
+}
+
+fn journal_rows(j: &Journaling) -> Vec<HealthRow> {
+    match j {
+        Journaling::Off => vec![row(
+            "recovery journal",
+            Status::Absent,
+            "not journaled in this session".into(),
+        )],
+        Journaling::NoStateDir => vec![row(
+            "recovery journal",
+            Status::Warn,
+            "no state directory (set XDG_STATE_HOME or HOME): unsaved work is not journaled".into(),
+        )],
+        Journaling::On { dir, buffers } => {
+            let mut rows = vec![row("recovery journal", Status::Ok, format!("in {dir}"))];
+            rows.extend(buffers.iter().map(journal_row));
+            rows
+        }
+    }
+}
+
+fn journal_row(b: &JournalInput) -> HealthRow {
+    let label = format!("journal: {}", b.file);
+    let Some(h) = b.health.as_ref() else {
+        return row(&label, Status::Ok, "no journal yet".into());
+    };
+    let failures = match h.failures {
+        0 => String::new(),
+        1 => ", 1 failed write".into(),
+        n => format!(", {n} failed writes"),
+    };
+    if let Some(e) = &h.failing {
+        return row(
+            &label,
+            Status::Warn,
+            format!("last write failed: {e}{failures}, {}", h.journal.display()),
+        );
+    }
+    if !b.modified && h.size == 0 {
+        return row(&label, Status::Ok, format!("clean, no journal{failures}"));
+    }
+    let synced = h.synced_ago.map_or_else(
+        || "not synced yet".to_string(),
+        |d| format!("synced {}s ago", d.as_secs()),
+    );
+    let waiting = if h.unsynced { ", changes waiting" } else { "" };
+    row(
+        &label,
+        Status::Ok,
+        format!(
+            "{} bytes, {synced}{waiting}{failures}, {}",
+            h.size,
+            h.journal.display()
+        ),
+    )
 }
 
 fn row(label: &str, status: Status, detail: String) -> HealthRow {
@@ -102,10 +182,21 @@ pub fn report(i: &HealthInputs) -> Vec<HealthRow> {
             format!("recording ({} commands)", i.trace_commands),
         ),
     ]
+    .into_iter()
+    .chain(journal_rows(&i.journaling))
+    .collect()
 }
 
-/// A compact one-line summary for the status area (slice 1 has no scratch-buffer surface yet): the OK
-/// count plus every non-OK check spelled out, so the actionable items are visible at a glance.
+/// The report as the lines `:checkhealth` lists, the summary last: one `OK` / `WARN` / `n/a` line per check.
+pub fn lines(rows: &[HealthRow]) -> Vec<String> {
+    rows.iter()
+        .map(|r| format!("{:<4} {}: {}", r.status.glyph(), r.label, r.detail))
+        .chain(std::iter::once(summary_line(rows)))
+        .collect()
+}
+
+/// A compact one-line summary for the status area, under the listing [`lines`] opens: the OK count plus
+/// every non-OK check spelled out, so the actionable items are visible at a glance.
 pub fn summary_line(rows: &[HealthRow]) -> String {
     let ok = rows.iter().filter(|r| r.status == Status::Ok).count();
     let issues: Vec<String> = rows
@@ -139,16 +230,21 @@ mod tests {
             grammar_ok: true,
             buffers: 2,
             trace_commands: 7,
+            journaling: Journaling::Off,
         }
     }
 
     #[test]
     fn report_covers_every_check_and_all_ok_reads_clean() {
         let rows = report(&sample());
-        // profile, 3 term caps, grammar, buffers, trace = 7 rows.
-        assert_eq!(rows.len(), 7);
-        assert!(rows.iter().all(|r| r.status == Status::Ok));
-        assert_eq!(summary_line(&rows), "checkhealth: all 7 ok");
+        // profile, 3 term caps, grammar, buffers, trace, journal = 8 rows.
+        assert_eq!(rows.len(), 8);
+        assert!(rows[..7].iter().all(|r| r.status == Status::Ok));
+        assert_eq!(rows[7].status, Status::Absent, "a headless session");
+        assert_eq!(
+            summary_line(&rows),
+            "checkhealth: 7 ok, 1 issue(s) — recovery journal n/a"
+        );
     }
 
     #[test]
@@ -159,7 +255,7 @@ mod tests {
         i.grammar_ok = false; // -> Absent
         let rows = report(&i);
         let s = summary_line(&rows);
-        assert!(s.starts_with("checkhealth: 5 ok, 2 issue(s)"), "{s}");
+        assert!(s.starts_with("checkhealth: 5 ok, 3 issue(s)"), "{s}");
         assert!(s.contains("term: sgr-mouse WARN"), "{s}");
         assert!(s.contains("syntax grammar n/a"), "{s}");
     }
@@ -172,5 +268,60 @@ mod tests {
         let g = rows.iter().find(|r| r.label == "syntax grammar").unwrap();
         assert_eq!(g.status, Status::Absent);
         assert_eq!(g.detail, "buffer has no file extension");
+    }
+
+    /// RFC-0023 §8 (#938): each file buffer's journal path, size, last sync age and failures.
+    #[test]
+    fn journal_rows_report_each_buffer() {
+        use crate::persist::journal::Health;
+        use std::path::PathBuf;
+        use std::time::Duration;
+        let h = |size, failing: Option<&str>, failures| Health {
+            journal: PathBuf::from("/s/f.txt.0123456789abcdef.rj"),
+            size,
+            unsynced: false,
+            synced_ago: Some(Duration::from_secs(3)),
+            failures,
+            failing: failing.map(str::to_string),
+        };
+        let mut i = sample();
+        i.journaling = Journaling::On {
+            dir: "/s".into(),
+            buffers: vec![
+                JournalInput {
+                    file: "f.txt".into(),
+                    modified: true,
+                    health: Some(h(120, None, 1)),
+                },
+                JournalInput {
+                    file: "g.txt".into(),
+                    modified: true,
+                    health: Some(h(0, Some("Permission denied (os error 13)"), 2)),
+                },
+                JournalInput {
+                    file: "h.txt".into(),
+                    modified: false,
+                    health: Some(h(0, None, 0)),
+                },
+            ],
+        };
+        let l = lines(&report(&i));
+        assert_eq!(l[7], "OK   recovery journal: in /s");
+        assert_eq!(
+            l[8],
+            "OK   journal: f.txt: 120 bytes, synced 3s ago, 1 failed write, /s/f.txt.0123456789abcdef.rj"
+        );
+        assert_eq!(
+            l[9],
+            "WARN journal: g.txt: last write failed: Permission denied (os error 13), 2 failed \
+             writes, /s/f.txt.0123456789abcdef.rj"
+        );
+        assert_eq!(l[10], "OK   journal: h.txt: clean, no journal");
+        assert_eq!(
+            l.last().unwrap(),
+            "checkhealth: 10 ok, 1 issue(s) — journal: g.txt WARN"
+        );
+        i.journaling = Journaling::NoStateDir;
+        assert!(summary_line(&report(&i)).contains("recovery journal WARN"));
     }
 }

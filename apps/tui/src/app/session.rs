@@ -979,7 +979,8 @@ impl Session {
             };
             w.absorb(doc, bf.fmt, now); // the changes made since the frame began, too
             if w.unsynced() {
-                journal_outcome(w.flush(doc), *id, &bf.path, journal_failed, status);
+                let r = w.flush(doc);
+                journal_outcome(r, *id, &bf.path, w.journal(), journal_failed, status);
             }
         }
     }
@@ -1135,7 +1136,8 @@ impl Session {
                 // the saved text, saved, or re-read with `:e!`, #862), then sync if the policy says so.
                 w.absorb(doc, bf.fmt, now);
                 if w.due(now) {
-                    journal_outcome(w.flush(doc), *id, &bf.path, journal_failed, status);
+                    let r = w.flush(doc);
+                    journal_outcome(r, *id, &bf.path, w.journal(), journal_failed, status);
                 }
                 entries.push(recover::Entry {
                     path: Some(bf.path.clone()),
@@ -1373,6 +1375,17 @@ impl Session {
             poll_ms = Some(poll_ms.map_or(ms, |p| p.min(ms)));
         }
         poll_ms
+    }
+
+    /// The status-line flags after the focused buffer's `[+]` (RFC-0023 §8): `[journal!]` when the last
+    /// write or sync of its modified buffer's journal failed (#938).
+    pub(crate) fn status_flags(&self) -> String {
+        let mut flags = String::new();
+        let id = self.ws.focused_buffer();
+        if self.journal_failed.contains(&id) && self.ws.focused().doc.is_modified() {
+            flags.push_str("[journal!]");
+        }
+        flags
     }
 
     /// Whether keys of a macro replay are still to run (the event loop paints less often meanwhile).
@@ -3244,6 +3257,9 @@ impl Session {
             prev_dir,
             ex_filter,
             pending_insert,
+            rescue,
+            journals,
+            journal_writers,
             ..
         } = self;
         let (cols, text_rows) = (frame.cols, frame.text_rows);
@@ -3635,8 +3651,14 @@ impl Session {
                     grammar_ok: highlighters.contains_key(&ws.focused_buffer()),
                     buffers: ws.window_count(),
                     trace_commands: recorded.len(),
+                    journaling: journal_health(*rescue, *journals, files, ws, journal_writers),
                 };
-                *status = health::summary_line(&health::report(&inputs));
+                // Every check's line in the listing, the summary on the status line (RFC-0023 §8).
+                crate::app::ex_more::show_rows(
+                    health::lines(&health::report(&inputs)),
+                    status,
+                    overlay,
+                );
             }
             // `:earlier`/`:later` walk chronological undo time by recording + applying N of the
             // g-/g+ commands (done HERE so they land in `recorded` for trace fidelity).
@@ -4852,12 +4874,49 @@ fn runs_external(ex: &Ex) -> bool {
     ) || matches!(ex, Ex::Write(spec) if matches!(spec.target, WriteTarget::Command(_)))
 }
 
+/// The journal part of `:checkhealth` (RFC-0023 §8): the journal directory and each file buffer's journal,
+/// in buffer order.
+fn journal_health(
+    rescue: bool,
+    journals: Option<&persist::journal::Journals>,
+    files: &Files,
+    ws: &Workspace,
+    writers: &HashMap<DocumentId, persist::journal::Writer>,
+) -> health::Journaling {
+    if !rescue {
+        return health::Journaling::Off;
+    }
+    let Some(j) = journals else {
+        return health::Journaling::NoStateDir;
+    };
+    let now = std::time::Instant::now();
+    let mut ids: Vec<DocumentId> = files.keys().copied().collect();
+    ids.sort_by_key(|id| id.0);
+    let buffers = ids
+        .into_iter()
+        .filter_map(|id| {
+            let bf = files.get(&id)?;
+            Some(health::JournalInput {
+                file: bf.path.display().to_string(),
+                modified: ws.document(id).is_some_and(|d| d.is_modified()),
+                health: writers.get(&id).map(|w| w.health(now)),
+            })
+        })
+        .collect();
+    health::Journaling::On {
+        dir: j.dir().display().to_string(),
+        buffers,
+    }
+}
+
 /// Report a journal sync: a failure is shown once per failing run, as Neovim's E303 is, rather than
 /// silently leaving the work unprotected (#907); the records stay buffered for the next try.
+/// The status line then shows `[journal!]` until a write succeeds (RFC-0023 §8).
 fn journal_outcome(
     r: io::Result<()>,
     id: DocumentId,
     path: &std::path::Path,
+    journal: &std::path::Path,
     failed: &mut HashSet<DocumentId>,
     status: &mut String,
 ) {
@@ -4869,8 +4928,9 @@ fn journal_outcome(
             if failed.insert(id) {
                 tracing::warn!(event = "journal.failed", path = %path.display(), error = %e);
                 *status = format!(
-                    "E303: unable to write the recovery journal for \"{}\": {e}",
-                    path.display()
+                    "E303: unable to write the recovery journal for \"{}\": {e} ({})",
+                    path.display(),
+                    journal.display()
                 );
             }
         }
@@ -5054,6 +5114,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             if let Some(h) = s.highlighters.get_mut(&focused_id) {
                 h.set_image_rows(image_rows);
             }
+            let flags = s.status_flags();
             let (spans, virt_lines): (&[highlight::Span], &[highlight::VirtLine]) =
                 match s.highlighters.get_mut(&focused_id) {
                     Some(h) => h.spans_and_virt(revision, snapshot, visible.clone()),
@@ -5190,6 +5251,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 &s.line_idx,
                 &s.pane_idx,
                 s.ui_opts.showmode,
+                &flags,
             )?;
             // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
             // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).
@@ -5497,6 +5559,35 @@ fn dispatch_window(
         // default 'hidden'), or on the last window quit through the same unsaved-changes check (E37/E162).
         KeyCode::Char('q') => crate::app::dispatch::quit_window(ws, status, quit, false),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod journal_outcome_tests {
+    use super::*;
+
+    /// RFC-0023 §8 (#938): the first failure of a failing run names the error and the journal; the
+    /// next failures are quiet; a success ends the run.
+    #[test]
+    fn journal_outcome_names_the_journal() {
+        let id = Workspace::new(&b""[..]).focused_buffer();
+        let doc = std::path::Path::new("f.txt");
+        let journal = std::path::Path::new("/s/ruse/journal/f.txt.01.rj");
+        let mut failed = HashSet::new();
+        let mut status = String::new();
+        let fail = || Err(io::Error::from(io::ErrorKind::PermissionDenied));
+        journal_outcome(fail(), id, doc, journal, &mut failed, &mut status);
+        assert!(failed.contains(&id));
+        assert!(
+            status.starts_with("E303: unable to write the recovery journal for \"f.txt\": ")
+                && status.ends_with(" (/s/ruse/journal/f.txt.01.rj)"),
+            "{status}"
+        );
+        status.clear();
+        journal_outcome(fail(), id, doc, journal, &mut failed, &mut status);
+        assert_eq!(status, "", "once per failing run");
+        journal_outcome(Ok(()), id, doc, journal, &mut failed, &mut status);
+        assert!(!failed.contains(&id));
     }
 }
 

@@ -203,6 +203,62 @@ fn journal_append_failure_is_visible() {
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
 }
 
+/// RFC-0023 §8 (#938): while the journal cannot be written, the status line shows `[journal!]` after
+/// `[+]`; the first failure names the journal; `:checkhealth` reports it; a sync that works again (`:!`
+/// syncs first) takes the flag away.
+#[test]
+fn a_failing_journal_shows_journal_bang_until_a_sync_works() {
+    if is_root() {
+        return;
+    }
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"orig\n");
+    let journal = dir.journals().path_for(&file);
+    let jdir = dir.journals().dir().to_path_buf();
+    std::fs::create_dir_all(&jdir).unwrap();
+    chmod(&jdir, 0o555);
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    // 200 changes trigger a sync; the first failure is shown (the journal path follows the error, past
+    // the 80 columns here; the unit test `journal_outcome_names_the_journal` reads it).
+    let before = ed.screen_bytes().len();
+    ed.keys(&format!("i{}{ESC}", "x".repeat(200)));
+    let shown = ed.screen_bytes()[before..].to_string();
+    let named = shown.contains("E303: unable to write the recovery journal for");
+    // A command line gives the status line back whole.
+    let before = ed.screen_bytes().len();
+    ed.keys(":set ts?\r");
+    let bar = ed.screen_bytes()[before..].to_string();
+    let flagged = bar.contains("f.txt [+][journal!]    tabstop=4");
+    let before = ed.screen_bytes().len();
+    ed.keys(":checkhealth\r");
+    let health = ed.screen_bytes()[before..].to_string();
+    ed.keys(ESC);
+    chmod(&jdir, 0o755);
+    assert!(named, "{shown:?}");
+    assert!(flagged, "{bar:?}");
+    assert!(
+        health.contains("WARN journal: f.txt: last write failed"),
+        "{health:?}"
+    );
+    let before = ed.screen_bytes().len();
+    ed.keys(":!true\r\r");
+    assert!(support::wait_until(Duration::from_secs(5), || journal.exists()));
+    ed.keys(":checkhealth\r");
+    let after = ed.screen_bytes()[before..].to_string();
+    assert!(
+        after.contains("OK   journal: f.txt: ") && after.contains("synced 0s ago"),
+        "{:?}",
+        &after[after.len().saturating_sub(1500)..]
+    );
+    ed.keys(ESC);
+    let before = ed.screen_bytes().len();
+    ed.keys(":set ts?\r");
+    let bar = ed.screen_bytes()[before..].to_string();
+    assert!(bar.contains("f.txt [+]    tabstop=4"), "{bar:?}");
+    ed.keys(":q!\r");
+    assert_eq!(ed.exit_status(), 0);
+}
+
 /// Start on a hostile path and expect a prompt refusal naming `why`.
 fn refuses_quickly(dir: &Scratch, arg: &str, why: &str) {
     let t = Instant::now();

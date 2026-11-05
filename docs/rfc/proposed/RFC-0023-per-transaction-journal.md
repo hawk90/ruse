@@ -245,6 +245,14 @@ The status line shows a flag only when something needs attention:
 "Journaled but unsaved" is not shown. It is the normal state of every modified buffer, so a flag for it would
 be noise. `:checkhealth` (F-030) reports each buffer's journal path, size, last sync age and failures.
 
+As built (slice 4, first part, #938): `[journal!]` follows `[+]` (`f.txt [+][journal!]`) while the focused
+modified buffer's last journal write failed, and goes when a write succeeds or the buffer is clean. The first
+failure of a failing run keeps #907's E303 text and adds the journal path after the error; the next failures
+are quiet. `:checkhealth` lists every check (one `OK`/`WARN`/`n/a` line each) with the summary on the status
+line; its journal part names the journal directory (WARN without a state directory) and, per file buffer,
+the size, last sync age, waiting changes and failed writes, then the path (WARN while the last write failed).
+`[disk changed]` comes in the second part.
+
 ### 9. Retention
 
 On startup, at most once a day, ruse removes archives older than 14 days and keeps at most 20 archives per

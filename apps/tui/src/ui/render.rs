@@ -962,6 +962,7 @@ pub(crate) fn render(
     line_idx: &crate::line_index::LineIndex,
     pane_idx: &crate::line_index::PaneIndexes,
     showmode: bool,
+    flags: &str,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -1301,7 +1302,13 @@ pub(crate) fn render(
             let name = ws
                 .buffer_name(ws.focused_buffer())
                 .map_or_else(|| "[No Name]".to_string(), str::to_string);
-            let dirty = if focus.doc.is_modified() { " [+]" } else { "" };
+            // nvim's `%m%r` after the name: `f.txt [+][RO]`; `flags` holds the ones after `[+]`.
+            let modified = if focus.doc.is_modified() { "[+]" } else { "" };
+            let dirty = if modified.is_empty() && flags.is_empty() {
+                String::new()
+            } else {
+                format!(" {modified}{flags}")
+            };
             // Show the window position only once split, so the single-window status line is unchanged.
             let win = if ws.window_count() > 1 {
                 format!("  [win {}/{}]", ws.focus() + 1, ws.window_count())

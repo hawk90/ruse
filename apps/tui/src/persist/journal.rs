@@ -902,6 +902,27 @@ pub struct Writer {
     /// The journal's base is the disk text (RFC-0023 §5): no compaction.
     large: bool,
     seq: u64,
+    /// When the last write and sync succeeded, for `:checkhealth` (RFC-0023 §8).
+    last_sync: Option<Instant>,
+    /// Failed writes since this writer began, and the last one's error.
+    failures: u64,
+    last_error: Option<String>,
+}
+
+/// One journal's health, as `:checkhealth` reports it (RFC-0023 §8, #938).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Health {
+    /// The journal file.
+    pub journal: PathBuf,
+    /// Its size on disk; 0 when this writer has none there.
+    pub size: u64,
+    /// Records wait to be written.
+    pub unsynced: bool,
+    /// How long ago the last successful sync was; `None` before the first.
+    pub synced_ago: Option<Duration>,
+    pub failures: u64,
+    /// The last failure's error, while the last write failed.
+    pub failing: Option<String>,
 }
 
 impl Writer {
@@ -926,11 +947,30 @@ impl Writer {
             checkpoint_len: 0,
             large: false,
             seq: 0,
+            last_sync: None,
+            failures: 0,
+            last_error: None,
         }
     }
 
     pub fn journal(&self) -> &Path {
         &self.journal
+    }
+
+    /// The journal's health at `now`.
+    pub fn health(&self, now: Instant) -> Health {
+        Health {
+            journal: self.journal.clone(),
+            size: if self.state == State::Live {
+                self.on_disk
+            } else {
+                0
+            },
+            unsynced: self.unsynced(),
+            synced_ago: self.last_sync.map(|t| now.saturating_duration_since(t)),
+            failures: self.failures,
+            failing: self.last_error.clone(),
+        }
     }
 
     pub fn doc(&self) -> &Path {
@@ -1110,8 +1150,14 @@ impl Writer {
                 self.pending = Vec::new();
                 self.rewrite = false;
                 self.state = State::Live;
+                self.last_sync = Some(Instant::now());
+                self.last_error = None;
             }
-            Err(_) => self.last_change = Some(Instant::now()),
+            Err(e) => {
+                self.last_change = Some(Instant::now());
+                self.failures += 1;
+                self.last_error = Some(e.to_string());
+            }
         }
         self.pending_changes = 0;
         result
@@ -1197,6 +1243,7 @@ impl Writer {
         self.last_change = None;
         self.on_disk = 0;
         self.since_checkpoint = 0;
+        self.last_error = None;
     }
 }
 

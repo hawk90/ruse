@@ -637,6 +637,8 @@ features:
     # is still running on this host (pid + start time) gives E325's [o] read-only (E45 on `:w`) / [e] edit
     # anyway / [q] quit; a second session journals beside it as `<name>.<pid>.rj` and never deletes another
     # session's journal. A save removes temp files a crashed save left (`.<name>.ruse-tmp-<pid>-<hex>`).
+    # #938 (RFC-0023 slice 4, first part): `[journal!]` after `[+]` while the last journal write failed;
+    # the first failure's E303 names the journal.
     # v0.1.5 (#610; app/ex_more.rs): the alternate file name a `:w {file}`, `:sav` or `:file {name}` leaves
     # (`#`, `"#`, `:e #`, `:b#`), `:f[ile] [{name}]`/`:0file`, `:fin[d]`/`:sf[ind]` over the default
     # `'path'` (`.,,`), `:dr[op]`, `:vi[sual]`, `:pw[d]`, `:cd`/`:chd[ir]` (`-`, `~`; buffer paths follow).
@@ -1071,6 +1073,9 @@ features:
       - The report is produced by a PURE, unit-tested builder (frontend snapshot in -> report out); the
         command is a thin wiring over it, so the core stays IO-free and the logic is covered off the session loop.
       - Each row reports OK / WARN / absent with a one-line reason (the Neovim checkhealth ok/warn shape).
+    # v0.1.8 (#938, RFC-0023 §8; health.rs, tests/fs_faults.rs): `:checkhealth` lists every row in the
+    # view-only listing with the summary on the status line, and adds the recovery-journal rows (journal
+    # directory; per file buffer size, last sync age, waiting changes, failed writes and path).
 
   F-022:
     title: Command traces & deterministic replay
