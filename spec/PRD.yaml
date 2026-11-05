@@ -545,6 +545,8 @@ features:
     # 'cursorcolumn', 'colorcolumn', 'fillchars' (the `~` rows past the end), 'foldcolumn'; control
     # characters show as ^X / <xx> and never reach the terminal raw (#1181). 'statuscolumn' is not
     # supported (an expression language; running Vimscript is a non-goal).
+    # #1222: a message too long for the status bar is wrapped above nvim's hit-enter prompt
+    # (ui/message.rs), a file message cut at its start with `<` ('shortmess' t). No :messages history yet.
     # Repoint (D-043): TERM-SYNC-1 -> census nvim.termmode.synchronizedoutput (from #91); the render-
     # architecture / heuristic / post-MVP-graphics ids (TERM-COLOR-1 truecolor, TERM-WIDTH-1 width,
     # TERM-GFX-1/2/3 images) are backlogged; NVIM-UI-2 stays derived via its other UI citer.

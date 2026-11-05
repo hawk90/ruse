@@ -11,6 +11,7 @@ pub(crate) mod layout;
 pub(crate) mod line_layout;
 pub(crate) mod line_picker;
 pub(crate) mod marks_picker;
+pub(crate) mod message;
 pub(crate) mod overlay;
 pub(crate) mod palette;
 pub(crate) mod picker;

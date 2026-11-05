@@ -726,6 +726,8 @@ pub(crate) struct Session {
     pub(crate) emacs_profile: bool,
     pub(crate) engine: InputEngine,
     pub(crate) quit: bool,
+    /// The last frame showed a message whole above the hit-enter prompt (#1222): the next key answers it.
+    hit_enter: bool,
     term: TermInfo,
     /// The armed session key prefix, if any (`C-w`, `z`, `zf`, `[`/`]`, `CTRL-\`).
     prefix: Prefix,
@@ -902,6 +904,7 @@ impl Session {
             emacs_profile,
             engine,
             quit: false,
+            hit_enter: false,
             term,
             prefix: Prefix::None,
             folds: HashMap::new(),
@@ -1543,6 +1546,22 @@ impl Session {
                 note_ex(ExCmd::UndoSync, &mut self.recorded);
             }
             self.ws.focused_doc_mut().sync_undo();
+        }
+    }
+
+    /// The key typed at the hit-enter prompt (#1222) clears the message. `<CR>`, `<NL>`, `<Space>` and
+    /// `CTRL-C` only do that (true: the key is used up); any other key, `<Esc>` too, then runs as typed, `:`
+    /// opening the command line, as nvim v0.12.6's `wait_return` puts it back into the typeahead.
+    fn answer_hit_enter(&mut self, key: KeyEvent) -> bool {
+        if !std::mem::take(&mut self.hit_enter) {
+            return false;
+        }
+        self.status.clear();
+        let mods = key.modifiers.difference(KeyModifiers::SHIFT);
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => mods.is_empty(),
+            KeyCode::Char('c' | 'j') => mods == KeyModifiers::CONTROL,
+            _ => false,
         }
     }
 
@@ -5411,6 +5430,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
                 &s.pane_idx,
                 s.ui_opts.showmode,
                 &flags,
+                &mut s.hit_enter,
             )?;
             // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
             // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).
@@ -5463,6 +5483,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
                 }
             }
         };
+        if raw_key.kind != KeyEventKind::Release && s.answer_hit_enter(raw_key) {
+            continue;
+        }
         s.on_key(raw_key, from_replay, &frame);
     }
     // A normal quit lets every buffer's unsaved changes go (#862): `:q` only gets here with none, and

@@ -207,12 +207,13 @@ fn a_failing_journal_shows_journal_bang_until_a_sync_works() {
     chmod(&jdir, 0o555);
     let unlock = Unlock(&jdir);
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    // 200 changes trigger a sync; the first failure is shown (the journal path follows the error, past
-    // the 80 columns here; the unit test `journal_outcome_names_the_journal` reads it).
+    // 200 changes trigger a sync; the first failure is shown whole above the hit-enter prompt (#1222),
+    // the journal path after the error (the unit test `journal_outcome_names_the_journal` reads it).
     ed.keys_then_wait_for(
         &format!("i{}{ESC}", "x".repeat(200)),
         "E303: unable to write the recovery journal for",
     );
+    ed.wait_for("Press ENTER or type command to continue");
     // A command line gives the status line back whole.
     ed.keys_then_wait_for(":set ts?\r", "f.txt [+][journal!]    tabstop=4");
     ed.keys_then_wait_for(":checkhealth\r", "WARN journal: f.txt: last write failed");

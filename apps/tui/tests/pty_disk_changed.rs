@@ -12,10 +12,13 @@ use std::path::Path;
 
 use support::{Editor, Scratch};
 
-/// The starts of nvim's W11 (`… has changed since editing started`) and W12 (`… has changed and the
-/// buffer was changed in Vim as well`): the 80-column status line cuts the rest after the flags.
-const W11: &str = "W11: Warning: File \"f.txt\" has changed since edit";
-const W12: &str = "W12: Warning: File \"f.txt\" has changed and the";
+/// nvim's W11 and the start of its W12 (`… has changed and the buffer was changed in Vim as well`, one
+/// cell wider than the 80 columns here, so it wraps above the hit-enter prompt, #1222).
+const W11: &str = "W11: Warning: File \"f.txt\" has changed since editing started";
+const W12: &str =
+    "W12: Warning: File \"f.txt\" has changed and the buffer was changed in Vim as we";
+/// nvim's hit-enter prompt under a message too long for the status line (#1222).
+const HIT_ENTER: &str = "Press ENTER or type command to continue";
 
 /// The status line, drawn whole once its `tabstop=4` is there (a command line gives it back whole).
 /// Every check waits for what it looks for: a shell or a save's fsync can keep the screen quiet past the
@@ -61,9 +64,14 @@ fn a_save_over_an_external_change_needs_a_bang() {
     ed.keys("x");
     std::fs::write(&file, b"theirs\n").unwrap();
     ed.keys_then_wait_for(":checktime\r", W12);
+    ed.wait_for(HIT_ENTER);
     assert!(bar(&mut ed).contains("f.txt [+][disk changed]    tabstop=4"));
-    // nvim's warning, then ruse's `(add ! to write anyway)`, past the 80 columns here.
-    ed.keys_then_wait_for(":w\r", "WARNING: The fil");
+    // nvim's warning, then ruse's `(add ! to write anyway)`, whole above the hit-enter prompt.
+    ed.keys_then_wait_for(
+        ":w\r",
+        "WARNING: The file has been changed since reading it!!! (add ! to write anyway)",
+    );
+    ed.wait_for(HIT_ENTER);
     assert_eq!(
         std::fs::read(&file).unwrap(),
         b"theirs\n",

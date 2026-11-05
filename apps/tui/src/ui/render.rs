@@ -963,6 +963,7 @@ pub(crate) fn render(
     pane_idx: &crate::line_index::PaneIndexes,
     showmode: bool,
     flags: &str,
+    hit_enter: &mut bool,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -1268,6 +1269,7 @@ pub(crate) fn render(
         let (shown, col) = crate::input::display_with_caret(text, caret.unwrap_or(usize::MAX));
         (format!("{prefix}{shown}"), col)
     });
+    *hit_enter = false;
     let bar = match &cmd_shown {
         Some((shown, _)) => shown.clone(),
         None => {
@@ -1321,10 +1323,35 @@ pub(crate) fn render(
                 (e, w) => format!("  [E:{e} W:{w}]"),
             };
             // `'noshowmode'` leaves the mode out (#1151).
-            if showmode {
-                format!("{mode}  {name}{dirty}{win}{diag}  {status}")
+            let prefix = if showmode {
+                format!("{mode}  {name}{dirty}{win}{diag}  ")
             } else {
-                format!("{name}{dirty}{win}{diag}  {status}")
+                format!("{name}{dirty}{win}{diag}  ")
+            };
+            // A message too long for the rest of the row is shown whole above a hit-enter prompt, or a
+            // file message cut at its start (#1222).
+            use crate::ui::message::{fit, Shown, HIT_ENTER};
+            match fit(
+                crate::ui::message::width(&prefix),
+                status,
+                usize::from(cols),
+            ) {
+                Shown::Fits => format!("{prefix}{status}"),
+                Shown::Cut(tail) => format!("{prefix}{tail}"),
+                Shown::More(lines) => {
+                    // The end of the message when it is taller than the screen (nvim scrolls to it).
+                    let shown = lines.len().min(usize::from(text_rows));
+                    let top = text_rows - shown as u16;
+                    for (i, line) in lines[lines.len() - shown..].iter().enumerate() {
+                        let row = top + i as u16;
+                        for x in 0..cols {
+                            cur.put(row, x, " ", Color::Reset, false);
+                        }
+                        cur.put_str(row, 0, line, Color::Reset, false);
+                    }
+                    *hit_enter = true;
+                    HIT_ENTER.to_string()
+                }
             }
         }
     };
@@ -1336,7 +1363,17 @@ pub(crate) fn render(
     flush_diff(out, &cur, prev, sync)?;
     *prev = cur;
 
-    if let Some((_, caret_col)) = cmd_shown {
+    if *hit_enter {
+        // nvim leaves the cursor after the prompt.
+        let col = u16::try_from(crate::ui::message::width(&bar))
+            .unwrap_or(u16::MAX)
+            .min(cols.saturating_sub(1));
+        queue!(
+            out,
+            cursor::MoveTo(col, rows.saturating_sub(1)),
+            cursor::Show
+        )?;
+    } else if let Some((_, caret_col)) = cmd_shown {
         let ccol = (u16::try_from(caret_col + 1).unwrap_or(u16::MAX)).min(cols.saturating_sub(1));
         queue!(
             out,

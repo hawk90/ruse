@@ -384,6 +384,44 @@ impl Editor {
         )
     }
 
+    /// The screen as the terminal shows it now: every byte so far through a VT grid of the PTY's 24x80, one
+    /// string per row. The renderer repaints only the cells that changed, so a row's text need not be
+    /// contiguous in the raw output.
+    pub fn rows(&self) -> Vec<String> {
+        let mut grid = ruse_tui::term_grid::Grid::new(24, 80);
+        vte::Parser::new().advance(&mut grid, &self.output.lock().unwrap());
+        (0..24)
+            .map(|r| {
+                (0..80)
+                    .filter_map(|c| grid.cell(r, c))
+                    .map(|(t, _)| if t.is_empty() { " " } else { t })
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// Wait (bounded by [`MAX_WAIT`]) until the screen ([`Editor::rows`]) has a row holding `text`; return
+    /// the rows.
+    pub fn wait_for_row(&mut self, text: &str) -> Vec<String> {
+        let start = Instant::now();
+        loop {
+            let rows = self.rows();
+            if rows.iter().any(|r| r.contains(text)) {
+                return rows;
+            }
+            if start.elapsed() >= MAX_WAIT || self.try_status().is_some() {
+                panic!(
+                    "{}\n--- rows ---\n{}",
+                    self.report(&format!("no row with {text:?}"), start),
+                    rows.join("\n")
+                );
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     /// Everything the child has written to the terminal so far, lossily decoded.
     pub fn screen_bytes(&self) -> String {
         String::from_utf8_lossy(&self.output.lock().unwrap()).into_owned()

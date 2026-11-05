@@ -60,8 +60,9 @@ pub mod remote;
 pub(crate) mod signals;
 #[cfg(unix)]
 pub(crate) mod term_buffer;
+// Public for the PTY harness, which reads the editor's own screen through it (#1222).
 #[cfg(unix)]
-pub(crate) mod term_grid;
+pub mod term_grid;
 pub(crate) mod terminal;
 // Workspace trust (INV-TRUST-1, D-058): gates language-server spawning until the user trusts the workspace.
 pub(crate) mod trust;

@@ -242,6 +242,18 @@ no row past the line's last. `'statuscolumn'` is not supported: its value is an 
 (`%{...}` evaluates Vimscript), and running Vimscript is a non-goal; `:set stc=...` says
 `option not supported`.
 
+**Long messages (#1222).** The last row is both the status bar and the message area: the message follows the
+mode, name and flags. A message that does not fit in the rest of that row is not cut. It is shown the way
+nvim v0.12.6 shows a message longer than its command line (probed in a PTY at 80x24, `:help hit-enter`):
+wrapped at any cell across the rows above, and `Press ENTER or type command to continue` on the last row
+(`ui/message.rs`). `<CR>`, `<NL>`, `<Space>` and `CTRL-C` clear it and are used up; any other key clears it
+and then runs as typed, `<Esc>` and `:` included. nvim's `wait_return` puts those keys back the same way. A
+message taller than the screen shows its last rows. A file message (`"name" 3L, 12B written`, `"name" [New]`)
+is cut at its start with `<` instead, as nvim's default `'shortmess'` flag `t` does. Differences from nvim:
+- nvim's message gets a whole command-line row. ruse's shares the row with the bar, so a message that would
+  fit nvim's row, but not the space left after a long file name, also asks for `<CR>`.
+- There is no `-- More --` paging, no `'cmdheight'` and no `:messages` history yet.
+
 ## Reference Invariants (this doc)
 
 - **INV-RENDER-IR** — All output is produced by lowering a single semantic Render Tree; no view or plugin
