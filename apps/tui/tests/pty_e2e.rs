@@ -135,7 +135,7 @@ fn start_with_journal(dir: &Scratch) -> (Editor, std::path::PathBuf, std::path::
     let file = dir.file("f.txt", b"on disk\n");
     let journal = dir
         .journals()
-        .write_text(Some(&file), b"unsaved work\n")
+        .write_crashed(Some(&file), b"unsaved work\n")
         .unwrap();
     let ed = Editor::start(dir, &[&file]);
     (ed, file, journal)
@@ -154,7 +154,7 @@ fn recovery_prompt_quit_keys_keep_the_journal() {
     }
 }
 
-/// #846: other keys are ignored, `d` deletes, and `r` recovers.
+/// #846: other keys are ignored, `k` discards (archived, never deleted), and `r` recovers.
 #[test]
 fn recovery_prompt_needs_an_explicit_choice() {
     let dir = Scratch::new();
@@ -170,10 +170,16 @@ fn recovery_prompt_needs_an_explicit_choice() {
 
     let dir = Scratch::new();
     let (mut ed, file, journal) = start_with_journal(&dir);
-    ed.keys("d:q\r");
+    ed.keys("k:q\r");
     assert_eq!(ed.exit_status(), 0);
     assert!(!journal.exists());
     assert_eq!(std::fs::read(&file).unwrap(), b"on disk\n");
+    assert_eq!(
+        std::fs::read_dir(dir.journals().archive_dir())
+            .unwrap()
+            .count(),
+        1
+    );
 }
 
 /// #847: the palette's Quit must not discard unsaved changes.
@@ -343,12 +349,15 @@ fn edit_offers_recovery_for_a_journaled_file() {
     let dir = Scratch::new();
     dir.file("a.txt", b"a\n");
     let b = dir.file("b.txt", b"on disk\n");
-    let journal = dir.journals().write_text(Some(&b), b"UNSAVED B\n").unwrap();
+    let journal = dir
+        .journals()
+        .write_crashed(Some(&b), b"UNSAVED B\n")
+        .unwrap();
     let mut ed = Editor::start(&dir, &[std::path::Path::new("a.txt")]);
     let before = ed.screen_bytes().len();
     ed.keys(":e b.txt\r");
     assert!(
-        ed.screen_bytes()[before..].contains("recovered from a previous session"),
+        ed.screen_bytes()[before..].contains("Recovery journal for"),
         ":e must offer recovery"
     );
     ed.keys("q:e b.txt\r");

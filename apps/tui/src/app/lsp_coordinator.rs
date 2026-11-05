@@ -1037,6 +1037,7 @@ mod tests {
             crate::app::dispatch::BufferFile {
                 path: PathBuf::from("/nonexistent-ruse-trust/src/main.rs"),
                 fmt: Default::default(),
+                read_only: false,
             },
         );
         let bytes = ws.focused().doc.bytes().to_vec();

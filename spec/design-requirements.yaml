@@ -3,7 +3,7 @@
 # Scope: DR-* design requirements only. Product features stay in spec/PRD.yaml (F-*).
 # Statuses verified against code on 2026-10-05 (code wins over docs; conflicts in notes).
 schema: 1
-updated: '2026-11-02'
+updated: '2026-11-05'
 sources:
   - docs/architecture/design-requirements.md (§1–§20, DR-* list before 2026-10-05)
 statuses:
@@ -324,7 +324,7 @@ items:
     acceptance:
       - Recovered bytes go into the buffer only; writing the file is an explicit later save
     evidence:
-      - apps/tui/src/persist/mod.rs::assess_recovery
+      - apps/tui/src/persist/mod.rs::Recovery
       - apps/tui/tests/persist_roundtrip.rs::crash_with_unsaved_work_is_recoverable_then_cleared_on_save
     legacy_ids:
       - DR-PERSIST-4
@@ -334,17 +334,23 @@ items:
     title: Crash recovery offers current document / disk file / recoverable changes
     area: persist
     priority: P1
-    status: partial
+    status: done
     acceptance:
       - The user picks between the recovered buffer and the disk file
       - A third choice shows the recoverable changes (diff)
     evidence:
-      - apps/tui/src/persist/mod.rs::assess_recovery
+      - apps/tui/src/persist/mod.rs::Recovery
+      - apps/tui/src/ui/recovery.rs::resolve
+      - apps/tui/src/persist/diff.rs::unified
+      - apps/tui/tests/pty_recovery.rs::diff_then_recover
     legacy_ids:
       - DR-PERSIST-5
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
-    notes: Two-way choice (Recovery::Available vs disk); no diff/changes view.
+    notes: >-
+      RFC-0023 slice 3 (#933): recover / show diff (Myers, bounded) / edit the disk file / discard (archived) /
+      quit; a live owner on this host gets the E325-style in-use prompt instead (#1193). Archive retention is
+      #934.
   - id: PERSIST-006
     title: Atomic replace on save; per-platform fsync / metadata / permission policy
     area: persist
