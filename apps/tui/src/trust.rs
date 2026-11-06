@@ -204,6 +204,12 @@ impl TrustStore {
         TrustStore { dir }
     }
 
+    /// Where `root`'s record lives (whether or not it exists).
+    #[must_use]
+    pub fn record_path(&self, root: &Path) -> PathBuf {
+        self.file(root).0
+    }
+
     /// The record file for `root` (canonicalized when it exists).
     fn file(&self, root: &Path) -> (PathBuf, String) {
         let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());

@@ -47,6 +47,10 @@ impl Drop for Dirs {
     }
 }
 
+fn load(paths: &ConfigPaths) -> Config {
+    load_mode(paths, None)
+}
+
 fn value(cfg: &Config, key: &str) -> Option<Value> {
     cfg.get(key).map(|e| e.value.clone())
 }
@@ -564,4 +568,96 @@ fn the_shipped_migrations_match_the_schema() {
     let (entries, diags) = parse_with("version = 1\neditor.tab_width = 2\n", &MIGRATIONS);
     assert_eq!(entries.len(), 1);
     assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// Safe mode (CFG-SAFE-001): the machine layer alone; the user and workspace layers are not read, even a
+/// trusted workspace, and `:inspect config` and the startup message say so.
+#[test]
+fn safe_mode_reads_the_machine_layer_alone() {
+    let d = Dirs::new("safe");
+    d.write("machine.toml", "editor.tab_width = 8\n");
+    d.write("user.toml", "editor.scrolloff = 3\n[editor\n");
+    d.write("ws/.ruse/config.toml", "editor.shift_width = 2\n");
+    d.trust();
+    let cfg = load_mode(&d.paths(), Some(SafeMode::CrashLoop { failed: 3 }));
+    assert_eq!(value(&cfg, "editor.tab_width"), Some(Value::Int(8)));
+    assert_eq!(value(&cfg, "editor.scrolloff"), None);
+    assert_eq!(value(&cfg, "editor.shift_width"), None);
+    assert_eq!(state(&cfg, LayerKind::User), LayerState::SafeMode);
+    assert_eq!(state(&cfg, LayerKind::Workspace), LayerState::SafeMode);
+    assert!(
+        cfg.diagnostics.is_empty(),
+        "the broken user file is not even read"
+    );
+    assert!(!reads_user_layers(&cfg));
+    let rows = inspect_all(&cfg);
+    assert!(
+        rows[1].contains("safe mode (after 3 crashed starts"),
+        "{rows:?}"
+    );
+    assert!(startup_notice(&cfg)
+        .unwrap()
+        .starts_with("Config: safe-mode (after 3 crashed"));
+    assert!(health_issue(&cfg).unwrap().starts_with("safe-mode"));
+    // Out of safe mode the same files load (and the broken user file is quarantined).
+    let cfg = load(&d.paths());
+    assert_eq!(value(&cfg, "editor.shift_width"), Some(Value::Int(2)));
+    assert!(
+        reads_user_layers(&cfg),
+        "the trusted workspace layer loaded"
+    );
+    assert!(health_issue(&cfg)
+        .unwrap()
+        .starts_with("degraded (1 layer(s)"));
+}
+
+/// What a reload installs: the keys whose effective value changed, and only the ones a running session
+/// may change.
+#[test]
+fn a_reload_diffs_the_effective_values() {
+    let d = Dirs::new("diff");
+    d.write("user.toml", "editor.tab_width = 4\neditor.scrolloff = 3\n");
+    let before = load(&d.paths());
+    // Same values, other lines: nothing changed.
+    d.write(
+        "user.toml",
+        "# moved\neditor.scrolloff = 3\neditor.tab_width = 4\n",
+    );
+    assert!(changed_keys(&before, &load(&d.paths())).is_empty());
+    d.write(
+        "user.toml",
+        "editor.tab_width = 2\ninput.profile = \"emacs\"\n",
+    );
+    let after = load(&d.paths());
+    assert_eq!(
+        changed_keys(&before, &after),
+        ["input.profile", "editor.tab_width", "editor.scrolloff"]
+    );
+    assert!(reloads_live("editor.tab_width"));
+    assert!(
+        !reloads_live("input.profile"),
+        "the key engine is built once"
+    );
+    assert!(!reloads_live("workspace.trusted_roots"), "security-locked");
+    assert!(!reloads_live("no.such.key"));
+}
+
+/// The stamp moves when a layer file is written, appears or goes, and when the trust record does.
+#[test]
+fn the_stamp_sees_each_layer_file() {
+    let d = Dirs::new("stamp");
+    let p = d.paths();
+    let s0 = Stamp::of(&p);
+    assert_eq!(s0, Stamp::of(&p), "nothing changed");
+    d.write("user.toml", "editor.tab_width = 4\n");
+    let s1 = Stamp::of(&p);
+    assert_ne!(s0, s1);
+    d.write("user.toml", "editor.tab_width = 4 # four\n");
+    let s2 = Stamp::of(&p);
+    assert_ne!(s1, s2);
+    d.write("ws/.ruse/config.toml", "editor.shift_width = 2\n");
+    let s3 = Stamp::of(&p);
+    assert_ne!(s2, s3);
+    d.trust();
+    assert_ne!(s3, Stamp::of(&p), "the trust record is watched too");
 }

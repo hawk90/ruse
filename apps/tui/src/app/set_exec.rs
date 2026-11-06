@@ -762,17 +762,27 @@ pub(crate) fn install_lang_keymap(
 
 /// Install `cfg`'s values into the options (`:set` writes both copies), with their provenance. An option
 /// typed with `:set` this session is left alone, and one an earlier config set but `cfg` no longer does
-/// (`:untrust` made the workspace layer inert) goes back to ruse's default.
-pub(crate) fn apply_config(cfg: &crate::config::Config, host: &mut OptionHost<'_>) {
+/// (`:untrust` made the workspace layer inert) goes back to ruse's default. With `only`, just the options of
+/// those config keys (a reload installs what changed).
+pub(crate) fn apply_config_keys(
+    cfg: &crate::config::Config,
+    host: &mut OptionHost<'_>,
+    only: Option<&[&'static str]>,
+) {
     // `render.conceal` is no `:set` option: the config's value, else the schema default (on).
-    host.ui.conceal = !matches!(
-        cfg.get("render.conceal").map(|e| &e.value),
-        Some(crate::config::Value::Bool(false))
-    );
+    if only.is_none_or(|keys| keys.contains(&"render.conceal")) {
+        host.ui.conceal = !matches!(
+            cfg.get("render.conceal").map(|e| &e.value),
+            Some(crate::config::Value::Bool(false))
+        );
+    }
     for def in OPTIONS {
         let Some(key) = config_key(def.opt) else {
             continue;
         };
+        if only.is_some_and(|keys| !keys.contains(&key)) {
+            continue;
+        }
         if host.sources.get(&def.opt) == Some(&OptSource::Typed) {
             continue;
         }

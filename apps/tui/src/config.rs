@@ -19,6 +19,12 @@
 //!   loads under the new name, a removed key stays inert with a warning; the file is never rewritten.
 //!
 //! Every effective value carries its source (layer, file, line) for `:verbose set` and `:inspect config`.
+//!
+//! Safe mode (CFG-SAFE-001, [`SafeMode`]) loads the machine layer alone: `ruse --safe-mode`, or after
+//! [`boot::CRASH_LIMIT`] starts in a row died between loading the config and their first frame. A
+//! session reloads the config when a layer file changes ([`Stamp`], [`changed_keys`]).
+
+pub mod boot;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -618,6 +624,8 @@ pub enum LayerState {
     Untrusted,
     /// A workspace layer whose `.ruse/` changed since `:trust` recorded it: inert until `:trust` again.
     Stale,
+    /// A user or workspace layer in safe mode: not read.
+    SafeMode,
 }
 
 impl LayerState {
@@ -629,6 +637,7 @@ impl LayerState {
             LayerState::Quarantined(_) => "quarantined",
             LayerState::Untrusted => "untrusted",
             LayerState::Stale => "stale",
+            LayerState::SafeMode => "safe-mode",
         }
     }
 }
@@ -657,6 +666,30 @@ pub struct Config {
     pub diagnostics: Vec<Diagnostic>,
     /// Every entry each layer contributed, by key (for `:inspect config {key}`).
     pub contributions: BTreeMap<&'static str, Vec<(Value, Source)>>,
+    /// Why the user and workspace layers were not read, in safe mode.
+    pub safe_mode: Option<SafeMode>,
+}
+
+/// Why a session runs in safe mode (CFG-SAFE-001): only the schema defaults and the machine layer apply.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SafeMode {
+    /// `ruse --safe-mode`.
+    Asked,
+    /// This many starts in a row loaded a user or workspace layer and ended before their first frame.
+    CrashLoop { failed: u32 },
+}
+
+impl SafeMode {
+    /// Why, as `:inspect config` and the startup message say it.
+    #[must_use]
+    pub fn reason(self) -> String {
+        match self {
+            SafeMode::Asked => "--safe-mode".to_string(),
+            SafeMode::CrashLoop { failed } => {
+                format!("after {failed} crashed starts")
+            }
+        }
+    }
 }
 
 impl Config {
@@ -720,20 +753,39 @@ struct Entry {
 /// The largest config file read (a config file is a few kilobytes; this bounds a hostile one).
 const MAX_FILE: u64 = 1 << 20;
 
-/// Load every layer at `paths`. Never fails: problems become diagnostics and inert layers.
+/// Load every layer at `paths`, or in safe mode (`safe`) the machine layer alone: the user and workspace
+/// layers are reported as `safe-mode` and not read. Never fails: problems become diagnostics and inert
+/// layers.
 #[must_use]
-pub fn load(paths: &ConfigPaths) -> Config {
-    let mut cfg = Config::default();
+pub fn load_mode(paths: &ConfigPaths, safe: Option<SafeMode>) -> Config {
+    let mut cfg = Config {
+        safe_mode: safe,
+        ..Config::default()
+    };
     let mut layers: Vec<(LayerKind, PathBuf, Vec<Entry>)> = Vec::new();
     for (kind, path) in [
         (LayerKind::Machine, paths.machine.clone()),
         (LayerKind::User, paths.user.clone()),
     ] {
         let Some(path) = path else { continue };
+        if safe.is_some() && kind == LayerKind::User {
+            cfg.layers.push(LayerReport {
+                kind,
+                path,
+                state: LayerState::SafeMode,
+            });
+            continue;
+        }
         let entries = read_layer(kind, &path, &mut cfg);
         layers.push((kind, path, entries));
     }
-    if let Some(path) = paths.workspace_file() {
+    if let Some(path) = paths.workspace_file().filter(|_| safe.is_some()) {
+        cfg.layers.push(LayerReport {
+            kind: LayerKind::Workspace,
+            path,
+            state: LayerState::SafeMode,
+        });
+    } else if let Some(path) = paths.workspace_file() {
         let root = paths.workspace_root.clone().unwrap_or_default();
         let entries = match workspace_gate(&root, &path, paths.trust_dir.as_deref()) {
             Ok(bytes) => parse_workspace_bytes(&path, &bytes, &mut cfg),
@@ -1351,6 +1403,12 @@ fn deep_merge(into: &mut BTreeMap<String, Value>, from: &BTreeMap<String, Value>
 #[must_use]
 pub fn inspect_all(cfg: &Config) -> Vec<String> {
     let mut rows = vec!["--- Config layers ---".to_string()];
+    if let Some(safe) = cfg.safe_mode {
+        rows.push(format!(
+            "  safe mode ({}): user and workspace layers not read; :config-reload leaves it",
+            safe.reason()
+        ));
+    }
     for l in &cfg.layers {
         let extra = match &l.state {
             LayerState::Quarantined(why) => format!(" ({why})"),
@@ -1415,6 +1473,12 @@ pub fn inspect_key(cfg: &Config, name: &str) -> Option<Vec<String>> {
 /// The one-line startup notice for the diagnostics, if any (shown once; `:inspect config` lists them).
 #[must_use]
 pub fn startup_notice(cfg: &Config) -> Option<String> {
+    if let Some(safe) = cfg.safe_mode {
+        return Some(format!(
+            "Config: safe-mode ({}): no user or workspace config (:config-reload leaves it)",
+            safe.reason()
+        ));
+    }
     let first = cfg.diagnostics.first()?;
     let more = cfg.diagnostics.len() - 1;
     Some(if more == 0 {
@@ -1422,6 +1486,91 @@ pub fn startup_notice(cfg: &Config) -> Option<String> {
     } else {
         format!("config: {} (+{more} more; :inspect config)", first.message)
     })
+}
+
+/// The health of the config for `:checkhealth` (`config-model.md` Observability): `None` when every
+/// layer loaded without a diagnostic, else what is wrong (`safe-mode`, or `degraded (N diagnostics)`).
+#[must_use]
+pub fn health_issue(cfg: &Config) -> Option<String> {
+    if let Some(safe) = cfg.safe_mode {
+        return Some(format!("safe-mode ({})", safe.reason()));
+    }
+    let quarantined = cfg
+        .layers
+        .iter()
+        .filter(|l| matches!(l.state, LayerState::Quarantined(_)))
+        .count();
+    match (cfg.diagnostics.len(), quarantined) {
+        (0, 0) => None,
+        (n, 0) => Some(format!("degraded ({n} diagnostic(s); :inspect config)")),
+        (n, q) => Some(format!(
+            "degraded ({q} layer(s) quarantined, {n} diagnostic(s); :inspect config)"
+        )),
+    }
+}
+
+/// Whether a user or workspace layer was read: only then can a start that dies before its first frame
+/// be laid at the config's door ([`boot`]).
+#[must_use]
+pub fn reads_user_layers(cfg: &Config) -> bool {
+    cfg.layers
+        .iter()
+        .any(|l| l.kind != LayerKind::Machine && l.state == LayerState::Loaded)
+}
+
+/// The keys whose effective value differs between `old` and `new` (set in one and not the other, or set
+/// to another value), in schema order: what a reload applies.
+#[must_use]
+pub fn changed_keys(old: &Config, new: &Config) -> Vec<&'static str> {
+    SCHEMA
+        .iter()
+        .map(|d| d.key)
+        .filter(|k| old.get(k).map(|e| &e.value) != new.get(k).map(|e| &e.value))
+        .collect()
+}
+
+/// Whether a reload may change `key` in a running session. A `security_locked` key (executables, trust,
+/// forwarding) and `input.profile` (the key engine is built once) take effect at the next start: a file
+/// edited behind a running session must not loosen its trust (`config-model.md` Open questions, leaning
+/// restart-only).
+#[must_use]
+pub fn reloads_live(key: &str) -> bool {
+    key != "input.profile" && key_def(key).is_some_and(|d| !d.locked)
+}
+
+/// What the layer files look like on disk, to tell when one changed: for each of the machine, user and
+/// workspace files, the `.ruse/` directory and the workspace's trust record, its length, modification
+/// time and inode (or nothing when it is absent). Cheap: a few `lstat`s.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Stamp(Vec<Option<(u64, Option<std::time::SystemTime>, u64)>>);
+
+impl Stamp {
+    #[must_use]
+    pub fn of(paths: &ConfigPaths) -> Stamp {
+        let record = paths.workspace_root.as_ref().and_then(|root| {
+            Some(crate::trust::TrustStore::new(paths.trust_dir.clone()?).record_path(root))
+        });
+        let files = [
+            paths.machine.clone(),
+            paths.user.clone(),
+            paths.workspace_file(),
+            paths.workspace_root.as_ref().map(|r| r.join(".ruse")),
+            record,
+        ];
+        Stamp(
+            files
+                .iter()
+                .map(|p| {
+                    let m = std::fs::symlink_metadata(p.as_ref()?).ok()?;
+                    #[cfg(unix)]
+                    let ino = std::os::unix::fs::MetadataExt::ino(&m);
+                    #[cfg(not(unix))]
+                    let ino = 0;
+                    Some((m.len(), m.modified().ok(), ino))
+                })
+                .collect(),
+        )
+    }
 }
 
 #[cfg(test)]

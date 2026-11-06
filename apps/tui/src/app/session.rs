@@ -820,6 +820,10 @@ pub(crate) struct Session {
     /// Where the config layers and trust records live, when the session loads config (the binary does,
     /// the headless harness does not), so `:trust` / `:untrust` can reload the workspace layer.
     pub(crate) config_paths: Option<crate::config::ConfigPaths>,
+    /// The layer files as last loaded: a different stamp reloads the config (#1152).
+    config_stamp: crate::config::Stamp,
+    /// The crash-loop record (CFG-SAFE-001): `:config-reload` clears it when it leaves safe mode.
+    pub(crate) boot_record: Option<crate::config::boot::BootRecord>,
     /// The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
     last_substitute: Option<(String, String, ruse_core::SubFlags)>,
     /// The last executed Ex command-line (WITHOUT the leading `:`) — Vim's `":` register (`:help quote_:`),
@@ -970,6 +974,8 @@ impl Session {
             ex_verbose: false,
             config: crate::config::Config::default(),
             config_paths: None,
+            config_stamp: crate::config::Stamp::default(),
+            boot_record: None,
             last_substitute: None,
             last_ex_line: None,
             can_cindent: true,
@@ -1449,6 +1455,9 @@ impl Session {
         if self.disk_changed.contains(&id) {
             flags.push_str("[disk changed]");
         }
+        if self.config.safe_mode.is_some() {
+            flags.push_str("[Config: safe-mode]");
+        }
         flags
     }
 
@@ -1458,6 +1467,8 @@ impl Session {
     /// nvim's E211 and no `[disk changed]` flag. ruse does not offer to reload.
     pub(crate) fn check_disk(&mut self, announce: bool) {
         self.disk_checked = std::time::Instant::now();
+        // The config layer files too (#1152); a file's own warning, below, is shown over its report.
+        self.watch_config();
         let focused = self.ws.focused_buffer();
         let mut ids: Vec<DocumentId> = self.files.keys().copied().collect();
         ids.sort_by_key(|id| (*id != focused, id.0));
@@ -1507,7 +1518,7 @@ impl Session {
     pub(crate) fn idle_disk_check(&mut self) {
         let idle = persist::journal::IDLE;
         if self.rescue
-            && !self.files.is_empty()
+            && (!self.files.is_empty() || self.config_paths.is_some())
             && self.last_input.elapsed() >= idle
             && self.disk_checked.elapsed() >= idle
         {
@@ -1517,7 +1528,7 @@ impl Session {
 
     /// How long until [`Session::idle_disk_check`] is due, for the poll timeout.
     fn disk_wake_ms(&self) -> Option<u64> {
-        if !self.rescue || self.files.is_empty() {
+        if !self.rescue || (self.files.is_empty() && self.config_paths.is_none()) {
             return None;
         }
         let idle = persist::journal::IDLE;
@@ -1771,6 +1782,12 @@ impl Session {
     /// `startup` nothing goes into the trace and the trace's starting options are read again afterwards
     /// (a trace starts from the configured values, RFC-0020 R4); a reload mid-session records its sets.
     pub(crate) fn apply_config(&mut self, startup: bool) {
+        self.apply_config_keys(startup, None);
+    }
+
+    /// [`Session::apply_config`] for the keys in `only` alone (every key with `None`): a reload installs
+    /// only what changed, so an unchanged key leaves a window's local value alone.
+    fn apply_config_keys(&mut self, startup: bool, only: Option<&[&'static str]>) {
         let mut scratch = Vec::new();
         let Session {
             ws,
@@ -1813,9 +1830,12 @@ impl Session {
             readonly,
             win_height: 0,
         };
-        crate::app::set_exec::apply_config(config, &mut host);
-        let notes =
-            crate::app::set_exec::install_lang_keymap(config, engine, &mut self.config_lmaps);
+        crate::app::set_exec::apply_config_keys(config, &mut host, only);
+        let notes = if only.is_none_or(|k| k.contains(&"keymap.lang")) {
+            crate::app::set_exec::install_lang_keymap(config, engine, &mut self.config_lmaps)
+        } else {
+            Vec::new()
+        };
         if !notes.is_empty() {
             let shown = format!("{} · {}", self.status, notes.join(" · "));
             self.status.amend(shown);
@@ -1860,7 +1880,8 @@ impl Session {
             })
         };
         if let Some(paths) = paths {
-            self.config = crate::config::load(&paths);
+            self.config = crate::config::load_mode(&paths, self.config.safe_mode);
+            self.config_stamp = crate::config::Stamp::of(&paths);
             self.apply_config(false);
         }
         let workspace_loaded = self.config.layers.iter().any(|l| {
@@ -1879,6 +1900,108 @@ impl Session {
             }
             None => {}
         }
+    }
+
+    /// Reload the config when a layer file changed on disk since it was loaded (#1152). Called where the
+    /// session looks at its files again: when idle, on focus gain, after an Ex command.
+    pub(crate) fn watch_config(&mut self) {
+        let Some(paths) = &self.config_paths else {
+            return;
+        };
+        if crate::config::Stamp::of(paths) != self.config_stamp {
+            self.reload_config(false);
+        }
+    }
+
+    /// Load the config layers again and install what changed (`config-model.md` Performance: the merge
+    /// is recomputed and diffed). `explicit` is `:config-reload`, which also leaves safe mode (and clears
+    /// the crash-loop record) and always reports; an automatic reload keeps safe mode and is quiet when no
+    /// value changed. A layer that loaded before and now does not parse keeps the whole previous config,
+    /// and the error is reported. A key that only applies at startup (`input.profile`, security-locked
+    /// keys) keeps its running value and is named as taking effect at the next start.
+    pub(crate) fn reload_config(&mut self, explicit: bool) {
+        use crate::config::LayerState;
+        let Some(paths) = self.config_paths.clone() else {
+            if explicit {
+                self.status
+                    .error("config-reload: no config files in this session");
+            }
+            return;
+        };
+        let safe = if explicit {
+            None
+        } else {
+            self.config.safe_mode
+        };
+        let mut new = crate::config::load_mode(&paths, safe);
+        self.config_stamp = crate::config::Stamp::of(&paths);
+        for d in &new.diagnostics {
+            tracing::warn!(code = d.code, "{}", d.message);
+        }
+        let broken = new.layers.iter().find(|l| {
+            matches!(l.state, LayerState::Quarantined(_))
+                && self
+                    .config
+                    .layers
+                    .iter()
+                    .any(|o| o.kind == l.kind && o.state == LayerState::Loaded)
+        });
+        if let Some(l) = broken {
+            let why = match &l.state {
+                LayerState::Quarantined(why) => why.clone(),
+                _ => String::new(),
+            };
+            let text = format!(
+                "config not reloaded, the previous one stays: {}: {why}",
+                crate::config::short_path(&l.path)
+            );
+            if explicit {
+                self.status.error(text);
+            } else {
+                self.status.warn(text);
+            }
+            return;
+        }
+        let changed = crate::config::changed_keys(&self.config, &new);
+        let (live, later): (Vec<&'static str>, Vec<&'static str>) =
+            changed.iter().partition(|k| crate::config::reloads_live(k));
+        // A key that applies only at startup keeps its running value in the snapshot.
+        for k in &later {
+            match self.config.values.get(k) {
+                Some(e) => new.values.insert(k, e.clone()),
+                None => new.values.remove(k),
+            };
+        }
+        let left_safe = self.config.safe_mode.is_some() && new.safe_mode.is_none();
+        self.config = new;
+        self.apply_config_keys(false, Some(&live));
+        if left_safe {
+            if let Some(b) = &self.boot_record {
+                b.clear();
+            }
+        }
+        if !explicit && changed.is_empty() {
+            return;
+        }
+        let mut text = match live.len() {
+            0 if left_safe => "config reloaded; safe mode off".to_string(),
+            0 => "config reloaded: no change".to_string(),
+            n => format!(
+                "config reloaded{}: {n} key(s) changed ({})",
+                if left_safe { "; safe mode off" } else { "" },
+                live.join(", ")
+            ),
+        };
+        if !later.is_empty() {
+            text.push_str(&format!("; at the next start: {}", later.join(", ")));
+        }
+        if !self.config.diagnostics.is_empty() {
+            text.push_str(&format!(
+                " (+{} diagnostic(s); :inspect config)",
+                self.config.diagnostics.len()
+            ));
+        }
+        self.status.info(text);
     }
 
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
@@ -3644,6 +3767,7 @@ impl Session {
         // An Ex line a command asks to run after it (`:e +cmd`).
         let mut then_run = None;
         let mut trust_change = None;
+        let mut config_reload = false;
         match ex {
             Ex::NoHighlight => *search_hl = None, // `:noh` clears the search highlight (F-009 #1)
             // `:set` / `:setlocal` / `:setglobal` (#614): the grammar is `input/set_cmd.rs`, the values it
@@ -3691,6 +3815,9 @@ impl Session {
                 trust_change = Some(true);
             }
             Ex::Untrust => trust_change = Some(false),
+            // `:config-reload` (Helix's name, #1152): read the config layers again now (below, after this
+            // match); it also leaves safe mode.
+            Ex::ConfigReload => config_reload = true,
             // `:inspect config [key]` (CFG-PROV-001): the layers, their state, every value a layer set
             // with its source, and the diagnostics; or one key's layer stack.
             Ex::InspectConfig(key) => {
@@ -3985,6 +4112,7 @@ impl Session {
                     buffers: ws.window_count(),
                     trace_commands: recorded.len(),
                     journaling: journal_health(*rescue, *journals, files, ws, journal_writers),
+                    config: crate::config::health_issue(config),
                 };
                 // Every check's line in the listing, the summary on the status line (RFC-0023 §8).
                 crate::app::ex_more::show_rows(
@@ -4786,6 +4914,9 @@ impl Session {
         if let Some(grant) = trust_change {
             self.change_config_trust(grant);
         }
+        if config_reload {
+            self.reload_config(true);
+        }
         if let Some(line) = then_run {
             let opened = self.status.take();
             self.execute_ex_one(line, frame);
@@ -5393,7 +5524,12 @@ fn journal_outcome(
 }
 
 /// `read_only_mode` is `ruse -R` (#1211).
-pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> io::Result<()> {
+pub(crate) fn run(
+    path: Option<PathBuf>,
+    raw: Vec<u8>,
+    read_only_mode: bool,
+    safe_mode: bool,
+) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
     let fmt = persist::encoding::FileFormat::detect(&raw);
     let disk = fmt.to_buffer(&raw);
@@ -5457,7 +5593,21 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
     // matches. Loading never fails; the problems are diagnostics, shown once on the status line.
     let cwd = std::env::current_dir().unwrap_or_default();
     let config_paths = crate::config::ConfigPaths::from_env(&cwd);
-    let config = crate::config::load(&config_paths);
+    // Safe mode (CFG-SAFE-001): asked for, or after a crash loop the boot record counted. A start that
+    // reads user config counts itself until its first frame clears the record (`config::boot`).
+    let boot_record = crate::config::boot::BootRecord::from_env();
+    let safe = crate::config::boot::decide(
+        safe_mode,
+        boot_record
+            .as_ref()
+            .map_or(0, crate::config::boot::BootRecord::failed),
+    );
+    let config = crate::config::load_mode(&config_paths, safe);
+    let mut boot_armed = crate::config::boot::arm(
+        boot_record.clone(),
+        safe,
+        crate::config::reads_user_layers(&config),
+    );
     for d in &config.diagnostics {
         tracing::warn!(code = d.code, "{}", d.message);
     }
@@ -5518,7 +5668,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
         persist::disk::saw(&p, &raw);
     }
     s.config = config;
+    s.config_stamp = crate::config::Stamp::of(&config_paths);
     s.config_paths = Some(config_paths);
+    s.boot_record = boot_record;
     s.apply_config(true);
     if let Some(rec) = recovered {
         s.apply_recovered(rec);
@@ -5550,6 +5702,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
     let in_tmux = std::env::var_os("TMUX").is_some();
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
     let mut last_paint = std::time::Instant::now();
+    // A start that crashes after loading the config and before its first frame, on demand: the crash
+    // loop safe mode detects, for the end-to-end test (`tests/pty_config_safe.rs`).
+    if std::env::var_os("RUSE_TEST_CRASH_BEFORE_FIRST_FRAME").is_some() {
+        std::process::abort();
+    }
 
     while !s.quit {
         // SIGTERM / SIGHUP (#857): end the session; the caller journals every modified buffer and the
@@ -5735,6 +5892,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
             }
         }
         s.post_render(&frame);
+        // The first frame is drawn: the config booted, so this start is no crash (`config::boot`).
+        if let Some(b) = boot_armed.take() {
+            b.clear();
+        }
         // Keys the session queued come before the terminal: the key half of a split Alt chord (#896), then
         // macro replay (D-055), so `@{reg}`'s decoded keys flow through the same dispatch as if re-typed. A
         // key from the replay queue is `from_replay`.
