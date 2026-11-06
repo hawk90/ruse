@@ -346,8 +346,8 @@ fn counted_ampersand_substitutes_count_lines_and_rejects_a_range_past_the_end() 
 #[test]
 fn confirm_loop_q_ends_the_loop() {
     let mut h = Headless::vim("a\na\na\n");
-    h.keys(":%s/a/b/gc<CR>yq");
-    assert_eq!(h.status(), "1 substitutions on 1 lines");
+    h.keys(":set report=0<CR>:%s/a/b/gc<CR>yq");
+    assert_eq!(h.status(), "1 substitution on 1 line");
     h.keys("x");
     assert_eq!(
         h.text(),
@@ -588,7 +588,7 @@ fn an_unset_mark_is_e20_and_nothing_runs() {
 #[test]
 fn a_search_that_matches_nowhere_is_e486_and_nothing_runs() {
     let h = run("abc def\n", "wd/zzz<CR>");
-    assert_eq!(h.status(), "E486: pattern not found: zzz");
+    assert_eq!(h.status(), "E486: Pattern not found: zzz");
     assert_eq!(h.text(), "abc def\n");
     assert_eq!(h.cursor_row_col(), (1, 4));
     // The keys typed after it still run (they are typed, not flushed).

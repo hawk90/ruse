@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn emsg_code_reads_only_a_numbered_error() {
-        assert_eq!(emsg_code("E486: pattern not found: x"), Some("E486"));
+        assert_eq!(emsg_code("E486: Pattern not found: x"), Some("E486"));
         assert_eq!(emsg_code("E: bad pattern"), None);
         assert_eq!(emsg_code("Error"), None);
         assert_eq!(emsg_code("E12 no colon"), None);

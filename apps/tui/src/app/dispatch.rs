@@ -416,6 +416,29 @@ pub(crate) fn run_prg_operator(
 }
 
 /// Record a command and apply it to the focused window, performing any effects.
+/// [`run_cmd`] for a Normal or Visual command, typed or repeated: its line-count report follows
+/// (`3 fewer lines`, `3 lines yanked`, #1276) unless it failed or gave a message of its own.
+pub(crate) fn run_cmd_reported(
+    cmd: Command,
+    ws: &mut Workspace,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut Status,
+    quit: &mut bool,
+    report: i64,
+) {
+    let pending = crate::app::report::NormalReport::before(&cmd, ws);
+    let (serial, beeped_before) = (status.serial(), ws.take_beep());
+    run_cmd(cmd, ws, files, recorded, status, quit);
+    let beeped = ws.take_beep();
+    if beeped_before || beeped {
+        ws.beep();
+    }
+    if let Some(p) = pending.filter(|_| !beeped && status.serial() == serial) {
+        p.give(ws, status, report);
+    }
+}
+
 pub(crate) fn run_cmd(
     cmd: Command,
     ws: &mut Workspace,
@@ -524,9 +547,10 @@ pub(crate) fn run_repeat(
     recorded: &mut Vec<Command>,
     status: &mut Status,
     quit: &mut bool,
+    report: i64,
 ) {
     for cmd in r.head {
-        run_cmd(cmd, ws, files, recorded, status, quit);
+        run_cmd_reported(cmd, ws, files, recorded, status, quit, report);
     }
     let literal = literal_text(&r.unit);
     let mut done: u32 = 0;
@@ -554,14 +578,14 @@ pub(crate) fn run_repeat(
             }
             _ => {
                 for cmd in &r.unit {
-                    run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+                    run_cmd_reported(cmd.clone(), ws, files, recorded, status, quit, report);
                 }
                 done += 1;
             }
         }
     }
     for cmd in r.tail {
-        run_cmd(cmd, ws, files, recorded, status, quit);
+        run_cmd_reported(cmd, ws, files, recorded, status, quit, report);
     }
 }
 
@@ -752,9 +776,10 @@ pub(crate) fn match_count_message(matches: usize, lines: usize) -> String {
 }
 
 /// The status line after a substitute replaced text: `N substitutions on M lines` (one wording for `:s`,
-/// `&`, `g&`, `:&&` and the `:s///c` loop).
-pub(crate) fn substituted_message(out: &ruse_core::SubOutcome) -> String {
-    format!("{} substitutions on {} lines", out.replacements, out.lines)
+/// `&`, `g&`, `:&&` and the `:s///c` loop), when there were more substitutions than `report`; else nothing.
+pub(crate) fn substituted_message(out: &ruse_core::SubOutcome, report: i64) -> Msg {
+    crate::app::report::substituted(out.replacements, out.lines, report)
+        .map_or_else(|| Msg::echo(""), Msg::info)
 }
 
 /// Status for a regex compile error (F-009): the pattern reader's own `E…:` message when it has one (nvim's
@@ -1575,7 +1600,7 @@ mod dispatch_tests {
 
         // No-match reports E486 (nvim), still without editing.
         let (status, _) = ex_run(&mut ws, "%s/zzz//gn");
-        assert_eq!(status, "E486: pattern not found: zzz");
+        assert_eq!(status, "E486: Pattern not found: zzz");
         assert_eq!(
             ws.focused().doc.bytes(),
             src.as_bytes(),

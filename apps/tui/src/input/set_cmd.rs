@@ -111,6 +111,8 @@ pub enum Opt {
     MessageOptions,
     /// `'foldopen'`: which typed commands open the closed fold the cursor lands in (#1141).
     FoldOpen,
+    /// `'report'`: a command that changes, yanks or moves more lines than this says how many (#1276).
+    Report,
 }
 
 /// An option's value.
@@ -750,6 +752,15 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(false),
         Locality::Local,
+    ),
+    def(
+        Opt::Report,
+        "report",
+        "report",
+        NUM0,
+        OptVal::Num(2),
+        OptVal::Num(2),
+        Locality::Global,
     ),
     def(
         Opt::Scroll,

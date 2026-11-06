@@ -91,21 +91,21 @@ const MORE: &str = "-- More --";
 #[test]
 fn messages_shows_the_history_and_clear_empties_it() {
     let dir = Scratch::new();
-    dir.file("f.txt", b"one\ntwo\n");
+    dir.file("f.txt", b"one\ntwo\nthree\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys(":nosuch1\r");
     ed.wait_for_row("E492: Not an editor command: nosuch1");
     ed.keys(":set ts?\r");
     ed.wait_for_row("tabstop=4");
-    ed.keys(":1,2y\r");
-    ed.wait_for_row("2 lines yanked");
+    ed.keys(":1,3y\r");
+    ed.wait_for_row("3 lines yanked");
     ed.keys(":messages\r");
     let rows = ed.wait_for_row(HIT_ENTER);
     assert_eq!(
         rows[21..],
         [
             "E492: Not an editor command: nosuch1",
-            "2 lines yanked",
+            "3 lines yanked",
             HIT_ENTER
         ],
         "{rows:#?}"

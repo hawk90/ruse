@@ -17,7 +17,7 @@ fn errors_and_reports_are_kept() {
         messages(":nosuch<CR>/zzz<CR>:1,3y<CR>"),
         [
             "E492: Not an editor command: nosuch",
-            "E486: pattern not found: zzz",
+            "E486: Pattern not found: zzz",
             "3 lines yanked",
         ]
     );
@@ -41,9 +41,10 @@ fn silent_keeps_its_error_and_silent_bang_keeps_nothing() {
 
 #[test]
 fn a_global_keeps_one_report() {
-    // nvim's `global_busy` holds back each command's report; the `:g` gives one (ruse's `:t` reports
-    // every copy, where nvim says nothing up to 'report' lines).
-    assert_eq!(messages(":g/foo/t$<CR>"), ["1 line copied"]);
+    // nvim's `global_busy` holds back each command's report; the `:g` gives one, for the lines all its
+    // commands added (#1276): two copies are within 'report', three are not.
+    assert!(messages(":g/foo/t$<CR>").is_empty());
+    assert_eq!(messages(":g/foo\\|a/t$<CR>"), ["3 more lines"]);
 }
 
 #[test]

@@ -25,6 +25,7 @@ use crate::app::dispatch::{
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
 use crate::app::messages::{Msg, Silence, Status};
+use crate::app::report;
 use crate::input::{
     parse_ex, BufTarget, EditSpec, Ex, Feed, InputEngine, Pending, ReadSource, WriteSpec,
     WriteTarget,
@@ -68,6 +69,18 @@ struct InsertReturn {
     at_eol: bool,
 }
 
+/// Give a command's line-count report (#1276), or clear the line when it has none ('report' not passed).
+fn give_report(status: &mut Status, report: Option<String>) {
+    match report {
+        Some(msg) => status.info(msg),
+        None => status.clear(),
+    }
+}
+
+fn to_i64(n: usize) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
 /// `{count}&`: repeat the last `:s` on the cursor's line and the `count - 1` after it, KEEPING its flags.
 /// nvim's default mapping is `nnoremap & :&&<CR>` (`:help &-default`), so `{count}&` is
 /// `:.,.+{count-1}&&` and `j&` after `:s/a/b/g` replaces every match. A range past the last line is E16,
@@ -78,6 +91,7 @@ fn repeat_substitute_lines(
     recorded: &mut Vec<Command>,
     last: Option<&(String, String, ruse_core::SubFlags)>,
     count: usize,
+    report: i64,
 ) -> Msg {
     let Some((pat, rep, flags)) = last else {
         return Msg::error("E33: No previous substitute regular expression");
@@ -93,8 +107,8 @@ fn repeat_substitute_lines(
     let range = ruse_core::SubRange::Lines(first, last);
     let ex = substitute_cmd(ws, range, pat, rep, *flags, None);
     match sub_outcome(run_ex(ex, ws, recorded)) {
-        Ok(out) if out.replacements == 0 => Msg::error(format!("E486: pattern not found: {pat}")),
-        Ok(out) => Msg::info(crate::app::dispatch::substituted_message(&out)),
+        Ok(out) if out.replacements == 0 => Msg::error(format!("E486: Pattern not found: {pat}")),
+        Ok(out) => crate::app::dispatch::substituted_message(&out, report),
         Err(e) => Msg::error(crate::app::dispatch::regex_error_msg(&e)),
     }
 }
@@ -1718,6 +1732,7 @@ impl Session {
         let visual_append = self.visual_paste_appends(mode, &frame.snapshot);
         let out = self.engine.paste(&text, mode, visual_append);
         let ro_watch = self.readonly.watch(&self.ws, &self.files);
+        let report = self.ui_opts.report;
         let trace_before = (self.recorded.len(), self.ws.focused_buffer());
         let Session {
             ws,
@@ -1734,7 +1749,7 @@ impl Session {
                     run_cmd(cmd, ws, files, recorded, status, quit);
                 }
             }
-            Feed::Repeat(r) => run_repeat(r, ws, files, recorded, status, quit),
+            Feed::Repeat(r) => run_repeat(r, ws, files, recorded, status, quit, report),
             _ => {}
         }
         self.readonly.warn(ro_watch, &self.ws, &mut self.status);
@@ -2011,6 +2026,7 @@ impl Session {
 
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
         let so = self.scrolloff_rows();
+        let report = self.ui_opts.report;
         let overlay_open = self.overlay_open();
         let Session {
             ws,
@@ -2185,7 +2201,7 @@ impl Session {
         }
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
-            confirm_key(confirm, key, ws, recorded, status);
+            confirm_key(confirm, key, ws, recorded, status, report);
             return;
         }
         // A backwards-range prompt owns the next key; [`Session::on_key`] answers it once routing is done.
@@ -2830,6 +2846,7 @@ impl Session {
                 recorded,
                 last_substitute.as_ref(),
                 count,
+                report,
             ));
             return;
         }
@@ -3250,7 +3267,9 @@ impl Session {
                 if let Some(first) = first {
                     for cmd in std::iter::once(first).chain(cmds) {
                         let after = crate::app::indent_keys::before(&cmd, ws, highlighters, can);
-                        run_cmd(cmd, ws, files, recorded, status, quit);
+                        crate::app::dispatch::run_cmd_reported(
+                            cmd, ws, files, recorded, status, quit, report,
+                        );
                         if let Some(fix) = crate::app::indent_keys::after(after, ws, highlighters) {
                             run_cmd(fix, ws, files, recorded, status, quit);
                         }
@@ -3259,7 +3278,7 @@ impl Session {
             }
             Feed::Repeat(r) => {
                 sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
-                run_repeat(r, ws, files, recorded, status, quit);
+                run_repeat(r, ws, files, recorded, status, quit, report);
             }
         }
     }
@@ -3269,6 +3288,7 @@ impl Session {
     /// here, hlsearch and the special registers are refreshed, then it is recorded and applied. The
     /// command palette dispatches through this too, so a command picked there behaves as when typed.
     fn run_resolved_cmd(&mut self, cmd: Command, frame: &FrameCtx) {
+        let report = self.ui_opts.report;
         let Session {
             ws,
             files,
@@ -3301,9 +3321,9 @@ impl Session {
                     let ex = substitute_cmd(ws, range, pat, rep, *flags, None);
                     match sub_outcome(run_ex(ex, ws, recorded)) {
                         Ok(out) if out.replacements == 0 => {
-                            Msg::error(format!("E486: pattern not found: {pat}"))
+                            Msg::error(format!("E486: Pattern not found: {pat}"))
                         }
-                        Ok(out) => Msg::info(crate::app::dispatch::substituted_message(&out)),
+                        Ok(out) => crate::app::dispatch::substituted_message(&out, report),
                         Err(e) => Msg::error(crate::app::dispatch::regex_error_msg(&e)),
                     }
                 }
@@ -3318,6 +3338,7 @@ impl Session {
                 recorded,
                 last_substitute.as_ref(),
                 1,
+                report,
             ));
             return;
         }
@@ -3447,7 +3468,7 @@ impl Session {
         // Refresh the read-only special registers `"/ ": ". "%` before dispatch so a `"/p` /
         // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
         sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
-        run_cmd(cmd, ws, files, recorded, status, quit);
+        crate::app::dispatch::run_cmd_reported(cmd, ws, files, recorded, status, quit, report);
         // Python re-indents the line its 'indentkeys' and opens leave (#1205, #1206).
         if let Some(fix) = crate::app::indent_keys::after(indent_after, ws, highlighters) {
             run_cmd(fix, ws, files, recorded, status, quit);
@@ -4041,11 +4062,32 @@ impl Session {
                 };
                 match &spec.cmd {
                     crate::input::GlobalPayload::Core(cmd) => {
+                        // A `:g/pat/s///g` reports its substitutions (`4 substitutions on 2 lines`): the
+                        // matches on the marked lines, counted before it runs. Without `g` it is one per
+                        // line the `:s` changed.
+                        let global_subs =
+                            match cmd {
+                                ruse_core::GlobalCmd::Substitute { pattern, flags, .. }
+                                    if flags.global =>
+                                {
+                                    let span = ruse_core::SubRange::Lines(
+                                        marked.first().copied().unwrap_or(1),
+                                        last_marked,
+                                    );
+                                    let on: HashSet<usize> = marked.iter().map(|m| m - 1).collect();
+                                    ws.substitute_preview(span, pattern, "", *flags).ok().map(
+                                        |subs| subs.iter().filter(|s| on.contains(&s.line)).count(),
+                                    )
+                                }
+                                _ => None,
+                            };
                         // Recorded as the lines the pattern marked and the command (RFC-0020).
                         let ex = ExCmd::Global {
                             marks: marked,
                             cmd: cmd.clone(),
                         };
+                        let lines_before =
+                            crate::app::dispatch::line_count(ws.focused().doc.bytes());
                         let result = match run_ex(ex, ws, recorded) {
                             ExOutcome::Failed(e) => Err(e),
                             out => Ok(lines_outcome(&out)),
@@ -4067,7 +4109,31 @@ impl Session {
                                 place_cursor(ws, recorded, at);
                                 status.clear();
                             }
-                            Ok(n) => status.info(format!("{n} lines changed")),
+                            // nvim's `:g` report: the lines `:d` removed (`msgmore`), or the substitutions
+                            // the `:s` made.
+                            Ok(n) => match cmd {
+                                ruse_core::GlobalCmd::Delete
+                                    if ws.focused().doc.bytes().is_empty() =>
+                                {
+                                    status.echo("--No lines in buffer--");
+                                }
+                                ruse_core::GlobalCmd::Delete => give_report(
+                                    status,
+                                    report::line_delta(
+                                        lines_before,
+                                        crate::app::dispatch::line_count(ws.focused().doc.bytes()),
+                                        ui_opts.report,
+                                    ),
+                                ),
+                                ruse_core::GlobalCmd::Substitute { .. } => give_report(
+                                    status,
+                                    report::substituted(
+                                        global_subs.unwrap_or(n),
+                                        n,
+                                        ui_opts.report,
+                                    ),
+                                ),
+                            },
                             Err(e) => status.error(crate::app::dispatch::invalid_command_msg(&e)),
                         }
                     }
@@ -4284,11 +4350,13 @@ impl Session {
                         match sub_outcome(run_ex(ex, ws, recorded)) {
                             Ok(out) if out.lines == 0 && *global_busy => Msg::echo(""),
                             Ok(out) if out.lines == 0 => {
-                                Msg::error(format!("E486: pattern not found: {pat}"))
+                                Msg::error(format!("E486: Pattern not found: {pat}"))
                             }
                             // A `:s/\n//` join on the last line: nothing to join, not an error.
                             Ok(out) if out.replacements == 0 => Msg::echo(""),
-                            Ok(out) => Msg::info(crate::app::dispatch::substituted_message(&out)),
+                            Ok(out) => {
+                                crate::app::dispatch::substituted_message(&out, ui_opts.report)
+                            }
                             Err(e) => Msg::error(crate::app::dispatch::regex_error_msg(&e)),
                         }
                     }
@@ -4342,7 +4410,7 @@ impl Session {
                         match ws.substitute_count(spec.range, &spec.pattern, flags) {
                             Ok(out) if out.replacements == 0 && *global_busy => Msg::echo(""),
                             Ok(out) if out.replacements == 0 => {
-                                Msg::error(format!("E486: pattern not found: {}", spec.pattern))
+                                Msg::error(format!("E486: Pattern not found: {}", spec.pattern))
                             }
                             Ok(out) => Msg::info(match_count_message(out.replacements, out.lines)),
                             Err(e) => Msg::error(crate::app::dispatch::invalid_command_msg(&e)),
@@ -4353,7 +4421,7 @@ impl Session {
                     match ws.substitute_preview(spec.range, &spec.pattern, &spec.replacement, flags)
                     {
                         Ok(subs) if subs.is_empty() => {
-                            status.error(format!("E486: pattern not found: {}", spec.pattern));
+                            status.error(format!("E486: Pattern not found: {}", spec.pattern));
                         }
                         Ok(subs) => {
                             // The confirm loop records the resolved `:s` with the answers when it ends;
@@ -4385,7 +4453,7 @@ impl Session {
                         // Nor inside a `:g`, which says nothing for the lines `:s` misses (Vim's `do_sub`).
                         Ok(out) if out.lines == 0 && (spec.quiet || *global_busy) => Msg::echo(""),
                         Ok(out) if out.lines == 0 => {
-                            Msg::error(format!("E486: pattern not found: {}", spec.pattern))
+                            Msg::error(format!("E486: Pattern not found: {}", spec.pattern))
                         }
                         // A `:s/\n//` join on the last line: nothing to join, not an error.
                         Ok(out) if out.replacements == 0 => Msg::echo(""),
@@ -4406,7 +4474,7 @@ impl Session {
                                 .pop()
                                 .map_or_else(|| Msg::echo(""), Msg::echo)
                             }
-                            None => Msg::info(crate::app::dispatch::substituted_message(&out)),
+                            None => crate::app::dispatch::substituted_message(&out, ui_opts.report),
                         },
                         Err(e) => Msg::error(crate::app::dispatch::invalid_command_msg(&e)),
                     });
@@ -4539,19 +4607,18 @@ impl Session {
                                 .unwrap_or_default(),
                         );
                     }
-                    None if n == 1 => status.info("1 line deleted"),
-                    None => status.info(format!("{n} lines deleted")),
+                    // nvim says this instead of the count when the buffer is left empty.
+                    None if ws.focused().doc.bytes().is_empty() => {
+                        status.echo("--No lines in buffer--");
+                    }
+                    None => give_report(status, report::more(-to_i64(n), ui_opts.report)),
                 }
             }
             // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
             Ex::Yank(range, reg) => {
                 let (first, last) = ws.resolve_range(range);
                 let n = lines_outcome(&run_ex(ExCmd::Yank { first, last, reg }, ws, recorded));
-                status.info(if n == 1 {
-                    "1 line yanked".into()
-                } else {
-                    format!("{n} lines yanked")
-                });
+                give_report(status, report::yanked(n, false, reg, ui_opts.report));
             }
             // `:[range]j[oin][!]` — join the range's lines into one, reusing the core `J`/`gJ` join (no range =
             // the current line, which joins with the next). `bang` is the raw `gJ` form.
@@ -4562,12 +4629,9 @@ impl Session {
                     last,
                     no_space: bang,
                 };
-                let n = lines_outcome(&run_ex(ex, ws, recorded));
-                status.info(if n <= 1 {
-                    String::new()
-                } else {
-                    format!("{n} lines joined")
-                });
+                // nvim's `:j` gives no report, whatever the count.
+                run_ex(ex, ws, recorded);
+                status.clear();
             }
             // `:[range]m {addr}` — move the range's lines to after the destination line.
             Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, dest) => {
@@ -4582,9 +4646,8 @@ impl Session {
                     }
                 });
                 match moved {
-                    Some(0) => status.clear(), // moved onto itself (`:2m2`): nothing to report
-                    Some(1) => status.info("1 line moved"),
-                    Some(n) => status.info(format!("{n} lines moved")),
+                    // Moved onto itself (`:2m2`): nothing to report.
+                    Some(n) => give_report(status, report::moved(n, ui_opts.report)),
                     None => status.error("E134: Cannot move a range of lines into itself"),
                 }
             }
@@ -4598,8 +4661,7 @@ impl Session {
                     }
                 });
                 match copied {
-                    Some(1) => status.info("1 line copied"),
-                    Some(n) => status.info(format!("{n} lines copied")),
+                    Some(n) => give_report(status, report::more(to_i64(n), ui_opts.report)),
                     None => status.error("E486: invalid copy"),
                 }
             }
@@ -4618,11 +4680,15 @@ impl Session {
                     levels: levels.min(ruse_core::MAX_SHIFT_LEVELS),
                 };
                 let n = lines_outcome(&run_ex(ex, ws, recorded));
-                status.info(if n == 1 {
-                    String::new()
-                } else {
-                    format!("{n} lines {}ed 1 time", if left { '<' } else { '>' })
-                });
+                give_report(
+                    status,
+                    report::shifted(
+                        n,
+                        left,
+                        levels.min(ruse_core::MAX_SHIFT_LEVELS),
+                        ui_opts.report,
+                    ),
+                );
                 // A shift opens the fold the cursor ends in (nvim's `op_shift`), as `>>` does.
                 if let Some(fv) = folds.get_mut(&ws.focused_buffer()) {
                     let pane = ws.focused();
@@ -4651,10 +4717,8 @@ impl Session {
                 let n = ws.resolve_addr(addr).map_or(0, |dest| {
                     lines_outcome(&run_ex(ExCmd::Put { dest, reg }, ws, recorded))
                 });
-                if n == 1 {
-                    status.info("1 more line");
-                } else if n > 1 {
-                    status.info(format!("{n} more lines"));
+                if n > 0 {
+                    give_report(status, report::more(to_i64(n), ui_opts.report));
                 } else if !matches!(reg, Some('+' | '*')) {
                     // An empty register: `E353`, with the cursor already on the addressed line (nvim's
                     // `ex_put` moves it there before it reads the register).
@@ -4686,8 +4750,10 @@ impl Session {
                     out => Ok(lines_outcome(&out)),
                 };
                 match sorted {
-                    Ok(0) => status.echo("sorted"),
-                    Ok(removed) => status.info(format!("sorted, {removed} fewer lines")),
+                    // nvim's `msgmore` for the lines `u` dropped; a sort that drops none says nothing.
+                    Ok(removed) => {
+                        give_report(status, report::more(-to_i64(removed), ui_opts.report))
+                    }
                     // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
                     Err(e) => status.error(regex_error_msg(&e)),
                 }
@@ -5314,14 +5380,9 @@ impl Session {
         let after = lines(self);
         // The commands ran with their reports kept out of the history (as nvim's `global_busy` holds back
         // `msgmore`); the one report the `:g` gives is kept.
-        match after.cmp(&before) {
-            std::cmp::Ordering::Less if before - after > 2 => {
-                self.status.info(format!("{} fewer lines", before - after));
-            }
-            std::cmp::Ordering::Greater if after - before > 2 => {
-                self.status.info(format!("{} more lines", after - before));
-            }
-            _ => match last {
+        match report::line_delta(before, after, self.ui_opts.report) {
+            Some(msg) => self.status.info(msg),
+            None => match last {
                 Some(msg) => self.status.give(msg),
                 None => self.status.clear(),
             },
@@ -6063,7 +6124,7 @@ fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut Status) -> bool
     }
     match ws.global_marks(ruse_core::SubRange::WholeFile, pattern, false) {
         Ok(lines) if lines.is_empty() => {
-            status.error(format!("E486: pattern not found: {pattern}"));
+            status.error(format!("E486: Pattern not found: {pattern}"));
             true
         }
         // A malformed pattern (`/\(`, `/a\{`) fails with the pattern reader's error, and nothing runs (#1087).
