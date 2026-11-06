@@ -422,6 +422,10 @@ features:
     # per View for ts/sw/et/tw with the Workspace's global copy; ic/scs are global and reach every window),
     # nvim's messages (E474/E487/E488/E518/E521) and its stop-at-the-first-error order; 'scrolloff' is
     # settable. `&` restores ruse's default, `&vim` Vim's. #614 part 2: the config loader (config.rs; machine / user ~/.config/ruse/config.toml / trusted workspace .ruse/config.toml) installs ts sw et tw so ic scs hls is top fixeol and input.profile, `:verbose set opt?` names the file and line, `:inspect config [key]` lists layers, sources and diagnostics, and `:trust` / `:untrust` write and delete the content-bound trust record (D-062).
+    # #1152: a layer file may name its schema version (`version = N`); keys under an old name migrate by the
+    # CFG-MIG-001 table (rename = auto-conversion with a config.migrated note, removal = manual warning, the
+    # value inert; the file is never rewritten). The table is empty at schema version 1 (no key renamed yet).
+    # render.conceal is read from the config (F-031).
     # #1151: 'history' (both rings, 0..10000), 'showmode' (the status line's mode word) and 'verbose' (above 0,
     # `:set opt?` adds `Last set from`) are options; 'cpoptions' reads nvim's default aABceFs_ and 'verbosefile'
     # reads empty, and any other value is refused as not supported (documented divergence: ruse behaves as the
@@ -1196,7 +1200,7 @@ features:
       - A fenced `![alt](img.png)` shows a real image on a graphics-capable terminal (Kitty first) and a
         bordered `alt`+dimensions placeholder on a plain terminal — same buffer, two render profiles
         (INV-CAP-DEGRADE, D-053).
-      - With `render.conceal = off`, rendering is byte-for-byte identical to plain syntax highlighting (no
+      - With `render.conceal = false`, rendering is byte-for-byte identical to plain syntax highlighting (no
         column drift; caret and paint agree — the layout-pass identity guard, P6).
       - Markdown and Org both render headings, emphasis, links (URL concealed, label faced), and checkboxes.
       - Selecting and yanking across concealed markup copies the RAW markup bytes — conceal is

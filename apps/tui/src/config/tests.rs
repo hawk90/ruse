@@ -421,3 +421,147 @@ fn flow_fields(body: &str) -> Vec<(String, String)> {
     push(&mut cur);
     out
 }
+
+/// A three-version history for the migration tests: `editor.tabwidth` became `editor.tabsize` in 1→2
+/// and `editor.tab_width` in 2→3 (a chain), the whole `[old]` table went away in 1→2 with one key
+/// renamed into `editor` and one removed, and `editor.oldmode` was removed in 2→3.
+const STEPS: Migrations = Migrations {
+    current: 3,
+    steps: &[
+        Migration {
+            from: 1,
+            changes: &[
+                Change::Rename {
+                    from: "editor.tabwidth",
+                    to: "editor.tabsize",
+                },
+                Change::Rename {
+                    from: "old.scroll",
+                    to: "editor.scrolloff",
+                },
+                Change::Manual {
+                    key: "old.magic",
+                    note: "set editor.ignorecase instead",
+                },
+            ],
+        },
+        Migration {
+            from: 2,
+            changes: &[
+                Change::Rename {
+                    from: "editor.tabsize",
+                    to: "editor.tab_width",
+                },
+                Change::Manual {
+                    key: "editor.oldmode",
+                    note: "see docs/design/config-model.md",
+                },
+            ],
+        },
+    ],
+};
+
+fn parse_with(text: &str, mig: &Migrations) -> (Vec<(&'static str, Value)>, Vec<Diagnostic>) {
+    let mut diags = Vec::new();
+    let entries = parse_layer_in(
+        LayerKind::User,
+        Path::new("/cfg/user.toml"),
+        text,
+        &mut diags,
+        mig,
+    )
+    .unwrap();
+    (
+        entries.into_iter().map(|e| (e.def.key, e.value)).collect(),
+        diags,
+    )
+}
+
+#[test]
+fn migration_renames_old_keys_and_warns_about_removed_ones() {
+    let (entries, diags) = parse_with(
+        "version = 1\n[editor]\ntabwidth = 2\noldmode = true\n[old]\nscroll = 5\nmagic = true\n",
+        &STEPS,
+    );
+    // Auto-conversion: a rename chain applies across both steps; a key moves out of a removed table.
+    assert_eq!(
+        entries,
+        [
+            ("editor.tab_width", Value::Int(2)),
+            ("editor.scrolloff", Value::Int(5))
+        ]
+    );
+    let migrated: Vec<&str> = diags
+        .iter()
+        .filter(|d| d.code == "config.migrated")
+        .map(|d| d.message.as_str())
+        .collect();
+    assert!(
+        migrated
+            .iter()
+            .any(|m| m.contains("editor.tabwidth (/cfg/user.toml:3) is now editor.tab_width")),
+        "{diags:?}"
+    );
+    // Manual-warning: the value is not applied, and the note says what to do.
+    assert!(migrated
+        .iter()
+        .any(|m| m.contains("old.magic") && m.contains("set editor.ignorecase instead")));
+    // `editor.oldmode` went in 2→3, a step this version-1 file also takes: a manual warning too.
+    assert!(migrated
+        .iter()
+        .any(|m| m.contains("editor.oldmode") && m.contains("manual migration")));
+    assert_eq!(migrated.len(), 4, "two renames, two removals: {diags:?}");
+    assert_eq!(diags.len(), 4, "nothing else: {diags:?}");
+}
+
+#[test]
+fn migration_starts_at_the_files_version() {
+    // A version-2 file already took the 1→2 step: `old.scroll` is unknown there, `editor.tabsize` renames.
+    let (entries, diags) = parse_with("version = 2\neditor.tabsize = 3\nold.scroll = 5\n", &STEPS);
+    assert_eq!(entries, [("editor.tab_width", Value::Int(3))]);
+    let mut got: Vec<&str> = diags.iter().map(|d| d.code).collect();
+    got.sort_unstable();
+    assert_eq!(got, ["config.migrated", "config.unknown_key"], "{diags:?}");
+    // A current file (no `version`, or `version = 3`) takes no step: old names are unknown keys.
+    for text in [
+        "editor.tabwidth = 2\n",
+        "version = 3\neditor.tabwidth = 2\n",
+    ] {
+        let (entries, diags) = parse_with(text, &STEPS);
+        assert!(entries.is_empty());
+        assert_eq!(
+            diags.iter().map(|d| d.code).collect::<Vec<_>>(),
+            ["config.unknown_key"]
+        );
+    }
+}
+
+#[test]
+fn a_newer_or_bad_version_is_read_as_current() {
+    let (entries, diags) = parse_with("version = 9\neditor.tab_width = 2\n", &STEPS);
+    assert_eq!(entries, [("editor.tab_width", Value::Int(2))]);
+    assert_eq!(diags.len(), 1);
+    assert!(diags[0].message.contains("newer than this ruse reads (3)"));
+    for bad in ["version = 0\n", "version = \"2\"\n"] {
+        let (_, diags) = parse_with(bad, &STEPS);
+        assert_eq!(
+            diags.iter().map(|d| d.code).collect::<Vec<_>>(),
+            ["config.invalid_value"],
+            "{bad}"
+        );
+    }
+}
+
+/// The shipped table: version 1, no steps, a `version = 1` file loads cleanly, and it mirrors the
+/// schema's `version` and `migrations:`.
+#[test]
+fn the_shipped_migrations_match_the_schema() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spec/config-schema.yaml");
+    let text = std::fs::read_to_string(path).unwrap();
+    assert!(text.contains(&format!("\nversion: {SCHEMA_VERSION}\n")));
+    assert!(text.contains("\nmigrations: []\n"), "MIGRATIONS is empty");
+    assert!(MIGRATIONS.steps.is_empty());
+    let (entries, diags) = parse_with("version = 1\neditor.tab_width = 2\n", &MIGRATIONS);
+    assert_eq!(entries.len(), 1);
+    assert!(diags.is_empty(), "{diags:?}");
+}

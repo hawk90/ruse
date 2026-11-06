@@ -449,6 +449,14 @@ is older:
 
 Migration never blocks startup: an unmigratable key degrades to inert + warning (safe-mode-compatible).
 
+As built (#1152, `apps/tui/src/config.rs` `MIGRATIONS`, mirrored by `migrations:` in the schema): a layer file
+names the version it was written for with a top-level `version = N`, and a file without one is read as the
+current version, so a file never needs the key until a step exists. Each step lists `Rename` (auto-conversion)
+and `Manual` (manual-warning) changes; renames chain across steps, and a key under an old table name is still
+found. A `version` newer than this ruse reads, or one that is not a positive integer, is a diagnostic and read
+as current. The table is empty at version 1: no key has been renamed or removed since the schema began. The
+opt-in rewrite of the file is not built; the file is only ever read.
+
 ## Test strategy
 
 - **Precedence** — table-driven: for each `(scope, security_locked)` combination, assert the winning layer

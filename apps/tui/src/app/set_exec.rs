@@ -70,6 +70,9 @@ pub(crate) struct UiOptions {
     pub messagesopt: String,
     /// `'foldopen'` as set (#1141).
     pub foldopen: String,
+    /// `render.conceal` (F-031): marked-up byte ranges are hidden off the caret line. A config key with
+    /// no `:set` option (nvim's `'conceallevel'` is per-syntax-group, which ruse does not model).
+    pub conceal: bool,
 }
 
 impl UiOptions {
@@ -88,6 +91,7 @@ impl Default for UiOptions {
             display: DisplayGlobals::default(),
             messagesopt: crate::input::set_cmd::MESSAGESOPT.to_string(),
             foldopen: crate::input::set_cmd::FOLDOPEN.to_string(),
+            conceal: true,
         }
     }
 }
@@ -766,6 +770,11 @@ pub(crate) fn install_lang_keymap(
 /// typed with `:set` this session is left alone, and one an earlier config set but `cfg` no longer does
 /// (`:untrust` made the workspace layer inert) goes back to ruse's default.
 pub(crate) fn apply_config(cfg: &crate::config::Config, host: &mut OptionHost<'_>) {
+    // `render.conceal` is no `:set` option: the config's value, else the schema default (on).
+    host.ui.conceal = !matches!(
+        cfg.get("render.conceal").map(|e| &e.value),
+        Some(crate::config::Value::Bool(false))
+    );
     for def in OPTIONS {
         let Some(key) = config_key(def.opt) else {
             continue;
