@@ -107,6 +107,8 @@ io.write(vim.json.encode({
     end
     return out
   end)(),
+  -- The first line in the window (`line('w0')`): recorded for the fixtures marked `topline` (#1141).
+  topline     = vim.fn.line('w0'),
 }))
 """
 
@@ -268,6 +270,7 @@ def run_neovim(
         "emsg": got["emsg"],
         "failed": failed,
         "folds": got["folds"],
+        "topline": got["topline"],
         "nvim_version": nvim_version(),
     }
 
@@ -3984,6 +3987,47 @@ FIXTURES: list[dict] = [
     {"name": "fold_zd_with_indent_folds_is_refused", "lines": ["a", "  b", "  c", "d"], "keys": ":set fdm=indent<CR>jzd", "folds": True},
     {"name": "fold_zE_with_indent_folds_is_refused", "lines": ["a", "  b", "  c", "d"], "keys": ":set fdm=indent<CR>zE", "folds": True},
     {"name": "fold_zf_with_indent_folds_is_refused", "lines": ["a", "  b", "  c", "d"], "keys": ":set fdm=indent<CR>zfj", "folds": True},
+    # #1141: 'foldopen' applies to typed keys only (nvim's `KeyTyped`), not to `:normal` or a macro.
+    {"name": "fold_fdo_normal_l_keeps_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": "jzf2j:normal l<CR>", "folds": True},
+    {"name": "fold_fdo_macro_l_keeps_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": "qalhqjzf2j@a", "folds": True},
+    {"name": "fold_fdo_typed_l_after_a_macro_opens", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": "qalhqjzf2j@al", "folds": True},
+    {"name": "fold_fdo_empty_l_keeps_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo=<CR>jzf2jl", "folds": True},
+    {"name": "fold_fdo_minus_hor_l_keeps_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo-=hor<CR>jzf2jl", "folds": True},
+    {"name": "fold_fdo_hor_only_search_keeps_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo=hor<CR>jzf2jgg/L3<CR>", "folds": True},
+    {"name": "fold_fdo_search_n_opens", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo=search<CR>jzf2jgg/L3<CR>zcggn", "folds": True},
+    {"name": "fold_fdo_jump_G_opens", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo=jump<CR>jzf2jgg3G", "folds": True},
+    {"name": "fold_fdo_default_G_keeps_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": "jzf2jgg3G", "folds": True},
+    {"name": "fold_fdo_empty_mark_keeps_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": "jzf2jmagg:set fdo=<CR>'a", "folds": True},
+    {"name": "fold_fdo_mark_opens", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": "jzf2jmagg:set fdo=mark<CR>'a", "folds": True},
+    {"name": "fold_fdo_percent_opens", "lines": ["L1", "(L2", "L3", "L4)", "L5"], "keys": ":set fdo=percent<CR>jzf2j%", "folds": True},
+    {"name": "fold_fdo_empty_percent_keeps_the_fold", "lines": ["L1", "(L2", "L3", "L4)", "L5"], "keys": ":set fdo=<CR>jzf2j%", "folds": True},
+    {"name": "fold_fdo_empty_shift_still_opens", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo= sw=4 et<CR>jzf2j>>", "folds": True},
+    {"name": "fold_fdo_normal_shift_opens", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set sw=4 et<CR>jzf2j:normal >><CR>", "folds": True},
+    {"name": "fold_fdo_bad_item_is_refused", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo=xyz<CR>jzf2jl", "folds": True},
+    {"name": "fold_fdo_append_hor_opens", "lines": ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"], "keys": ":set fdo=<CR>:set fdo+=hor<CR>jzf2jl", "folds": True},
+    # #1141: scrolling over closed folds; each records the window's top line (`topline`).
+    {"name": "fold_scroll_ctrl_e_counts_a_fold_as_one", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg5<C-e>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_e_past_two_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg12<C-e>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_y_from_the_end", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggG<C-y><C-y><C-y>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_d", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg<C-d>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_d_twice", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg<C-d><C-d>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_u_from_the_end", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggG<C-u>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_f", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg<C-f>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_f_ctrl_b", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg<C-f><C-b>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_ctrl_b_from_the_end", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggG<C-b>", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_zt_below_a_fold", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg70Gzt", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_zz_below_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg70Gzz", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_zb_below_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg70Gzb", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_zb_after_a_fold", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg30Gzb", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_zt_in_a_closed_fold", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg45Gzt", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_zz_in_a_closed_fold", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg45Gzz", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_j_down_with_scrolloff", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg30j", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_G_with_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggG", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_G_then_k", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggG30k", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_L_with_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggL", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_H_after_ctrl_e", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg8<C-e>H", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_M_with_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggM", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    {"name": "fold_scroll_dL_with_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggdL", "setup": PAGE_SETUP, "folds": True, "topline": True},
     # --- #617 indent options: autoindent, copyindent, preserveindent, shiftround, smarttab, softtabstop,
     #     smartindent. The options are set in the KEYS so ruse runs the same configuration (a `0` before a
     #     shift from a tab, as in the #601 block). ---------------------------------------------------------
@@ -4877,6 +4921,8 @@ def generate(path: Path) -> int:
                     "failed": state["failed"],
                     # Only the fixtures about folds record them, so the rest stay byte-identical.
                     **({"folds": state["folds"]} if spec.get("folds") else {}),
+                    # And only those about the view record its top line (#1141).
+                    **({"topline": state["topline"]} if spec.get("topline") else {}),
                 },
             }
         )
@@ -4895,8 +4941,9 @@ def generate(path: Path) -> int:
             "nvim_version": version_line,
             "pin_version_label": pin["version_label"],
             "pin_revision": pin["revision"],
-            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "failed", "folds"],
-            "ruse_compare_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "folds"],
+            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "failed", "folds", "topline"],
+            "ruse_compare_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "folds", "topline"],
+            "topline_note": "topline is recorded only for fixtures about the view: line('w0').",
             "folds_note": (
                 "folds is recorded only for fixtures about folds: per line, "
                 "[foldclosed(l), foldclosedend(l), foldlevel(l)]."

@@ -612,6 +612,9 @@ features:
     # `[z`/`]z`/`zj`/`zk` move over it. An Ex range grows to the closed folds it starts or ends in (two
     # addresses or a whole-fold command, not inside `:g`). `:[range]fo[ld]`, `:foldo[pen][!]`,
     # `:foldc[lose][!]`, `:foldd[oopen] {cmd}` and `:folddoc[losed] {cmd}` (run per line as `:g` does).
+    # `'foldopen'` (editor.foldopen, nvim's items and default) applies to typed keys only, not to a macro
+    # or `:normal` (nvim's KeyTyped); a shift and Insert open the fold always. `zz`/`zb` and `H`/`M`/`L`
+    # count a closed fold as one row, as `C-e`/`C-y`/`C-d`/`C-u`/`C-f`/`C-b`/`zt` and 'scrolloff' do.
     status: done
     depends_on: [C-VIEW, C-WORKSPACE]
     summary: Same buffer openable in multiple views; view-local state stays in the view.

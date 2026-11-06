@@ -234,6 +234,13 @@ pub const SCHEMA: &[KeyDef] = &[
         false,
     ),
     key(
+        "editor.foldopen",
+        Ty::Str,
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
+    key(
         "editor.sidescroll",
         int(0, 999),
         Scope::User,

@@ -306,62 +306,78 @@ pub(crate) fn prepare(
     }
 }
 
-/// Whether nvim opens the closed fold the cursor lands in after `cmd`, at the default 'foldopen'
-/// (`block,hor,mark,percent,quickfix,search,tag,undo`): a horizontal move (`l`, `$`, `w`, `f`…), a search
-/// or `n`, a mark or jump, `%`, a block move (`}`, `)`, `]]`…) and undo or redo. A shift opens it too
-/// (nvim's `op_shift`). `j`/`k`, `G` and `:{n}` do not.
-pub(crate) fn opens_fold(cmd: &Command) -> bool {
+/// Whether a shift, which opens the fold the cursor ends in whatever 'foldopen' holds and for keys not
+/// typed too (nvim's `op_shift`).
+pub(crate) fn shift_opens_fold(cmd: &Command) -> bool {
+    matches!(
+        cmd,
+        Command::ShiftRight(_) | Command::ShiftLeft(_) | Command::ShiftMotion { .. }
+    )
+}
+
+/// Whether nvim opens the closed fold the cursor lands in after the typed `cmd`, under the 'foldopen'
+/// value `fdo` (#1141; default `block,hor,mark,percent,quickfix,search,tag,undo`): `hor` a horizontal
+/// move (`l`, `$`, `w`, `f`…), `percent` `%`, `block` a block move (`}`, `)`, `]]`…), `search` a search
+/// or `n`, `mark` a mark or a jump in the jumplist or change list, `undo` undo or redo, `jump` `G` and
+/// `gg`, `all` any command. `j`/`k` and `:{n}` are no item. `insert` and `quickfix`/`tag` have no
+/// command here: Insert mode opens the fold anyway, and there is no quickfix or tag jump.
+pub(crate) fn opens_fold(cmd: &Command, fdo: &str) -> bool {
     use Motion as M;
+    let has = |item: &str| fdo.split(',').any(|i| i == item || i == "all");
+    if fdo.split(',').any(|i| i == "all") {
+        return true;
+    }
     match cmd {
-        Command::Move(_, m) => matches!(
-            m,
+        Command::Move(_, m) => match m {
             M::Left
-                | M::Right
-                | M::WrapLeft
-                | M::WrapRight
-                | M::LineStart
-                | M::LineEnd
-                | M::LineFirstNonBlank
-                | M::LineLastNonBlank
-                | M::Column
-                | M::MidLine
-                | M::WordFwd
-                | M::WordBack
-                | M::WordEnd
-                | M::WordEndBack
-                | M::BigWordFwd
-                | M::BigWordBack
-                | M::BigWordEnd
-                | M::BigWordEndBack
-                | M::FindChar { .. }
-                | M::MatchBracket
-                | M::ParagraphFwd
-                | M::ParagraphBack
-                | M::SentenceFwd
-                | M::SentenceBack
-                | M::SectionFwd
-                | M::SectionBack
-                | M::SectionEndFwd
-                | M::SectionEndBack
-                | M::UnmatchedParenBack
-                | M::UnmatchedParenFwd
-                | M::UnmatchedBraceBack
-                | M::UnmatchedBraceFwd
-        ),
+            | M::Right
+            | M::WrapLeft
+            | M::WrapRight
+            | M::LineStart
+            | M::LineEnd
+            | M::LineFirstNonBlank
+            | M::LineLastNonBlank
+            | M::Column
+            | M::MidLine
+            | M::WordFwd
+            | M::WordBack
+            | M::WordEnd
+            | M::WordEndBack
+            | M::BigWordFwd
+            | M::BigWordBack
+            | M::BigWordEnd
+            | M::BigWordEndBack
+            | M::FindChar { .. } => has("hor"),
+            M::MatchBracket => has("percent"),
+            M::ParagraphFwd
+            | M::ParagraphBack
+            | M::SentenceFwd
+            | M::SentenceBack
+            | M::SectionFwd
+            | M::SectionBack
+            | M::SectionEndFwd
+            | M::SectionEndBack
+            | M::UnmatchedParenBack
+            | M::UnmatchedParenFwd
+            | M::UnmatchedBraceBack
+            | M::UnmatchedBraceFwd => has("block"),
+            M::GotoLine | M::LastLine => has("jump"),
+            _ => false,
+        },
         Command::MoveLeft | Command::MoveRight | Command::MoveLineStart | Command::MoveLineEnd => {
-            true
+            has("hor")
         }
-        Command::Search { op, .. } => *op == ruse_core::SearchOp::Move,
+        Command::Search { op, .. } => *op == ruse_core::SearchOp::Move && has("search"),
         Command::SearchNext(_)
         | Command::SearchPrev(_)
         | Command::SearchWordUnder { .. }
-        | Command::GotoFirstMatch(_)
-        | Command::Undo
+        | Command::GotoFirstMatch(_) => has("search"),
+        Command::Undo
         | Command::Redo
         | Command::UndoOlder
         | Command::UndoNewer
-        | Command::LineUndo
-        | Command::GotoNamedMark(_)
+        | Command::LineUndo => has("undo"),
+        Command::GotoNamedMark(_)
         | Command::GotoNamedMarkLine(_)
         | Command::GotoContextMark
         | Command::GotoContextMarkLine
@@ -378,10 +394,33 @@ pub(crate) fn opens_fold(cmd: &Command) -> bool {
         | Command::GotoOlderChange
         | Command::GotoNewerChange
         | Command::GotoOlderJump
-        | Command::GotoNewerJump
-        | Command::ShiftRight(_)
-        | Command::ShiftLeft(_)
-        | Command::ShiftMotion { .. } => true,
+        | Command::GotoNewerJump => has("mark"),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn foldopen_items_pick_the_commands() {
+        let def = crate::input::set_cmd::FOLDOPEN;
+        let l = Command::Move(1, Motion::Right);
+        let g = Command::Move(3, Motion::GotoLine);
+        assert!(opens_fold(&l, def));
+        assert!(!opens_fold(&l, ""));
+        assert!(!opens_fold(&l, "search,undo"));
+        assert!(!opens_fold(&g, def), "`G` is `jump`, not in the default");
+        assert!(opens_fold(&g, "jump"));
+        assert!(opens_fold(&g, "all"));
+        assert!(!opens_fold(
+            &Command::Move(1, Motion::Down),
+            "hor,block,jump"
+        ));
+        assert!(opens_fold(&Command::Undo, "undo"));
+        assert!(shift_opens_fold(&Command::ShiftRight(1)));
+        assert!(crate::input::set_cmd::foldopen_valid("hor,,jump"));
+        assert!(!crate::input::set_cmd::foldopen_valid("hor,xyz"));
     }
 }

@@ -281,6 +281,12 @@ impl Headless {
             .collect()
     }
 
+    /// The focused window's first line (0-based).
+    #[must_use]
+    pub fn topline(&self) -> usize {
+        self.s.ws.focused().view.top()
+    }
+
     /// The focused buffer's folds.
     #[must_use]
     pub fn folds(&self) -> &[crate::folds::Fold] {

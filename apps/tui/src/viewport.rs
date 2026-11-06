@@ -536,6 +536,51 @@ pub fn recenter(cursor_row: usize, height: usize, to: RecenterTo) -> usize {
     }
 }
 
+/// The top that puts the line `cursor` at the top, middle or bottom of a `height`-row window, counting
+/// rows as nvim's `scroll_cursor_top`/`scroll_cursor_halfway`/`scroll_cursor_bot` do: a closed fold is
+/// one row and a wrapped line its rows (#1141). The per-frame pass then applies 'scrolloff'.
+pub fn recenter_lines(lines: &impl Lines, cursor: usize, height: usize, to: RecenterTo) -> usize {
+    match to {
+        RecenterTo::Top => fold_start(lines, cursor),
+        RecenterTo::Center => halfway(lines, cursor, height, true),
+        RecenterTo::Bottom => {
+            let lo = fold_start(lines, cursor);
+            let mut used = rows_of(lines, lo, height);
+            let mut loff = LineOff {
+                lnum: lo as isize,
+                height: 0,
+            };
+            let mut top = lo;
+            while top > 0 {
+                topline_back(lines, &mut loff, height);
+                if loff.height == MAXCOL || used + loff.height > height {
+                    break;
+                }
+                used += loff.height;
+                top = loff.lnum as usize;
+            }
+            top
+        }
+    }
+}
+
+/// The first line of each screen line the window shows from `top` (a closed fold is one, at its first
+/// line), and whether the buffer's last line is among them: what `H`/`M`/`L` pick from (#1141).
+#[must_use]
+pub fn shown_lines(lines: &impl Lines, top: usize, height: usize) -> (Vec<usize>, bool) {
+    let (bot, _) = botline(lines, top, height);
+    let mut shown = Vec::new();
+    let mut l = top;
+    while l < bot.min(lines.count()) {
+        shown.push(l);
+        l = lines.fold(l).map_or(l, |(_, e)| e) + 1;
+    }
+    if shown.is_empty() {
+        shown.push(top);
+    }
+    (shown, bot >= lines.count())
+}
+
 /// Which visible line `H`/`M`/`L` target.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ScreenTo {

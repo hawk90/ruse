@@ -109,6 +109,8 @@ pub enum Opt {
     /// `'messagesopt'`: its `history:` item sizes the `:messages` history (#1235); the other items are
     /// checked and kept, and ruse always behaves as `hit-enter`.
     MessageOptions,
+    /// `'foldopen'`: which typed commands open the closed fold the cursor lands in (#1141).
+    FoldOpen,
 }
 
 /// An option's value.
@@ -158,6 +160,7 @@ pub enum TextCheck {
     ColorColumn,
     FoldColumn,
     MessagesOpt,
+    FoldOpen,
 }
 
 /// An option's type, with its value rules.
@@ -222,6 +225,22 @@ const LISTPAT: &str = r"^\s*\d\+[\]:.)}\t ]\s*";
 
 /// nvim's default `'cpoptions'`: the only value ruse implements (it behaves as these flags say).
 pub const CPO_DEFAULT: &str = "aABceFs_";
+
+/// nvim's default `'foldopen'`.
+pub const FOLDOPEN: &str = "block,hor,mark,percent,quickfix,search,tag,undo";
+
+/// The items a `'foldopen'` value may hold (nvim's `p_fdo_values`); any other is `E474`.
+pub const FOLDOPEN_ITEMS: &[&str] = &[
+    "all", "block", "hor", "mark", "percent", "quickfix", "search", "tag", "insert", "undo", "jump",
+];
+
+/// Whether `value` is a `'foldopen'` nvim takes: comma-separated [`FOLDOPEN_ITEMS`].
+#[must_use]
+pub fn foldopen_valid(value: &str) -> bool {
+    value
+        .split(',')
+        .all(|i| i.is_empty() || FOLDOPEN_ITEMS.contains(&i))
+}
 
 /// nvim's default `'messagesopt'`.
 pub const MESSAGESOPT: &str = "hit-enter,history:500,progress:c";
@@ -662,6 +681,18 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::text(LISTCHARS),
         OptVal::text(LISTCHARS),
         Locality::GlobalLocal,
+    ),
+    def(
+        Opt::FoldOpen,
+        "foldopen",
+        "fdo",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::FoldOpen,
+        },
+        OptVal::text(FOLDOPEN),
+        OptVal::text(FOLDOPEN),
+        Locality::Global,
     ),
     def(
         Opt::MessageOptions,
@@ -1410,6 +1441,13 @@ pub fn assign_value(
                     } else {
                         Err(ruse_core::editor::OptionValueError::NoPercentS)
                     }
+                }
+                TextCheck::FoldOpen => {
+                    return if foldopen_valid(&new) {
+                        Ok(OptVal::Text(Cow::Owned(new)))
+                    } else {
+                        Err(ValueError::Invalid)
+                    };
                 }
                 TextCheck::MessagesOpt => {
                     return messagesopt_history(&new)

@@ -169,6 +169,13 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
             diffs.push(format!("folds {r_folds:?} != {e_folds:?}"));
         }
     }
+    // The window's first line (1-based), recorded only for the fixtures about the view (#1141).
+    if let Some(e_top) = expect.get("topline").and_then(Value::as_i64) {
+        let r_top = h.topline() as i64 + 1;
+        if r_top != e_top {
+            diffs.push(format!("topline {r_top} != {e_top}"));
+        }
+    }
     diffs
 }
 
@@ -193,7 +200,7 @@ fn parity_ruse_vs_neovim_oracle() {
     println!("\n=== ruse vs neovim parity ({oracle_version}) ===");
     println!(
         "compared observables: text, cursor, reg_unnamed, reg0 (the yank register), emsg (the last E-number), \
-         folds (per line, where recorded)\n"
+         folds (per line, where recorded), topline (where recorded)\n"
     );
 
     let mut verified = 0usize;

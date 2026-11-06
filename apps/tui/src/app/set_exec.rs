@@ -68,6 +68,8 @@ pub(crate) struct UiOptions {
     pub display: DisplayGlobals,
     /// `'messagesopt'` as set; its `history:` item sizes the `:messages` history (#1235).
     pub messagesopt: String,
+    /// `'foldopen'` as set (#1141).
+    pub foldopen: String,
 }
 
 impl UiOptions {
@@ -85,6 +87,7 @@ impl Default for UiOptions {
             verbose: 0,
             display: DisplayGlobals::default(),
             messagesopt: crate::input::set_cmd::MESSAGESOPT.to_string(),
+            foldopen: crate::input::set_cmd::FOLDOPEN.to_string(),
         }
     }
 }
@@ -294,6 +297,7 @@ impl OptionHost<'_> {
             Opt::ShowMode => OptVal::Bool(self.ui.showmode),
             Opt::Verbose => OptVal::Num(self.ui.verbose),
             Opt::MessageOptions => OptVal::Text(self.ui.messagesopt.clone().into()),
+            Opt::FoldOpen => OptVal::Text(self.ui.foldopen.clone().into()),
             Opt::History => {
                 OptVal::Num(i64::try_from(self.engine.history_len()).unwrap_or(i64::MAX))
             }
@@ -412,6 +416,7 @@ impl OptionHost<'_> {
             (Opt::ShowMode, _) => self.ui.showmode = on,
             (Opt::Verbose, OptVal::Num(n)) => self.ui.verbose = n,
             (Opt::MessageOptions, _) => self.ui.messagesopt = text,
+            (Opt::FoldOpen, _) => self.ui.foldopen = text,
             (Opt::History, OptVal::Num(n)) => {
                 self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
             }
@@ -647,6 +652,7 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::ExpandTab => "editor.indent_style",
         Opt::TextWidth => "editor.textwidth",
         Opt::ScrollOff => "editor.scrolloff",
+        Opt::FoldOpen => "editor.foldopen",
         Opt::IgnoreCase => "editor.ignorecase",
         Opt::SmartCase => "editor.smartcase",
         Opt::HlSearch => "editor.hlsearch",

@@ -845,6 +845,8 @@ pub(crate) struct Session {
     pub(crate) status: Status,
     /// How many `:normal` runs are in progress (nested ones count each).
     normal_depth: usize,
+    /// The key being routed was typed, not replayed from a macro (nvim's `KeyTyped`, for 'foldopen').
+    key_typed: bool,
     /// A `:g` is running its command over the marked lines (Vim's `global_busy`): a nested `:g` runs on
     /// the current line only, and a `:s` that matches nothing is no error (#1245).
     global_busy: bool,
@@ -981,6 +983,7 @@ impl Session {
             // The startup line is shown, not kept (nvim keeps no banner).
             status: Status::showing(Msg::echo(status)),
             normal_depth: 0,
+            key_typed: false,
             global_busy: false,
             silenced_error: None,
             alt_file: None,
@@ -1633,7 +1636,9 @@ impl Session {
         let ro_watch = self.readonly.watch(&self.ws, &self.files);
         let trace_before = (self.recorded.len(), self.ws.focused_buffer());
         // A replayed key's edits are the macro's (INV-ORIGIN, #880).
+        self.key_typed = !from_replay;
         self.route_as(raw_key, from_replay, frame);
+        self.key_typed = false;
         self.readonly.warn(ro_watch, &self.ws, &mut self.status);
         self.trace_watch
             .after_input(trace_before, &mut self.ws, &mut self.recorded);
@@ -2299,7 +2304,27 @@ impl Session {
                     };
                     place_cursor(ws, recorded, start + off);
                 }
-                ws.set_top(ws.focus(), viewport::recenter(row, focused_h, to));
+                // Over closed folds the rows are counted as nvim counts them (a fold is one row).
+                let fv = folds
+                    .get(&ws.focused_buffer())
+                    .map_or(&[][..], Vec::as_slice);
+                let new_top = match frame.wins.get(ws.focus()) {
+                    Some(win) if fv.iter().any(|f| f.closed) => {
+                        let lines = PaneLines {
+                            text: PaneText {
+                                bytes: snapshot,
+                                idx: line_idx,
+                            },
+                            win,
+                            folds: fv,
+                            virt: &[],
+                            height: focused_h,
+                        };
+                        viewport::recenter_lines(&lines, row, focused_h, to)
+                    }
+                    _ => viewport::recenter(row, focused_h, to),
+                };
+                ws.set_top(ws.focus(), new_top);
                 return;
             }
             // Horizontal scroll (#615): `zh` / `zl` (`z<Left>` / `z<Right>`) `count` columns, `zH` / `zL`
@@ -2875,16 +2900,30 @@ impl Session {
                         virt: &[],
                         height: focused_h,
                     };
-                    let (bot, _) = viewport::botline(&lines, top, focused_h);
-                    if bot >= viewport::Lines::count(&lines) {
-                        focused_h
+                    if fv.iter().any(|f| f.closed) {
+                        // A closed fold is one screen line (#1141): pick among the lines shown.
+                        let (vis, at_end) = viewport::shown_lines(&lines, top, focused_h);
+                        // Indices into `vis`, offset by one when the window does not start at the first
+                        // line, so `H` keeps its 'scrolloff' margin there.
+                        let t0 = usize::from(top > 0);
+                        let last = t0 + if at_end { vis.len() - 1 } else { vis.len() };
+                        let i = viewport::screen_line(t0, vis.len(), scrolloff, to, count, last);
+                        Err(vis[(i - t0).min(vis.len() - 1)])
                     } else {
-                        (bot - top).max(1)
+                        let (bot, _) = viewport::botline(&lines, top, focused_h);
+                        Ok(if bot >= viewport::Lines::count(&lines) {
+                            focused_h
+                        } else {
+                            (bot - top).max(1)
+                        })
                     }
                 }
-                None => focused_h,
+                None => Ok(focused_h),
             };
-            let row = viewport::screen_line(top, shown, scrolloff, to, count, last_line);
+            let row = match shown {
+                Ok(shown) => viewport::screen_line(top, shown, scrolloff, to, count, last_line),
+                Err(row) => row,
+            };
             match engine.screen_op(row as u32 + 1) {
                 Feed::Cmd(cmd) => run_cmd(cmd, ws, files, recorded, status, quit),
                 // `!H` / `!L` / `!M`: the filter over the screen line opens its pre-seeded `:{range}!` line,
@@ -3123,6 +3162,9 @@ impl Session {
             alt_file,
             folds,
             can_cindent,
+            key_typed,
+            normal_depth,
+            ui_opts,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -3264,7 +3306,11 @@ impl Session {
         else {
             return;
         };
-        let opens_fold = crate::app::fold_cmds::opens_fold(&cmd);
+        // 'foldopen' applies to typed keys only (nvim checks `KeyTyped`): not to a macro, `:normal` or a
+        // `:g` of them. A shift opens the fold whatever 'foldopen' holds (`op_shift`).
+        let typed = *key_typed && *normal_depth == 0;
+        let opens_fold = crate::app::fold_cmds::shift_opens_fold(&cmd)
+            || (typed && crate::app::fold_cmds::opens_fold(&cmd, &ui_opts.foldopen));
         // `gq` under 'formatprg' / `=` under 'equalprg' filter through the program instead (#617, #618).
         if crate::app::dispatch::run_prg_operator(&cmd, ws, recorded, status) {
             return;
