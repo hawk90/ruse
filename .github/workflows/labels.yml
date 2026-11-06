@@ -1,0 +1,26 @@
+# Applies .github/labels.yml to the repository's labels (#930). It creates missing labels and updates the color and
+# description of listed ones. It never deletes a label: labels not in the file (`bug`, `dependencies`, ...) stay.
+name: labels
+on:
+  push:
+    branches: [main]
+    paths: [.github/labels.yml]
+  workflow_dispatch:
+permissions: { contents: read, issues: write }
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/labels.yml
+          persist-credentials: false
+      - uses: EndBug/label-sync@52074158190acb45f3077f9099fea818aa43f97a # v2.3.3
+        with:
+          config-file: .github/labels.yml
+          # Explicit, though it is the action's default: never delete labels that the file does not list.
+          delete-other-labels: false

@@ -241,7 +241,12 @@ release/x.y  stabilization + security fixes only
 ```
 
 Avoid a long-lived `develop`; for a small team, `main + short-lived branches + release branches` is simpler.
-Use a **merge queue** to verify combined changes. Test **quarantine entries carry an expiry + owner**.
+Verify combined changes before they land. A GitHub **merge queue** would do this, but merge queues are only
+available to organization-owned repositories, and ruse lives under a personal account (`hawk90/ruse`). Instead,
+branch protection on `main` requires the `gate`, `rust` and `spec-validate` checks and **requires the branch to
+be up to date with `main` before merging**, so every merged head was tested on top of the current `main`. The
+repository allows squash merges only and deletes the head branch on merge. Revisit the merge queue if the repo
+moves to an organization. Test **quarantine entries carry an expiry + owner**.
 Observe CI's own performance and stability.
 
 ## Final Pipeline

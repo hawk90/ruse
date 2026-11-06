@@ -1577,14 +1577,15 @@ items:
       - design-requirements.md §17 Performance Stability
     notes: Described in docs/operations/testing-and-benchmarks.md; nothing implemented.
   - id: OPS-001
-    title: Change-impact test selection with periodic full CI; merge queue
+    title: Change-impact test selection with periodic full CI; main is gated on up-to-date branches
     area: ops
     priority: P2
     status: partial
     acceptance:
       - Only relevant tests run per change
       - Full CI runs periodically
-      - A merge queue gates main
+      - Required checks pass on a branch that is up to date with main before it merges (a merge queue where the
+        host offers one)
     evidence:
       - .github/workflows/ci.yml
       - tools/rusekit/change/impact.py
@@ -1593,8 +1594,10 @@ items:
     source:
       - design-requirements.md §18 CI/CD Additions
     notes: ci.yml skips the Rust job on non-Rust diffs (fail-safe) and `ruse impact` exists; ci.yml also runs weekly
-      (schedule) — the full debug suite on Linux + macOS plus the release-profile suite (`rust-release`, #899). No
-      merge_group trigger.
+      (schedule) — the full debug suite on Linux + macOS plus the release-profile suite (`rust-release`, #899). GitHub
+      merge queues are only available to organization-owned repositories and ruse is under a personal account, so
+      branch protection on main requires gate, rust and spec-validate and requires the branch to be up to date
+      (strict) instead; squash merge only, head branch deleted on merge (#928). No merge_group trigger.
   - id: OPS-002
     title: Release artifact built once; rollback re-publishes a verified artifact
     area: ops

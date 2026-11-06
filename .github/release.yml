@@ -1,14 +1,8 @@
+# Generated release notes (#930). Nothing applies `type/*` labels to PRs (the path labeler applies `area/*` only),
+# and release.yml cannot group by the conventional PR-title type, so every merged PR is listed in one group. Each
+# entry is the squash-merge title, whose `type(scope):` prefix carries the type. See
+# docs/operations/github-workflow.md §7.
 changelog:
   categories:
-    - title: Features
-      labels: [type/slice, type/capability]
-    - title: Bug fixes
-      labels: [type/bug]
-    - title: Performance
-      labels: [impact/performance]
-    - title: Architecture & design
-      labels: [type/rfc]
-    - title: Dependencies
-      labels: [type/dependency]
-    - title: Other changes
+    - title: Changes
       labels: ["*"]

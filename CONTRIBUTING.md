@@ -3,7 +3,7 @@
 ruse is a **spec-first** Rust TUI editor: the design (`spec/`, `docs/`) is the source of truth; code is a
 reference implementation that proves it. Read [`spec/CONTEXT.md`](spec/CONTEXT.md) first. The dev process is
 [`docs/operations/development-model.md`](docs/operations/development-model.md) (Spec-Gated Iterative
-Development); GitHub mechanics (labels/fields/milestones) are in
+Development); GitHub mechanics (labels/milestones/settings) are in
 [`github-workflow.md`](docs/operations/github-workflow.md); completion is
 [`definition-of-done.md`](docs/operations/definition-of-done.md).
 
@@ -14,10 +14,10 @@ and tool-agnostic: [ai-assisted-development.md](docs/contributing/ai-assisted-de
 
 ## Workflow (idea → merge)
 
-1. **Idea.** Open a **Discussion** (question / half-formed idea) or a **Feature/Bug issue** (actionable).
+1. **Idea.** Open a **[Discussion](https://github.com/hawk90/ruse/discussions)** (question / half-formed idea) or a **Feature/Bug issue** (actionable).
    Promote a Discussion to an issue once it is concrete. See "Discussions vs Issues" in the workflow doc.
-2. **Clarifying.** A maintainer applies `type/*` + `area/*` labels and sets Project fields (Status, Type,
-   Stage, Priority, Risk, Spec-ID, Evidence). Titles carry *no* metadata — labels and fields do.
+2. **Clarifying.** A maintainer may apply `type/*` labels and sets the release milestone; `area/*` labels on PRs
+   come from the path labeler. Titles carry *no* metadata beyond the conventional type prefix.
 3. **Decide if PRD/design is needed.** If the change touches product scope or a hard-to-reverse boundary,
    it needs a spec update *before* code: update [`spec/PRD.yaml`](spec/PRD.yaml) (product) and/or open an
    **RFC** (`type/rfc`). Small, obvious changes skip straight to Ready.
@@ -29,8 +29,8 @@ and tool-agnostic: [ai-assisted-development.md](docs/contributing/ai-assisted-de
    drift, compatibility, perf assumptions). Required approvals are **0 for now** (solo-friendly).
 8. **Proven.** Record the completion **evidence** (test/benchmark/demo/dogfood — see
    [definition-of-done.md](docs/operations/definition-of-done.md)); "compiles" is not Done.
-9. **Squash-merge.** Merge with squash only. `Closes #NN` moves the card to **Done** and advances the
-   milestone (stage proof).
+9. **Squash-merge.** Merge with squash only (the repository allows nothing else). `Closes #NN` closes the
+   issue, which advances its release milestone.
 10. **Release notes.** Merged PRs under a milestone feed the release notes for that milestone.
 
 ### Design changes (extra loop)
@@ -80,7 +80,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-CI enforces these; run them locally before pushing.
+CI enforces these; run them locally before pushing. Branch protection on `main` requires the `gate`, `rust` and
+`spec-validate` checks and requires the branch to be up to date with `main`, so rebase (or merge `main`) before
+the last push. The repository allows squash merges only and deletes the head branch on merge. There is no merge
+queue: GitHub offers it only to organization-owned repositories, and ruse is under a personal account.
 
 ## Git hooks (Lefthook)
 

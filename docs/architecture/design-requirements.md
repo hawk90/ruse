@@ -159,7 +159,8 @@ because that is what users actually run.
 
 ## 18. CI/CD Additions (`OPS` addendum)
 (Base pipeline in [../operations/ci-cd-and-release.md](../operations/ci-cd-and-release.md).)
-Fast impact-scoped CI with periodic full runs and a merge queue. Release artifacts are built once and
+Fast impact-scoped CI with periodic full runs, and main gated on branches that are up to date with it (a
+merge queue where the host offers one; see OPS-001). Release artifacts are built once and
 rollback re-publishes a verified artifact. Reproducibility, soak and fault-injection runs, and quarantined
 tests with an expiry date keep CI honest about the long tail.
 

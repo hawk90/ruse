@@ -161,7 +161,7 @@ Realized by four existing mechanisms (see [spec-validate.md](spec-validate.md)):
 
 ## Where the details live (one fact, one home)
 - **This doc** = the model. **[definition-of-done.md](definition-of-done.md)** = the DoD checklist.
-  **[github-workflow.md](github-workflow.md)** = GitHub mechanics (Project fields, labels, branches, PRs,
+  **[github-workflow.md](github-workflow.md)** = GitHub mechanics (labels, milestones, branches, PRs,
   commits). **[testing-and-benchmarks.md](testing-and-benchmarks.md)** = test/bench strategy & evidence
   formats. **[ci-cd-and-release.md](ci-cd-and-release.md)** = release process. Enforced principles that need
   teeth live in [`spec/POLICY.yaml`](../../spec/POLICY.yaml).

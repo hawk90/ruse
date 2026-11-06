@@ -88,9 +88,9 @@ compiles. Full details: [docs/contributing/](docs/contributing/README.md).
 
 | You want to… | Start with |
 | --- | --- |
-| Ask a question / get help | GitHub Discussions · [SUPPORT.md](SUPPORT.md) |
+| Ask a question / get help | [GitHub Discussions](https://github.com/hawk90/ruse/discussions) · [SUPPORT.md](SUPPORT.md) |
 | Report reproducible incorrect behavior | Bug report Issue |
-| Suggest an early idea | GitHub Discussions |
+| Suggest an early idea | [GitHub Discussions](https://github.com/hawk90/ruse/discussions) |
 | Implement a scoped capability | GitHub Issue (a **Slice**) |
 | Change architecture or a public contract | an **RFC** ([docs/rfc/](docs/rfc/README.md)) |
 | Change normative project state | a **spec** PR (`spec/`) |
@@ -107,7 +107,7 @@ review**. Spec lands *before or with* the first implementation PR, never after.
 `spec-validate` + `gate` → **squash-merge** → release tag at a release boundary.
 
 **Documentation model** — authoritative state in [`spec/`](spec/PROJECT.md); explanation/research in
-[`docs/`](docs/README.md); Issues/Projects track work; Discussions host Q&A. **GitHub Wiki is not used as an
+[`docs/`](docs/README.md); Issues and milestones track work; [Discussions](https://github.com/hawk90/ruse/discussions) host Q&A. **GitHub Wiki is not used as an
 authoritative source** ([D-035](spec/DECISIONS.md)) — no fact has two homes.
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) ·

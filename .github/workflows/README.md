@@ -11,6 +11,7 @@ verified artifact.
 | [`ci.yml`](ci.yml) | PR / push / weekly / manual | Rust: fmt · clippy `-D warnings` · test · `arch deps`; heavy steps self-skip on PRs with no Rust-relevant change. `rust-macos` (advisory) repeats clippy + test on macOS. `rust-release` (advisory, **never on PRs** — push to `main`, weekly, `workflow_dispatch`) runs `cargo test --workspace --release`, the profile shipped binaries use (#899) | `rust` |
 | [`security.yml`](security.yml) | PR / push / weekly | `rustsec` advisory scan (PRs only when a Cargo manifest changed); CodeQL + secret scanning live in repo settings | — |
 | [`labeler.yml`](labeler.yml) | PR | path-based `area/*` labels via [`.github/labeler.yml`](../labeler.yml) | — |
+| [`labels.yml`](labels.yml) | push to `main` changing [`.github/labels.yml`](../labels.yml) / manual | applies the label file (creates, updates color/description; never deletes unlisted labels) | — |
 | [`perf.yml`](perf.yml) | nightly / manual | benches vs `spec/perf-baseline.yaml`; trend + warn only, never fails on regressions (D-019) | — |
 | [`fuzz.yml`](fuzz.yml) | weekly / manual (**never on PRs**) | the deep tier (#920): the test suite with proptests at 16x cases (new regression lines uploaded on failure), and each cargo-fuzz target in `fuzz/` for 15 minutes on nightly (crash inputs uploaded) | — |
 | [`release.yml`](release.yml) | tag `v*` | **placeholder that fails on purpose** (#887) — build-once release (binaries + SHA256SUMS + SBOM + provenance) not implemented yet | — |

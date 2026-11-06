@@ -56,7 +56,7 @@ related:
   succeed) before work starts. See [../operations/definition-of-done.md](../operations/definition-of-done.md).
 
 - **Public API / protocol — Discussion → RFC before implementation.** Anything other code (plugins, remote
-  peers, downstream tools) depends on. Start a Discussion to shape it, then write an **RFC** using
+  peers, downstream tools) depends on. Start a [Discussion](https://github.com/hawk90/ruse/discussions) to shape it, then write an **RFC** using
   [../../spec/templates/rfc.md](../../spec/templates/rfc.md). Code follows the accepted RFC, not the reverse.
 
 - **Core data model — RFC + Decision.** Changes to load-bearing internal models (buffer/text, positions,

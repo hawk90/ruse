@@ -1,4 +1,5 @@
-# Auto-applies area labels by changed path. Advisory only — humans may correct.
+# Auto-applies area labels to PRs by changed path. Advisory only — humans may correct. No type/* rules: a path
+# does not tell the change type (a feature PR that amends an RFC is not an RFC).
 'area/core':   [{ changed-files: [{ any-glob-to-any-file: 'crates/core/**' }] }]
 'area/render': [{ changed-files: [{ any-glob-to-any-file: 'crates/render-model/**' }] }]
 'area/terminal': [{ changed-files: [{ any-glob-to-any-file: 'crates/terminal-platform/**' }] }]
@@ -6,4 +7,3 @@
 'area/plugin': [{ changed-files: [{ any-glob-to-any-file: 'crates/plugin-protocol/**' }] }]
 'area/infra':  [{ changed-files: [{ any-glob-to-any-file: ['.github/**', 'tools/**'] }] }]
 'area/docs':   [{ changed-files: [{ any-glob-to-any-file: ['docs/**', 'spec/**'] }] }]
-'type/rfc': [{ changed-files: [{ any-glob-to-any-file: ['docs/rfc/**'] }] }]

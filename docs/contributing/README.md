@@ -6,7 +6,7 @@ summary: >
   Entry point for contributing to ruse. Routes every kind of contribution to the ONE process it belongs to
   in under a minute: four contributor paths (question / bug / idea / capability / architecture / spec /
   security), four contributor personas (User, First-time contributor, General contributor, Design
-  contributor), and the documentation model (state in spec/, explanation in docs/, work in Issues/Projects,
+  contributor), and the documentation model (state in spec/, explanation in docs/, work in Issues/milestones,
   Q&A in Discussions — GitHub Wiki is not authoritative). Deep process detail lives in ../operations/.
 audience: [maintainers, contributors, llm-agents]
 status: draft
@@ -35,9 +35,9 @@ big it feels.
 
 | You want to… | Start with… |
 | --- | --- |
-| Ask a question / get help | **GitHub Discussions** |
+| Ask a question / get help | **[GitHub Discussions](https://github.com/hawk90/ruse/discussions)** |
 | Report reproducible incorrect behavior | **Bug report issue** |
-| Suggest an early / half-formed idea | **GitHub Discussions** |
+| Suggest an early / half-formed idea | **[GitHub Discussions](https://github.com/hawk90/ruse/discussions)** |
 | Implement a scoped capability | **GitHub Issue** (Slice) |
 | Change architecture or a public contract | **RFC** (`type/rfc`) |
 | Change normative project state | **Specification PR** (spec/) |
@@ -50,9 +50,9 @@ a fifth path.
 
 ### User
 You use ruse and want to interact, not (yet) build.
-- Question → **Discussions**
+- Question → **[Discussions](https://github.com/hawk90/ruse/discussions)**
 - Reproducible incorrect behavior → **Bug report issue**
-- Early idea → **Discussions**
+- Early idea → **[Discussions](https://github.com/hawk90/ruse/discussions)**
 - Security problem → **[SECURITY.md](../../SECURITY.md)**
 
 ### First-time contributor
@@ -73,7 +73,7 @@ Issue (acceptance criteria) → acceptance evidence → short branch → Draft P
 
 - Every Slice needs at least one **observable acceptance condition** (see
   [../operations/definition-of-done.md](../operations/definition-of-done.md)).
-- GitHub mechanics (labels, Project fields, milestones) are in
+- GitHub mechanics (labels, milestones, automation) are in
   [../operations/github-workflow.md](../operations/github-workflow.md).
 
 ### Design contributor
@@ -93,10 +93,10 @@ ruse keeps **one fact in one home**:
 - **`spec/`** — authoritative *state*: vision, requirements, enforced rules, decisions (LLM-first, minimal).
 - **`docs/`** — *explanation*: long-form design, parity research, anti-patterns, contributor guides (this
   set).
-- **Issues / Projects** — track *work* (what is being done and its state).
-- **Discussions** — host *Q&A* and early ideas.
-- **The GitHub Wiki is NOT used as an authoritative source** (see DECISIONS **D-035**). If it exists, treat
-  it as scratch only; canonical content belongs in `spec/` or `docs/`.
+- **Issues / milestones** — track *work* (what is being done and for which release).
+- **[Discussions](https://github.com/hawk90/ruse/discussions)** — host *Q&A* and early ideas.
+- **The GitHub Wiki is NOT used as an authoritative source** (see DECISIONS **D-035**); it is disabled on
+  the repository. Canonical content belongs in `spec/` or `docs/`.
 
 ## Before contributing
 
@@ -111,7 +111,7 @@ ruse keeps **one fact in one home**:
 - [quickstart.md](quickstart.md) — clone → first PR.
 - [../operations/development-model.md](../operations/development-model.md) — Spec-Gated Iterative Development.
 - [../operations/definition-of-done.md](../operations/definition-of-done.md) — when a change is done.
-- [../operations/github-workflow.md](../operations/github-workflow.md) — labels, Project fields, milestones.
+- [../operations/github-workflow.md](../operations/github-workflow.md) — labels, milestones, automation.
 - [../operations/testing-and-benchmarks.md](../operations/testing-and-benchmarks.md) — evidence standards.
 - [../../CONTRIBUTING.md](../../CONTRIBUTING.md) — the top-level contributing summary.
 - [../../spec/CONTEXT.md](../../spec/CONTEXT.md) — read this first.
