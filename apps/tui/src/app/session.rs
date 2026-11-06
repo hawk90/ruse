@@ -4023,7 +4023,10 @@ impl Session {
                         let n = read_text(ws, recorded, addr, clean.to_vec(), false);
                         status.echo(format!("\"{path}\" {n}L, {}B", raw.len()));
                     }
-                    Err(e) => status.error(format!("E484: can't open {path}: {e}")),
+                    Err(e) => {
+                        crate::log::open_failed("read", std::path::Path::new(&path), &e);
+                        status.error(format!("E484: can't open {path}: {e}"));
+                    }
                 },
                 ReadSource::Command(cmd) => match crate::shell::capture(&cmd) {
                     Ok(out) => {
@@ -5381,7 +5384,7 @@ fn journal_outcome(
         }
         Err(e) => {
             if failed.insert(id) {
-                tracing::warn!(event = "journal.failed", path = %path.display(), error = %e);
+                crate::log::journal_failed(path, &e);
                 status.error(format!(
                     "E303: unable to write the recovery journal for \"{}\": {e} ({})",
                     path.display(),
@@ -5459,7 +5462,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
     let config_paths = crate::config::ConfigPaths::from_env(&cwd);
     let config = crate::config::load(&config_paths);
     for d in &config.diagnostics {
-        tracing::warn!(code = d.code, "{}", d.message);
+        crate::log::config_diagnostic(d.code);
     }
     let status = match crate::config::startup_notice(&config) {
         Some(note) if status == "ruse — :q to quit" => note,
@@ -5735,6 +5738,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
             }
         }
         s.post_render(&frame);
+        #[cfg(debug_assertions)]
+        crate::log::debug_panic_if_requested();
         // Keys the session queued come before the terminal: the key half of a split Alt chord (#896), then
         // macro replay (D-055), so `@{reg}`'s decoded keys flow through the same dispatch as if re-typed. A
         // key from the replay queue is `from_replay`.

@@ -163,6 +163,10 @@ impl Status {
         if kept {
             self.history.push(&text);
         }
+        // An error or warning is logged once, here where it is given (#966); `:silent!` hid it on purpose.
+        if self.silence != Silence::All {
+            crate::log::message(kind, &text);
+        }
         self.text = text;
         self.kind = Some(kind);
     }
@@ -364,6 +368,29 @@ mod tests {
 
     fn kept(s: &Status) -> Vec<&str> {
         s.history().last(None).collect()
+    }
+
+    /// Each error and warning given is logged once, by its code, never its text (#966); a report, an
+    /// echo, and an error under `:silent!` are not.
+    #[test]
+    fn errors_and_warnings_are_logged_once_without_their_text() {
+        let lines = crate::log::tests::Capture::run(|| {
+            let mut s = Status::default();
+            s.error("E486: Pattern not found: secret-text");
+            s.warn("W10: Warning: Changing a readonly file");
+            s.info("3 lines yanked");
+            s.echo("secret-text");
+            s.silence = Silence::All;
+            s.error("E492: Not an editor command: x");
+        });
+        let msgs: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("event=\"message\""))
+            .collect();
+        assert_eq!(msgs.len(), 2, "{lines:#?}");
+        assert!(msgs[0].contains("kind=\"error\"") && msgs[0].contains("code=\"E486\""));
+        assert!(msgs[1].contains("kind=\"warning\"") && msgs[1].contains("code=\"W10\""));
+        assert!(!lines.join("\n").contains("secret-text"));
     }
 
     #[test]
