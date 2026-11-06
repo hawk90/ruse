@@ -403,7 +403,11 @@ features:
     # count, glued on or not (`:d2`, `:j2`), never a register, and a `"` starts a comment. #1241: `:dl`/`:dp`
     # (and `:dell` … `:deletep`) delete then show the new line; `:mark`/`:k` set `0`-`9`, `'`, `[`, `]`, `<`
     # and `>` too (E191 for any other mark), on the line's first non-blank. Oracle fixtures `exc_*`, `exd_*`,
-    # `exk_*`. Not yet: a count or another command than d/s/normal/p after `:g/pat/` (`:g/b/d 2`, `:g/b/j`).
+    # `exk_*`. #1245: `:g/pat/{cmd}` runs any Ex command line (`|` included) once per marked line through the
+    # one Ex dispatch, cursor at the line's start (`:g/b/d 2`, `:g/^/m0`, `:g/b/j`); the first failing command
+    # stops it, a nested `:g` runs on the current line (E147 with a range), the whole `:g` is one undo step
+    # and one trace group. A bare `d` and a plain `s///` keep core's one-pass. #1246: `:d #`/`:y #` write
+    # `"0`. Oracle fixtures `gex_*`, `exa_register_hash_*`.
     # #613: `:` completion at nvim's defaults (wildmode=full, wildoptions=pum): <Tab>/<S-Tab> complete
     # (input/complete.rs: Ex command names, file/directory names with %/# and escaping, buffer names,
     # :set option names and values), the wildmenu cycles with <Tab>/CTRL-N/<Right> and back, CTRL-E/CTRL-Y

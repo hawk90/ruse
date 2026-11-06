@@ -68,6 +68,16 @@ const SESSIONS: &[(&str, &str, &str)] = &[
     ("a\nx1\nb\nx2\nc\n", "j:g/x/d<CR>", "ex_global d"),
     ("a\nx1\nb\nx2\nc\n", ":g/x/s/x/Z/<CR>", "ex_global s"),
     ("a1\nb\na2\n", ":g/a/normal Ax<CR>", "ex_begin global"),
+    // A `:g` running any other command records each command it ran, in one group (#1245).
+    ("a1\na2\na3\na4\na5\n", ":g/a/d 2<CR>", "ex_begin global"),
+    ("a1\nb1\na2\nb2\na3\n", ":g/^/m0<CR>", "ex_begin global"),
+    ("a1\nb1\na2\nb2\na3\n", ":g/^/m0<CR>u", "ex_begin global"),
+    ("a1\nb\na2\nb\na3\n", ":g/b/j<CR>", "ex_join"),
+    ("a1\nb\na2\nb\na3\n", ":g/b/y A<CR>G\"ap", "ex_yank"),
+    ("a1\nb1\na2\nb2\na3\n", ":g/a/s/1/X/|>|d<CR>p", "ex_shift"),
+    ("a1\nb1\na2\nb2\na3\n", ":g/a/g/1/d<CR>", "ex_global d"),
+    ("a1\nb1\na2\nb2\na3\n", ":g/./m-2<CR>", "ex_begin global"),
+    ("a1\nb1\na2\nb2\na3\n", ":g/b/ka<CR>gg'ax", "ex_mark"),
     ("a\nb\nc\n", ":%normal I-<CR>", "ex_begin normal"),
     ("a\nb\n", ":normal! Ax<CR>", "ex_begin normal"),
     ("c\nb\na\nb\n", ":sort u<CR>", "ex_sort"),
@@ -181,7 +191,16 @@ fn trace_save_writes_the_session_trace() {
 #[test]
 fn ruse_replay_reproduces_an_ex_session() {
     let text = "c\nx a\nb\nx d\n";
-    let keys = ":%!sort<CR>:g/x/s/x/y/<CR>:2,3m$<CR>:r !echo z<CR>";
+    for keys in [
+        ":%!sort<CR>:g/x/s/x/y/<CR>:2,3m$<CR>:r !echo z<CR>",
+        // A per-line `:g` (#1245).
+        ":g/^/m0<CR>:g/x/d 2<CR>:g/./j|s/^/-/<CR>",
+    ] {
+        ruse_replay_matches(text, keys);
+    }
+}
+
+fn ruse_replay_matches(text: &str, keys: &str) {
     let (h, saved) = session(text, keys);
     let (tp, fp) = (scratch("bin.trace"), scratch("bin.txt"));
     std::fs::write(&tp, &saved).unwrap();

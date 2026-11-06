@@ -269,7 +269,10 @@ cursor and undo grouping, with no IO and no re-resolution):
   so per-line children would replay a different implementation than the one that ran, against R1's "live
   and replay share one implementation". Replay runs the same pass 2 (`global_run`) on the recorded marks; the
   marking pattern is still not needed. `:g/pat/normal` records as the R3 group (`ex_begin global`, then per
-  marked line an `ex_place` and the commands its keys produced, then `ex_end`).
+  marked line an `ex_place` and the commands its keys produced, then `ex_end`). Any other payload
+  (#1245: `:g/b/d 2`, `:g/^/m0`, `:g/a/j|s/x/y/`, a nested `:g`) runs per marked line through the Ex
+  dispatch and records the same group: per line an `ex_place`, then the resolved records of the commands
+  it ran. No verb is added.
 - **Frontend state a replay needs is recorded as `ExCmd` too**, so `Command` still gains one variant:
   `Place(offset)` for a cursor the frontend places (`:normal`'s per-line column 0, a `:g` landing line,
   the `:s///c` match left under the cursor when nothing was replaced, `:startinsert`'s placement),

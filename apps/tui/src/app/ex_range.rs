@@ -420,7 +420,7 @@ fn counted(tail: &str, line2: i64, nlines: i64) -> Result<Option<Canonical>, ExR
         if let Some(c) = a
             .chars()
             .next()
-            .filter(|c| c.is_ascii_alphabetic() || matches!(c, '-' | '_' | '*' | '+'))
+            .filter(|c| c.is_ascii_alphabetic() || matches!(c, '-' | '_' | '*' | '+' | '#'))
         {
             reg = Some(c);
             a = a[1..].trim_start();

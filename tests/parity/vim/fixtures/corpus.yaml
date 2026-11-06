@@ -63910,6 +63910,1830 @@
       }
     },
     {
+      "name": "exa_register_hash_d",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":d #<CR>\"1p",
+      "expect": {
+        "text": [
+          "b1",
+          "a1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_register_hash_y",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":y #<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_register_hash_count",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":d # 2<CR>",
+      "expect": {
+        "text": [
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\nb1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a1\nb1\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_register_hash_y_count",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":y # 2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\nb1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a1\nb1\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_register_hash_replaces_0",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": "yyj:d #<CR>\"0p",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "b1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "b1\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "exa_err_count_before_hash",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":d 2 #<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_d_count",
+      "lines": [
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5"
+      ],
+      "keys": ":g/a/d 2<CR>",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a5\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_count_marks_deleted",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3",
+        "b"
+      ],
+      "keys": ":g/b/d 2<CR>",
+      "expect": {
+        "text": [
+          "a1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_count_undo",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/d 2<CR>u",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_register",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":g/b/d a<CR>\"ap",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_register_append",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":g/b/d A<CR>\"ap",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3",
+          "b",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_blackhole",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/d _<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_hash",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/d #<CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "b2"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_list_flag",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":g/b/dl<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_join",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":g/b/j<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b a2",
+          "b a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_join_last_line",
+      "lines": [
+        "  a1",
+        "b1",
+        "  a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/j<CR>",
+      "expect": {
+        "text": [
+          "  a1 b1",
+          "  a2 b2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_join_undo",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/j<CR>u",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_vglobal_join",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":v/b/j<CR>",
+      "expect": {
+        "text": [
+          "a1 b1",
+          "a2 b2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_gbang_d",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g!/b/d<CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "b2"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_y_count",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":g/b/y 2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b",
+          "a2",
+          "b",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\na3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "b\na3\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_y_append",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":g/b/y A<CR>\"ap",
+      "expect": {
+        "text": [
+          "a1",
+          "b",
+          "a2",
+          "b",
+          "b",
+          "b",
+          "a3"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_y_cursor",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": "G:g/b/y<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_shift_count",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":set sw=4 et<CR>:g/a/>2<CR>",
+      "expect": {
+        "text": [
+          "    a1",
+          "    b",
+          "    a2",
+          "    b",
+          "    a3"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_shift",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "b",
+        "a3"
+      ],
+      "keys": ":set sw=4 et<CR>:g/a/><CR>",
+      "expect": {
+        "text": [
+          "    a1",
+          "b",
+          "    a2",
+          "b",
+          "    a3"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_mark",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/ka<CR>gg'ax",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "2",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_mark_cursor",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": "G$:g/b/ka<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_m0",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/m0<CR>",
+      "expect": {
+        "text": [
+          "b2",
+          "b1",
+          "a1",
+          "a2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_m_end",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/m$<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3",
+          "b1",
+          "b2"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_reverse",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/^/m0<CR>",
+      "expect": {
+        "text": [
+          "a3",
+          "b2",
+          "a2",
+          "b1",
+          "a1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_reverse_undo",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/^/m0<CR>u",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_range_m0",
+      "lines": [
+        "x",
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":2,4g/a/m0<CR>",
+      "expect": {
+        "text": [
+          "a2",
+          "a1",
+          "x",
+          "b1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_t_dot",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/t.<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "b1",
+          "a2",
+          "b2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          6,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_t0_undo",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/t0<CR>u",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_offset_d",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/-1d<CR>",
+      "expect": {
+        "text": [
+          "a2",
+          "a3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_offset_j",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/-1j<CR>",
+      "expect": {
+        "text": [
+          "a1 b1",
+          "a2 b2",
+          "a3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_offset_y",
+      "lines": [
+        "  a1",
+        "b1",
+        "  a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/-1y<CR>",
+      "expect": {
+        "text": [
+          "  a1",
+          "b1",
+          "  a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  a2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "  a2\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_err_first_line_stops",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/./m-2<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_err_last_mark",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/m+1<CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "a1",
+          "b2",
+          "a2",
+          "a3"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_err_offset_past_end",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/.+1d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_err_unknown_command",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/foo<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_bar_two_subs",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/./s/1/X/|s/a/Y/<CR>",
+      "expect": {
+        "text": [
+          "YX",
+          "bX",
+          "Y2",
+          "b2",
+          "Y3"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_bar_d_d",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/d|d<CR>",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_bar_shift_d",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":set sw=4 et<CR>:g/a/>|d<CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "b2"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "    a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_silent_error_goes_on",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/silent! .+1d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_bar_error_stops",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/./m-2|s/./X/<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E16",
+        "failed": true
+      }
+    },
+    {
+      "name": "gex_nested_in_normal",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/normal :g/1/d<C-v><CR><CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_d_then_p",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/b/d 2<CR>p",
+      "expect": {
+        "text": [
+          "a1",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b2\na3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_bar_sub_no_match_goes_on",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/s/zzz/X/|d<CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "b2"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_sub_count",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/s/1/X/ 2<CR>",
+      "expect": {
+        "text": [
+          "aX",
+          "bX",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_sub_report_only",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/s/a/X/n<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_nested",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/g/1/d<CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_nested_no_match",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/g/b/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_nested_v",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/v/1/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "b2"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_nested_whole_range",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/%g/1/d<CR>",
+      "expect": {
+        "text": [
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gex_nested_range_e147",
+      "lines": [
+        "a1",
+        "b1",
+        "a2",
+        "b2",
+        "a3"
+      ],
+      "keys": ":g/a/.g/b/d<CR>",
+      "expect": {
+        "text": [
+          "a1",
+          "b1",
+          "a2",
+          "b2",
+          "a3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E147",
+        "failed": true
+      }
+    },
+    {
       "name": "exa_err_filter_past_end",
       "lines": [
         "a1",
