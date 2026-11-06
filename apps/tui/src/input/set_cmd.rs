@@ -106,6 +106,9 @@ pub enum Opt {
     SmoothScroll,
     /// `'readonly'`: `:w` refuses (E45) and the first change warns (W10). Per buffer (#1211).
     ReadOnly,
+    /// `'messagesopt'`: its `history:` item sizes the `:messages` history (#1235); the other items are
+    /// checked and kept, and ruse always behaves as `hit-enter`.
+    MessageOptions,
 }
 
 /// An option's value.
@@ -154,6 +157,7 @@ pub enum TextCheck {
     CursorLineOpt,
     ColorColumn,
     FoldColumn,
+    MessagesOpt,
 }
 
 /// An option's type, with its value rules.
@@ -218,6 +222,41 @@ const LISTPAT: &str = r"^\s*\d\+[\]:.)}\t ]\s*";
 
 /// nvim's default `'cpoptions'`: the only value ruse implements (it behaves as these flags say).
 pub const CPO_DEFAULT: &str = "aABceFs_";
+
+/// nvim's default `'messagesopt'`.
+pub const MESSAGESOPT: &str = "hit-enter,history:500,progress:c";
+
+/// The `history:` size a `'messagesopt'` value gives, `None` when nvim refuses the value (`E474`): items
+/// `hit-enter`, `wait:{n}`, `history:{n}` and `progress:` / `progress:c`, separated by commas; `history:`
+/// must be there, and `hit-enter` or `wait:`; a number is digits only, at most 10000.
+#[must_use]
+pub fn messagesopt_history(value: &str) -> Option<usize> {
+    let number = |s: &str| {
+        (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| s.parse::<usize>().ok())
+            .flatten()
+            .filter(|&n| n <= 10_000)
+    };
+    let (mut history, mut wait, mut hit_enter) = (None, false, false);
+    for item in value.split(',') {
+        if item.is_empty() {
+            continue;
+        }
+        if item == "hit-enter" {
+            hit_enter = true;
+        } else if let Some(n) = item.strip_prefix("history:") {
+            history = Some(number(n)?);
+        } else if let Some(n) = item.strip_prefix("wait:") {
+            number(n)?;
+            wait = true;
+        } else {
+            // `progress:` takes nothing or `c`; anything else is no item.
+            item.strip_prefix("progress:")
+                .filter(|p| matches!(*p, "" | "c"))?;
+        }
+    }
+    history.filter(|_| hit_enter || wait)
+}
 
 /// nvim's default `'breakat'` and `'listchars'`.
 const BREAKAT: &str = super::display_opts::BREAKAT_DEFAULT;
@@ -623,6 +662,18 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::text(LISTCHARS),
         OptVal::text(LISTCHARS),
         Locality::GlobalLocal,
+    ),
+    def(
+        Opt::MessageOptions,
+        "messagesopt",
+        "mopt",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::MessagesOpt,
+        },
+        OptVal::text(MESSAGESOPT),
+        OptVal::text(MESSAGESOPT),
+        Locality::Global,
     ),
     def(
         Opt::Number,
@@ -1359,6 +1410,11 @@ pub fn assign_value(
                     } else {
                         Err(ruse_core::editor::OptionValueError::NoPercentS)
                     }
+                }
+                TextCheck::MessagesOpt => {
+                    return messagesopt_history(&new)
+                        .map(|_| OptVal::Text(Cow::Owned(new)))
+                        .ok_or(ValueError::Invalid);
                 }
                 TextCheck::ListChars
                 | TextCheck::BreakIndentOpt

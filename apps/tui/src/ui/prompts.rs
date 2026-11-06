@@ -73,7 +73,7 @@ pub(crate) fn confirm_key(
     key: crossterm::event::KeyEvent,
     ws: &mut Workspace,
     recorded: &mut Vec<ruse_core::Command>,
-    status: &mut String,
+    status: &mut crate::app::messages::Status,
 ) {
     let Some(mut c) = confirm.take() else {
         return;
@@ -122,7 +122,7 @@ pub(crate) fn confirm_key(
         if out.replacements == 0 {
             crate::app::dispatch::place_cursor(ws, recorded, shown);
         }
-        *status = crate::app::dispatch::substituted_message(&out);
+        status.info(crate::app::dispatch::substituted_message(&out));
         // `confirm` was taken and stays None — the loop is over.
     } else {
         *confirm = Some(c);

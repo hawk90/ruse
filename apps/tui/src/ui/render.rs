@@ -963,7 +963,8 @@ pub(crate) fn render(
     pane_idx: &crate::line_index::PaneIndexes,
     showmode: bool,
     flags: &str,
-    hit_enter: &mut bool,
+    status_serial: u64,
+    pager: &mut crate::ui::message::Pager,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -1269,7 +1270,7 @@ pub(crate) fn render(
         let (shown, col) = crate::input::display_with_caret(text, caret.unwrap_or(usize::MAX));
         (format!("{prefix}{shown}"), col)
     });
-    *hit_enter = false;
+    pager.prompt = crate::ui::message::Prompt::None;
     let bar = match &cmd_shown {
         Some((shown, _)) => shown.clone(),
         None => {
@@ -1329,8 +1330,9 @@ pub(crate) fn render(
                 format!("{name}{dirty}{win}{diag}  ")
             };
             // A message too long for the rest of the row is shown whole above a hit-enter prompt, or a
-            // file message cut at its start (#1222).
-            use crate::ui::message::{fit, Shown, HIT_ENTER};
+            // file message cut at its start (#1222). One taller than the screen is paged from its top
+            // with `-- More --` (#1235).
+            use crate::ui::message::{fit, Shown};
             match fit(
                 crate::ui::message::width(&prefix),
                 status,
@@ -1338,19 +1340,20 @@ pub(crate) fn render(
             ) {
                 Shown::Fits => format!("{prefix}{status}"),
                 Shown::Cut(tail) => format!("{prefix}{tail}"),
+                Shown::CutRow(tail) => tail,
                 Shown::More(lines) => {
-                    // The end of the message when it is taller than the screen (nvim scrolls to it).
-                    let shown = lines.len().min(usize::from(text_rows));
-                    let top = text_rows - shown as u16;
-                    for (i, line) in lines[lines.len() - shown..].iter().enumerate() {
+                    let page = usize::from(text_rows);
+                    let (first, prompt) = pager.layout(status_serial, lines.len(), page);
+                    let shown = &lines[first..lines.len().min(first + page)];
+                    let top = text_rows - shown.len() as u16;
+                    for (i, line) in shown.iter().enumerate() {
                         let row = top + i as u16;
                         for x in 0..cols {
                             cur.put(row, x, " ", Color::Reset, false);
                         }
                         cur.put_str(row, 0, line, Color::Reset, false);
                     }
-                    *hit_enter = true;
-                    HIT_ENTER.to_string()
+                    pager.prompt_text(prompt)
                 }
             }
         }
@@ -1363,7 +1366,7 @@ pub(crate) fn render(
     flush_diff(out, &cur, prev, sync)?;
     *prev = cur;
 
-    if *hit_enter {
+    if pager.prompt != crate::ui::message::Prompt::None {
         // nvim leaves the cursor after the prompt.
         let col = u16::try_from(crate::ui::message::width(&bar))
             .unwrap_or(u16::MAX)

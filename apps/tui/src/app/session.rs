@@ -24,6 +24,7 @@ use crate::app::dispatch::{
 };
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
+use crate::app::messages::{Msg, Silence, Status};
 use crate::input::{
     parse_ex, BufTarget, EditSpec, Ex, Feed, InputEngine, Pending, ReadSource, WriteSpec,
     WriteTarget,
@@ -77,24 +78,24 @@ fn repeat_substitute_lines(
     recorded: &mut Vec<Command>,
     last: Option<&(String, String, ruse_core::SubFlags)>,
     count: usize,
-) -> String {
+) -> Msg {
     let Some((pat, rep, flags)) = last else {
-        return "E33: No previous substitute regular expression".to_string();
+        return Msg::error("E33: No previous substitute regular expression");
     };
     let bytes = ws.focused().doc.bytes();
     let first = ruse_core::pos::line_of(bytes, ws.focused().view.cursor()) + 1;
     let lines = bytes.split(|b| *b == b'\n').count() - usize::from(bytes.ends_with(b"\n"));
     let last = first + count - 1;
     if last > lines.max(1) {
-        return "E16: Invalid range".to_string();
+        return Msg::error("E16: Invalid range");
     }
     // Recorded as the resolved `:s` it repeats (RFC-0020); a match is a jump, as `:s` is (#1119).
     let range = ruse_core::SubRange::Lines(first, last);
     let ex = substitute_cmd(ws, range, pat, rep, *flags, None);
     match sub_outcome(run_ex(ex, ws, recorded)) {
-        Ok(out) if out.replacements == 0 => format!("E486: pattern not found: {pat}"),
-        Ok(out) => crate::app::dispatch::substituted_message(&out),
-        Err(e) => crate::app::dispatch::regex_error_msg(&e),
+        Ok(out) if out.replacements == 0 => Msg::error(format!("E486: pattern not found: {pat}")),
+        Ok(out) => Msg::info(crate::app::dispatch::substituted_message(&out)),
+        Err(e) => Msg::error(crate::app::dispatch::regex_error_msg(&e)),
     }
 }
 
@@ -236,7 +237,7 @@ fn run_scroll(
     valid: &mut Option<ScrollValid>,
     files: &Files,
     recorded: &mut Vec<Command>,
-    status: &mut String,
+    status: &mut Status,
     quit: &mut bool,
 ) -> bool {
     use crate::scroll::{Scroll, ViewPos};
@@ -682,7 +683,7 @@ fn goto_line(
     ws: &mut Workspace,
     files: &Files,
     recorded: &mut Vec<Command>,
-    status: &mut String,
+    status: &mut Status,
     quit: &mut bool,
 ) {
     let b = ws.focused().doc.bytes();
@@ -756,8 +757,9 @@ pub(crate) struct Session {
     pub(crate) emacs_profile: bool,
     pub(crate) engine: InputEngine,
     pub(crate) quit: bool,
-    /// The last frame showed a message whole above the hit-enter prompt (#1222): the next key answers it.
-    hit_enter: bool,
+    /// The rows of a message shown above the hit-enter or `-- More --` prompt (#1222, #1235), and the
+    /// prompt the last frame showed: the next key answers it.
+    pager: crate::ui::message::Pager,
     term: TermInfo,
     /// The armed session key prefix, if any (`C-w`, `z`, `zf`, `[`/`]`, `CTRL-\`).
     prefix: Prefix,
@@ -839,7 +841,8 @@ pub(crate) struct Session {
     /// F-014: all app-side LSP orchestration (clients, diagnostics, hover/completion, request dispatch,
     /// deferred edit-applies) lives behind the coordinator; the loop just drives it (CAP-LSP-COORD).
     pub(crate) lsp: LspCoordinator,
-    pub(crate) status: String,
+    /// The status line's message and the `:messages` history (#1235).
+    pub(crate) status: Status,
     /// How many `:normal` runs are in progress (nested ones count each).
     normal_depth: usize,
     /// A `:g` is running its command over the marked lines (Vim's `global_busy`): a nested `:g` runs on
@@ -939,7 +942,7 @@ impl Session {
             emacs_profile,
             engine,
             quit: false,
-            hit_enter: false,
+            pager: crate::ui::message::Pager::default(),
             term,
             prefix: Prefix::None,
             folds: HashMap::new(),
@@ -975,7 +978,8 @@ impl Session {
             #[cfg(unix)]
             terminals: HashMap::new(),
             lsp: LspCoordinator::new(cwd, trusted),
-            status,
+            // The startup line is shown, not kept (nvim keeps no banner).
+            status: Status::showing(Msg::echo(status)),
             normal_depth: 0,
             global_busy: false,
             silenced_error: None,
@@ -1165,11 +1169,11 @@ impl Session {
                 let Some(j) = *journals else {
                     // No state directory: journaling is off, and the first modified buffer says so once.
                     if doc.is_modified() && journal_failed.insert(*id) {
-                        *status = format!(
+                        status.error(format!(
                             "E303: unable to write the recovery journal for \"{}\": no state directory \
                              (set XDG_STATE_HOME or HOME)",
                             bf.path.display()
-                        );
+                        ));
                     }
                     continue;
                 };
@@ -1222,7 +1226,7 @@ impl Session {
         if let Some(c) = &confirm {
             if let Some(s) = c.subs.get(c.idx) {
                 ws.place_focused_cursor(s.start);
-                *status = confirm_prompt(c);
+                status.echo(confirm_prompt(c));
             }
         }
         // Per-window viewport pass: scroll each pane so ITS cursor stays visible in ITS rectangle
@@ -1484,15 +1488,18 @@ impl Session {
             return;
         };
         let name = bf.path.display();
-        self.status = if state == persist::disk::State::Gone {
-            format!("E211: File \"{name}\" no longer available")
+        if state == persist::disk::State::Gone {
+            self.status
+                .error(format!("E211: File \"{name}\" no longer available"));
         } else if doc.is_modified() {
-            format!(
+            self.status.warn(format!(
                 "W12: Warning: File \"{name}\" has changed and the buffer was changed in Vim as well"
-            )
+            ));
         } else {
-            format!("W11: Warning: File \"{name}\" has changed since editing started")
-        };
+            self.status.warn(format!(
+                "W11: Warning: File \"{name}\" has changed since editing started"
+            ));
+        }
     }
 
     /// The idle trigger of [`Session::check_disk`]: once [`persist::journal::IDLE`] passed since the last
@@ -1581,19 +1588,28 @@ impl Session {
         }
     }
 
-    /// The key typed at the hit-enter prompt (#1222) clears the message. `<CR>`, `<NL>`, `<Space>` and
-    /// `CTRL-C` only do that (true: the key is used up); any other key, `<Esc>` too, then runs as typed, `:`
-    /// opening the command line, as nvim v0.12.6's `wait_return` puts it back into the typeahead.
-    fn answer_hit_enter(&mut self, key: KeyEvent) -> bool {
-        if !std::mem::take(&mut self.hit_enter) {
-            return false;
-        }
-        self.status.clear();
-        let mods = key.modifiers.difference(KeyModifiers::SHIFT);
-        match key.code {
-            KeyCode::Enter | KeyCode::Char(' ') => mods.is_empty(),
-            KeyCode::Char('c' | 'j') => mods == KeyModifiers::CONTROL,
-            _ => false,
+    /// The key typed at the prompt the last frame showed (true: the key is used up). At the hit-enter
+    /// prompt (#1222) it clears the message: `<CR>`, `<NL>`, `<Space>` and `CTRL-C` only do that; any other
+    /// key, `<Esc>` too, then runs as typed, `:` opening the command line, as nvim v0.12.6's `wait_return`
+    /// puts it back into the typeahead. At `-- More --` (#1235) the paging keys move the message and `q`
+    /// ends it ([`crate::ui::message::Pager::more_key`]).
+    fn answer_prompt(&mut self, key: KeyEvent) -> bool {
+        use crate::ui::message::{Answer, Prompt};
+        let answer = match std::mem::take(&mut self.pager.prompt) {
+            Prompt::None => return false,
+            Prompt::HitEnter => self.pager.hit_enter_key(key),
+            Prompt::More => self.pager.more_key(key),
+        };
+        match answer {
+            Answer::Stay => true,
+            Answer::Done => {
+                self.status.clear();
+                true
+            }
+            Answer::DoneThenRun => {
+                self.status.clear();
+                false
+            }
         }
     }
 
@@ -1607,7 +1623,7 @@ impl Session {
         from_replay: bool,
         frame: &FrameCtx,
     ) -> Flow {
-        let status_before = self.status.clone();
+        let status_before = self.status.serial();
         self.last_input = std::time::Instant::now();
         if !from_replay {
             // A typed key comes after any replay drained; a block left open would join this key's change.
@@ -1634,7 +1650,7 @@ impl Session {
                 self.answer_swap(prompt, key, frame);
             }
         }
-        if self.failed_since(&status_before) {
+        if self.failed_since(status_before) {
             self.macros.flush_replay();
         }
         self.settle_interrupt();
@@ -1652,7 +1668,7 @@ impl Session {
         if ruse_core::interrupt::take() {
             self.macros.interrupt_replay();
             self.end_macro_undo();
-            self.status = "Interrupted".to_string();
+            self.status.info("Interrupted");
         }
     }
 
@@ -1671,7 +1687,7 @@ impl Session {
         self.prefix = Prefix::None;
         self.meta_tail = None;
         if self.overlay_open() {
-            self.status = "paste ignored: close the picker first".to_string();
+            self.status.warn("paste ignored: close the picker first");
             return Flow::Continue;
         }
         let mode = self.ws.focused().view.mode();
@@ -1801,7 +1817,8 @@ impl Session {
         let notes =
             crate::app::set_exec::install_lang_keymap(config, engine, &mut self.config_lmaps);
         if !notes.is_empty() {
-            self.status = format!("{} · {}", self.status, notes.join(" · "));
+            let shown = format!("{} · {}", self.status, notes.join(" · "));
+            self.status.amend(shown);
         }
         if startup {
             self.start_options = self.ws.focused().view.editing_options();
@@ -1826,7 +1843,7 @@ impl Session {
         });
         let Some((root, store)) = target else {
             if !grant {
-                self.status = "workspace untrusted for this session".into();
+                self.status.info("workspace untrusted for this session");
             }
             return;
         };
@@ -1851,10 +1868,14 @@ impl Session {
                 && l.state == crate::config::LayerState::Loaded
         });
         match note {
-            Some(n) if grant => self.status = format!("{}; {n}", self.status),
-            Some(n) => self.status = n,
+            Some(n) if grant => {
+                let shown = format!("{}; {n}", self.status);
+                self.status.amend(shown);
+            }
+            Some(n) => self.status.info(n),
             None if workspace_loaded => {
-                self.status = format!("{}; workspace config loaded", self.status);
+                let shown = format!("{}; workspace config loaded", self.status);
+                self.status.amend(shown);
             }
             None => {}
         }
@@ -1946,7 +1967,7 @@ impl Session {
             crate::keys::Step::Consumed => return,
             crate::keys::Step::NoPreviousRegister => {
                 engine.take_count();
-                *status = "E748: No previously used register".to_string();
+                status.error("E748: No previously used register");
                 return;
             }
             // `q:` / `q/` / `q?` — open the command-line window (`:help cmdwin`) over that history ring.
@@ -1958,7 +1979,7 @@ impl Session {
                 let n = bytes.len();
                 // Recorded as the slots it changed (RFC-0020 R6): no recorded command wrote them.
                 record_register_writes(ws, recorded, |ws| ws.set_register_raw(Some(reg), bytes));
-                *status = format!("recorded @{reg} ({n} keys)");
+                status.echo(format!("recorded @{reg} ({n} keys)"));
                 return;
             }
             crate::keys::Step::Replay(reg) => {
@@ -1993,7 +2014,7 @@ impl Session {
                 }
                 for _ in 0..n {
                     if !macros.replay(&bytes) {
-                        *status = "macro replay aborted (key limit)".to_string();
+                        status.warn("macro replay aborted (key limit)");
                         break;
                     }
                 }
@@ -2014,12 +2035,12 @@ impl Session {
                         bytes.push(b'\r');
                         for _ in 0..n {
                             if !macros.replay(&bytes) {
-                                *status = "macro replay aborted (key limit)".to_string();
+                                status.warn("macro replay aborted (key limit)");
                                 break;
                             }
                         }
                     }
-                    None => *status = "E30: No previous command line".to_string(),
+                    None => status.error("E30: No previous command line"),
                 }
                 return;
             }
@@ -2061,9 +2082,10 @@ impl Session {
                 }
                 // The file picker opens the selected path into a buffer (the interactive form of `:e`).
                 Some(Accepted::File(p)) => {
-                    *status =
+                    status.give(
                         open_file_into_buffer(&p.display().to_string(), ws, files, highlighters)
-                            .status;
+                            .status,
+                    );
                 }
                 // F-014: the references picker jumps to the selected location. The `spans` borrow is
                 // released by now (render is done), so opening a cross-file buffer here is free — no defer
@@ -2091,7 +2113,7 @@ impl Session {
                             ws.place_focused_cursor(BytePos(at));
                         }
                     } else {
-                        *status = opened.status;
+                        status.give(opened.status);
                     }
                 }
                 // F-014: the code-action picker applies the selected action's WorkspaceEdit (inline, as
@@ -2204,7 +2226,7 @@ impl Session {
                             let fv = folds.entry(buf_id).or_default();
                             crate::folds::insert_closed_fold(fv, start, end);
                             place_cursor(ws, recorded, line_idx.nth_line_start(start));
-                            *status = format!("folded {} lines", end - start + 1);
+                            status.echo(format!("folded {} lines", end - start + 1));
                         }
                     }
                 }
@@ -2380,7 +2402,7 @@ impl Session {
                             crate::folds::insert_closed_fold(fv, start, end);
                             run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
                             place_cursor(ws, recorded, line_idx.nth_line_start(start));
-                            *status = format!("folded {} lines", end - start + 1);
+                            status.echo(format!("folded {} lines", end - start + 1));
                         }
                     } else {
                         // Normal mode: begin `zf{motion}`. Seed the buffer with any count typed before `z`
@@ -2629,7 +2651,12 @@ impl Session {
         // session owns the key so it can read the count; see [`repeat_substitute_lines`].
         if chord && key.code == KeyCode::Char('&') && key.modifiers.is_empty() {
             let count = engine.take_count().max(1) as usize;
-            *status = repeat_substitute_lines(ws, recorded, last_substitute.as_ref(), count);
+            status.give(repeat_substitute_lines(
+                ws,
+                recorded,
+                last_substitute.as_ref(),
+                count,
+            ));
             return;
         }
         // `C-d` / `C-u` scroll the view and move the cursor by the window's 'scroll' lines (default half the
@@ -2849,7 +2876,7 @@ impl Session {
         // namespace owns its buffer, so the frontend no longer special-cases `:`/`/` typing.
         let fed = engine.feed(key, ws.focused().view.mode());
         if let Some(e) = engine.take_error() {
-            *status = e.to_string();
+            status.error(e.to_string());
         }
         // A screen-line motion (#615) lands where the window's screen rows say; the engine finishes it.
         let fed = match fed {
@@ -2949,7 +2976,7 @@ impl Session {
                     return;
                 }
                 if no_previous_pattern(&cmd) {
-                    *status = E35.into();
+                    status.error(E35);
                     return;
                 }
                 if let Some((first, last)) = ws.span_lines(&cmd) {
@@ -3076,33 +3103,38 @@ impl Session {
         // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
         // has no substitute history); like the current-line `&`, it calls `substitute` directly.
         if matches!(cmd, Command::RepeatSubstituteGlobal) {
-            *status = match &last_substitute {
+            status.give(match &last_substitute {
                 Some((pat, rep, flags)) => {
                     // Recorded as the resolved `:%s` it repeats (RFC-0020); a match is a jump (#1119).
                     let range = ruse_core::SubRange::WholeFile;
                     let ex = substitute_cmd(ws, range, pat, rep, *flags, None);
                     match sub_outcome(run_ex(ex, ws, recorded)) {
                         Ok(out) if out.replacements == 0 => {
-                            format!("E486: pattern not found: {pat}")
+                            Msg::error(format!("E486: pattern not found: {pat}"))
                         }
-                        Ok(out) => crate::app::dispatch::substituted_message(&out),
-                        Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                        Ok(out) => Msg::info(crate::app::dispatch::substituted_message(&out)),
+                        Err(e) => Msg::error(crate::app::dispatch::regex_error_msg(&e)),
                     }
                 }
-                None => "E33: No previous substitute regular expression".to_string(),
-            };
+                None => Msg::error("E33: No previous substitute regular expression"),
+            });
             return;
         }
         // `&` picked by its command id (the palette): the typed `&` with no count.
         if matches!(cmd, Command::RepeatSubstituteLine) {
-            *status = repeat_substitute_lines(ws, recorded, last_substitute.as_ref(), 1);
+            status.give(repeat_substitute_lines(
+                ws,
+                recorded,
+                last_substitute.as_ref(),
+                1,
+            ));
             return;
         }
         // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
         // mutation. Like `*`/`gd`, the engine has no buffer, so the frontend reads the focused
         // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
         if let Some(msg) = info_status(&cmd, ws) {
-            *status = msg;
+            status.give(msg);
             return;
         }
         // `[i`/`]i`/`[I`/`]I` (keyword under cursor): the engine has no buffer, so resolve the
@@ -3122,28 +3154,32 @@ impl Session {
                                 .into_iter()
                                 .map(|l| (l, ruse_core::line_text(bytes, l)))
                                 .collect();
-                        *status = format!("{} line(s) matching \"{keyword}\"", rows.len());
+                        status.echo(format!("{} line(s) matching \"{keyword}\"", rows.len()));
                         *overlay = Some(Overlay::Listing(crate::ui::keyword_lines_picker::open(
                             &rows,
                         )));
                     } else {
-                        *status = match ruse_core::keyword_echo(
-                            &matches,
-                            cursor_line,
-                            above,
-                            count as usize,
-                        ) {
-                            ruse_core::KeywordEcho::Line(l) => ruse_core::line_text(bytes, l),
-                            ruse_core::KeywordEcho::CurrentLine => {
-                                "E387: Match is on current line".into()
-                            }
-                            ruse_core::KeywordEcho::NotFound => {
-                                "E389: Couldn't find pattern".into()
-                            }
-                        };
+                        status.give(
+                            match ruse_core::keyword_echo(
+                                &matches,
+                                cursor_line,
+                                above,
+                                count as usize,
+                            ) {
+                                ruse_core::KeywordEcho::Line(l) => {
+                                    Msg::echo(ruse_core::line_text(bytes, l))
+                                }
+                                ruse_core::KeywordEcho::CurrentLine => {
+                                    Msg::error("E387: Match is on current line")
+                                }
+                                ruse_core::KeywordEcho::NotFound => {
+                                    Msg::error("E389: Couldn't find pattern")
+                                }
+                            },
+                        );
                     }
                 }
-                None => *status = "E349: No identifier under cursor".into(),
+                None => status.error("E349: No identifier under cursor"),
             }
             return;
         }
@@ -3161,14 +3197,14 @@ impl Session {
         // nothing moved); it runs, recorded, so the wanted column resets as nvim's `normal_search` resets it.
         if no_previous_pattern(&cmd) {
             run_cmd(cmd, ws, files, recorded, status, quit);
-            *status = E35.into();
+            status.error(E35);
             return;
         }
         if search_misses(&cmd, ws, status) {
             if matches!(cmd, Command::Search { .. }) {
-                let err = std::mem::take(status);
+                let err = status.take();
                 run_cmd(cmd, ws, files, recorded, status, quit);
-                *status = err;
+                status.restore(err);
             }
             return;
         }
@@ -3185,7 +3221,7 @@ impl Session {
                     Command::GotoFirstMatch(pat)
                 }
                 None => {
-                    *status = "E348: No string under cursor".into();
+                    status.error("E348: No string under cursor");
                     return;
                 }
             }
@@ -3308,7 +3344,7 @@ impl Session {
             // hidden error is still the last error (Vim's `v:errmsg`).
             let (mods, cmd) = crate::input::strip_modifiers(&cmd);
             if mods.filter.is_some() && cmd.trim().is_empty() {
-                self.status = "E476: Invalid command".into();
+                self.status.error("E476: Invalid command");
                 break;
             }
             // `:keeppatterns`, `:keepalt` and `:keepjumps` (#609): put back what the command changed.
@@ -3330,7 +3366,16 @@ impl Session {
             }
             self.ex_filter = mods.filter.clone();
             self.ex_verbose = mods.verbose;
+            // What `:silent` keeps off the screen stays out of `:messages` too (#1235).
+            let hushed = self.status.hush(if mods.silent_errors {
+                Silence::All
+            } else if mods.silent {
+                Silence::Messages
+            } else {
+                Silence::Off
+            });
             self.execute_ex_one(cmd.to_string(), frame);
+            self.status.unhush(hushed);
             self.ex_filter = None;
             self.ex_verbose = false;
             if !jumps_were_kept && self.ws.keep_jumps() {
@@ -3349,12 +3394,12 @@ impl Session {
                 prompt.pending.extend(pieces);
                 return;
             }
-            if mods.silent_errors && is_ex_error(&self.status) {
-                self.silenced_error = Some(std::mem::take(&mut self.status));
-            } else if mods.silent && !is_ex_error(&self.status) {
+            if mods.silent_errors && self.status.is_error() {
+                self.silenced_error = Some(self.status.take().text);
+            } else if mods.silent && !self.status.is_error() {
                 self.status.clear();
             }
-            if self.quit || self.confirm.is_some() || is_ex_error(&self.status) {
+            if self.quit || self.confirm.is_some() || self.status.is_error() {
                 break;
             }
         }
@@ -3476,6 +3521,19 @@ impl Session {
         // The leading range (`.`, `$`, offsets, marks, `/pat/`, `'<,'>` from Visual `:`) resolves to line
         // numbers (`app::ex_range`); one past the buffer is E16 (#1079), a range with no command goes to its
         // line (`:5`, `:$`), and a backwards one asks before it is swapped.
+        // `:[count]messages [clear]` (#1235): its count is no line number, so it is read before the range.
+        if let Some(cmd) = crate::app::messages::parse_messages(&text) {
+            match cmd {
+                Ok(cmd) if cmd.clear => status.history_mut().keep_last(cmd.count.unwrap_or(0)),
+                Ok(cmd) => {
+                    let shown: Vec<&str> = status.history().last(cmd.count).collect();
+                    let shown = shown.join("\n");
+                    status.echo(shown);
+                }
+                Err(e) => status.error(e),
+            }
+            return;
+        }
         let pats = crate::app::ex_range::AddrPatterns {
             search: engine.last_search(),
             substitute: last_substitute.as_ref().map(|(p, _, _)| p.as_str()),
@@ -3493,7 +3551,7 @@ impl Session {
         let text = match resolved.range {
             Ok(ExRange::Line(text)) => text,
             Ok(ExRange::Backwards(swapped)) => {
-                *status = "Backwards range given, OK to swap (y/n)?".into();
+                status.echo("Backwards range given, OK to swap (y/n)?");
                 *swap = Some(SwapPrompt {
                     pending: vec![swapped],
                 });
@@ -3504,7 +3562,7 @@ impl Session {
                 return;
             }
             Err(e) => {
-                *status = e.to_string();
+                status.error(e.to_string());
                 return;
             }
         };
@@ -3549,7 +3607,7 @@ impl Session {
         let ex = match ex {
             Ok(ex) => ex,
             Err(e) => {
-                *status = e.to_string();
+                status.error(e.to_string());
                 return;
             }
         };
@@ -3584,9 +3642,10 @@ impl Session {
                 };
                 let out =
                     crate::app::set_exec::run_set(&line, &mut host, cols as usize, *ex_verbose);
+                status.history_mut().set_cap(ui_opts.message_history());
                 crate::app::ex_more::show_rows(out.rows, status, overlay);
                 if let Some(e) = out.error {
-                    *status = e;
+                    status.error(e);
                 }
             }
             // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
@@ -3612,7 +3671,7 @@ impl Session {
                 match rows {
                     Some(rows) => crate::app::ex_more::show_rows(rows, status, overlay),
                     None => {
-                        *status = format!("unknown config key: {}", key.unwrap_or_default());
+                        status.error(format!("unknown config key: {}", key.unwrap_or_default()));
                     }
                 }
             }
@@ -3621,9 +3680,9 @@ impl Session {
             Ex::Diagnostics => {
                 let diags = lsp.diagnostics_for(ws.focused_buffer());
                 if diags.is_empty() {
-                    *status = "no diagnostics".to_string();
+                    status.echo("no diagnostics");
                 } else {
-                    *status = format!("{} diagnostic(s)", diags.len());
+                    status.echo(format!("{} diagnostic(s)", diags.len()));
                     *overlay = Some(Overlay::Diagnostics(diag_picker::open(diags, snapshot)));
                 }
             }
@@ -3632,30 +3691,30 @@ impl Session {
             Ex::Registers => {
                 let snapshot = ws.register_snapshot();
                 if snapshot.is_empty() {
-                    *status = "no registers set".to_string();
+                    status.echo("no registers set");
                 } else {
-                    *status = format!("{} register(s)", snapshot.len());
+                    status.echo(format!("{} register(s)", snapshot.len()));
                     *overlay = Some(Overlay::Registers(register_picker::open(snapshot)));
                 }
             }
             // `:ascii`/`:as` — the ex synonym of `ga`: print the char-under-cursor's value.
             Ex::Ascii => {
                 let pane = ws.focused();
-                *status = ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor());
+                status.echo(ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor()));
             }
             // `:digraphs` / `:dig`: open the view-only digraph-listing overlay.
             Ex::Digraphs => {
                 let p = crate::ui::digraph_picker::open();
-                *status = format!("{} digraph(s)", p.rows().len());
+                status.echo(format!("{} digraph(s)", p.rows().len()));
                 *overlay = Some(Overlay::Digraphs(p));
             }
             // `:marks` (F-003): open a picker over the set marks; Enter jumps to the selected one.
             Ex::Marks => {
                 let snapshot = ws.marks_snapshot();
                 if snapshot.is_empty() {
-                    *status = "no marks set".to_string();
+                    status.echo("no marks set");
                 } else {
-                    *status = format!("{} mark(s)", snapshot.len());
+                    status.echo(format!("{} mark(s)", snapshot.len()));
                     *overlay = Some(Overlay::Marks(marks_picker::open(
                         snapshot.into_iter().map(|(c, p)| (c, p.0)).collect(),
                         ws.focused().doc.bytes(),
@@ -3686,9 +3745,9 @@ impl Session {
                     ws.changes_snapshot()
                 };
                 if positions.is_empty() {
-                    *status = "empty".to_string();
+                    status.echo("empty");
                 } else {
-                    *status = format!("{} position(s)", positions.len());
+                    status.echo(format!("{} position(s)", positions.len()));
                     *overlay = Some(Overlay::Positions(pos_picker::open(
                         positions.into_iter().map(|p| p.0).collect(),
                         ws.focused().doc.bytes(),
@@ -3709,14 +3768,14 @@ impl Session {
                             ws.focus_buffer(id);
                             terminals.insert(id, term);
                             run_cmd(Command::EnterTerminal, ws, files, recorded, status, quit);
-                            *status = "terminal started (CTRL-\\ CTRL-N to leave)".to_string();
+                            status.echo("terminal started (CTRL-\\ CTRL-N to leave)");
                         }
-                        Err(e) => *status = format!("E: cannot start terminal: {e}"),
+                        Err(e) => status.error(format!("E: cannot start terminal: {e}")),
                     }
                 }
                 #[cfg(not(unix))]
                 {
-                    *status = "terminal is not supported on this platform".to_string();
+                    status.error("terminal is not supported on this platform");
                 }
             }
             // Lang-Arg map maintenance (F-027): the map is engine state.
@@ -3732,7 +3791,7 @@ impl Session {
             // before the command runs, so `:g/pat/s//X/` substitutes `pat` (Vim, #804).
             mut ex @ Ex::Global(_) => {
                 if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
-                    *status = msg.to_string();
+                    status.error(msg.to_string());
                     return;
                 }
                 let Ex::Global(spec) = ex else {
@@ -3751,7 +3810,7 @@ impl Session {
                         _ => false,
                     };
                     if !whole {
-                        *status = "E147: Cannot do :global recursive with a range".into();
+                        status.error("E147: Cannot do :global recursive with a range");
                         return;
                     }
                     let line = ruse_core::pos::line_of(b, ws.focused().view.cursor()) + 1;
@@ -3765,7 +3824,7 @@ impl Session {
                 let marked = match ws.global_marks(range, &spec.pattern, spec.negate) {
                     Ok(marked) => marked,
                     Err(e) => {
-                        *status = crate::app::dispatch::invalid_command_msg(&e);
+                        status.error(crate::app::dispatch::invalid_command_msg(&e));
                         return;
                     }
                 };
@@ -3773,7 +3832,7 @@ impl Session {
                 // nested one says nothing.
                 let Some(&last_marked) = marked.last() else {
                     if !nested {
-                        *status = format!("Pattern not found: {}", spec.pattern);
+                        status.info(format!("Pattern not found: {}", spec.pattern));
                     }
                     return;
                 };
@@ -3794,7 +3853,7 @@ impl Session {
                             engine.set_last_search_pattern(pattern.clone());
                             *search_hl = Some(pattern.clone());
                         }
-                        *status = match result {
+                        match result {
                             // The inner `:s` matched nowhere: no message, and the cursor rests at the start
                             // of the last marked line, where `:g` put it to run the command (nvim v0.12.6).
                             Ok(0) => {
@@ -3803,18 +3862,18 @@ impl Session {
                                     last_marked,
                                 );
                                 place_cursor(ws, recorded, at);
-                                String::new()
+                                status.clear();
                             }
-                            Ok(n) => format!("{n} lines changed"),
-                            Err(e) => crate::app::dispatch::invalid_command_msg(&e),
-                        };
+                            Ok(n) => status.info(format!("{n} lines changed")),
+                            Err(e) => status.error(crate::app::dispatch::invalid_command_msg(&e)),
+                        }
                     }
                     // `:g/pat/p` (#609): show the marked lines; the cursor ends on the last one.
                     crate::input::GlobalPayload::Print(flags) => {
                         let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
                             Ok(keep) => keep,
                             Err(e) => {
-                                *status = regex_error_msg(&e);
+                                status.error(regex_error_msg(&e));
                                 return;
                             }
                         };
@@ -3893,9 +3952,9 @@ impl Session {
                         // buffer's format is applied on save (#860).
                         let clean = persist::encoding::FileFormat::normalize(&raw);
                         let n = read_text(ws, recorded, addr, clean.to_vec(), false);
-                        *status = format!("\"{path}\" {n}L, {}B", raw.len());
+                        status.echo(format!("\"{path}\" {n}L, {}B", raw.len()));
                     }
-                    Err(e) => *status = format!("E484: can't open {path}: {e}"),
+                    Err(e) => status.error(format!("E484: can't open {path}: {e}")),
                 },
                 ReadSource::Command(cmd) => match crate::shell::capture(&cmd) {
                     Ok(out) => {
@@ -3905,9 +3964,9 @@ impl Session {
                         } else {
                             format!("{n} more lines")
                         };
-                        *status = with_shell_failure(&out, lines);
+                        status.info(with_shell_failure(&out, lines));
                     }
-                    Err(e) => *status = e.to_string(),
+                    Err(e) => status.error(e.to_string()),
                 },
             },
             // `:{range}!{cmd}` — FILTER: pipe the range's lines through the shell command and replace
@@ -3930,11 +3989,11 @@ impl Session {
                         } else {
                             format!("{n} lines filtered")
                         };
-                        *status = with_shell_failure(&out, lines);
+                        status.info(with_shell_failure(&out, lines));
                     }
-                    Err(e) => *status = e.to_string(),
+                    Err(e) => status.error(e.to_string()),
                 },
-                None => *status = "E749: empty buffer".to_string(),
+                None => status.error("E749: empty buffer"),
             },
             // `:!{cmd}` — run the command and show its output on the status line; NO buffer change.
             // Multi-line output is collapsed to one status line (a scrolling message pane is a
@@ -3947,19 +4006,19 @@ impl Session {
                     } else {
                         joined
                     };
-                    *status = match out.failure() {
+                    status.echo(match out.failure() {
                         Some(note) => format!("{shown} | {note}"),
                         None => shown,
-                    };
+                    });
                 }
-                Err(e) => *status = e.to_string(),
+                Err(e) => status.error(e.to_string()),
             },
             // `:bd` deletes the focused buffer and drops its `files`/highlighter entries. Guards unsaved
             // changes with E89 unless `!` forces it.
             Ex::BufferDelete { force } => {
                 let id = ws.focused_buffer();
                 if !force && ws.focused().doc.is_modified() {
-                    *status = "E89: No write since last change (add ! to override)".into();
+                    status.error("E89: No write since last change (add ! to override)");
                 } else {
                     ws.remove_buffer(id);
                     // Its changes go with it (`:bd!`), as nvim deletes the swap file (#862).
@@ -3967,7 +4026,7 @@ impl Session {
                         persist::journal::discard(Some(bf.path.as_path()));
                     }
                     highlighters.remove(&id);
-                    *status = format!("buffer {} deleted", id.0);
+                    status.info(format!("buffer {} deleted", id.0));
                 }
             }
             // Bare `:s` / `:s {flags}` / `:&` / `:&&` — repeat the last `:s` against the frontend's
@@ -3975,28 +4034,30 @@ impl Session {
             // KEEPS the stored flags; `flags = Some(f)` REPLACES them (bare `:s`/`:&` = default flags,
             // `:s g` = the given flags). Verified vs nvim v0.12.4.
             Ex::RepeatSubstitute { range, flags } => {
-                *status = match &last_substitute {
+                status.give(match &last_substitute {
                     Some((pat, rep, stored)) => {
                         let use_flags = flags.unwrap_or(*stored);
                         let ex = substitute_cmd(ws, range, pat, rep, use_flags, None);
                         match sub_outcome(run_ex(ex, ws, recorded)) {
-                            Ok(out) if out.lines == 0 && *global_busy => String::new(),
-                            Ok(out) if out.lines == 0 => format!("E486: pattern not found: {pat}"),
+                            Ok(out) if out.lines == 0 && *global_busy => Msg::echo(""),
+                            Ok(out) if out.lines == 0 => {
+                                Msg::error(format!("E486: pattern not found: {pat}"))
+                            }
                             // A `:s/\n//` join on the last line: nothing to join, not an error.
-                            Ok(out) if out.replacements == 0 => String::new(),
-                            Ok(out) => crate::app::dispatch::substituted_message(&out),
-                            Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                            Ok(out) if out.replacements == 0 => Msg::echo(""),
+                            Ok(out) => Msg::info(crate::app::dispatch::substituted_message(&out)),
+                            Err(e) => Msg::error(crate::app::dispatch::regex_error_msg(&e)),
                         }
                     }
-                    None => "E33: No previous substitute regular expression".to_string(),
-                };
+                    None => Msg::error("E33: No previous substitute regular expression"),
+                });
             }
             // `:[range]s/pat/rep/flags` (F-009 #2). An empty pattern reuses the last search (`/`/`*`), as
             // Vim does, and a non-empty one is remembered so `&` can repeat it. It also becomes the last
             // search pattern (Vim's `save_re_pat`): `n` finds it next, and `:g//` or `:s//` reuse it.
             mut ex @ Ex::Substitute(_) => {
                 if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
-                    *status = msg.to_string();
+                    status.error(msg.to_string());
                     return;
                 }
                 let Ex::Substitute(mut spec) = ex else {
@@ -4034,20 +4095,22 @@ impl Session {
                 if spec.count_only {
                     // `n`: REPORT ONLY — count the matches and echo the tally, editing nothing (Vim `:s///n`).
                     // Overrides `c` (like Vim). `substitute_count` borrows `&`, so no edit / undo / cursor move.
-                    *status = match ws.substitute_count(spec.range, &spec.pattern, flags) {
-                        Ok(out) if out.replacements == 0 && *global_busy => String::new(),
-                        Ok(out) if out.replacements == 0 => {
-                            format!("E486: pattern not found: {}", spec.pattern)
-                        }
-                        Ok(out) => match_count_message(out.replacements, out.lines),
-                        Err(e) => crate::app::dispatch::invalid_command_msg(&e),
-                    };
+                    status.give(
+                        match ws.substitute_count(spec.range, &spec.pattern, flags) {
+                            Ok(out) if out.replacements == 0 && *global_busy => Msg::echo(""),
+                            Ok(out) if out.replacements == 0 => {
+                                Msg::error(format!("E486: pattern not found: {}", spec.pattern))
+                            }
+                            Ok(out) => Msg::info(match_count_message(out.replacements, out.lines)),
+                            Err(e) => Msg::error(crate::app::dispatch::invalid_command_msg(&e)),
+                        },
+                    );
                 } else if spec.confirm {
                     // `c`: compute the matches and hand control to the interactive confirm loop (F-009 #2).
                     match ws.substitute_preview(spec.range, &spec.pattern, &spec.replacement, flags)
                     {
                         Ok(subs) if subs.is_empty() => {
-                            *status = format!("E486: pattern not found: {}", spec.pattern);
+                            status.error(format!("E486: pattern not found: {}", spec.pattern));
                         }
                         Ok(subs) => {
                             // The confirm loop records the resolved `:s` with the answers when it ends;
@@ -4063,7 +4126,7 @@ impl Session {
                             let from = ws.focused().view.cursor().0;
                             *confirm = Some(Confirm::new(subs, ex, from));
                         }
-                        Err(e) => *status = crate::app::dispatch::invalid_command_msg(&e),
+                        Err(e) => status.error(crate::app::dispatch::invalid_command_msg(&e)),
                     }
                 } else {
                     // Recorded resolved (RFC-0020); a `:s` that matched is a jump (#940).
@@ -4075,14 +4138,14 @@ impl Session {
                         flags,
                         None,
                     );
-                    *status = match sub_outcome(run_ex(ex, ws, recorded)) {
+                    status.give(match sub_outcome(run_ex(ex, ws, recorded)) {
                         // Nor inside a `:g`, which says nothing for the lines `:s` misses (Vim's `do_sub`).
-                        Ok(out) if out.lines == 0 && (spec.quiet || *global_busy) => String::new(),
+                        Ok(out) if out.lines == 0 && (spec.quiet || *global_busy) => Msg::echo(""),
                         Ok(out) if out.lines == 0 => {
-                            format!("E486: pattern not found: {}", spec.pattern)
+                            Msg::error(format!("E486: pattern not found: {}", spec.pattern))
                         }
                         // A `:s/\n//` join on the last line: nothing to join, not an error.
-                        Ok(out) if out.replacements == 0 => String::new(),
+                        Ok(out) if out.replacements == 0 => Msg::echo(""),
                         Ok(out) => match spec.print {
                             // `p`/`#`/`l`: show the last substituted line, where the cursor is.
                             Some(pflags) => {
@@ -4098,12 +4161,12 @@ impl Session {
                                     &|_| true,
                                 )
                                 .pop()
-                                .unwrap_or_default()
+                                .map_or_else(|| Msg::echo(""), Msg::echo)
                             }
-                            None => crate::app::dispatch::substituted_message(&out),
+                            None => Msg::info(crate::app::dispatch::substituted_message(&out)),
                         },
-                        Err(e) => crate::app::dispatch::invalid_command_msg(&e),
-                    };
+                        Err(e) => Msg::error(crate::app::dispatch::invalid_command_msg(&e)),
+                    });
                 }
             }
             // The `:w` family (#610). `:wq`/`:x` close the window only after a successful write (#842): no
@@ -4172,24 +4235,24 @@ impl Session {
             }
             Ex::Hide | Ex::Close => {
                 if !ws.close_focused() {
-                    *status = "E444: Cannot close last window".into();
+                    status.error("E444: Cannot close last window");
                 }
             }
             // F-007 window commands: split the focused window onto the same buffer, or close it.
             Ex::Split => {
                 ws.split(SplitDir::Horizontal);
-                *status = "window split".into();
+                status.echo("window split");
             }
             Ex::VSplit => {
                 ws.split(SplitDir::Vertical);
-                *status = "window vsplit".into();
+                status.echo("window vsplit");
             }
             Ex::Only => {
-                *status = match ws.only() {
+                status.echo(match ws.only() {
                     0 => "already one window".into(),
                     1 => "1 window closed".into(),
                     n => format!("{n} windows closed"),
-                };
+                });
             }
             Ex::SaveTrace(p) => {
                 let trace = Trace::record_with_options(
@@ -4208,13 +4271,11 @@ impl Session {
                     std::fs::write(&p, trace.to_text())
                         .map_err(|e| format!("trace save failed: {e}"))
                 }) {
-                    Ok(()) => {
-                        *status = format!(
-                            "trace saved: {p} ({} commands; includes registers and clipboard text)",
-                            recorded.len()
-                        )
-                    }
-                    Err(e) => *status = e,
+                    Ok(()) => status.info(format!(
+                        "trace saved: {p} ({} commands; includes registers and clipboard text)",
+                        recorded.len()
+                    )),
+                    Err(e) => status.error(e),
                 }
             }
             // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
@@ -4222,30 +4283,32 @@ impl Session {
             Ex::Delete(range, reg, flags) => {
                 let (first, last) = ws.resolve_range(range);
                 let n = lines_outcome(&run_ex(ExCmd::Delete { first, last, reg }, ws, recorded));
-                *status = match flags {
+                match flags {
                     // `:dl`/`:dp` (#1241): show the new current line, as `ex_may_print` does.
                     Some(flags) => {
                         let pane = ws.focused();
                         let b = pane.doc.bytes();
                         let line = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
                         let tab_width = pane.view.tab_width();
-                        crate::app::ex_print::rows(b, line, line, flags, tab_width, &|_| true)
-                            .pop()
-                            .unwrap_or_default()
+                        status.echo(
+                            crate::app::ex_print::rows(b, line, line, flags, tab_width, &|_| true)
+                                .pop()
+                                .unwrap_or_default(),
+                        );
                     }
-                    None if n == 1 => "1 line deleted".into(),
-                    None => format!("{n} lines deleted"),
-                };
+                    None if n == 1 => status.info("1 line deleted"),
+                    None => status.info(format!("{n} lines deleted")),
+                }
             }
             // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
             Ex::Yank(range, reg) => {
                 let (first, last) = ws.resolve_range(range);
                 let n = lines_outcome(&run_ex(ExCmd::Yank { first, last, reg }, ws, recorded));
-                *status = if n == 1 {
+                status.info(if n == 1 {
                     "1 line yanked".into()
                 } else {
                     format!("{n} lines yanked")
-                };
+                });
             }
             // `:[range]j[oin][!]` — join the range's lines into one, reusing the core `J`/`gJ` join (no range =
             // the current line, which joins with the next). `bang` is the raw `gJ` form.
@@ -4257,15 +4320,15 @@ impl Session {
                     no_space: bang,
                 };
                 let n = lines_outcome(&run_ex(ex, ws, recorded));
-                *status = if n <= 1 {
+                status.info(if n <= 1 {
                     String::new()
                 } else {
                     format!("{n} lines joined")
-                };
+                });
             }
             // `:[range]m {addr}` — move the range's lines to after the destination line.
             Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, dest) => {
-                *status = "E16: Invalid range".into();
+                status.error("E16: Invalid range");
             }
             Ex::Move(range, dest) => {
                 let ((first, last), dest) = (ws.resolve_range(range), ws.resolve_addr(dest));
@@ -4275,12 +4338,12 @@ impl Session {
                         _ => None,
                     }
                 });
-                *status = match moved {
-                    Some(0) => String::new(), // moved onto itself (`:2m2`): nothing to report
-                    Some(1) => "1 line moved".into(),
-                    Some(n) => format!("{n} lines moved"),
-                    None => "E134: Cannot move a range of lines into itself".into(),
-                };
+                match moved {
+                    Some(0) => status.clear(), // moved onto itself (`:2m2`): nothing to report
+                    Some(1) => status.info("1 line moved"),
+                    Some(n) => status.info(format!("{n} lines moved")),
+                    None => status.error("E134: Cannot move a range of lines into itself"),
+                }
             }
             // `:[range]t {addr}` / `:copy` — copy the range's lines to after the destination line.
             Ex::Copy(range, dest) => {
@@ -4291,11 +4354,11 @@ impl Session {
                         _ => None,
                     }
                 });
-                *status = match copied {
-                    Some(1) => "1 line copied".into(),
-                    Some(n) => format!("{n} lines copied"),
-                    None => "E486: invalid copy".into(),
-                };
+                match copied {
+                    Some(1) => status.info("1 line copied"),
+                    Some(n) => status.info(format!("{n} lines copied")),
+                    None => status.error("E486: invalid copy"),
+                }
             }
             // `:[range]>` / `:[range]<` — shift the range's lines one indent level per repeated verb char,
             // reusing the core `>>`/`<<` shift (no range = the current line).
@@ -4312,11 +4375,11 @@ impl Session {
                     levels: levels.min(ruse_core::MAX_SHIFT_LEVELS),
                 };
                 let n = lines_outcome(&run_ex(ex, ws, recorded));
-                *status = if n == 1 {
+                status.info(if n == 1 {
                     String::new()
                 } else {
                     format!("{n} lines {}ed 1 time", if left { '<' } else { '>' })
-                };
+                });
             }
             // `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed
             // line (a charwise register is still put as whole lines — the linewise-forcing rule).
@@ -4337,25 +4400,25 @@ impl Session {
                 let n = ws.resolve_addr(addr).map_or(0, |dest| {
                     lines_outcome(&run_ex(ExCmd::Put { dest, reg }, ws, recorded))
                 });
-                *status = if n == 1 {
-                    "1 more line".into()
+                if n == 1 {
+                    status.info("1 more line");
                 } else if n > 1 {
-                    format!("{n} more lines")
+                    status.info(format!("{n} more lines"));
                 } else if !matches!(reg, Some('+' | '*')) {
                     // An empty register: `E353`, with the cursor already on the addressed line (nvim's
                     // `ex_put` moves it there before it reads the register).
                     if let Some(line) = target {
                         goto_line(line.max(1), ws, files, recorded, status, quit);
                     }
-                    format!("E353: Nothing in register {}", reg.unwrap_or('"'))
+                    status.error(format!("E353: Nothing in register {}", reg.unwrap_or('"')));
                 } else {
-                    String::new()
-                };
+                    status.clear();
+                }
             }
             // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
             mut ex @ Ex::Sort(..) => {
                 if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
-                    *status = msg.to_string();
+                    status.error(msg.to_string());
                     return;
                 }
                 let Ex::Sort(range, spec) = ex else {
@@ -4371,28 +4434,28 @@ impl Session {
                     ExOutcome::Failed(e) => Err(e),
                     out => Ok(lines_outcome(&out)),
                 };
-                *status = match sorted {
-                    Ok(0) => "sorted".into(),
-                    Ok(removed) => format!("sorted, {removed} fewer lines"),
+                match sorted {
+                    Ok(0) => status.echo("sorted"),
+                    Ok(removed) => status.info(format!("sorted, {removed} fewer lines")),
                     // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
-                    Err(e) => regex_error_msg(&e),
-                };
+                    Err(e) => status.error(regex_error_msg(&e)),
+                }
             }
             // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
             // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
             Ex::Enew => {
                 let id = ws.add_buffer(Vec::new(), None);
                 ws.focus_buffer(id);
-                *status = format!("[No Name] (buffer {})", id.0);
+                status.echo(format!("[No Name] (buffer {})", id.0));
             }
-            Ex::Buffers => *status = buffer_list_line(ws),
+            Ex::Buffers => status.echo(buffer_list_line(ws)),
             Ex::BufferNext => {
                 ws.cycle_buffer(true);
-                *status = focused_buffer_label(ws);
+                status.echo(focused_buffer_label(ws));
             }
             Ex::BufferPrev => {
                 ws.cycle_buffer(false);
-                *status = focused_buffer_label(ws);
+                status.echo(focused_buffer_label(ws));
             }
             Ex::Buffer(BufTarget::Alternate)
                 if crate::app::ex_more::AltFile::current(alt_file, ws).is_some() =>
@@ -4416,9 +4479,9 @@ impl Session {
                     BufTarget::Alternate => ws.alternate(),
                 };
                 match id {
-                    Some(id) if ws.focus_buffer(id) => *status = focused_buffer_label(ws),
-                    Some(id) => *status = format!("E86: buffer {} does not exist", id.0),
-                    None => *status = "E23: no alternate buffer".into(),
+                    Some(id) if ws.focus_buffer(id) => status.echo(focused_buffer_label(ws)),
+                    Some(id) => status.error(format!("E86: buffer {} does not exist", id.0)),
+                    None => status.error("E23: no alternate buffer"),
                 }
             }
             // `:p`, `:l`, `:nu`, `:#` (#609): the range's lines in the message area, filtered by a `:filter`;
@@ -4427,7 +4490,7 @@ impl Session {
                 let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
                     Ok(keep) => keep,
                     Err(e) => {
-                        *status = regex_error_msg(&e);
+                        status.error(regex_error_msg(&e));
                         return;
                     }
                 };
@@ -4450,7 +4513,7 @@ impl Session {
                 let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
                     Ok(keep) => keep,
                     Err(e) => {
-                        *status = regex_error_msg(&e);
+                        status.error(regex_error_msg(&e));
                         return;
                     }
                 };
@@ -4512,7 +4575,7 @@ impl Session {
                     Some(r) => crate::app::dispatch::resolve_normal_range(ws, r).1,
                     None => crate::app::dispatch::line_count(ws.focused().doc.bytes()),
                 };
-                *status = n.to_string();
+                status.info(n.to_string());
             }
             // `:retab` (#609).
             Ex::Retab {
@@ -4533,10 +4596,10 @@ impl Session {
             Ex::StartInsert { kind, bang } => *pending_insert = Some(Some((kind, bang))),
             Ex::StopInsert => *pending_insert = Some(None),
             // `:pwd` / `:cd` (#610). Buffer files keep pointing at the same files across a `:cd`.
-            Ex::Pwd => {
-                *status = std::env::current_dir()
-                    .map_or_else(|e| e.to_string(), |d| d.display().to_string());
-            }
+            Ex::Pwd => match std::env::current_dir() {
+                Ok(d) => status.info(d.display().to_string()),
+                Err(e) => status.error(e.to_string()),
+            },
             Ex::Cd(dir) => {
                 let dir = match dir
                     .map(|d| if d == "-" { Ok(d) } else { expand(&d) })
@@ -4544,7 +4607,7 @@ impl Session {
                 {
                     Ok(dir) => dir,
                     Err(e) => {
-                        *status = e.to_string();
+                        status.error(e.to_string());
                         return;
                     }
                 };
@@ -4553,10 +4616,10 @@ impl Session {
                         let shown = dir.as_deref().unwrap_or("~");
                         match crate::app::ex_more::change_dir(&target, shown, ws, files) {
                             Ok(old) => *prev_dir = Some(old),
-                            Err(e) => *status = e.to_string(),
+                            Err(e) => status.error(e.to_string()),
                         }
                     }
-                    Err(e) => *status = e.to_string(),
+                    Err(e) => status.error(e.to_string()),
                 }
             }
             // `:file` (#610): show the file information, rename the buffer, or remove its name. The old name
@@ -4566,7 +4629,9 @@ impl Session {
                 let old = files.get(&id).map(|bf| bf.path.display().to_string());
                 match cmd {
                     crate::input::FileCmd::Info => {
-                        *status = info_status(&Command::FileInfo, ws).unwrap_or_default();
+                        if let Some(msg) = info_status(&Command::FileInfo, ws) {
+                            status.give(msg);
+                        }
                     }
                     crate::input::FileCmd::Rename(name) => match expand(&name) {
                         Ok(name) => {
@@ -4583,7 +4648,7 @@ impl Session {
                                 *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
                             }
                         }
-                        Err(e) => *status = e.to_string(),
+                        Err(e) => status.error(e.to_string()),
                     },
                     crate::input::FileCmd::Clear => {
                         files.remove(&id);
@@ -4615,7 +4680,7 @@ impl Session {
                                 .map(crate::app::file_cmds::plus_cmd_line);
                         }
                     }
-                    None => *status = format!("E345: Can't find file \"{name}\" in path"),
+                    None => status.error(format!("E345: Can't find file \"{name}\" in path")),
                 }
             }
             // `:drop {file}` (#610): go to a window that shows the file, or edit it here.
@@ -4638,18 +4703,18 @@ impl Session {
                         .map(crate::app::file_cmds::plus_cmd_line);
                 }
             }
-            Ex::Fail(msg) => *status = msg,
-            Ex::Unknown(s) => *status = format!("E492: Not an editor command: {s}"),
+            Ex::Fail(msg) => status.error(msg),
+            Ex::Unknown(s) => status.error(format!("E492: Not an editor command: {s}")),
         }
         if let Some(grant) = trust_change {
             self.change_config_trust(grant);
         }
         if let Some(line) = then_run {
-            let opened = std::mem::take(&mut self.status);
+            let opened = self.status.take();
             self.execute_ex_one(line, frame);
             // The open's own report stays unless the command said something (an error, a count).
             if self.status.is_empty() {
-                self.status = opened;
+                self.status.restore(opened);
             }
         }
     }
@@ -4738,9 +4803,9 @@ impl Session {
             return true;
         }
         let f = self.nested_frame(frame);
-        let status_before = self.status.clone();
+        let status_before = self.status.serial();
         self.route(key, true, &f);
-        if self.failed_since(&status_before) {
+        if self.failed_since(status_before) {
             self.macros.flush_replay();
             return true;
         }
@@ -4760,9 +4825,9 @@ impl Session {
                 break;
             };
             let f = self.nested_frame(frame);
-            let status_before = self.status.clone();
+            let status_before = self.status.serial();
             self.route_as(k, true, &f);
-            if self.failed_since(&status_before) {
+            if self.failed_since(status_before) {
                 self.macros.flush_replay();
                 return true;
             }
@@ -4784,8 +4849,8 @@ impl Session {
     /// Whether the key just routed failed (Vim beeps or gives an error), clearing the beep: nvim's
     /// `beep_flush`/`emsg` then flush the keys that were not typed (`flush_buffers(FLUSH_MINIMAL)`) — the rest
     /// of a macro replay, of a `:normal` payload, of a `:g` pass. Typed keys go on (#1085).
-    fn failed_since(&mut self, status_before: &str) -> bool {
-        let error = self.status != status_before && is_ex_error(&self.status);
+    fn failed_since(&mut self, status_before: u64) -> bool {
+        let error = self.status.serial() != status_before && self.status.is_error();
         self.ws.take_beep() || error
     }
 
@@ -4829,7 +4894,7 @@ impl Session {
     /// were not typed).
     fn as_normal(&mut self, kind: GroupKind, body: impl FnOnce(&mut Session)) {
         if self.normal_depth >= MAX_NORMAL_DEPTH {
-            self.status = "E192: Recursive use of :normal too deep".into();
+            self.status.error("E192: Recursive use of :normal too deep");
             return;
         }
         self.normal_depth += 1;
@@ -4949,7 +5014,7 @@ impl Session {
             s.normal_pass(&events, frame);
             true
         });
-        self.status = format!("{} lines changed", marks.len());
+        self.status.info(format!("{} lines changed", marks.len()));
     }
 
     /// Execute `:[range]g/pat/{cmd}` for any command but the ones core runs in one pass (#1245): `cmd`, `|`
@@ -4961,29 +5026,34 @@ impl Session {
         let pieces = crate::input::split_bar(cmd);
         let lines = |s: &Session| crate::app::dispatch::line_count(s.ws.focused().doc.bytes());
         let before = lines(self);
-        let mut last = String::new();
+        let mut last = None;
         self.over_global_marks(marks, |s| {
             s.run_ex_pieces(pieces.clone(), frame);
             if !s.status.is_empty() {
-                last.clone_from(&s.status);
+                last = Some(s.status.shown());
             }
-            !(is_ex_error(&s.status) || s.swap.is_some() || s.confirm.is_some())
+            !(s.status.is_error() || s.swap.is_some() || s.confirm.is_some())
         });
-        if is_ex_error(&self.status) || self.swap.is_some() || self.confirm.is_some() {
+        if self.status.is_error() || self.swap.is_some() || self.confirm.is_some() {
             return;
         }
         // Vim reports the lines the commands added or removed (`msgmore`, past 'report' = 2), else the
         // message of the last command that left one.
         let after = lines(self);
-        self.status = match after.cmp(&before) {
+        // The commands ran with their reports kept out of the history (as nvim's `global_busy` holds back
+        // `msgmore`); the one report the `:g` gives is kept.
+        match after.cmp(&before) {
             std::cmp::Ordering::Less if before - after > 2 => {
-                format!("{} fewer lines", before - after)
+                self.status.info(format!("{} fewer lines", before - after));
             }
             std::cmp::Ordering::Greater if after - before > 2 => {
-                format!("{} more lines", after - before)
+                self.status.info(format!("{} more lines", after - before));
             }
-            _ => last,
-        };
+            _ => match last {
+                Some(msg) => self.status.give(msg),
+                None => self.status.clear(),
+            },
+        }
     }
 
     /// PASS 2 of a `:g` (`:help :g`): run `each` once per line PASS 1 marked (`marks`, 1-based) that still
@@ -5028,6 +5098,9 @@ impl Session {
         // batches of about the square root of the anchor count.
         let batch = anchors.len().isqrt().max(32) * 2;
         let mut visited: Vec<ruse_core::AnchorId> = Vec::with_capacity(batch);
+        // The commands' own reports stay out of `:messages`; the `:g` gives its one report after (nvim's
+        // `global_busy` holds back `msgmore`). Errors are kept.
+        let hushed = self.status.hush(Silence::Messages);
         self.as_normal(GroupKind::Global, |s| {
             for &(start, end, empty_buffer) in &anchors {
                 if s.quit || s.ws.focused_buffer() != doc_id || ruse_core::interrupt::interrupted()
@@ -5056,6 +5129,7 @@ impl Session {
             }
         });
         self.global_busy = busy;
+        self.status.unhush(hushed);
         if let Some(doc) = self.ws.document_mut(doc_id) {
             doc.remove_anchors(anchors.into_iter().flat_map(|(start, end, _)| [start, end]));
         }
@@ -5094,7 +5168,7 @@ fn time_travel(
     ws: &mut Workspace,
     files: &Files,
     recorded: &mut Vec<Command>,
-    status: &mut String,
+    status: &mut Status,
     quit: &mut bool,
 ) {
     let cmd = if older {
@@ -5110,7 +5184,7 @@ fn time_travel(
         }
     }
     let dir = if older { "earlier" } else { "later" };
-    *status = format!("{n} change(s) {dir}");
+    status.info(format!("{n} change(s) {dir}"));
 }
 
 /// The offsets of every `\n` in `b`, in order.
@@ -5180,7 +5254,7 @@ fn sync_journals(
     files: &Files,
     journal_writers: &mut HashMap<DocumentId, persist::journal::Writer>,
     journal_failed: &mut HashSet<DocumentId>,
-    status: &mut String,
+    status: &mut Status,
 ) {
     let now = std::time::Instant::now();
     for (id, w) in journal_writers.iter_mut() {
@@ -5204,7 +5278,7 @@ fn journal_outcome(
     path: &std::path::Path,
     journal: &std::path::Path,
     failed: &mut HashSet<DocumentId>,
-    status: &mut String,
+    status: &mut Status,
 ) {
     match r {
         Ok(()) => {
@@ -5213,21 +5287,14 @@ fn journal_outcome(
         Err(e) => {
             if failed.insert(id) {
                 tracing::warn!(event = "journal.failed", path = %path.display(), error = %e);
-                *status = format!(
+                status.error(format!(
                     "E303: unable to write the recovery journal for \"{}\": {e} ({})",
                     path.display(),
                     journal.display()
-                );
+                ));
             }
         }
     }
-}
-
-fn is_ex_error(status: &str) -> bool {
-    let digits = status
-        .strip_prefix('E')
-        .map(|r| r.bytes().take_while(u8::is_ascii_digit).count());
-    matches!(digits, Some(n) if n > 0 && status[1 + n..].starts_with(':'))
 }
 
 /// `read_only_mode` is `ruse -R` (#1211).
@@ -5533,7 +5600,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
                 &s.ws,
                 cmd_line.map(|(pfx, t)| (pfx, t, cmd_caret)),
                 &cmd_menu,
-                &s.status,
+                s.status.text(),
                 spans,
                 virt_lines,
                 rects,
@@ -5554,7 +5621,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
                 &s.pane_idx,
                 s.ui_opts.showmode,
                 &flags,
-                &mut s.hit_enter,
+                s.status.serial(),
+                &mut s.pager,
             )?;
             // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
             // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).
@@ -5607,7 +5675,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
                 }
             }
         };
-        if raw_key.kind != KeyEventKind::Release && s.answer_hit_enter(raw_key) {
+        if raw_key.kind != KeyEventKind::Release && s.answer_prompt(raw_key) {
             continue;
         }
         s.on_key(raw_key, from_replay, &frame);
@@ -5641,7 +5709,7 @@ fn note_word_search(
     ws: &Workspace,
     engine: &mut InputEngine,
     search_hl: &mut Option<String>,
-    status: &mut String,
+    status: &mut Status,
 ) -> bool {
     let Command::SearchWordUnder {
         forward,
@@ -5658,7 +5726,7 @@ fn note_word_search(
             true
         }
         None => {
-            *status = "E348: No string under cursor".into();
+            status.error("E348: No string under cursor");
             false
         }
     }
@@ -5678,7 +5746,7 @@ fn no_previous_pattern(cmd: &Command) -> bool {
 /// Whether `cmd` is a search whose pattern matches nowhere in the focused buffer; if so the status gets
 /// Vim's `E486` (`:help E486`). The buffer-wide test is the `:g` marking rule, so it agrees with `:g` on
 /// what matches; a pattern that can span a line break (`\n`, `\_x`) is left to the search itself.
-fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut String) -> bool {
+fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut Status) -> bool {
     let pattern = match cmd {
         Command::Search { pattern, .. }
         | Command::SearchNext(pattern)
@@ -5690,12 +5758,12 @@ fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut String) -> bool
     }
     match ws.global_marks(ruse_core::SubRange::WholeFile, pattern, false) {
         Ok(lines) if lines.is_empty() => {
-            *status = format!("E486: pattern not found: {pattern}");
+            status.error(format!("E486: pattern not found: {pattern}"));
             true
         }
         // A malformed pattern (`/\(`, `/a\{`) fails with the pattern reader's error, and nothing runs (#1087).
         Err(e @ ruse_core::RegexError::Syntax(_)) => {
-            *status = regex_error_msg(&e);
+            status.error(regex_error_msg(&e));
             true
         }
         _ => false,
@@ -5707,36 +5775,43 @@ fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut String) -> bool
 /// focused buffer, or `None` for any other command. These print only — the buffer is never mutated — so the
 /// run loop just sets `status` and skips dispatch. Splitting this out keeps the whole
 /// keystroke→Command→message path unit-testable without a session.
-fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
+/// `ga` is not kept in `:messages` and `CTRL-G` is (nvim v0.12.6); `g8` and `g CTRL-G` follow them.
+fn info_status(cmd: &Command, ws: &Workspace) -> Option<Msg> {
     match cmd {
         Command::AsciiInfo => {
             let pane = ws.focused();
-            Some(ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor()))
+            Some(Msg::echo(ruse_core::ascii_info(
+                pane.doc.bytes(),
+                pane.view.cursor(),
+            )))
         }
         Command::Utf8Info => {
             let pane = ws.focused();
-            Some(ruse_core::utf8_info(pane.doc.bytes(), pane.view.cursor()))
+            Some(Msg::echo(ruse_core::utf8_info(
+                pane.doc.bytes(),
+                pane.view.cursor(),
+            )))
         }
         Command::FileInfo => {
             let id = ws.focused_buffer();
             let name = ws.buffer_name(id);
             let pane = ws.focused();
-            Some(ruse_core::file_info(
+            Some(Msg::info(ruse_core::file_info(
                 name,
                 pane.doc.is_modified(),
                 pane.doc.bytes(),
                 pane.view.cursor(),
-            ))
+            )))
         }
         Command::CursorInfo => {
             let pane = ws.focused();
             // The `Col` vcol uses the View's `'tabstop'` (ruse's default is 4, not nvim's 8) — the same width
             // the renderer paints tabs at, so it reflects the on-screen layout the user actually sees.
-            Some(ruse_core::cursor_pos_info(
+            Some(Msg::info(ruse_core::cursor_pos_info(
                 pane.doc.bytes(),
                 pane.view.cursor(),
                 pane.view.tab_width(),
-            ))
+            )))
         }
         _ => None,
     }
@@ -5848,7 +5923,7 @@ fn dispatch_window(
     count: u32,
     ws: &mut Workspace,
     quit: &mut bool,
-    status: &mut String,
+    status: &mut Status,
 ) {
     // `{count}C-w w` / `{count}C-w W` go to window `count`, the last one when there are fewer (nvim 0.12.6:
     // `9<C-w>w` with three windows lands in window 3); without a count they step to the next / previous.
@@ -5870,7 +5945,7 @@ fn dispatch_window(
         }
         KeyCode::Char('c') => {
             if !ws.close_focused() {
-                *status = "E444: Cannot close last window".into();
+                status.error("E444: Cannot close last window");
             }
         }
         // `C-w q` is `:quit`: close the focused window (its buffer stays loaded, hidden, as with nvim's
@@ -5892,7 +5967,7 @@ mod journal_outcome_tests {
         let doc = std::path::Path::new("f.txt");
         let journal = std::path::Path::new("/s/ruse/journal/f.txt.01.rj");
         let mut failed = HashSet::new();
-        let mut status = String::new();
+        let mut status = crate::app::messages::Status::default();
         let fail = || Err(io::Error::from(io::ErrorKind::PermissionDenied));
         journal_outcome(fail(), id, doc, journal, &mut failed, &mut status);
         assert!(failed.contains(&id));
@@ -5922,7 +5997,9 @@ mod info_tests {
         let mut ws = Workspace::new(&b"Hi"[..]);
         ws.place_focused_cursor(ruse_core::BytePos(1)); // on 'i'
         assert_eq!(
-            info_status(&Command::AsciiInfo, &ws).as_deref(),
+            info_status(&Command::AsciiInfo, &ws)
+                .map(|m| m.text)
+                .as_deref(),
             Some("<i>  105,  Hex 69,  Octal 151")
         );
     }
@@ -5933,7 +6010,9 @@ mod info_tests {
         ws.set_focused_buffer_name("f.txt");
         ws.place_focused_cursor(ruse_core::BytePos(0)); // line 1 of 3 -> 33%
         assert_eq!(
-            info_status(&Command::FileInfo, &ws).as_deref(),
+            info_status(&Command::FileInfo, &ws)
+                .map(|m| m.text)
+                .as_deref(),
             Some("\"f.txt\" 3 lines --33%--")
         );
     }
@@ -5943,7 +6022,9 @@ mod info_tests {
         let mut ws = Workspace::new(&b"x\n"[..]);
         ws.place_focused_cursor(ruse_core::BytePos(0));
         assert_eq!(
-            info_status(&Command::FileInfo, &ws).as_deref(),
+            info_status(&Command::FileInfo, &ws)
+                .map(|m| m.text)
+                .as_deref(),
             Some("\"[No Name]\" 1 line --100%--")
         );
     }
@@ -5953,7 +6034,9 @@ mod info_tests {
         let mut ws = Workspace::new(&b"foo bar baz\n"[..]);
         ws.place_focused_cursor(ruse_core::BytePos(4)); // on 'b' of "bar" (byte 4, word 2)
         assert_eq!(
-            info_status(&Command::CursorInfo, &ws).as_deref(),
+            info_status(&Command::CursorInfo, &ws)
+                .map(|m| m.text)
+                .as_deref(),
             Some("Col 5 of 11; Line 1 of 1; Word 2 of 3; Byte 5 of 12")
         );
     }

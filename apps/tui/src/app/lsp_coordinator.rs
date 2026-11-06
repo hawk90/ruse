@@ -18,6 +18,7 @@ use ruse_core::{
 use serde_json::Value;
 
 use crate::app::dispatch::{is_ctrl, open_file_into_buffer, Files, Highlighters};
+use crate::app::messages::Status;
 use crate::input::Ex;
 use crate::lsp::{self, Diag, LspClient};
 
@@ -155,8 +156,8 @@ impl LspCoordinator {
 
     /// `:trust` — the user trusts this workspace for the session: language servers may start (the next
     /// `sync_and_poll` spawns the focused buffer's server). Not persisted (D-058).
-    pub(crate) fn grant_trust(&mut self, status: &mut String) {
-        *status = if self.trusted {
+    pub(crate) fn grant_trust(&mut self, status: &mut Status) {
+        status.info(if self.trusted {
             "workspace already trusted".to_string()
         } else {
             self.trusted = true;
@@ -164,7 +165,7 @@ impl LspCoordinator {
                 "workspace trusted for this session: language servers enabled ({})",
                 self.cwd.display()
             )
-        };
+        });
     }
 
     /// `:untrust` — take back the session's trust: no language server starts from now on (one already
@@ -278,7 +279,7 @@ impl LspCoordinator {
         files: &Files,
         revision: Revision,
         snapshot: &[u8],
-        status: &mut String,
+        status: &mut Status,
     ) {
         let id = ws.focused_buffer();
         let focused_uri = if let Some(bf) = files.get(&id) {
@@ -292,7 +293,7 @@ impl LspCoordinator {
                     if !self.trusted {
                         if !self.trust_notice_shown {
                             self.trust_notice_shown = true;
-                            *status = UNTRUSTED_NOTICE.to_string();
+                            status.warn(UNTRUSTED_NOTICE);
                         }
                         return None;
                     }
@@ -381,9 +382,9 @@ impl LspCoordinator {
                     Some(LspKind::References) => {
                         let locs = lsp::protocol::parse_locations(&result);
                         if locs.is_empty() {
-                            *status = "no references".to_string();
+                            status.echo("no references");
                         } else {
-                            *status = format!("{} reference(s)", locs.len());
+                            status.echo(format!("{} reference(s)", locs.len()));
                             self.pending_refs = Some(locs);
                         }
                     }
@@ -391,9 +392,9 @@ impl LspCoordinator {
                     Some(LspKind::CodeAction) => {
                         let actions = lsp::protocol::parse_code_actions(&result);
                         if actions.is_empty() {
-                            *status = "no code actions".to_string();
+                            status.echo("no code actions");
                         } else {
-                            *status = format!("{} code action(s)", actions.len());
+                            status.echo(format!("{} code action(s)", actions.len()));
                             self.pending_actions = Some(actions);
                         }
                     }
@@ -479,7 +480,7 @@ impl LspCoordinator {
         files: &mut Files,
         highlighters: &mut Highlighters,
         snapshot: &[u8],
-        status: &mut String,
+        status: &mut Status,
         rec: Record<'_>,
     ) {
         // Goto: same file → move the cursor; another file → open it, then move.
@@ -501,20 +502,22 @@ impl LspCoordinator {
                     let bytes = ws.focused().doc.bytes().to_vec();
                     ws.place_focused_cursor(BytePos(lsp::model::lsp_pos_to_byte(&bytes, l, c)));
                 } else {
-                    *status = opened.status;
+                    status.give(opened.status);
                 }
             }
         }
         // Format edits: one Lsp-origin undo group.
         if !self.pending_edits.is_empty() {
             apply_lsp_edits(ws, rec, std::mem::take(&mut self.pending_edits));
-            *status = "formatted".to_string();
+            status.info("formatted");
         }
         // Rename across every affected file (the multi-file WorkspaceEdit apply, shared with code actions).
         if !self.pending_rename.is_empty() {
             let edit = std::mem::take(&mut self.pending_rename);
             let (files_n, edits_n) = apply_workspace_edit(edit, ws, files, highlighters, rec);
-            *status = format!("renamed: {edits_n} edit(s) across {files_n} file(s)");
+            status.info(format!(
+                "renamed: {edits_n} edit(s) across {files_n} file(s)"
+            ));
         }
         // Server-initiated `workspace/applyEdit` (from an executeCommand): apply the TEXT edits as one
         // Lsp-origin transaction per file, then reply `{applied}` to the (blocked) server request. Trust:
@@ -523,7 +526,7 @@ impl LspCoordinator {
             let applied = !edit.is_empty();
             if applied {
                 apply_workspace_edit(edit, ws, files, highlighters, rec);
-                *status = "applied server edit".to_string();
+                status.info("applied server edit");
             }
             if let Some(client) = self.lsp.get_mut(&key) {
                 client.respond(id, serde_json::json!({ "applied": applied }));
@@ -569,13 +572,15 @@ impl LspCoordinator {
         ws: &mut Workspace,
         files: &mut Files,
         highlighters: &mut Highlighters,
-        status: &mut String,
+        status: &mut Status,
         rec: Record<'_>,
     ) {
         if !action.edit.is_empty() {
             let (files_n, edits_n) =
                 apply_workspace_edit(action.edit.clone(), ws, files, highlighters, rec);
-            *status = format!("applied: {edits_n} edit(s) across {files_n} file(s)");
+            status.info(format!(
+                "applied: {edits_n} edit(s) across {files_n} file(s)"
+            ));
         }
         if let Some((command, arguments)) = &action.command {
             if let Some((key_s, _uri)) = self.focused_server(ws, files) {
@@ -585,7 +590,7 @@ impl LspCoordinator {
                     serde_json::json!({ "command": command, "arguments": arguments }),
                     LspKind::ExecuteCommand,
                 );
-                *status = format!("running: {}", action.title);
+                status.echo(format!("running: {}", action.title));
             }
         }
     }
@@ -616,7 +621,7 @@ impl LspCoordinator {
         &mut self,
         key: KeyEvent,
         ws: &mut Workspace,
-        status: &mut String,
+        status: &mut Status,
         rec: Record<'_>,
     ) -> bool {
         let Some(menu) = self.completion.as_mut() else {
@@ -673,7 +678,7 @@ impl LspCoordinator {
             apply_lsp_edits(ws, rec, edits);
             let caret_pos = (start as isize + caret as isize + shift).max(0) as usize;
             rec(ws, ExCmd::Place(BytePos(caret_pos)));
-            *status = format!("completed: {}", item.label);
+            status.echo(format!("completed: {}", item.label));
             return true;
         }
         // Live-filter: a word char or backspace edits the buffer AND keeps the pum open — the edit falls
@@ -698,7 +703,7 @@ impl LspCoordinator {
         snapshot: &[u8],
         revision: Revision,
         emacs_profile: bool,
-        status: &mut String,
+        status: &mut Status,
     ) -> bool {
         if !(matches!(ws.focused().view.mode(), Mode::Insert) && !emacs_profile) {
             return false;
@@ -708,7 +713,7 @@ impl LspCoordinator {
             if is_ctrl(key, 'o') {
                 self.request_completion(ws, files, snapshot, revision);
                 if self.completion_req.is_some() {
-                    *status = "completing…".to_string();
+                    status.echo("completing…");
                 }
                 return true;
             }
@@ -764,7 +769,7 @@ impl LspCoordinator {
         ws: &Workspace,
         files: &Files,
         snapshot: &[u8],
-        status: &mut String,
+        status: &mut Status,
     ) -> bool {
         if !matches!(
             ex,
@@ -773,12 +778,14 @@ impl LspCoordinator {
             return false;
         }
         let Some((key_s, uri)) = self.focused_server(ws, files) else {
-            *status = if self.trusted {
-                "no language server for this buffer"
-            } else {
-                UNTRUSTED_NOTICE
-            }
-            .to_string();
+            status.warn(
+                if self.trusted {
+                    "no language server for this buffer"
+                } else {
+                    UNTRUSTED_NOTICE
+                }
+                .to_string(),
+            );
             return true;
         };
         match ex {
@@ -789,7 +796,7 @@ impl LspCoordinator {
                     lsp::protocol::formatting_params(&uri, 4, true),
                     LspKind::Format,
                 );
-                *status = "formatting…".to_string();
+                status.echo("formatting…");
             }
             Ex::Rename(new_name) => {
                 let (line, ch) =
@@ -800,7 +807,7 @@ impl LspCoordinator {
                     lsp::protocol::rename_params(&uri, line, ch, new_name),
                     LspKind::Rename,
                 );
-                *status = format!("renaming → {new_name}…");
+                status.echo(format!("renaming → {new_name}…"));
             }
             Ex::References => {
                 let (line, ch) =
@@ -811,7 +818,7 @@ impl LspCoordinator {
                     lsp::protocol::references_params(&uri, line, ch, true),
                     LspKind::References,
                 );
-                *status = "finding references…".to_string();
+                status.echo("finding references…");
             }
             Ex::CodeAction => {
                 let cursor = ws.focused().view.cursor().0;
@@ -842,7 +849,7 @@ impl LspCoordinator {
                     lsp::protocol::code_action_params(&uri, line, ch, Value::Array(ctx)),
                     LspKind::CodeAction,
                 );
-                *status = "finding code actions…".to_string();
+                status.echo("finding code actions…");
             }
             _ => unreachable!("guarded by the matches! above"),
         }
@@ -1062,7 +1069,7 @@ mod tests {
         let rev = ws.focused().doc.revision();
         let mut c = LspCoordinator::new(PathBuf::from("/nonexistent-ruse-trust"), false);
 
-        let mut status = String::new();
+        let mut status = Status::default();
         c.sync_and_poll(&ws, &files, rev, &bytes, &mut status);
         assert!(
             c.lsp.is_empty() && c.lsp_tried.is_empty(),
@@ -1072,18 +1079,19 @@ mod tests {
         assert!(status.contains("untrusted"), "status explains: {status}");
 
         // The notice is shown once, not re-asserted every frame over other status messages.
-        let mut status = "other".to_string();
+        let mut status = Status::default();
+        status.echo("other");
         c.sync_and_poll(&ws, &files, rev, &bytes, &mut status);
         assert_eq!(status, "other");
         assert!(c.lsp_tried.is_empty());
 
         // An LSP command in an untrusted workspace says why it cannot run.
-        let mut status = String::new();
+        let mut status = Status::default();
         assert!(c.on_ex(&Ex::Format, &ws, &files, &bytes, &mut status));
         assert!(status.contains("untrusted"), "{status}");
 
         // `:trust` grants trust for the session (a second `:trust` is a no-op).
-        let mut status = String::new();
+        let mut status = Status::default();
         c.grant_trust(&mut status);
         assert!(c.trusted && status.contains("trusted"), "{status}");
         c.grant_trust(&mut status);

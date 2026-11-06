@@ -248,11 +248,27 @@ nvim v0.12.6 shows a message longer than its command line (probed in a PTY at 80
 wrapped at any cell across the rows above, and `Press ENTER or type command to continue` on the last row
 (`ui/message.rs`). `<CR>`, `<NL>`, `<Space>` and `CTRL-C` clear it and are used up; any other key clears it
 and then runs as typed, `<Esc>` and `:` included. nvim's `wait_return` puts those keys back the same way. A
-message taller than the screen shows its last rows. A file message (`"name" 3L, 12B written`, `"name" [New]`)
-is cut at its start with `<` instead, as nvim's default `'shortmess'` flag `t` does. Differences from nvim:
+file message (`"name" 3L, 12B written`, `"name" [New]`) is cut at its start with `<` instead, as nvim's
+default `'shortmess'` flag `t` does; when the bar's mode and name alone are wider than the screen, the file
+message is cut to the whole row and the prefix is left out (#1235).
+
+**Paging and history (#1235).** A message taller than the screen is paged from its top with nvim's
+`-- More --` keys (`:help more-prompt`, probed at 80x24): `<CR>`/`<NL>`/`j`/`<Down>` one row,
+`d` half a screen, `<Space>`/`f`/`<PageDown>`/`CTRL-F` a screen, `G` the end; `<BS>`/`k`/`<Up>`,
+`u`, `b`/`<PageUp>`/`CTRL-B` and `g` back; `q`/`<Esc>`/`CTRL-C` end it, `:` ends it and opens the command
+line, and any other key shows the key help after `-- More --`. The last page ends at the hit-enter prompt,
+where `b`/`k`/`u`/`g`/`<Up>`/`<PageUp>` scroll back and `j`/`d`/`f`/`<Down>`/`<PageDown>` are ignored.
+Every message is given with a kind where it is set (`app/messages.rs`: error, warning, info, echo); errors
+fail the command, and all but echoes are kept in the history `:[count]mes[sages]` shows and
+`:[count]mes[sages] clear` trims, sized by `'messagesopt'` `history:` (default 500). What nvim keeps and does
+not keep is listed at the top of `app/messages.rs`. Differences from nvim:
 - nvim's message gets a whole command-line row. ruse's shares the row with the bar, so a message that would
   fit nvim's row, but not the space left after a long file name, also asks for `<CR>`.
-- There is no `-- More --` paging, no `'cmdheight'` and no `:messages` history yet.
+- The pager's first page starts at the message, not at the typed command line nvim scrolls up with it; there
+  is no `g<`, `'more'`, `'cmdheight'`, or `'shortmess'` flag other than the built-in `t`; `'messagesopt'`
+  `wait:` and `progress:` are checked and kept but ruse always behaves as `hit-enter`.
+- Listings ruse shows in an overlay (`:reg`, `:marks`, `:jumps`, `[I`, multi-row `:p`) and `:!` output (one
+  row joined with ` | `) do not go through the pager.
 
 ## Reference Invariants (this doc)
 

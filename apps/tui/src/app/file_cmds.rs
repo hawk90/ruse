@@ -14,6 +14,7 @@ use crate::app::dispatch::{
     attach_file, buffer_for_path, line_count, open_file_with, resolve_normal_range, Files,
     Highlighters,
 };
+use crate::app::messages::{Msg, Status};
 use crate::input::{EditSpec, FileFormatOpt, FileOpts, WriteSpec, WriteTarget};
 use crate::persist;
 use crate::persist::encoding::{Eol, FileFormat};
@@ -231,7 +232,7 @@ pub(crate) fn ex_write(
     files: &mut Files,
     highlighters: &mut Highlighters,
     fixeol: bool,
-    status: &mut String,
+    status: &mut Status,
 ) -> bool {
     let id = ws.focused_buffer();
     if spec.if_modified && !ws.focused().doc.is_modified() {
@@ -263,7 +264,7 @@ pub(crate) fn ex_write(
                 (Some(n), _) => PathBuf::from(n),
                 (None, Some((p, _))) => p.clone(),
                 (None, None) => {
-                    *status = "E32: No file name".into();
+                    status.error("E32: No file name");
                     return false;
                 }
             };
@@ -351,11 +352,11 @@ pub(crate) fn ex_write(
     };
     match result {
         Ok(msg) => {
-            *status = msg;
+            status.echo(msg);
             true
         }
         Err(msg) => {
-            *status = msg;
+            status.error(msg);
             false
         }
     }
@@ -372,7 +373,7 @@ pub(crate) fn ex_saveas(
     files: &mut Files,
     highlighters: &mut Highlighters,
     fixeol: bool,
-    status: &mut String,
+    status: &mut Status,
 ) -> bool {
     let id = ws.focused_buffer();
     let target = PathBuf::from(name);
@@ -392,7 +393,7 @@ pub(crate) fn ex_saveas(
     let new = match check_other_target(files, id, &target, name, bang) {
         Ok(new) => new,
         Err(e) => {
-            *status = e.to_string();
+            status.error(e.to_string());
             return false;
         }
     };
@@ -407,11 +408,11 @@ pub(crate) fn ex_saveas(
             adopt_file(ws, files, highlighters, id, name, fmt);
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(&target));
-            *status = write_report(name, new, &source, disk.len(), "written") + method.note();
+            status.echo(write_report(name, new, &source, disk.len(), "written") + method.note());
             true
         }
         Err(e) => {
-            *status = e.to_string();
+            status.error(e.to_string());
             false
         }
     }
@@ -424,7 +425,7 @@ pub(crate) fn ex_write_all(
     ws: &mut Workspace,
     files: &Files,
     fixeol: bool,
-    status: &mut String,
+    status: &mut Status,
     skip: impl Fn(DocumentId) -> bool,
 ) -> bool {
     let mut error = None;
@@ -452,11 +453,11 @@ pub(crate) fn ex_write_all(
     }
     match (error, last) {
         (Some(e), _) => {
-            *status = e.to_string();
+            status.error(e.to_string());
             false
         }
         (None, Some(msg)) => {
-            *status = msg;
+            status.echo(msg);
             true
         }
         (None, None) => true,
@@ -464,11 +465,11 @@ pub(crate) fn ex_write_all(
 }
 
 /// Re-read the focused buffer's file from disk (`:e`, `:e!`, `:e %`), replacing its text; `++ff=` forces
-/// the line ending it is read with. Returns the status line.
-pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: FileOpts) -> String {
+/// the line ending it is read with. Returns the message to give.
+pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: FileOpts) -> Msg {
     let id = ws.focused_buffer();
     let Some(path) = files.get(&id).map(|bf| bf.path.clone()) else {
-        return "E32: No file name".into();
+        return Msg::error("E32: No file name");
     };
     match persist::read_file(&path) {
         Ok(raw) => {
@@ -485,9 +486,9 @@ pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: F
                 bf.fmt = fmt;
                 bf.reloads = bf.reloads.saturating_add(1);
             }
-            format!("\"{}\" reloaded", path.display())
+            Msg::echo(format!("\"{}\" reloaded", path.display()))
         }
-        Err(e) => format!("E484: can't open {}: {e}", path.display()),
+        Err(e) => Msg::error(format!("E484: can't open {}: {e}", path.display())),
     }
 }
 
@@ -499,7 +500,7 @@ pub(crate) fn ex_edit(
     ws: &mut Workspace,
     files: &mut Files,
     highlighters: &mut Highlighters,
-    status: &mut String,
+    status: &mut Status,
 ) -> bool {
     let focused = ws.focused_buffer();
     let own = spec
@@ -509,18 +510,18 @@ pub(crate) fn ex_edit(
     if !own {
         let file = spec.file.as_deref().expect("another file is named");
         let opened = open_file_with(file, ws, files, highlighters, |fmt| with_ff(fmt, spec.opts));
-        *status = opened.status;
+        status.give(opened.status);
         return opened.id.is_some();
     }
     if !files.contains_key(&focused) {
-        *status = "E32: No file name".into();
+        status.error("E32: No file name");
         false
     } else if ws.focused().doc.is_modified() && !spec.bang {
-        *status = "E37: No write since last change (add ! to override)".into();
+        status.error("E37: No write since last change (add ! to override)");
         false
     } else {
-        *status = reload_focused_file(ws, files, spec.opts);
-        !status.starts_with('E')
+        status.give(reload_focused_file(ws, files, spec.opts));
+        !status.is_error()
     }
 }
 

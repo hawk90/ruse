@@ -52,15 +52,19 @@ pub(crate) fn alternate_name(
 
 /// Show print output (#609): nothing for no rows, one row on the status line, more in the view-only
 /// listing overlay (the message area ruse has), with the last row on the status line.
-pub(crate) fn show_rows(rows: Vec<String>, status: &mut String, listing: &mut Option<Overlay>) {
+pub(crate) fn show_rows(
+    rows: Vec<String>,
+    status: &mut crate::app::messages::Status,
+    listing: &mut Option<Overlay>,
+) {
     match rows.len() {
         0 => {}
-        1 => *status = rows.into_iter().next().unwrap_or_default(),
+        1 => status.echo(rows.into_iter().next().unwrap_or_default()),
         _ => {
             *listing = Some(Overlay::Listing(
                 crate::ui::keyword_lines_picker::open_rows(&rows),
             ));
-            *status = rows.last().cloned().unwrap_or_default();
+            status.echo(rows.last().cloned().unwrap_or_default());
         }
     }
 }

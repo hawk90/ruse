@@ -14,6 +14,7 @@ use ruse_core::{
     Workspace,
 };
 
+use crate::app::messages::{Msg, Status};
 use crate::highlight;
 use crate::persist;
 
@@ -24,7 +25,7 @@ pub(crate) type Highlighters = HashMap<DocumentId, highlight::CachedHighlight>;
 /// What [`open_file_into_buffer`] did: the status line to show, and the buffer now focused on `file`
 /// (`None` when nothing was opened — a read error, or the user kept a recovery journal and backed out).
 pub(crate) struct Opened {
-    pub(crate) status: String,
+    pub(crate) status: crate::app::messages::Msg,
     pub(crate) id: Option<DocumentId>,
 }
 
@@ -70,7 +71,7 @@ pub(crate) fn open_file_with(
     if let Some(id) = buffer_for_path(files, &p) {
         ws.focus_buffer(id);
         return Opened {
-            status: format!("\"{file}\" (already open)"),
+            status: Msg::echo(format!("\"{file}\" (already open)")),
             id: Some(id),
         };
     }
@@ -82,7 +83,7 @@ pub(crate) fn open_file_with(
         }
         Err(e) => {
             return Opened {
-                status: format!("E484: can't open {file}: {e}"),
+                status: Msg::error(format!("E484: can't open {file}: {e}")),
                 id: None,
             }
         }
@@ -102,16 +103,18 @@ pub(crate) fn open_file_with(
         }) => (recovered, read_only, note),
         Ok(crate::ui::recovery::Resolved::Quit { journal }) => {
             return Opened {
-                status: format!(
+                status: Msg::info(format!(
                     "\"{file}\" not opened: recovery journal kept ({})",
                     journal.display()
-                ),
+                )),
                 id: None,
             }
         }
         Err(e) => {
             return Opened {
-                status: format!("\"{file}\" not opened: the recovery prompt failed: {e}"),
+                status: Msg::error(format!(
+                    "\"{file}\" not opened: the recovery prompt failed: {e}"
+                )),
                 id: None,
             }
         }
@@ -123,11 +126,12 @@ pub(crate) fn open_file_with(
         apply_recovery(ws, rec, &mut Vec::new());
         ws.place_focused_cursor(BytePos(0));
     }
-    let status = match note {
+    // A file message: shown, not kept (nvim's `:e` message is not in `:messages`).
+    let status = Msg::echo(match note {
         Some(note) => format!("\"{file}\" {note}"),
         None if new => format!("\"{file}\" [New]"),
         None => format!("\"{file}\" {} bytes", raw.len()),
-    };
+    });
     persist::disk::saw(&p, &raw);
     attach_file(files, highlighters, id, p, f);
     if let Some(bf) = files.get_mut(&id) {
@@ -292,7 +296,7 @@ impl ReadOnly {
         &mut self,
         watched: Option<(DocumentId, Revision)>,
         ws: &Workspace,
-        status: &mut String,
+        status: &mut Status,
     ) {
         let Some((id, rev)) = watched else { return };
         let changed = ws.document(id).is_some_and(|d| d.revision() != rev);
@@ -303,7 +307,7 @@ impl ReadOnly {
             );
         if changed || inserting {
             self.warned.insert(id);
-            *status = W10.to_string();
+            status.warn(W10);
         }
     }
 }
@@ -321,7 +325,7 @@ pub(crate) fn run_prg_operator(
     cmd: &Command,
     ws: &mut Workspace,
     recorded: &mut Vec<Command>,
-    status: &mut String,
+    status: &mut Status,
 ) -> bool {
     use ruse_core::VisualOp;
     let view = ws.focused().view;
@@ -403,10 +407,10 @@ pub(crate) fn run_prg_operator(
                 place_cursor(ws, recorded, at);
             }
             if let Some(note) = out.failure() {
-                *status = note;
+                status.echo(note);
             }
         }
-        Err(e) => *status = e.to_string(),
+        Err(e) => status.error(e.to_string()),
     }
     true
 }
@@ -417,13 +421,13 @@ pub(crate) fn run_cmd(
     ws: &mut Workspace,
     files: &Files,
     recorded: &mut Vec<Command>,
-    status: &mut String,
+    status: &mut Status,
     quit: &mut bool,
 ) {
     if let Some(err) = put_error(&cmd, ws) {
         // Nothing runs; a `"x` the command would have read is spent, as in Vim. Recorded, so a replay does
         // not hand that register to the next command.
-        *status = err;
+        status.error(err);
         recorded.push(Command::SetRegister(None));
         ws.apply(&Command::SetRegister(None));
         return;
@@ -431,7 +435,7 @@ pub(crate) fn run_cmd(
     if let Some(err) = mark_error(&cmd, ws) {
         // The core fails the jump itself (a beep, nothing moved or recorded on the jumplist); it runs so the
         // wanted column resets as nvim's `nv_mark_move_to` does (#1171), and a `"x` is spent.
-        *status = err;
+        status.error(err);
         recorded.push(cmd.clone());
         ws.apply(&cmd);
         return;
@@ -518,7 +522,7 @@ pub(crate) fn run_repeat(
     ws: &mut Workspace,
     files: &Files,
     recorded: &mut Vec<Command>,
-    status: &mut String,
+    status: &mut Status,
     quit: &mut bool,
 ) {
     for cmd in r.head {
@@ -691,17 +695,20 @@ pub(crate) fn resolve_normal_range(ws: &Workspace, range: SubRange) -> (usize, u
 /// on the last window, `:qa`): refuse with E37 when the focused buffer is modified, or E162 when another
 /// (hidden) one is. `abandon_focused` (`:q!`, `ZQ`) skips only the focused buffer's check; a modified
 /// hidden buffer still refuses, as in nvim. Returns whether to quit.
-pub(crate) fn may_quit(ws: &Workspace, status: &mut String, abandon_focused: bool) -> bool {
+pub(crate) fn may_quit(ws: &Workspace, status: &mut Status, abandon_focused: bool) -> bool {
     let focused = ws.focused_buffer();
     if !abandon_focused && ws.focused().doc.is_modified() {
-        *status = "E37: No write since last change (add ! to override)".into();
+        status.error("E37: No write since last change (add ! to override)");
         false
     } else if let Some(b) = ws
         .buffers()
         .into_iter()
         .find(|b| b.modified && b.id != focused)
     {
-        *status = format!("E162: No write since last change for buffer \"{}\"", b.name);
+        status.error(format!(
+            "E162: No write since last change for buffer \"{}\"",
+            b.name
+        ));
         false
     } else {
         true
@@ -806,7 +813,7 @@ pub(crate) fn dest_in_range(ws: &Workspace, dest: ruse_core::LineAddr) -> bool {
 /// hidden even when modified (#736; nvim's 'hidden' is on by default). On the last window, end the editor
 /// through [`may_quit`]. `force` (`:q!`, `ZQ`) lets the FOCUSED buffer's changes go; a modified hidden
 /// buffer still refuses, as in nvim, so `:q!` can never silently drop work the user cannot see.
-pub(crate) fn quit_window(ws: &mut Workspace, status: &mut String, quit: &mut bool, force: bool) {
+pub(crate) fn quit_window(ws: &mut Workspace, status: &mut Status, quit: &mut bool, force: bool) {
     if ws.close_focused() {
         return;
     }
@@ -817,7 +824,7 @@ pub(crate) fn apply_effect(
     eff: Effect,
     ws: &mut Workspace,
     files: &Files,
-    status: &mut String,
+    status: &mut Status,
     quit: &mut bool,
 ) {
     match eff {
@@ -830,11 +837,15 @@ pub(crate) fn apply_effect(
         // blocks them, as Vim's `:qa` does (E162).
         Effect::Quit => match ws.buffers().into_iter().find(|b| b.modified) {
             Some(b) => {
-                *status = format!("E162: No write since last change for buffer \"{}\"", b.name);
+                status.error(format!(
+                    "E162: No write since last change for buffer \"{}\"",
+                    b.name
+                ));
             }
             None => *quit = true,
         },
-        Effect::Status(s) => *status = s,
+        // The core gives only errors this way (`E662`, `E664`, the changelist).
+        Effect::Status(s) => status.error(s),
         // Recorded by the workspace; the session flushes the replayed keys (#1085).
         Effect::Beep | Effect::RegisterRefused => {}
     }
@@ -889,15 +900,15 @@ fn disk_source(fmt: persist::encoding::FileFormat, buffer: &[u8], fixeol: bool) 
 }
 
 /// Returns whether the focused buffer reached disk.
-pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeol: bool) -> bool {
+pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status, fixeol: bool) -> bool {
     // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
     // registry entry, so `:w` declines rather than clobbering another buffer's file.
     let Some(bf) = files.get(&ws.focused_buffer()) else {
-        *status = "E32: No file name".into();
+        status.error("E32: No file name");
         return false;
     };
     if bf.read_only {
-        *status = E45.into();
+        status.error(E45);
         return false;
     }
     // `:set fixeol` (opt-in) ADDS a trailing `\n` when the buffer lacks one. Append it to the SOURCE bytes
@@ -910,7 +921,7 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
     // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is, and a file
     // changed on disk since ruse read or saved it is not overwritten (RFC-0023 §8).
     if persist::disk::conflicts(&bf.path) {
-        *status = persist::disk::CHANGED_SINCE_READ.into();
+        status.warn(persist::disk::CHANGED_SINCE_READ);
         return false;
     }
     match persist::atomic::write(&bf.path, &bytes, false) {
@@ -925,14 +936,14 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
             // a silent surprise. The check is on the SOURCE bytes actually written (to_disk only re-applies
             // BOM/CRLF, not EOL), so a successful `:set fixeol` write ends in `\n` and shows no marker.
             // A filesystem without directory fsync is saved, but the report says what was not proven.
-            *status = format!(
+            status.echo(format!(
                 "\"{}\"{} {}L, {}B written{}",
                 bf.path.display(),
                 noeol_marker(&source),
                 line_count(&source),
                 bytes.len(),
                 method.note()
-            );
+            ));
             true
         }
         Err(e) => {
@@ -940,7 +951,7 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
             // Not saved: the buffer stays modified and keeps its journal (an fsync that failed after the
             // rename is `E667`, never "written", #936).
             tracing::warn!(event = "save.failed", path = %bf.path.display(), error = %e);
-            *status = e.to_string();
+            status.error(e.to_string());
             false
         }
     }
@@ -1054,7 +1065,7 @@ mod dispatch_tests {
     /// Run one ex line against `ws` through the session's Ex dispatch, returning `(status, quit)`.
     fn ex_run(ws: &mut Workspace, line: &str) -> (String, bool) {
         let s = crate::app::session::Session::ex_on(ws, line);
-        (s.status, s.quit)
+        (s.status.to_string(), s.quit)
     }
 
     /// A workspace with a.txt focused and a MODIFIED b.txt loaded but hidden (`:split`, `:e b.txt`, `x`,
@@ -1433,7 +1444,7 @@ mod dispatch_tests {
     #[test]
     fn save_with_a_failed_directory_fsync_is_not_saved() {
         let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
-        let mut status = String::new();
+        let mut status = crate::app::messages::Status::default();
         persist::atomic::inject(Some(persist::atomic::Step::SyncDir));
         let ok = save(&mut ws, &files, &mut status, false);
         persist::atomic::inject(None);
@@ -1454,7 +1465,7 @@ mod dispatch_tests {
     #[test]
     fn save_where_directory_fsync_is_unsupported_is_saved_with_a_note() {
         let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
-        let mut status = String::new();
+        let mut status = crate::app::messages::Status::default();
         persist::atomic::inject_errno(persist::atomic::Step::SyncDir, libc::EINVAL);
         let ok = save(&mut ws, &files, &mut status, false);
         persist::atomic::inject(None);
@@ -1476,7 +1487,7 @@ mod dispatch_tests {
     #[test]
     fn fixeol_writes_the_newline_without_changing_the_buffer() {
         let (mut ws, files, path) = ws_on_temp_file("n.txt", b"a");
-        let mut status = String::new();
+        let mut status = crate::app::messages::Status::default();
         assert!(save(&mut ws, &files, &mut status, true));
         assert_eq!(status, format!("\"{}\" 1L, 3B written", path.display()));
         assert_eq!(std::fs::read(&path).unwrap(), b"xa\n");

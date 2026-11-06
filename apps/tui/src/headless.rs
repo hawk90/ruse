@@ -318,7 +318,18 @@ impl Headless {
     /// The status line's message.
     #[must_use]
     pub fn status(&self) -> &str {
-        &self.s.status
+        self.s.status.text()
+    }
+
+    /// The `:messages` history, oldest first (#1235).
+    #[must_use]
+    pub fn messages(&self) -> Vec<String> {
+        self.s
+            .status
+            .history()
+            .last(None)
+            .map(str::to_string)
+            .collect()
     }
 
     /// The E-number of the last error message any key so far raised (`"E486"`), or `""` — Vim's

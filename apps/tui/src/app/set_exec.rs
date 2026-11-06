@@ -66,6 +66,16 @@ pub(crate) struct UiOptions {
     pub verbose: i64,
     /// The global copies of the global and global-local display options (#615, #616).
     pub display: DisplayGlobals,
+    /// `'messagesopt'` as set; its `history:` item sizes the `:messages` history (#1235).
+    pub messagesopt: String,
+}
+
+impl UiOptions {
+    /// The `:messages` history size `'messagesopt'` gives (its value was checked when it was set).
+    pub(crate) fn message_history(&self) -> usize {
+        crate::input::set_cmd::messagesopt_history(&self.messagesopt)
+            .unwrap_or(crate::app::messages::HISTORY_DEFAULT)
+    }
 }
 
 impl Default for UiOptions {
@@ -74,6 +84,7 @@ impl Default for UiOptions {
             showmode: true,
             verbose: 0,
             display: DisplayGlobals::default(),
+            messagesopt: crate::input::set_cmd::MESSAGESOPT.to_string(),
         }
     }
 }
@@ -282,6 +293,7 @@ impl OptionHost<'_> {
             ),
             Opt::ShowMode => OptVal::Bool(self.ui.showmode),
             Opt::Verbose => OptVal::Num(self.ui.verbose),
+            Opt::MessageOptions => OptVal::Text(self.ui.messagesopt.clone().into()),
             Opt::History => {
                 OptVal::Num(i64::try_from(self.engine.history_len()).unwrap_or(i64::MAX))
             }
@@ -399,6 +411,7 @@ impl OptionHost<'_> {
             },
             (Opt::ShowMode, _) => self.ui.showmode = on,
             (Opt::Verbose, OptVal::Num(n)) => self.ui.verbose = n,
+            (Opt::MessageOptions, _) => self.ui.messagesopt = text,
             (Opt::History, OptVal::Num(n)) => {
                 self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
             }
