@@ -402,6 +402,13 @@ impl Editor {
             .collect()
     }
 
+    /// Where the terminal's cursor is now, `(row, col)`, 0-based, through the same VT grid as [`Editor::rows`].
+    pub fn cursor(&self) -> (u16, u16) {
+        let mut grid = ruse_tui::term_grid::Grid::new(24, 80);
+        vte::Parser::new().advance(&mut grid, &self.output.lock().unwrap());
+        grid.cursor()
+    }
+
     /// Wait (bounded by [`MAX_WAIT`]) until the screen ([`Editor::rows`]) has a row holding `text`; return
     /// the rows.
     pub fn wait_for_row(&mut self, text: &str) -> Vec<String> {

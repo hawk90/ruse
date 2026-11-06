@@ -42,14 +42,13 @@ pub enum Motion {
     /// under an operator (`dg_` deletes through the last non-blank).
     LineLastNonBlank,
     /// Vim `|` — go to the `count`-th (1-based) display column of the current line (`5|` = column 5).
-    /// Exclusive charwise under an operator.
+    /// Exclusive charwise under an operator. The editor resolves the display column (it knows `'tabstop'`)
+    /// and hands this layer the cluster count that reaches it; here `count` steps clusters (#1251).
     Column,
-    /// Vim `gM` — go to the char at `count` PERCENT of the line's CHARACTER length (bare `gM` = 50%, the
-    /// middle char; `25gM` = a quarter along). The 0-based char index is `min(count * chars / 100, chars-1)`,
-    /// counting every char on the line including leading/trailing whitespace. Char columns, like the rest of
-    /// the motion model — nvim's `gM` actually measures DISPLAY width, so a line containing `<Tab>`s or
-    /// double-width chars lands one-off from nvim (the same tab/wide-char follow-up the whole motion model
-    /// carries; see `vmove`/`Column`). Exclusive charwise under an operator (`dgM`), like `|`.
+    /// Vim `gM` — go to the char at `count` PERCENT of the line's display width (bare `gM` = 50%; a count
+    /// over 100 is 50% too), as nvim measures it. The editor resolves it to a [`Motion::Column`] (#1251); on
+    /// its own this layer takes `count` percent of the line's clusters. Exclusive charwise under an
+    /// operator (`dgM`), like `|`.
     MidLine,
     /// Small-word motions (Vim `w`/`b`/`e`): three classes — whitespace, word (alnum + `_` + non-ASCII),
     /// punctuation — so `foo.bar` is three words.
@@ -542,22 +541,19 @@ pub(crate) fn at_col(b: &[u8], start: usize, col: usize) -> usize {
     i.min(end)
 }
 
-/// The VIRTUAL (display) column of `pos` on its line, where a `<Tab>` advances to the next multiple of
-/// `tabstop` and every other char is one column. `start` is the line start. Used by Virtual Replace (`gR`)
-/// to size a tab's on-screen width; distinct from [`col_of`], which counts characters. `tabstop` is clamped
-/// to at least 1.
+/// The VIRTUAL (display) column of `pos` on its line: the cells before it, a `<Tab>` advancing to the next
+/// multiple of `tabstop` and every other cluster taking what the renderer paints it in (a wide char 2, an
+/// invalid byte's `<ff>` 4, #1251). `start` is the line start. Used by Virtual Replace (`gR`) to size a
+/// tab's on-screen width and by `g CTRL-G`; distinct from [`col_of`], which counts characters.
 pub(crate) fn vcol_of(b: &[u8], start: usize, pos: usize, tabstop: usize) -> usize {
-    let ts = tabstop.max(1);
+    let end = pos.min(b.len());
+    let le = line_end(b, start);
     let mut v = 0;
     let mut i = start;
-    while i < pos.min(b.len()) {
-        if b[i] == b'\t' {
-            v += ts - (v % ts);
-            i += 1;
-        } else {
-            v += 1;
-            i = next_boundary(b, i);
-        }
+    while i < end {
+        let (j, w) = crate::editor::cluster_cells(b, i, le.max(end), v, tabstop);
+        v += w;
+        i = j;
     }
     v
 }

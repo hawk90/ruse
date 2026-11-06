@@ -268,7 +268,7 @@ pub(crate) fn paint_window(
             // A closed fold's start row shows its one-line summary in place of the text.
             paint_gutter(cur, rect, srow, line, 0, p);
             let mut c = tx;
-            for gph in crate::folds::summary(fold, text).graphemes(true) {
+            for gph in crate::folds::summary(fold, &String::from_utf8_lossy(text)).graphemes(true) {
                 if c >= x1 {
                     break;
                 }

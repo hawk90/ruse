@@ -741,9 +741,7 @@ impl Scroll<'_> {
             // With 'smoothscroll' nvim keeps the byte column, inside the line.
             let line = self.lines.text.line(q.line);
             if q.byte >= line.len() {
-                q.byte = unicode_segmentation::UnicodeSegmentation::grapheme_indices(line, true)
-                    .next_back()
-                    .map_or(0, |(i, _)| i);
+                q.byte = ruse_core::cells::last_glyph(line).unwrap_or(0);
             }
         }
         Scrolled {

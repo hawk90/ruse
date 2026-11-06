@@ -376,7 +376,7 @@ impl WinView {
     }
 
     /// Lay out `line`.
-    pub(crate) fn lay<'t>(&'t self, line: &'t str) -> LineLayout<'t> {
+    pub(crate) fn lay<'t>(&'t self, line: impl line_layout::LineBytes<'t>) -> LineLayout<'t> {
         line_layout::layout(line, &self.layout(), &[])
     }
 
@@ -401,33 +401,23 @@ impl<'a> PaneText<'a> {
         self.idx.line_of(end) + 1
     }
 
-    /// Line `l`'s text, without its newline.
-    pub(crate) fn line(&self, l: usize) -> &'a str {
+    /// Line `l`'s text, without its newline. Its bytes need not be UTF-8: the layout shows a byte that is
+    /// not as `<ff>` (#1251).
+    pub(crate) fn line(&self, l: usize) -> &'a [u8] {
         let s = self.idx.nth_line_start(l).min(self.bytes.len());
         let e = self.idx.nth_line_start(l + 1).min(self.bytes.len());
         let mut e = e.max(s);
         if e > s && self.bytes[e - 1] == b'\n' {
             e -= 1;
         }
-        std::str::from_utf8(&self.bytes[s..e]).unwrap_or("")
+        &self.bytes[s..e]
     }
 
-    /// The first `max` bytes of line `l` (cut back to a char boundary): what a layout limited to the
-    /// window's cells reads, without checking the UTF-8 of a huge line's rest every frame.
-    pub(crate) fn line_upto(&self, l: usize, max: usize) -> &'a str {
-        let s = self.idx.nth_line_start(l).min(self.bytes.len());
-        let mut e = self.idx.nth_line_start(l + 1).min(self.bytes.len()).max(s);
-        if e > s && self.bytes[e - 1] == b'\n' {
-            e -= 1;
-        }
-        let e = e.min(s.saturating_add(max));
-        match std::str::from_utf8(&self.bytes[s..e]) {
-            Ok(t) => t,
-            Err(err) if err.error_len().is_none() => {
-                std::str::from_utf8(&self.bytes[s..s + err.valid_up_to()]).unwrap_or("")
-            }
-            Err(_) => "",
-        }
+    /// The first `max` bytes of line `l`: what a layout limited to the window's cells reads, so a huge line
+    /// costs what the window shows. A char the cut splits shows as its bytes, past what the window shows.
+    pub(crate) fn line_upto(&self, l: usize, max: usize) -> &'a [u8] {
+        let line = self.line(l);
+        &line[..line.len().min(max)]
     }
 
     /// The bytes a layout of `vcols` virtual columns reads at most, give or take long clusters.
@@ -642,7 +632,7 @@ pub(crate) fn screen_motion(
             }
             let mut byte = coladvance(&lay, i, false);
             if motion == ScreenMotion::FirstNonBlank {
-                let b = cur_line.as_bytes();
+                let b = cur_line;
                 while matches!(b.get(byte), Some(b' ' | b'\t')) && byte + 1 < b.len() {
                     byte += 1;
                 }

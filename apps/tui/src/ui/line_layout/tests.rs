@@ -87,6 +87,35 @@ fn wrapped_lines_match_nvim_screens() {
     );
 }
 
+/// #1251: a byte that is not UTF-8 shows as `<ff>`, four cells, split across rows like any transcription
+/// (nvim 0.12.6 shows `abcdefghij<f` on a 12-column row), and a tab after it starts at its fourth cell
+/// (nvim: `<ff>>   a` under `'list'`).
+#[test]
+fn an_invalid_byte_shows_as_four_hex_cells() {
+    let (mut lay, _) = options("");
+    lay.width = 12;
+    let line: &[u8] = b"abcdefghij\xff\xffxy";
+    let l = layout(line, &lay, &[]);
+    assert_eq!(rows(&l, 12), ["abcdefghij<f", "f><ff>xy"]);
+    assert_eq!(l.total, 20);
+    assert_eq!(
+        l.cursor_vcol(11, false),
+        14,
+        "the second <ff> starts at cell 14"
+    );
+    let (mut lay, _) = options("list");
+    lay.width = 12;
+    let line: &[u8] = b"\xff\ta";
+    assert_eq!(rows(&layout(line, &lay, &[]), 12), ["<ff>>   a"]);
+    // A combining mark after the byte composes onto its `<80>` and takes no cell, as nvim counts it.
+    let (mut lay, _) = options("");
+    lay.width = 12;
+    let line: &[u8] = b"a\x80\xcc\x81bc";
+    let l = layout(line, &lay, &[]);
+    assert_eq!(rows(&l, 12), ["a<80>bc"]);
+    assert_eq!(l.cursor_vcol(4, false), 5);
+}
+
 /// `(columns, :set options, line, the rows nvim shows)`.
 #[rustfmt::skip]
 const NVIM_ROWS: &[(usize, &str, &str, &[&str])] = &[

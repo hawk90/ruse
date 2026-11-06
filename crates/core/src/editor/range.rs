@@ -486,26 +486,31 @@ pub(crate) fn selection_range(
 
 /// One display cluster at byte `i` of a line ending at `le`, starting at virtual column `v`: its end byte
 /// and its width in cells. A grapheme cluster is one cell run (a combining mark rides on its base); a
-/// `<Tab>` reaches the next multiple of `ts`; anything else is its base char's terminal width, at least 1
-/// (the renderer's rule, `screen.rs`).
+/// `<Tab>` reaches the next multiple of `ts`; anything else takes the cells the renderer paints it in
+/// ([`crate::cells`], #1251): `<ff>` for a byte that is not UTF-8, `^A` for a control char, else its base
+/// char's terminal width, at least 1.
 pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: usize) -> (usize, usize) {
-    use unicode_width::UnicodeWidthChar;
     if b[i] == b'\t' {
         let ts = ts.max(1);
         return (i + 1, ts - v % ts);
     }
-    // An ASCII char not followed by a combining mark is one cell: skip the line-wide grapheme scan, which
-    // made walking a long line quadratic (the wanted column is measured after every command, #1090).
-    if b[i] < 0x80 && b.get(i + 1).is_none_or(|&n| n < 0x80 || i + 1 >= le) {
+    // A printable ASCII char not followed by a combining mark is one cell: skip the line-wide grapheme scan,
+    // which made walking a long line quadratic (the wanted column is measured after every command, #1090).
+    if (0x20..0x7f).contains(&b[i]) && b.get(i + 1).is_none_or(|&n| n < 0x80 || i + 1 >= le) {
         return (i + 1, 1);
     }
     let j = grapheme_end(b, i, le);
-    let w = std::str::from_utf8(&b[i..j])
-        .ok()
-        .and_then(|s| s.chars().next())
-        .and_then(UnicodeWidthChar::width)
-        .unwrap_or(1)
-        .max(1);
+    let w = match std::str::from_utf8(&b[i..j]) {
+        Ok(s) => {
+            // A zero-width mark right after a byte that is not UTF-8 composes onto its `<xx>`.
+            let after_invalid = b[i] >= 0x80
+                && i > 0
+                && b[i - 1] >= 0x80
+                && motion::char_len_at(b, motion::prev_boundary(b, i)).is_none();
+            crate::cells::text_cells(s, after_invalid, false)
+        }
+        Err(_) => crate::cells::INVALID_BYTE_CELLS,
+    };
     (j, w)
 }
 

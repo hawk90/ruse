@@ -211,9 +211,9 @@ fn col_print(col: usize, vcol: usize) -> String {
 /// `w`): `foo,bar baz` is two words. A cursor on leading whitespace reports `Word 0`. Byte/Char totals
 /// include one line-ending per line (see the module docs).
 ///
-/// DIVERGENCE: virtual columns treat every non-tab glyph as one cell, so a double-width (CJK/emoji) glyph
-/// under the cursor is off by its extra cells in the `Col` vcol field; tabs and Latin/accented text are
-/// exact. `tabstop` sizes `<Tab>` expansion.
+/// Virtual columns are the cells the renderer paints (#1251): a wide glyph is two, a byte that is not UTF-8
+/// four (`<ff>`), a control char two (`^A`). The cursor's is its char's first cell, a `<Tab>`'s last (nvim's
+/// `w_virtcol` in Normal mode). `tabstop` sizes `<Tab>` expansion.
 #[must_use]
 pub fn cursor_pos_info(bytes: &[u8], cursor: BytePos, tabstop: usize) -> String {
     let cursor = cursor.0;
@@ -226,11 +226,13 @@ pub fn cursor_pos_info(bytes: &[u8], cursor: BytePos, tabstop: usize) -> String 
     let start = line_start(bytes, cursor);
     let lend = line_end(bytes, cursor);
 
-    // Column: 1-based byte offset within the line, and the cursor's virtual column (the LAST cell of the
-    // char under the cursor — Vim's `virtcol('.')`, so a Tab reports its final cell).
+    // Column: 1-based byte offset within the line, and the cursor's virtual column: the first cell of the
+    // char under it, or a Tab's last (nvim's `w_virtcol` in Normal mode).
     let bytecol = cursor - start + 1;
-    let vcol = if cursor < lend {
+    let vcol = if cursor < lend && bytes[cursor] == b'\t' {
         vcol_of(bytes, start, next_boundary(bytes, cursor), tabstop)
+    } else if cursor < lend {
+        vcol_of(bytes, start, cursor, tabstop) + 1
     } else {
         bytecol // empty line / cursor at line end: one cell.
     };
@@ -468,14 +470,33 @@ mod tests {
 
     /// #1243: a byte that is not UTF-8 is one char in the `Char` count (nvim v0.12.6: `Char 5 of 8` on
     /// "a<ff>é<ff>b\nq" at the `b`; a line of two cut bytes and ASCII has as many chars as bytes, so no
-    /// `Char` field). The `Col` vcol field still counts such a byte as one cell where nvim draws `<ff>`.
+    /// `Char` field). #1251: the `Col` vcol field counts such a byte as the four cells of its `<ff>`, and a
+    /// mark after it as none (the whole messages are nvim v0.12.6's).
     #[test]
     fn cursor_pos_counts_an_invalid_byte_as_one_char() {
         let info = cursor_pos_info(b"a\xff\xc3\xa9\xffb\nq\n", BytePos(5), 8);
-        assert!(info.ends_with("Char 5 of 8; Byte 6 of 9"), "{info}");
+        assert_eq!(
+            info,
+            "Col 6-11 of 6-11; Line 1 of 2; Word 1 of 2; Char 5 of 8; Byte 6 of 9"
+        );
         let info = cursor_pos_info(b"\xea\xb0ab\nq\n", BytePos(2), 8);
         assert!(info.ends_with("Word 1 of 2; Byte 3 of 7"), "{info}");
         let info = cursor_pos_info(b"x\x80\xcc\x81y z\nq\n", BytePos(4), 8);
-        assert!(info.ends_with("Char 4 of 9; Byte 5 of 10"), "{info}");
+        assert_eq!(
+            info,
+            "Col 5-6 of 7-8; Line 1 of 2; Word 1 of 3; Char 4 of 9; Byte 5 of 10"
+        );
+        let info = cursor_pos_info(b"\xff\xffabc", BytePos(3), 8);
+        assert_eq!(
+            info,
+            "Col 4-10 of 5-11; Line 1 of 1; Word 1 of 1; Byte 4 of 6"
+        );
+        let info = cursor_pos_info(b"\xffa", BytePos(0), 8);
+        assert_eq!(info, "Col 1 of 2-5; Line 1 of 1; Word 1 of 1; Byte 1 of 3");
+        let info = cursor_pos_info("中ab".as_bytes(), BytePos(3), 8);
+        assert_eq!(
+            info,
+            "Col 4-3 of 5-4; Line 1 of 1; Word 1 of 1; Char 2 of 4; Byte 4 of 6"
+        );
     }
 }

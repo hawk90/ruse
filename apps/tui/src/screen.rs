@@ -17,7 +17,6 @@
 
 use crossterm::style::Color;
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthChar;
 
 /// What occupies one display cell.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -73,88 +72,17 @@ impl Cell {
 }
 
 /// The display width, in terminal columns, of the grapheme cluster `g`: its base char's width
-/// (0 for a lone combining mark, 1 for normal, 2 for wide/CJK/emoji), floored at 1 for any
-/// non-empty cluster so a cluster always occupies at least one cell.
+/// (1 for normal, 2 for wide/CJK/emoji), floored at 1 for any non-empty cluster so a cluster always
+/// occupies at least one cell. The core's [`ruse_core::cells::cluster_width`], which its virtual columns
+/// count with too (#1251).
 #[must_use]
 pub fn cluster_width(g: &str) -> u16 {
-    match g.chars().next() {
-        None => 0,
-        Some(base) => (UnicodeWidthChar::width(base).unwrap_or(0) as u16).max(1),
-    }
+    u16::try_from(ruse_core::cells::cluster_width(g)).unwrap_or(u16::MAX)
 }
 
-/// The characters nvim v0.12.6's `utf_printable` refuses above U+00FF (`mbyte.c` `nonprint`): format,
-/// bidi-control and other invisible characters, shown as `<xxxx>`.
-const NONPRINT: &[(u32, u32)] = &[
-    (0x070f, 0x070f),
-    (0x180b, 0x180e),
-    (0x200b, 0x200f),
-    (0x202a, 0x202e),
-    (0x2060, 0x206f),
-    (0xd800, 0xdfff),
-    (0xfeff, 0xfeff),
-    (0xfff9, 0xfffb),
-    (0xfffe, 0xffff),
-];
-
-/// Whether `c` is a C0 control, DEL or a C1 control: a byte the terminal would act on (#1181).
-#[must_use]
-pub fn is_control(c: char) -> bool {
-    let n = u32::from(c);
-    n < 0x20 || (0x7f..0xa0).contains(&n)
-}
-
-/// How nvim v0.12.6 shows a char it does not print (`transchar`, #1181): `^X` for a C0 control and
-/// `^?` for DEL (`<xx>` under `'display'` `uhex`), `<xx>` for a C1 control, `<xxxx>` for the format
-/// characters [`NONPRINT`] lists. `None` for a printable char; a tab is the layout's.
-#[must_use]
-pub fn unprintable(c: char, uhex: bool) -> Option<String> {
-    let n = u32::from(c);
-    if n < 0x20 || n == 0x7f {
-        return Some(if uhex {
-            format!("<{n:02x}>")
-        } else {
-            format!("^{}", char::from_u32(n ^ 0x40).unwrap_or('?'))
-        });
-    }
-    if (0x80..0xa0).contains(&n) {
-        return Some(format!("<{n:02x}>"));
-    }
-    if n < NONPRINT[0].0 {
-        return None;
-    }
-    NONPRINT
-        .iter()
-        .any(|&(a, b)| (a..=b).contains(&n))
-        .then(|| format!("<{n:04x}>"))
-}
-
-/// The cells grapheme cluster `g` paints as when nvim would not print it raw: its unprintable chars
-/// transcribed ([`unprintable`]), printable ones kept. `None` when `g` paints as itself. Only a cluster
-/// that starts with an unprintable char, or holds a control anywhere, is transcribed: a zero-width joiner
-/// inside an emoji sequence stays.
-#[must_use]
-pub fn transcribe(g: &str, uhex: bool) -> Option<String> {
-    // The common case first: one printable ASCII byte (a layout asks for every grapheme of a line).
-    if let [b] = g.as_bytes() {
-        if (0x20..0x7f).contains(b) {
-            return None;
-        }
-    }
-    let first = g.chars().next()?;
-    let head = unprintable(first, uhex);
-    if head.is_none() && !g.chars().any(is_control) {
-        return None;
-    }
-    let mut out = String::new();
-    for (i, c) in g.chars().enumerate() {
-        match unprintable(c, uhex) {
-            Some(r) if i == 0 || is_control(c) => out.push_str(&r),
-            _ => out.push(c),
-        }
-    }
-    Some(out)
-}
+// How nvim shows what it does not print (`^X`, `<xx>`, `<xxxx>`, #1181) is the core's width model, so the
+// cells painted and the virtual columns counted are one rule (#1251).
+pub use ruse_core::cells::{is_control, transcribe, unprintable};
 
 /// A `cols × rows` grid of cells, row-major. Repainted each frame, then diffed against the prior one.
 pub struct Screen {

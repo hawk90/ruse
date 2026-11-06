@@ -419,12 +419,8 @@ fn resolve_screen_motion(
                 && landing.line >= line
                 && !(line..=landing.line)
                     .any(|l| crate::folds::closed_range(folds, l).is_some())
-                && unicode_segmentation::UnicodeSegmentation::grapheme_indices(
-                    text.line(landing.line),
-                    true,
-                )
-                .next_back()
-                .is_none_or(|(i, _)| i == landing.byte) =>
+                && ruse_core::cells::last_glyph(text.line(landing.line))
+                    .is_none_or(|i| i == landing.byte) =>
         {
             *want = None;
             engine
@@ -437,7 +433,7 @@ fn resolve_screen_motion(
                 // An inclusive motion under an operator reaches the byte after its char.
                 let line_text = text.line(landing.line);
                 byte = start
-                    + unicode_segmentation::UnicodeSegmentation::grapheme_indices(line_text, true)
+                    + ruse_core::cells::glyphs(line_text)
                         .map(|(i, g)| i + g.len())
                         .find(|&e| e > landing.byte)
                         .unwrap_or(line_text.len());

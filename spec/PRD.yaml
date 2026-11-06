@@ -100,7 +100,8 @@ features:
     # (motion::next_grapheme/prev_grapheme via GraphemeCursor; MoveLeft/MoveRight) so emoji/ZWJ/
     # combining never desync it (a byte that is not UTF-8 is a cell of its own and the valid text around
     # it keeps its clusters, as nvim, #1232; it is one char with the class of its Latin-1 char for
-    # words, keywords, columns and search, #1243) — tested (editor_spine::cursor_moves_by_grapheme_cluster + combining;
+    # words, keywords, columns and search, #1243; it is drawn `<ff>` and is four cells in the virtual
+    # columns too, the renderer and the core sharing one width model, cells.rs, #1251) — tested (editor_spine::cursor_moves_by_grapheme_cluster + combining;
     # pos::tests). This relaxed the dep-free-core rule (approach A, decided 2026-08-10): core now
     # carries unicode-segmentation + unicode-width. Display-cell CURSOR PLACEMENT (rendering wide
     # chars at the right column) is F-006's job; #2 here is the LOGICAL cursor staying on clusters.

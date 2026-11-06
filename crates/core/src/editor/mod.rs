@@ -4530,6 +4530,11 @@ fn update_curswant(st: &mut EditorState, cmd: &Command, entry_mode: Mode, kept_c
         Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd | Command::AppendLineEnd => {
             st.view.curswant = Want::col(MAXCOL)
         }
+        // `{count}|` wants the column it names, not the start of the char it lands on (nvim's `nv_pipe`):
+        // `5|` onto a tab or an `<ff>` that covers column 5 keeps 5 for a following `j`/`k`.
+        Command::Move(n, Motion::Column) => {
+            st.view.curswant = Want::col((*n).max(1) as usize - 1);
+        }
         // Commands that establish a definite column: horizontal moves, the Insert-native keys, and every
         // insert-ENTRY except `A` (which is the append/MAXCOL case above) reset the wanted column — they
         // never preserve a stale append intent from an earlier `$`/`A`.

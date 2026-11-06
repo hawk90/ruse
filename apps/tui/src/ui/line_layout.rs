@@ -13,6 +13,7 @@
 //!
 //! Pure: no terminal and no buffer, unit-tested against nvim screens.
 
+use ruse_core::cells::{self, Glyph};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::screen::cluster_width;
@@ -125,9 +126,9 @@ pub(crate) struct LineLayout<'t> {
 
 /// The `'breakindent'` indent of `line` (nvim's `get_breakindent_win`), less the `'showbreak'` width under
 /// `briopt` `sbr`, kept so that `briopt` `min` cells stay.
-fn breakindent(line: &str, o: &BriOpt, tabstop: usize, width: usize, sbr_w: usize) -> usize {
+fn breakindent(line: &[u8], o: &BriOpt, tabstop: usize, width: usize, sbr_w: usize) -> usize {
     let mut indent = 0usize;
-    for b in line.bytes() {
+    for &b in line {
         match b {
             b' ' => indent += 1,
             b'\t' => indent += tabstop - indent % tabstop,
@@ -159,19 +160,52 @@ pub(crate) fn str_width(s: &str) -> usize {
 }
 
 /// The size nvim gives a char at virtual column `at` without wrapping (`win_chartabsize`): a tab to the
-/// next stop (`^I`, two cells, under `'list'` without `tab:`), an unprintable char its transcription's
-/// cells (`^A`, `<85>`, `<200b>`, #1181), else the glyph's width.
-fn plain_size(g: &str, at: usize, ts: usize, list_tab: bool, uhex: bool) -> usize {
-    if g == "\t" {
+/// next stop (`^I`, two cells, under `'list'` without `tab:`), else the core's cells for the glyph
+/// ([`cells::glyph_cells`]: `<ff>` for a byte that is not UTF-8, `^A`, `<85>`, `<200b>` for what nvim does
+/// not print, #1181/#1251), so the cells painted are the virtual columns the core counts. `prev_invalid`:
+/// the glyph before is a byte that is not UTF-8.
+fn plain_size(
+    g: Glyph<'_>,
+    at: usize,
+    ts: usize,
+    list_tab: bool,
+    uhex: bool,
+    prev_invalid: bool,
+) -> usize {
+    if g == Glyph::Text("\t") {
         if list_tab {
             ts - at % ts
         } else {
             2
         }
-    } else if let Some(t) = crate::screen::transcribe(g, uhex) {
-        str_width(&t)
     } else {
-        usize::from(cluster_width(g))
+        cells::glyph_cells(g, prev_invalid, uhex)
+    }
+}
+
+/// The cells glyph `g` paints as when it does not paint as itself: `<ff>` for a byte that is not UTF-8,
+/// the transcription of a char nvim does not print ([`crate::screen::transcribe`]).
+fn shown_as(g: Glyph<'_>, uhex: bool) -> Option<String> {
+    match g {
+        Glyph::Byte(b) => Some(cells::invalid_byte_text(b)),
+        Glyph::Text(s) => crate::screen::transcribe(s, uhex),
+    }
+}
+
+/// A line to lay out: its bytes, which need not be UTF-8 (#1251).
+pub(crate) trait LineBytes<'t> {
+    fn line_bytes(self) -> &'t [u8];
+}
+
+impl<'t> LineBytes<'t> for &'t str {
+    fn line_bytes(self) -> &'t [u8] {
+        self.as_bytes()
+    }
+}
+
+impl<'t> LineBytes<'t> for &'t [u8] {
+    fn line_bytes(self) -> &'t [u8] {
+        self
     }
 }
 
@@ -185,7 +219,7 @@ struct Walk<'t, 'a> {
     bri: usize,
     head_w: usize,
     bytes: &'t [u8],
-    graphemes: Vec<(usize, &'t str)>,
+    graphemes: Vec<(usize, Glyph<'t>)>,
     /// The byte 'linebreak' starts at (after the leading break characters), when it applies.
     lbr_from: Option<usize>,
     lead_end: usize,
@@ -193,16 +227,28 @@ struct Walk<'t, 'a> {
 }
 
 impl<'t> Walk<'t, '_> {
-    fn is_break(&self, b: usize, g: &str) -> bool {
-        g.len() == 1 && self.lay.breakat.has(self.bytes[b])
+    fn is_break(&self, b: usize, g: Glyph<'_>) -> bool {
+        matches!(g, Glyph::Text(s) if s.len() == 1) && self.lay.breakat.has(self.bytes[b])
+    }
+
+    /// Whether the glyph before glyph `gi` is a byte that is not UTF-8.
+    fn prev_invalid(&self, gi: usize) -> bool {
+        gi > 0 && matches!(self.graphemes[gi - 1].1, Glyph::Byte(_))
     }
 
     /// The size and head of the char `gi` at `vcol` (nvim's `charsize_regular`).
     fn size(&self, gi: usize, vcol: usize) -> (usize, usize, usize) {
         let (b, g) = self.graphemes[gi];
         let width = self.width;
-        let is_tab = g == "\t";
-        let mut size = plain_size(g, vcol, self.ts, self.list_tab, self.lay.uhex);
+        let is_tab = g == Glyph::Text("\t");
+        let mut size = plain_size(
+            g,
+            vcol,
+            self.ts,
+            self.list_tab,
+            self.lay.uhex,
+            self.prev_invalid(gi),
+        );
         let mut mb_added = 0;
         if self.lay.wrap && size == 2 && !is_tab && g.len() > 1 && vcol % width == width - 1 {
             // A wide glyph that does not fit in the row's last cell: a `>` there, the glyph below.
@@ -255,13 +301,21 @@ impl<'t> Walk<'t, '_> {
         }
         let mut vcol2 = v;
         let mut prev_break = true;
-        for &(nb, ng) in &self.graphemes[gi + 1..] {
+        for (k, &(nb, ng)) in self.graphemes[gi + 1..].iter().enumerate() {
             let is_break = self.is_break(nb, ng);
             if !(is_break || vcol2 == v || !prev_break) {
                 break;
             }
             let at = usize::try_from(vcol2).unwrap_or(0);
-            vcol2 += as_i(plain_size(ng, at, self.ts, self.list_tab, self.lay.uhex));
+            let prev_invalid = self.prev_invalid(gi + 1 + k);
+            vcol2 += as_i(plain_size(
+                ng,
+                at,
+                self.ts,
+                self.list_tab,
+                self.lay.uhex,
+                prev_invalid,
+            ));
             if vcol2 >= colmax {
                 // The padding only ever grows the char: a tab in the last cell keeps its width
                 // (nvim draws it whole there).
@@ -342,7 +396,7 @@ impl<'t> Walk<'t, '_> {
 /// Lay out `line` (no trailing newline). `conceal` holds the line-relative byte ranges hidden from the
 /// layout, each with the text painted in its place (F-031; empty on the caret line).
 pub(crate) fn layout<'t>(
-    line: &'t str,
+    line: impl LineBytes<'t>,
     lay: &Layout<'t>,
     conceal: &[(usize, usize, Option<&'t str>)],
 ) -> LineLayout<'t> {
@@ -350,7 +404,11 @@ pub(crate) fn layout<'t>(
 }
 
 /// The layout of `line` up to byte `byte`, without its cells: where the cursor on `byte` is.
-pub(crate) fn cursor_layout<'t>(line: &'t str, lay: &Layout<'t>, byte: usize) -> LineLayout<'t> {
+pub(crate) fn cursor_layout<'t>(
+    line: impl LineBytes<'t>,
+    lay: &Layout<'t>,
+    byte: usize,
+) -> LineLayout<'t> {
     layout_upto(line, lay, &[], usize::MAX, byte)
 }
 
@@ -358,7 +416,7 @@ pub(crate) fn cursor_layout<'t>(line: &'t str, lay: &Layout<'t>, byte: usize) ->
 /// `max_byte`, so a very long line (a minified file, a huge count insert) costs what the window shows,
 /// not its length. `rows` and `total` then count the part laid out.
 pub(crate) fn layout_upto<'t>(
-    line: &'t str,
+    line: impl LineBytes<'t>,
     lay: &Layout<'t>,
     conceal: &[(usize, usize, Option<&'t str>)],
     max_vcol: usize,
@@ -366,6 +424,7 @@ pub(crate) fn layout_upto<'t>(
 ) -> LineLayout<'t> {
     // Every char takes a cell (but concealed ones), so the graphemes past the limits plus a margin for
     // the 'linebreak' look-ahead are never read.
+    let line = line.line_bytes();
     let slack = 1024;
     let width = lay.width.max(1);
     let ts = lay.tabstop.max(1);
@@ -375,7 +434,7 @@ pub(crate) fn layout_upto<'t>(
         (true, Some(o)) => breakindent(line, o, ts, width, sbr_w),
         _ => 0,
     };
-    let bytes = line.as_bytes();
+    let bytes = line;
     let blank = |b: &&u8| matches!(**b, b' ' | b'\t');
     let w = Walk {
         lay,
@@ -387,8 +446,7 @@ pub(crate) fn layout_upto<'t>(
         // A continuation row's head never takes the whole row.
         head_w: (bri + sbr_w).min(width.saturating_sub(1)),
         bytes,
-        graphemes: line
-            .grapheme_indices(true)
+        graphemes: cells::glyphs(line)
             .take_while(|&(i, _)| i <= max_byte.saturating_add(slack))
             .take(max_vcol.saturating_add(slack))
             .collect(),
@@ -439,7 +497,7 @@ pub(crate) fn layout_upto<'t>(
             });
             continue;
         }
-        let is_tab = g == "\t";
+        let is_tab = g == Glyph::Text("\t");
         let (size, head, mb_added) = w.size(gi, vcol);
         out.chars.push(CharSpan {
             byte: b,
@@ -452,7 +510,7 @@ pub(crate) fn layout_upto<'t>(
         if is_tab {
             // The tab's own cells take the `'listchars'` fill; a `'linebreak'` padding after them stays
             // blank, except after a one-cell tab, whose fill runs on through it (nvim's `win_line`).
-            let plain = plain_size(g, vcol, ts, w.list_tab, false);
+            let plain = plain_size(g, vcol, ts, w.list_tab, false, false);
             let content = if plain == 1 {
                 size - head
             } else {
@@ -470,9 +528,10 @@ pub(crate) fn layout_upto<'t>(
                     (CellText::Blank, 1, CellKind::Text)
                 }
             });
-        } else if let Some(shown) = crate::screen::transcribe(g, lay.uhex) {
+        } else if let Some(shown) = shown_as(g, lay.uhex) {
             // An unprintable char shows transcribed, one cell per char (`^[`, `<85>`), as nvim's
-            // SpecialKey: never the raw control byte (#1181).
+            // SpecialKey: never the raw control byte (#1181); a byte that is not UTF-8 shows as `<ff>`
+            // (#1251).
             let cells: Vec<char> = shown.chars().collect();
             out.push_span(&w, vcol, size, b, |k| match cells.get(k) {
                 Some(&c) if crate::screen::cluster_width(c.encode_utf8(&mut [0; 4])) == 1 => {
@@ -480,7 +539,7 @@ pub(crate) fn layout_upto<'t>(
                 }
                 _ => (CellText::Blank, 1, CellKind::Text),
             });
-        } else {
+        } else if let Glyph::Text(g) = g {
             let (text, kind) = w.glyph(b, g);
             let gw = usize::from(cluster_width(g)).max(1);
             out.push_span(&w, vcol, size, b, |k| {

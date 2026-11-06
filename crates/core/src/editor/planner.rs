@@ -2473,8 +2473,88 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     } else {
         GroupHint::BreakBefore
     };
-    let p = plan_cmd(st, cmd);
+    let resolved = display_columns(st, cmd);
+    let p = plan_cmd(st, resolved.as_ref().unwrap_or(cmd));
     leave_autoindent(st, st.view.cursor, p, hint)
+}
+
+/// `cmd` with a `{count}|` or `{count}gM` motion resolved in DISPLAY columns (nvim's `nv_pipe` / `nv_g_cmd`
+/// `gM`: a `<Tab>` spans to its tabstop, a wide char two cells and a byte that is not UTF-8 its four-cell
+/// `<ff>`, #1251), or `None` when it has neither. The motion layer counts clusters and knows no tabstop, so
+/// the landing is found here and handed back as the `|` count that steps that many clusters onto it: `|`
+/// lands on the char covering the column (the last char past the line end), `gM` on the one at `count`
+/// percent of the line's cells.
+fn display_columns(st: &EditorState, cmd: &Command) -> Option<Command> {
+    let (count, m) = match cmd {
+        Command::Move(n, m)
+        | Command::Delete(n, m)
+        | Command::Change(n, m)
+        | Command::Yank(n, m) => (*n, *m),
+        Command::OpForced { count, motion, .. } | Command::CaseMotion { count, motion, .. } => {
+            (*count, *motion)
+        }
+        _ => return None,
+    };
+    if !matches!(m, Motion::Column | Motion::MidLine) {
+        return None;
+    }
+    let b = st.bytes();
+    let ts = st.view.indent.tab_width;
+    let ls = line_start(b, st.view.cursor);
+    let n = count.max(1) as usize;
+    let vcol = match m {
+        Motion::Column => n - 1,
+        // nvim takes a count over 100 as a bare `gM`.
+        _ if n > 100 => range::line_cells(b, ls, ts) / 2,
+        _ => range::line_cells(b, ls, ts).saturating_mul(n) / 100,
+    };
+    // The char covering `vcol`, or `None` past the line's last cell. Only the cells up to it are read, so
+    // `5000|` on a huge line costs 5000 cells.
+    // The line's end is found by the walk, not scanned for first: a huge line costs the cells crossed.
+    let (mut i, mut v, mut last) = (ls, 0, ls);
+    let mut hit = None;
+    while i < b.len() && b[i] != b'\n' {
+        // A cluster never crosses a line break, but `\r\n` would be one: bound a CR to itself.
+        let bound = if b[i] == b'\r' { i + 1 } else { b.len() };
+        let (j, w) = cluster_cells(b, i, bound, v, ts);
+        if vcol < v + w {
+            hit = Some(i);
+            break;
+        }
+        last = i;
+        i = j;
+        v += w;
+    }
+    // Past the end Normal stops on the last char; Visual may go one past it (nvim's `coladvance`
+    // `one_more`): `v10|` on `abc` takes the line break.
+    let at = match hit {
+        Some(at) => at,
+        None if st.view.mode.selection().is_some() => i,
+        None => last,
+    };
+    let mut steps = 0usize;
+    let mut i = ls;
+    while i < at {
+        i = motion::next_boundary(b, i);
+        steps += 1;
+    }
+    let col = u32::try_from(steps + 1).unwrap_or(u32::MAX);
+    let mut out = cmd.clone();
+    match &mut out {
+        Command::Move(n, m)
+        | Command::Delete(n, m)
+        | Command::Change(n, m)
+        | Command::Yank(n, m) => {
+            *n = col;
+            *m = Motion::Column;
+        }
+        Command::OpForced { count, motion, .. } | Command::CaseMotion { count, motion, .. } => {
+            *count = col;
+            *motion = Motion::Column;
+        }
+        _ => {}
+    }
+    Some(out)
 }
 
 fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {

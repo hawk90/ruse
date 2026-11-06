@@ -4188,6 +4188,32 @@ mod blockwise_tests {
         assert_eq!(block.yank_text(b), b"cd\n  \ncd");
     }
 
+    /// #1251: the virtual columns are the cells the renderer paints, as nvim v0.12.6 counts them
+    /// (`virtcol()` on each byte): `<ff>` 4, `^A` 2, `<85>` 4, and a mark after `<80>` composes onto it.
+    #[test]
+    fn vcol_helpers_count_the_cells_nvim_draws() {
+        let b = b"\xff\x01\xc2\x85a";
+        assert_eq!(vcols_at(b, 0, 8), (0, 3));
+        assert_eq!(vcols_at(b, 1, 8), (4, 5));
+        assert_eq!(vcols_at(b, 2, 8), (6, 9));
+        assert_eq!(vcols_at(b, 4, 8), (10, 10));
+        assert_eq!(line_cells(b, 0, 8), 11);
+        let b = b"a\x80\xcc\x81b";
+        assert_eq!(
+            vcols_at(b, 4, 8),
+            (5, 5),
+            "the mark after <80> takes no cell"
+        );
+        assert_eq!(line_cells(b, 0, 8), 6);
+        assert_eq!(
+            text_cells(b"\xcc\x81", 8),
+            1,
+            "a lone mark at a line start shows on a cell"
+        );
+        // A cut 3-byte char is one `<xx>` per byte.
+        assert_eq!(line_cells(b"\xea\xb0a", 0, 8), 9);
+    }
+
     #[test]
     fn vcol_helpers_round_trip_tabs_and_wide_chars() {
         let b = "\tx宽y".as_bytes();
