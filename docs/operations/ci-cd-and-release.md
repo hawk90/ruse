@@ -34,7 +34,8 @@ Never test-and-immediately-deploy in one giant `ci.yml`.
 
 The workflow set, triggers and required checks are listed in
 [`.github/workflows/README.md`](../../.github/workflows/README.md), including the planned `ci-full`,
-`compatibility` and `nightly` workflows. `release.yml` is a stub. The sections below describe the target pipeline.
+`compatibility` and `nightly` workflows. `release.yml` is a placeholder that **fails** on a pushed `v*` tag, so no tag reads as a built release
+(#887). The sections below describe the target pipeline.
 
 ### Release-profile tests (#899)
 Shipped binaries are built with `[profile.release]`, so the suite also runs under it: the advisory

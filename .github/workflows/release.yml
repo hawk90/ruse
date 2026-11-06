@@ -1,5 +1,8 @@
-# Release BUILD (build once; publish separately). Activates when crates/ builds real binaries.
+# Release BUILD (build once; publish separately). NOT BUILT YET: there is no release pipeline.
 # See docs/operations/ci-cd-and-release.md §6 (assets: per-platform binaries + SHA256SUMS + SBOM + provenance).
+# Until it exists, a pushed `v*` tag FAILS this workflow on purpose (#887): a green run would read as a
+# release that was built, tested and published when nothing was. Replace the step below with the real
+# pipeline; do not turn it back into a passing stub.
 name: release
 on:
   push: { tags: ['v*'] }
@@ -10,9 +13,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: |
-          echo "TODO: cross-platform build + test + SHA256SUMS + SBOM + provenance -> draft release."
-          echo "Rollback = re-publish a prior verified artifact (never a fresh build)."
+      - name: no release pipeline yet
+        run: |
+          echo "::error title=No release pipeline::release.yml is a placeholder; nothing was built, tested or published for ${GITHUB_REF_NAME}. See docs/operations/ci-cd-and-release.md §6."
+          exit 1

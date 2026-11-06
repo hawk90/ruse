@@ -76,16 +76,29 @@ path_triggers:
   - { pattern: '^spec/ARCHITECTURE\.md$',      min_kind: architecture, reason: architecture spec }
   - { pattern: '^spec/DECISIONS\.md$',         min_kind: architecture, reason: decision record }
   - { pattern: '^spec/dependencies\.yaml$',    min_kind: architecture, reason: dependency inventory (layering) }
-  - { pattern: '^crates/plugin-protocol/',     min_kind: contract,     reason: plugin protocol crate }
+  - { pattern: '^spec/architecture\.yaml$',    min_kind: architecture, reason: crate / module dependency contract (ARCH-LAYER-001) }
+  # The stated stability contracts themselves (plugin protocol, remote runtime, persistence format). The code
+  # that implements a format is NOT a floor (contract_triggers below): only the contract text is unambiguous.
+  - { pattern: '^spec/contracts/',             min_kind: contract,     reason: stability contract (protocol / storage format) }
   - { pattern: '^spec/(PRD|POLICY|capabilities|config-schema|context-profiles|glossary|change-kinds)\.(yaml|yml)$',
       min_kind: spec, reason: spec source of truth }
+  # Every other machine-read spec file is policy a gate or checker reads: waivers, ratchet ceilings, the verify
+  # registry, fitness thresholds, perf baselines, the parity census and oracle pins (#884). Loosening one
+  # loosens a gate, so none of them is an editorial change.
+  - { pattern: '^spec/.+\.(yaml|yml)$',        min_kind: spec,         reason: gate / checker policy (machine-read spec) }
   - { pattern: '^docs/invariants/',            min_kind: spec,         reason: invariant registry }
   - { pattern: '^\.github/',                    min_kind: build,        reason: CI / repo automation config }
-  - { pattern: '^(Cargo\.toml|Cargo\.lock|pyproject\.toml|lefthook\.yml)$',
-      min_kind: build, reason: build / dependency / hook manifest }
+  - { pattern: '^(Cargo\.toml|Cargo\.lock|pyproject\.toml|lefthook\.yml|rust-toolchain\.toml|clippy\.toml|rustfmt\.toml|\.rustfmt\.toml|renovate\.json)$',
+      min_kind: build, reason: build / lint / toolchain / dependency / hook config }
+  - { pattern: '^\.cargo/',                    min_kind: build,        reason: cargo build config }
+  - { pattern: '^scripts/',                    min_kind: build,        reason: developer setup scripts }
   - { pattern: '^crates/',                     min_kind: implementation, reason: rust crate source }
   - { pattern: '^apps/',                       min_kind: implementation, reason: rust app source }
   - { pattern: '^tools/',                      min_kind: implementation, reason: tooling source }
+  # Test sources and fixtures, including the parity oracle corpora and their captured ground truth: editing
+  # one changes what the suite proves (#884).
+  - { pattern: '^tests/',                      min_kind: implementation, reason: test corpus / oracle fixtures }
+  - { pattern: '^fuzz/',                       min_kind: implementation, reason: fuzz targets / corpus }
   - { pattern: '\.rs$',                        min_kind: implementation, reason: rust source }
 
 # contract_triggers — touching a matching path suggests a `contracts.*` flag (#1204). The diff cannot tell a
@@ -94,8 +107,10 @@ path_triggers:
 contract_triggers:
   - { pattern: '^spec/contracts/persistence-format\.yaml$', flag: persistent_format, reason: persistence format contract }
   - { pattern: '^apps/tui/src/persist/(rj01|rjs0)\.rs$',    flag: persistent_format, reason: journal record format }
+  - { pattern: '^apps/tui/src/persist/journal\.rs$',        flag: persistent_format, reason: journal file naming / layout (RFC-0023 §3) }
   - { pattern: '^spec/contracts/plugin-protocol\.yaml$',    flag: protocol,          reason: plugin protocol contract }
   - { pattern: '^spec/contracts/remote-runtime\.yaml$',     flag: protocol,          reason: remote runtime protocol contract }
+  - { pattern: '^apps/tui/src/remote/protocol\.rs$',        flag: protocol,          reason: versioned remote wire protocol (PROTOCOL_VERSION) }
 
 # human_judgment — matched paths get a WARNING (not a floor) telling the human to decide the
 # real kind. This is where the tool refuses to pretend it can read intent.

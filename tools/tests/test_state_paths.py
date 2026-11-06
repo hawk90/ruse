@@ -183,7 +183,7 @@ class TestStatePaths(unittest.TestCase):
         self.assertEqual(c["affected"]["decisions"], ["D-062"])
         self.assertEqual(c["affected"]["capabilities"], ["CAP-EDIT-CORE"])
         self.assertEqual(c["artifacts"], {"issue": "11", "rfc": "RFC-0021", "decision": "D-062",
-                                          "migration": False})
+                                          "migration": False, "compat_reviewed": None})
         self.assertEqual(c["non_goals"], ["no rust"])
         self.assertEqual(c["goal"].strip(), "g: with colon")
         with open(os.path.join(self.r.git_path(self.r.root), "11", "change.yaml"), encoding="utf-8") as fh:

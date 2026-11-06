@@ -8,7 +8,8 @@
 # functions are per-repo. Auto-discovered into `ruse gov check`.
 #
 # Per function: id (FIT-*) · metric · operator (equals | less_than | less_than_pct | no_new) · threshold ·
-#   kind (atomic | holistic | continuous) · status (live | planned) · check (enforcing checker, if live) ·
+#   kind (atomic | holistic | continuous) · status (live | planned) · check (enforcing checker, if live: a
+#   verify step name from spec/verification.yaml or a gov checker module name; an unknown one FAILS) ·
 #   refs (existing IDs, optional).
 
 version: 1
@@ -17,7 +18,7 @@ functions:
   # --- live now: graph/static, enforced by an existing checker ---
   - { id: FIT-ARCH-CYCLES,     metric: crate_dependency_cycles,     operator: equals,        threshold: 0,  kind: holistic,   status: live,    check: dependency-check, refs: [ARCH-LAYER-001] }
   - { id: FIT-ARCH-DIRECTION,  metric: forbidden_crate_deps,        operator: equals,        threshold: 0,  kind: holistic,   status: live,    check: dependency-check, refs: [ARCH-LAYER-001] }
-  - { id: FIT-WAIVERS-EXPIRED, metric: expired_waivers,             operator: equals,        threshold: 0,  kind: continuous, status: live,    check: gov-waivers,      refs: [] }
+  - { id: FIT-WAIVERS-EXPIRED, metric: expired_waivers,             operator: equals,        threshold: 0,  kind: continuous, status: live,    check: waivers,          refs: [] }
 
   # --- planned: quantitative, go live with code + a metrics source (D-018/019, F-* impl) ---
   - { id: FIT-BUILD-P95,       metric: incremental_build_p95_s,     operator: less_than,     threshold: 15, kind: continuous, status: planned, refs: [ENG-PERF-001] }

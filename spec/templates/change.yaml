@@ -37,6 +37,7 @@ artifacts:
   rfc: null                   # RFC-#### when kind is architecture/contract
   decision: null              # D-### when hard to reverse
   migration: false            # persistent_format ⇒ a reference (`--migration "RFC-0023 §3"`) or "none"
+  compat_reviewed: null       # kind contract ⇒ where the compatibility review is recorded (`--compat-reviewed`)
 
 # allow_paths / forbid_paths — the blast radius the implementer (human or agent) may touch.
 # `pr check` flags a diff that strays outside allow_paths.

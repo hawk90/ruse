@@ -73,7 +73,7 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 | --- | --- | --- |
 | Architecture as Code | **live** | [spec/architecture.yaml](../../spec/architecture.yaml) + `ruse arch deps` (ARCH-LAYER-001 / ARCH-FORBID-001) |
 | Dependency Governance | live | spec/dependencies.yaml + `ruse arch deps` (cycles, allowed_layers) + PR-template dep gate |
-| Architecture Fitness Functions | **live** | [spec/fitness.yaml](../../spec/fitness.yaml) + `ruse gov fitness` (3 live: cycles/direction/expired-waivers; 5 quantitative — build/size/API/startup/fan-in — planned pending code) |
+| Architecture Fitness Functions | **live** | [spec/fitness.yaml](../../spec/fitness.yaml) + `ruse gov fitness` (3 live: cycles/direction/expired-waivers; 5 quantitative — build/size/API/startup/fan-in — planned pending code). A live function's `check:` must name a verify step or a gov checker, or `gov fitness` fails (#887) |
 | API Lifecycle Governance | partial | D-010 Internal→Experimental→Preview→Stable → `api-diff` planned (verify NOT_YET) |
 | Ownership / Team Topologies (Conway) | planned | CODEOWNERS exists; ownership fitness planned |
 

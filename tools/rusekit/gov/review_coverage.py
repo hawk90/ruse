@@ -11,7 +11,9 @@ This checker makes the linkage a first-class field: an axis may carry `automated
 verify step (spec/verification.yaml) or gov checker (tools/rusekit/gov/*.py) that mechanically enforces it.
 Then it:
   - FAILS if any `automated_by` names a checker that does not exist (a broken/renamed link — drift);
-  - WARNS for each `machine`-method axis with no `automated_by` (a claimed-automatable axis not yet wired);
+  - counts each `machine`-method axis with no `automated_by` (a claimed-automatable axis not yet wired).
+    The count is ADVISORY here; `gov ratchet` holds it to a ceiling (`review_machine_unwired`), so it can
+    only go down (#887);
   - reports per-domain machine-coverage counts, so "how much of the rubric is mechanized" is a number.
 
 Portable engine; auto-discovered into `ruse gov check`.
@@ -114,7 +116,7 @@ def main(argv=None) -> int:
         # A backlog metric, not a per-run nag: the rubric optimistically tagged many axes `machine` before a
         # checker existed. Surface the count so coverage is honest; wiring them is ongoing work, not a failure.
         render.warn(f"{len(r['gaps'])} axes claim method=machine but are not wired to a checker yet "
-                    "(coverage backlog — informational)")
+                    "(ADVISORY here; the count is held to a ceiling by `gov ratchet` review_machine_unwired)")
         return 0
     render.ok(f"all {r['automated']} automated_by links resolve; every method=machine axis is wired")
     return 0

@@ -7,7 +7,8 @@ here writes there; a legacy `.ruse/work` or `.ruse/cache` is moved out on first 
 
 The change tooling is git-aware but not git-required. `changed_files()` returns None
 when this is not a git checkout (callers then fall back to an explicit --files list or
-change.yaml's declared paths), so no command hard-crashes outside git.
+change.yaml's declared paths), so no command hard-crashes outside git. Inside git, a failed diff
+is an error (`ChangedFilesError`), never an empty change set (#885).
 """
 from __future__ import annotations
 
@@ -50,13 +51,21 @@ def rel(p: str) -> str:
 # ---- git ------------------------------------------------------------------------
 
 def _git(*args: str) -> tuple[int, str]:
+    code, out, _ = _git_full(*args)
+    return code, out
+
+
+def _git_full(*args: str) -> tuple[int, str, str]:
+    """(exit code, stdout, stderr); 127 when git cannot be run at all."""
     try:
         p = subprocess.run(
             ["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=30
         )
-        return p.returncode, (p.stdout or "")
-    except (FileNotFoundError, subprocess.SubprocessError):
-        return 127, ""
+        return p.returncode, (p.stdout or ""), (p.stderr or "")
+    except FileNotFoundError:
+        return 127, "", "git not found"
+    except subprocess.SubprocessError as e:
+        return 127, "", str(e)
 
 
 def is_git_repo() -> bool:
@@ -71,29 +80,40 @@ def current_branch() -> str | None:
     return out.strip() if code == 0 else None
 
 
+class ChangedFilesError(SystemExit):
+    """A git command that lists the changed files failed. The changed-file set is then unknown, and an
+    unknown set is never reported as an empty one: the gate would pass a change it never saw (#885)."""
+
+
 def changed_files(base: str | None = None) -> list[str] | None:
     """Repo-relative paths changed in the working tree.
 
     Returns None when this is not a git repo. With `base` (e.g. origin/main) the set
     is (base..working-tree): committed diff + staged + unstaged + untracked.
     Without `base` it is everything not committed at HEAD + untracked.
+    Raises ChangedFilesError when any of those git commands fails (a missing base ref, a shallow clone
+    without the merge base, a broken repository): no caller may read that as "0 changed files".
     """
     if not is_git_repo():
         return None
     files: set[str] = set()
 
-    def add(code_out: tuple[int, str]):
-        code, out = code_out
-        if code == 0:
-            for line in out.splitlines():
-                line = line.strip()
-                if line:
-                    files.add(line.replace(os.sep, "/"))
+    def add(*args: str):
+        code, out, err = _git_full(*args)
+        if code != 0:
+            detail = (err.strip().splitlines() or [f"exit {code}"])[0]
+            raise ChangedFilesError(
+                f"ruse: cannot compute the changed files: `git {' '.join(args)}` failed ({detail}); "
+                "fetch the base ref or pass --files, then re-run (#885)")
+        for line in out.splitlines():
+            line = line.strip()
+            if line:
+                files.add(line.replace(os.sep, "/"))
 
     if base:
-        add(_git("diff", "--name-only", f"{base}...HEAD"))
-    add(_git("diff", "--name-only", "HEAD"))            # staged + unstaged vs HEAD
-    add(_git("ls-files", "--others", "--exclude-standard"))  # untracked
+        add("diff", "--name-only", f"{base}...HEAD")
+    add("diff", "--name-only", "HEAD")                  # staged + unstaged vs HEAD
+    add("ls-files", "--others", "--exclude-standard")   # untracked
     return sorted(files)
 
 

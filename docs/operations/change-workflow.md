@@ -76,9 +76,17 @@ It mirrors the human one-minute guide in [change-paths.md](../contributing/chang
 `architecture` for a one-line README change only **warns**. Whether a docs edit is editorial or semantic —
 and whether something is "really" an architecture change — stays a human judgment; the tool only forces a
 floor when a path is unambiguously high-risk, and hard-fails a hand-edit of a generated file (ENG-DOC-001).
-Paths that guard a stability boundary (`contract_triggers` in `change-kinds.yaml`: the persistence-format
-contract, the RJ01/RJS0 record code, the protocol contracts) only **warn** when the contract leaves the
-matching `contracts.*` flag unset, because a refactor of format code need not change the format.
+Gate policy is one of those paths (#884): every machine-read `spec/*.yaml` (waivers, ratchet ceilings, the
+verify registry, fitness thresholds, perf baselines, the parity census and oracle pins) is at least `spec`,
+`spec/architecture.yaml` is `architecture`, the contracts in `spec/contracts/` are `contract`, lint /
+toolchain config (`clippy.toml`, `rust-toolchain.toml`) and `scripts/` are `build`, and `tests/` and `fuzz/`
+(oracle fixtures included) are `implementation`. Code that implements a stability boundary
+(`contract_triggers` in `change-kinds.yaml`: the RJ01/RJS0 record code, `persist/journal.rs`,
+`remote/protocol.rs`) only **warns** when the contract leaves the matching `contracts.*` flag unset, because
+a refactor of format code need not change the format.
+
+A failed `git diff` (a base ref that is not fetched, a shallow clone) is an error, never "0 changed files"
+(#885): `classify`, `verify`, `pr check` and `pr render` stop and say which git command failed.
 
 ## The Change Contract
 
@@ -119,6 +127,7 @@ python3 tools/ruse.py change set --issue 42 --replace --allow tools/    # replac
 | `--rfc ID` / `--decision ID` | `artifacts.rfc` / `artifacts.decision` (scalars) |
 | `--persistent-format` / `--protocol` / `--public-api` (and `--no-…`) | `contracts.*`: the change crosses that stability boundary; `pr check` then holds it to kind `contract` |
 | `--migration REF` | `artifacts.migration`: where old data's migration is decided (an RFC section, a `D-*`, a PR), or `none`; required by `pr check` when `contracts.persistent_format` is set |
+| `--compat-reviewed REF` | `artifacts.compat_reviewed`: where the compatibility review is recorded (an RFC section, a review, a PR); required by `pr check` for kind `contract`, which fails without it (#887) |
 | `--kind KIND` / `--goal TEXT` | `kind` / `goal` (`change set` only; `change start` has its own `--kind` / `--goal`) |
 
 List flags **append**, and duplicates are skipped. With `change set --replace`, each list flag you pass
@@ -151,6 +160,8 @@ merge gate (it is trivially fabricated). So the gate is two-tier:
   the PR body, then **re-derives** the observed kind + blast radius from the real diff and relies on the
   re-run verify jobs (`spec-check.yml`) for evidence:
   `ruse pr check --pr-body <body> --base origin/<base>`. Nothing on the contributor's machine is trusted.
+  This job does not see those jobs' results, so it records no evidence check of its own; its output names
+  the required jobs (`rust`, `spec-validate`) that enforce the evidence instead (#887).
 
 The author declares; CI verifies against the diff. Under-declaring the kind, or straying outside
 `allow_paths`, fails in CI regardless of what the local run reported.
@@ -209,7 +220,12 @@ spec-validate) and `arch deps` / `dependency-check` (spec/dependencies.yaml `all
 crate dependency-cycle detection; enforces an explicit `crate_layers:` direction map if one is added to
 spec/dependencies.yaml). Both are wired into `verify`.
 
+`verify` fails safe (#888): a missing or malformed `spec/verification.yaml` fails it, a step the diff needs
+whose tool (`cargo`) is missing fails it instead of being skipped, and a changed file no scope rule
+recognises selects every scope. `arch deps` fails without PyYAML, its policy files or `cargo metadata`.
+
 Deferred (P1+, reported as "not built yet" by `verify`): `public-api-diff` and `protocol-compat` (need a
-git baseline and a real protocol surface), and the `spec generate`
+git baseline and a real protocol surface; until then a `contract` change attests its review with
+`--compat-reviewed`), and the `spec generate`
 derived-artifact generator (tracked by D-022). These raise the floor of what `verify --full` and `pr check`
 can enforce as the reference implementation grows.

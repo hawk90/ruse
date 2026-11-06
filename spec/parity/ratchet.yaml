@@ -1,11 +1,15 @@
 # Ratchet baseline — the debt CEILING per bucket (enforced by `gov ratchet`). A bucket may never rise above
-# its value here. Lower a number when you burn that debt down and the gate holds the new floor; raising one
-# is a deliberate, reviewable edit — that visibility is the point. `unclassified` census items are NOT
-# ratcheted: they grow with discovery (a new upstream survey), which the census wants; partial classification
-# is already blocked per-surface by `gov parity_discovery`.
+# its value here. Lower a number when you burn that debt down and the gate holds the new floor. Raising one
+# FAILS unless `raised.<bucket>` below says why, in words new to that change (a reason already on the base
+# branch cannot excuse a second raise; #884). `unclassified` census items are NOT ratcheted: they grow with
+# discovery (a new upstream survey), which the census wants; partial classification is already blocked
+# per-surface by `gov parity_discovery`.
 version: 1
 buckets:
   config_untraced: 8      # config-schema keys with `derives_from: []`      (see gov prd_cfg)
   cap_untraced: 18        # capabilities with an empty `prd:`               (see gov capability_coverage)
   legacy_in_prd: 58       # hand-authored parity IDs still cited by the PRD (see gov parity_discovery)
   backlog: 77             # entries in spec/parity-backlog.yaml
+  review_machine_unwired: 137   # review axes with method=machine and no automated_by (see gov review_coverage)
+# raised — <bucket>: why this change raises its ceiling (an issue or PR reference and one sentence).
+raised: {}

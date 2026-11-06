@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0                   # `gov ratchet` compares ceilings with the base branch (#884)
       - uses: ./.github/actions/setup-python-yaml
       - run: python3 tools/spec-validate.py
       # When the generator (D-022) exists: python3 tools/spec-build.py && git diff --exit-code

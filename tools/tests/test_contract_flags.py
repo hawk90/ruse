@@ -62,7 +62,15 @@ class TestClassifyFlagHits(unittest.TestCase):
         cl = classify_changeset(files, "implementation")
         self.assertEqual([(f, flag) for f, flag, _ in cl.flag_hits],
                          [("spec/contracts/persistence-format.yaml", "persistent_format"),
-                          ("apps/tui/src/persist/rj01.rs", "persistent_format")])
+                          ("apps/tui/src/persist/rj01.rs", "persistent_format"),
+                          ("apps/tui/src/persist/journal.rs", "persistent_format")])
+
+    def test_the_remote_wire_protocol_suggests_the_protocol_flag(self):
+        # #884: the versioned wire format is a stability boundary; a refactor of it is not, so a flag hint.
+        cl = classify_changeset(["apps/tui/src/remote/protocol.rs"], "implementation")
+        self.assertEqual([(f, flag) for f, flag, _ in cl.flag_hits],
+                         [("apps/tui/src/remote/protocol.rs", "protocol")])
+        self.assertTrue(cl.ok)
 
 
 def _gate(kind, contracts=None, artifacts=None, allow=("apps/",)):
@@ -105,9 +113,32 @@ class TestPrCheckHonoursFlags(unittest.TestCase):
 
     def test_a_complete_format_change_passes(self):
         code, out = _check(_gate("contract", {"persistent_format": True},
-                                 {"rfc": "RFC-0023", "migration": "RFC-0023 §3"}), self.FILES)
+                                 {"rfc": "RFC-0023", "migration": "RFC-0023 §3",
+                                  "compat_reviewed": "RFC-0023 §7"}), self.FILES)
         self.assertEqual(code, 0, out)
         self.assertIn("names its migration (RFC-0023 §3)", out)
+        self.assertIn("compatibility review recorded (RFC-0023 §7)", out)
+
+    def test_a_contract_change_without_a_compat_review_fails(self):
+        # #887: `compat` was a warning, so a `contract` change could never fail on it.
+        code, out = _check(_gate("contract", {"persistent_format": True},
+                                 {"rfc": "RFC-0023", "migration": "RFC-0023 §3"}), self.FILES)
+        self.assertEqual(code, 1, out)
+        self.assertIn("--compat-reviewed", out)
+
+    def test_compat_reviewed_is_set_in_place(self):
+        text, changes = edit.apply(_template(), _args(["--compat-reviewed", "RFC-0006 §4"]))
+        self.assertEqual(yaml.safe_load(text)["artifacts"]["compat_reviewed"], "RFC-0006 §4")
+        self.assertIn("artifacts.compat_reviewed = RFC-0006 §4", changes)
+        with self.assertRaises(ValueError):
+            edit.apply(_template(), _args(["--compat-reviewed", " "]))
+
+    def test_ci_evidence_is_a_note_not_a_passing_check(self):
+        # #887: the CI branch appended a literal True. It is now reported as where evidence is enforced.
+        code, out = _check(_gate("implementation"), self.FILES)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("evidence: gate of record", out)
+        self.assertIn("not checked by this job", out)
 
     def test_an_unflagged_format_path_only_warns(self):
         code, out = _check(_gate("implementation"), self.FILES)

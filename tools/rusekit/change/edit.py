@@ -18,6 +18,8 @@ editors and sandboxed agents cannot write, so every field an author normally fil
   --public-api         contracts.public_api, `--no-public-api`
   --migration REF      artifacts.migration: where the migration of old data is decided or done (an RFC
                        section, a D-*, a PR); `--migration none` records that none is needed
+  --compat-reviewed REF  artifacts.compat_reviewed: where the compatibility review of a `contract` change
+                       is recorded (an RFC section, a review comment, a PR); `pr check` requires it
 
 List flags APPEND to what the contract already holds (duplicates are skipped); `change set --replace`
 makes each list flag given REPLACE its list instead. Scalars always replace.
@@ -75,6 +77,9 @@ def add_arguments(ap: argparse.ArgumentParser, *, with_kind: bool = True) -> Non
     ap.add_argument("--migration", metavar="REF",
                     help="artifacts.migration: where old data's migration is decided "
                          "(e.g. \"RFC-0023 §3\"), or `none` when no migration is needed")
+    ap.add_argument("--compat-reviewed", metavar="REF",
+                    help="artifacts.compat_reviewed: where the compatibility review of a `contract` "
+                         "change is recorded (e.g. \"RFC-0006 §4\")")
 
 
 def spec_section(ref: str) -> str | None:
@@ -215,6 +220,13 @@ def apply(text: str, args, *, replace: bool = False) -> tuple[str, list[str]]:
             raise ValueError("--migration: give a reference (an RFC section, D-*, PR) or `none`")
         put("artifacts", "migration", mig)
         changes.append(f"artifacts.migration = {mig}")
+    cr = getattr(args, "compat_reviewed", None)
+    if cr is not None:
+        cr = cr.strip()
+        if not cr:
+            raise ValueError("--compat-reviewed: give where the review is recorded (an RFC section, a PR)")
+        put("artifacts", "compat_reviewed", cr)
+        changes.append(f"artifacts.compat_reviewed = {cr}")
     kind = getattr(args, "kind", None)
     if kind:
         put(None, "kind", kind)

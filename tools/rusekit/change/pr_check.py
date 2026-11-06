@@ -186,12 +186,14 @@ def main(argv: list[str]) -> int:
             linked = bool(contract.affected_ids(c) or art.get("rfc") or art.get("decision"))
             checks.append((linked, "artifact: a spec/Decision ID is linked"))
         elif req == "compat":
-            # P0: no protocol_compat tool yet — require an explicit human attestation field.
-            if art.get("compat_reviewed"):
-                checks.append((True, "artifact: compatibility reviewed (attested)"))
-            else:
-                warns.append("artifact: compatibility review required — set "
-                             "artifacts.compat_reviewed: true after review (tool is P1)")
+            # No protocol-compat tool yet (verify NOT_YET), so the artifact is a human attestation: where the
+            # compatibility review is recorded. It was a warning, so `contract` could never fail on it (#887).
+            cr = art.get("compat_reviewed")
+            named = (isinstance(cr, str) and bool(cr.strip())) or cr is True
+            checks.append((named, "artifact: compatibility review recorded"
+                           + (f" ({cr})" if isinstance(cr, str) and named else "" if named else
+                              " — `change set --compat-reviewed <ref>` (the RFC section or review "
+                              "that checked old peers / old data)")))
         elif req == "migration":
             checks.append((art.get("migration") is not None, "artifact: migration decided"))
 
@@ -209,11 +211,14 @@ def main(argv: list[str]) -> int:
     # evidence (risk >= 2). Recorded evidence must exist and NONE may be failing; a
     # required step that was never run is a warning (e.g. heavy cargo steps deferred),
     # not a hard block — the human decides whether the missing evidence is acceptable.
+    evidence_note: str | None = None
     if eff_risk >= 2 and ci:
         # Local evidence.json is fabricatable, so it is NEVER the server-side gate of record. In CI the
         # required verify steps are separate REQUIRED JOBS (branch protection) that re-run from scratch.
-        checks.append((True, "evidence: gate of record is CI's own verify jobs "
-                             f"({', '.join(kspec.get('evidence', []) or ['verify'])}), not local evidence.json"))
+        # This job cannot see their result, so it records no check here (a check that cannot fail is not
+        # one, #887): it says where the evidence is enforced instead.
+        evidence_note = ("not checked by this job — the required CI jobs (rust, spec-validate) re-run "
+                         f"{', '.join(kspec.get('evidence', []) or ['verify'])}; local evidence.json is untrusted")
     elif eff_risk >= 2:
         steps = _evidence_steps(issue)
         required_ev = kspec.get("evidence", [])
@@ -236,6 +241,8 @@ def main(argv: list[str]) -> int:
     render.field("Effective kind", f"{eff_kind} (risk {eff_risk})")
     render.field("Changed files", f"{len(cs.files)} (source: {cs.source})")
     render.field("Mode", "CI — diff + PR body (local work dir untrusted)" if ci else "local preflight")
+    if evidence_note:
+        render.field("Evidence", evidence_note)
     print()
     passed = True
     for ok_, msg in checks:

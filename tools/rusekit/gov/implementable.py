@@ -24,7 +24,9 @@ Verdict: READY (chain closed, no unacked pending blocker) / READY-WITH-SCOPE (ch
 pending concept blocks a component — carve that sub-part out) / NOT-READY (parity legacy-only or unscreened).
 
 `ruse gov implementable <F-id>` details one feature; `--all` lists every mvp feature; no arg gives a terse
-summary (advisory, never fails the build) and WARNs on a `status: active` feature that is not READY.
+summary and WARNs on a `status: active` or `status: done` feature that is not READY. It is ADVISORY: it never
+fails the build, and its output says so (#887). The debt it reports for done features (legacy parity ids)
+is held by `gov ratchet` (`legacy_in_prd`), which does fail.
 Auto-discovered into `ruse gov check`.
 """
 from __future__ import annotations
@@ -187,14 +189,15 @@ def main(argv=None) -> int:
         if args.all:
             tag = {"READY": None, "READY-WITH-SCOPE": "~", "NOT-READY": "!"}[a["verdict"]]
             render.bullet(f"{fid}: {a['verdict']}", mark=tag)
-        if a["status"] == "active" and a["verdict"] != "READY":
-            active_not_ready.append(fid)
+        if a["status"] in ("active", "done") and a["verdict"] != "READY":
+            active_not_ready.append((fid, a["status"]))
         _warn_acks(a, fid)
     render.field("Summary", f"READY {counts['READY']} · WITH-SCOPE {counts['READY-WITH-SCOPE']} · "
                             f"NOT-READY {counts['NOT-READY']}  (acked couplings: {acks_total})")
-    for fid in active_not_ready:
-        render.warn(f"{fid} is status:active but not READY — run `ruse gov implementable {fid}`")
-    render.ok("advisory readiness computed (never blocks the build)")
+    for fid, st in active_not_ready:
+        render.warn(f"{fid} is status:{st} but not READY — run `ruse gov implementable {fid}`")
+    render.bullet("ADVISORY (not enforced): readiness computed; it never blocks the build — "
+                  "the legacy-parity debt behind NOT-READY is ratcheted by `gov ratchet`", mark="·")
     return 0
 
 

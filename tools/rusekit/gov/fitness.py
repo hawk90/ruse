@@ -3,7 +3,8 @@
 
 Fitness functions guard the repo's evolution over time (thresholds/trends), unlike feature tests. This
 checker guards the *declaration's* integrity (ids FIT-*, known operator, numeric threshold, a `live`
-function names an enforcing checker) and reports live vs planned. It does not itself MEASURE — a `live`
+function names an enforcing checker that exists: a verify step or a gov checker module) and reports
+live vs planned. It does not itself MEASURE — a `live`
 function is enforced by its named checker (e.g. dependency-check); `planned` ones await code + a metrics
 source and must never silently pass. Portable engine; auto-discovered into `ruse gov check`.
 """
@@ -36,8 +37,18 @@ def load() -> list[dict]:
     return data.get("functions") or []
 
 
-def validate(functions: list[dict]):
-    """Return (errors, warnings, coverage) with coverage = (live, planned) counts."""
+def known_checkers() -> set[str]:
+    """What a live function's `check:` may name: a verify step (spec/verification.yaml) or a gov checker
+    module, the same namespace review-axes `automated_by` uses."""
+    from rusekit.gov import review_coverage
+    return review_coverage.valid_checkers()
+
+
+def validate(functions: list[dict], checkers: set[str] | None = None):
+    """Return (errors, warnings, coverage) with coverage = (live, planned) counts. A live function whose
+    `check:` names no real checker FAILS: it would read as enforced while nothing runs it (#887)."""
+    if checkers is None:
+        checkers = known_checkers()
     errors: list[str] = []
     warns: list[str] = []
     seen: set[str] = set()
@@ -62,8 +73,12 @@ def validate(functions: list[dict]):
             errors.append(f"{fid}: status must be one of {sorted(STATUS)} (got {st!r})")
         elif st == "live":
             live += 1
-            if not (f.get("check") or "").strip():
+            chk = (f.get("check") or "").strip()
+            if not chk:
                 errors.append(f"{fid}: status=live but no enforcing `check:` named")
+            elif chk not in checkers:
+                errors.append(f"{fid}: check `{chk}` is not a verify step (spec/verification.yaml) or a "
+                              "gov checker (tools/rusekit/gov/*.py) — nothing enforces it")
         elif st == "planned":
             planned += 1
     return errors, warns, (live, planned)

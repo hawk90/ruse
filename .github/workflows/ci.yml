@@ -36,13 +36,15 @@ jobs:
         run: |
           have=0; [ -f Cargo.toml ] && have=1
           echo "have=$have" >> "$GITHUB_OUTPUT"
-          # PRs: run the heavy Rust steps only when Rust-relevant paths moved. Fail SAFE — if the diff
-          # cannot be computed, run them. Other events always run.
+          # PRs: run the heavy Rust steps only when Rust-relevant paths moved. Fail SAFE — if the fetch or
+          # the diff fails, run them (#888: a piped `git diff | grep` read a failed diff as "no Rust change").
+          # Other events always run. The pattern also covers lint/format/cargo config and fuzz targets.
           rust=1
           if [ "$EVENT" = "pull_request" ]; then
-            if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null; then
-              if git diff --name-only FETCH_HEAD HEAD 2>/dev/null \
-                   | grep -qE '^(crates|apps|tests)/|Cargo\.(toml|lock)$|^rust-toolchain|^\.github/workflows/ci\.yml$|^spec/(architecture|dependencies)\.yaml$'; then
+            if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null \
+               && changed=$(git diff --name-only FETCH_HEAD HEAD); then
+              if printf '%s\n' "$changed" \
+                   | grep -qE '^(crates|apps|tests|fuzz|\.cargo)/|Cargo\.(toml|lock)$|^rust-toolchain|^\.?(clippy|rustfmt)\.toml$|^\.github/workflows/ci\.yml$|^spec/(architecture|dependencies)\.yaml$'; then
                 rust=1
               else
                 rust=0

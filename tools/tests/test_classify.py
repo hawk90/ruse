@@ -18,11 +18,54 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(cl.observed_kind, "implementation")
         self.assertTrue(cl.ok)
 
-    def test_protocol_crate_forces_contract(self):
-        # implementation (risk 2) is below the plugin-protocol floor (contract, risk 3).
-        cl = classify_changeset(["crates/plugin-protocol/src/x.rs"], "implementation")
-        self.assertEqual(cl.observed_kind, "contract")
-        self.assertFalse(cl.ok)
+    def test_a_stability_contract_forces_contract(self):
+        # #884: the `contract` floor pointed at crates/plugin-protocol/, which does not exist. The contracts
+        # themselves live in spec/contracts/; implementation (risk 2) is below that floor (risk 3).
+        for f in ("spec/contracts/plugin-protocol.yaml", "spec/contracts/remote-runtime.yaml",
+                  "spec/contracts/persistence-format.yaml"):
+            cl = classify_changeset([f], "implementation")
+            self.assertEqual(cl.observed_kind, "contract", f)
+            self.assertFalse(cl.ok, f)
+
+    def test_every_path_trigger_matches_a_real_path(self):
+        # A floor on a path that does not exist guards nothing (#884). Triggers for files a change may
+        # create (root config that is not there yet) are listed explicitly.
+        import re
+        from rusekit import contract
+        code, out = repo._git("ls-files")
+        if code != 0:
+            self.skipTest("not a git checkout")
+        files = out.splitlines()
+        optional = {r"^\.cargo/"}
+        for t in contract.load_kinds().get("path_triggers") or []:
+            if t["pattern"] in optional:
+                continue
+            self.assertTrue(any(re.search(t["pattern"], f) for f in files),
+                            f"path_trigger {t['pattern']} matches no file in the repo")
+
+    def test_gate_policy_files_are_not_editorial(self):
+        # #884: each of these loosens or tightens a gate, so none may pass as docs-editorial (risk 0).
+        cases = {
+            "spec/waivers.yaml": "spec", "spec/parity/ratchet.yaml": "spec",
+            "spec/verification.yaml": "spec", "spec/fitness.yaml": "spec",
+            "spec/perf-baseline.yaml": "spec", "spec/parity/upstreams.yaml": "spec",
+            "spec/templates/change.yaml": "spec",
+            "spec/architecture.yaml": "architecture",
+            "clippy.toml": "build", "rust-toolchain.toml": "build", "renovate.json": "build",
+            "scripts/bootstrap.sh": "build",
+            "tests/parity/vim/motions/corpus.yaml": "implementation",
+            "tests/unicode/x.txt": "implementation",
+        }
+        for f, kind in cases.items():
+            cl = classify_changeset([f], "docs-editorial")
+            self.assertEqual(cl.observed_kind, kind, f)
+            self.assertFalse(cl.ok, f)
+
+    def test_spec_prose_digest_stays_human_judged(self):
+        # The catch-all is for machine-read spec YAML only; spec/CONTEXT.md is a hand digest.
+        cl = classify_changeset(["spec/CONTEXT.md"], "docs-editorial")
+        self.assertIsNone(cl.observed_kind)
+        self.assertTrue(cl.ok)
 
     def test_docs_prose_is_human_judgment_not_a_floor(self):
         cl = classify_changeset(["docs/design/document-model.md"], "docs-editorial")

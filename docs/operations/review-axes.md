@@ -47,7 +47,9 @@ dogfoods its own rules (`RA-LLM-013/014/015/016`) — the review system reviews 
 ## Running a review
 
 1. Pick a scope — usually **P0 first** (`--list --tier P0`), then the domains relevant to the change.
-2. For `machine` axes, wire or run the gate; for `llm`/`manual`, assess against the repo.
+2. For `machine` axes, wire or run the gate; for `llm`/`manual`, assess against the repo. `gov review_coverage`
+   only reports how many `machine` axes have no `automated_by` checker (advisory); `gov ratchet` holds that
+   count to a ceiling (`review_machine_unwired`), so it can fall but not rise (#887).
 3. Record findings in a **dated report** under `docs/reviews/` (id + verdict + evidence), never back into
    the catalog. Keep the JSON view (`--json`) out of git — regenerate on demand to avoid drift.
 
