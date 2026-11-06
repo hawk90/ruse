@@ -5022,12 +5022,22 @@ impl Session {
                 .collect()
         };
         let busy = std::mem::replace(&mut self.global_busy, true);
+        // The marks already visited are dropped as the pass goes (#1257). A deleted line's two anchors
+        // collapse where it was, which is where the next command edits, so kept they would all be carried
+        // through every later edit. Each removal re-sorts the store at the next edit, so they go in
+        // batches of about the square root of the anchor count.
+        let batch = anchors.len().isqrt().max(32) * 2;
+        let mut visited: Vec<ruse_core::AnchorId> = Vec::with_capacity(batch);
         self.as_normal(GroupKind::Global, |s| {
             for &(start, end, empty_buffer) in &anchors {
                 if s.quit || s.ws.focused_buffer() != doc_id || ruse_core::interrupt::interrupted()
                 {
                     break;
                 }
+                if visited.len() >= batch {
+                    s.ws.focused_doc_mut().remove_anchors(visited.drain(..));
+                }
+                visited.extend([start, end]);
                 let doc = s.ws.focused().doc;
                 let (Some(a), Some(z)) = (doc.resolve_anchor(start), doc.resolve_anchor(end))
                 else {

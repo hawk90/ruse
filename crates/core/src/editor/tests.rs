@@ -9693,3 +9693,80 @@ mod cluster_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod relocate_tests {
+    //! #1257: `:m`/`:t` edit only the block they move or copy. Every shape of a small buffer gives the
+    //! text the line model gives, and one `u` restores it.
+    use crate::editor::*;
+
+    /// Every buffer over `a`, `b` and `\n` up to `max` bytes.
+    fn buffers(max: usize) -> Vec<Vec<u8>> {
+        let mut out = vec![Vec::new()];
+        let mut layer = vec![Vec::new()];
+        for _ in 0..max {
+            layer = layer
+                .iter()
+                .flat_map(|b: &Vec<u8>| {
+                    (*b"ab\n").map(|c| {
+                        let mut v = b.clone();
+                        v.push(c);
+                        v
+                    })
+                })
+                .collect();
+            out.extend(layer.iter().cloned());
+        }
+        out
+    }
+
+    #[test]
+    fn move_and_copy_match_the_line_model_on_every_small_buffer() {
+        for old in buffers(5).into_iter().filter(|b| !b.is_empty()) {
+            let n = line_count(&EditorState::new(old.clone()).doc);
+            for first in 0..n {
+                for last in first..n {
+                    for ins in 0..=n {
+                        for copy in [false, true] {
+                            let mut st = EditorState::new(old.clone());
+                            let range = SubRange::Lines(first + 1, last + 1);
+                            let dest = LineAddr::Line(ins);
+                            let r = if copy {
+                                st.copy_lines(range, dest)
+                            } else {
+                                st.move_lines(range, dest)
+                            };
+                            let what = format!("{old:?} {first}..={last} -> {ins} copy={copy}");
+                            if r.is_none() || r == Some(0) {
+                                assert_eq!(st.doc.bytes(), old.as_slice(), "{what}");
+                                continue;
+                            }
+                            let want = relocated_by_lines(&old, first, last, ins, copy);
+                            assert_eq!(st.doc.bytes(), want.as_slice(), "{what}");
+                            assert!(st.view.cursor <= want.len(), "{what}");
+                            st.doc.undo();
+                            assert_eq!(st.doc.bytes(), old.as_slice(), "{what}: u");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The copy's edit is the one [`crate::Edit::lines_changed`] finds over the whole rebuilt buffer.
+    #[test]
+    fn lines_changed_by_insert_is_lines_changed() {
+        let texts = buffers(3);
+        for old in buffers(6) {
+            for at in 0..=old.len() {
+                for text in &texts {
+                    let mut new = old.clone();
+                    new.splice(at..at, text.iter().copied());
+                    let want = crate::Edit::lines_changed(&old, new);
+                    let got = crate::Edit::lines_changed_by_insert(&old, at, text.clone());
+                    assert_eq!(got, want, "{old:?} + {text:?} at {at}");
+                }
+            }
+        }
+    }
+}

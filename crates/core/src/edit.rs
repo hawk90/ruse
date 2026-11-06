@@ -84,6 +84,49 @@ impl Edit {
         Edit::replace(BytePos(head), old.len() - tail - head, ins)
     }
 
+    /// [`Edit::lines_changed`] for the `new` that is `old` with `text` inserted at `at`, found without
+    /// building `new`: what both sides share is known up to the insertion, so only the bytes around it
+    /// are compared (#1257, a `:t` per line of a `:g`).
+    #[must_use]
+    pub(crate) fn lines_changed_by_insert(old: &[u8], at: usize, text: Vec<u8>) -> Edit {
+        let (olen, l) = (old.len(), text.len());
+        let nlen = olen + l;
+        let new_at = |i: usize| -> u8 {
+            if i < at {
+                old[i]
+            } else if i < at + l {
+                text[i - at]
+            } else {
+                old[i - l]
+            }
+        };
+        // Everything before `at` is shared; the shared head may run on into the inserted text.
+        let mut common = at;
+        while common < olen && old[common] == new_at(common) {
+            common += 1;
+        }
+        let head = old[..common]
+            .iter()
+            .rposition(|&b| b == b'\n')
+            .map_or(0, |i| i + 1);
+        let room = olen - head; // `new` is the longer side
+                                // Everything after `at` is shared at the end; the shared tail may run on back before it.
+        let mut same_tail = (olen - at).min(room);
+        while same_tail < room && old[olen - same_tail - 1] == new_at(nlen - same_tail - 1) {
+            same_tail += 1;
+        }
+        let mut tail = same_tail;
+        while tail > 0 {
+            let (o, n) = (olen - tail, nlen - tail);
+            if (o == head || old[o - 1] == b'\n') && (n == head || new_at(n - 1) == b'\n') {
+                break;
+            }
+            tail -= 1;
+        }
+        let ins: Vec<u8> = (head..nlen - tail).map(new_at).collect();
+        Edit::replace(BytePos(head), olen - tail - head, ins)
+    }
+
     /// Signed length change this edit makes to the document: `ins.len() - del`.
     #[must_use]
     pub fn delta(&self) -> isize {

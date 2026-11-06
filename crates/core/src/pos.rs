@@ -194,12 +194,22 @@ pub(crate) mod raw {
         if line == 0 {
             return 0;
         }
+        // Whole chunks are skipped by the vectorised [`count_newlines`]; only the chunk holding the
+        // `line`-th newline is walked byte by byte (#1257: an Ex line command looks lines up per call).
+        const CHUNK: usize = 512;
         let mut seen = 0;
-        for (i, &b) in bytes.iter().enumerate() {
-            if b == b'\n' {
-                seen += 1;
-                if seen == line {
-                    return i + 1;
+        for (k, chunk) in bytes.chunks(CHUNK).enumerate() {
+            let n = count_newlines(chunk);
+            if seen + n < line {
+                seen += n;
+                continue;
+            }
+            for (i, &b) in chunk.iter().enumerate() {
+                if b == b'\n' {
+                    seen += 1;
+                    if seen == line {
+                        return k * CHUNK + i + 1;
+                    }
                 }
             }
         }

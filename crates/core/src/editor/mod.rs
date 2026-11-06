@@ -2228,11 +2228,10 @@ impl EditorState {
     pub fn delete_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let bytes = self.doc.bytes();
         let hay: &[u8] = bytes;
-        let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
-        let (first, last) = resolve_line_range(range, &lines, cursor_line);
-        let (fs, _) = lines[first];
-        let (_, le) = lines[last];
+        let cursor_line = self.doc.line_of(BytePos(self.view.cursor));
+        let (first, last) = resolve_lines(range, line_count(&self.doc), cursor_line);
+        let (fs, first_end) = line_span(&self.doc, first);
+        let (_, le) = line_span(&self.doc, last);
         // Terminated last line: delete `[fs, le+1)` (the lines plus their trailing newlines). Unterminated
         // last line (deleting through EOF): delete `[fs-1, le)` to absorb the newline BEFORE the span so no
         // dangling blank line remains — except when `first` is line 0 (whole buffer), then `[0, le)`.
@@ -2257,7 +2256,7 @@ impl EditorState {
         // Vim moves the cursor to the range's first line (keeping its column) before deleting, so that is
         // where `u` puts it back (nvim 0.12.6: `4l:3d<CR>u` -> line 3, column 4).
         let col = self.view.cursor - line_start(bytes, self.view.cursor);
-        let undo_at = snap(bytes, (fs + col).min(lines[first].1));
+        let undo_at = snap(bytes, (fs + col).min(first_end));
         let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore)
             .with_cursor(BytePos(undo_at));
@@ -2285,11 +2284,10 @@ impl EditorState {
     pub fn yank_lines_into(&mut self, range: SubRange, reg: Option<char>) -> usize {
         let bytes = self.doc.bytes();
         let hay: &[u8] = bytes;
-        let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
-        let (first, last) = resolve_line_range(range, &lines, cursor_line);
-        let (fs, _) = lines[first];
-        let (_, le) = lines[last];
+        let cursor_line = self.doc.line_of(BytePos(self.view.cursor));
+        let (first, last) = resolve_lines(range, line_count(&self.doc), cursor_line);
+        let (fs, _) = line_span(&self.doc, first);
+        let (_, le) = line_span(&self.doc, last);
         let end = if le < hay.len() { le + 1 } else { le };
         // `Register::linewise` normalizes to end with `\n`, so an unterminated last line still yanks clean.
         let text = bytes[fs..end].to_vec();
@@ -2305,30 +2303,28 @@ impl EditorState {
     /// NEXT line. The cursor lands on the join seam, exactly where `J` leaves it. Returns the number of
     /// lines that were joined (0 if there was nothing to join).
     pub fn join_lines(&mut self, range: SubRange, no_space: bool) -> usize {
-        let bytes = self.doc.bytes();
-        let hay: &[u8] = bytes;
-        let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
-        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        let cursor_line = self.doc.line_of(BytePos(self.view.cursor));
+        let (first, last) = resolve_lines(range, line_count(&self.doc), cursor_line);
+        let first_start = line_span(&self.doc, first).0;
         // Position the cursor at the range's first line so the reused join starts there; the count is the
         // line span, which `plan_join` clamps to `.max(2)` — so a single-line range joins the current line
         // with the next, matching Vim.
-        self.view.cursor = lines[first].0;
+        self.view.cursor = first_start;
         let count = (last - first + 1) as u32;
         let cmd = if no_space {
             Command::JoinLinesNoSpace(count)
         } else {
             Command::JoinLines(count)
         };
-        let before = crate::pos::count_newlines(self.doc.bytes());
+        let before = self.doc.line_starts().len();
         apply_command(self, &cmd);
         // Unlike `J` (cursor on the join seam), Vim's `:join` leaves the cursor on the FIRST NON-BLANK of the
         // joined line (`ex_join` → `beginline(BL_WHITE)`; nvim v0.12.6). The join keeps `first`'s start.
         let b = self.doc.bytes();
-        self.view.cursor = motion::first_non_blank(b, lines[first].0);
+        self.view.cursor = motion::first_non_blank(b, first_start);
         self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
                                                 // The lines that took part: one more than the seams removed (0 when nothing joined).
-        let seams = before - crate::pos::count_newlines(b);
+        let seams = before - self.doc.line_starts().len();
         if seams == 0 {
             0
         } else {
@@ -2345,16 +2341,14 @@ impl EditorState {
     /// line (Vim's ex-shift behaviour — verified against nvim v0.12.4). No range = the cursor's line. Returns
     /// the number of lines in the range.
     pub fn shift_lines(&mut self, range: SubRange, left: bool, levels: u32) -> usize {
-        let bytes = self.doc.bytes();
-        let hay: &[u8] = bytes;
-        let lines = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
-        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        let cursor_line = self.doc.line_of(BytePos(self.view.cursor));
+        let (first, last) = resolve_lines(range, line_count(&self.doc), cursor_line);
         let count = (last - first + 1) as u32;
         let want = self.view.curswant.clone();
         // Anchor the cursor at the FIRST line so the reused shift (which reads its start line from the
         // cursor) covers `[first, last]`; every extra level re-shifts the same span from there.
-        self.view.cursor = lines[first].0;
+        let first_start = line_span(&self.doc, first).0;
+        self.view.cursor = first_start;
         let cmd = if left {
             Command::ShiftLeft(count)
         } else {
@@ -2367,7 +2361,8 @@ impl EditorState {
         // leaves it on the FIRST). A shift never adds/removes lines, so `last` still names that line;
         // recompute its start against the POST-shift buffer (indent changed the byte offsets).
         let b = self.doc.bytes();
-        if let Some(&(last_ls, _)) = line_spans(b).get(last) {
+        if last < line_count(&self.doc) {
+            let last_ls = self.doc.nth_line_start(last).0;
             self.view.cursor = motion::first_non_blank(b, last_ls);
         }
         // `:>` keeps the wanted column (`beginline(BL_SOL | BL_FIX)` under 'nostartofline', #1104).
@@ -2411,33 +2406,18 @@ impl EditorState {
         }
     }
 
-    /// Shared engine for `:m` (move) and `:t`/`:copy` (`copy = true` keeps the source). Rebuilds the line
-    /// list and replaces the whole buffer in one transaction — simple and always correct for these
-    /// non-hot ex commands (a surgical minimal-region edit is a possible later optimisation).
+    /// Shared engine for `:m` (move) and `:t`/`:copy` (`copy = true` keeps the source), as one
+    /// transaction over the lines it moves or copies (#1257): its lines come from the document's line
+    /// index and only the block is copied, so a `:g` that runs it per line does not rescan the buffer.
     fn relocate_lines(&mut self, range: SubRange, dest: LineAddr, copy: bool) -> Option<usize> {
-        let bytes = self.doc.bytes();
-        let hay: &[u8] = bytes;
-        let had_trailing_nl = hay.ends_with(b"\n");
-        let mut lines: Vec<Vec<u8>> = if hay.is_empty() {
-            Vec::new()
-        } else {
-            let mut v: Vec<Vec<u8>> = hay.split(|&c| c == b'\n').map(<[u8]>::to_vec).collect();
-            if had_trailing_nl {
-                v.pop(); // drop the empty element after the final '\n'
-            }
-            v
-        };
-        let nlines = lines.len();
-        if nlines == 0 {
+        let old = self.doc.bytes();
+        if old.is_empty() {
             return Some(0);
         }
-        let spans = line_spans(hay);
-        let cursor_line = crate::pos::raw::line_of(hay, self.view.cursor);
-        let (first, last) = resolve_line_range(range, &spans, cursor_line);
-        // `line_spans` counts a phantom empty line after a trailing '\n'; the split/pop `lines` vec does
-        // not, so clamp to the vec.
-        let last = last.min(nlines - 1);
-        let first = first.min(last);
+        let had_trailing_nl = old.ends_with(b"\n");
+        let nlines = line_count(&self.doc);
+        let cursor_line = self.doc.line_of(BytePos(self.view.cursor));
+        let (first, last) = resolve_lines(range, nlines, cursor_line);
         // Destination as a 0-based insert index in `0..=nlines`; a relative one off the buffer declines.
         let ins = dest.insert_index(cursor_line, nlines)?;
         // A move INTO the block is E134 (declined); a move to just before or just after it changes nothing
@@ -2445,44 +2425,44 @@ impl EditorState {
         if !copy && ins > first && ins <= last {
             return None;
         }
+        // The block is `old[s..e]` (its lines with their newlines; an unterminated last line has none),
+        // and `p` is where the destination line ends: the start of the line after it.
+        let s = line_span(&self.doc, first).0;
+        let count = last - first + 1;
         if !copy && (ins == first || ins == last + 1) {
-            let ls = crate::pos::raw::nth_line_start(bytes, last).min(bytes.len());
-            self.view.cursor = self.relocated_cursor(bytes, ls);
+            let ls = self.doc.nth_line_start(last).0;
+            self.view.cursor = self.relocated_cursor(old, ls);
             return Some(0);
         }
-        let block: Vec<Vec<u8>> = lines[first..=last].to_vec();
-        let count = block.len();
-        if !copy {
-            lines.drain(first..=last);
-        }
+        let e = self.doc.nth_line_start(last + 1).0;
+        let p = self.doc.nth_line_start(ins).0;
         // After a move removes the block, an insert index past the block shifts left by `count`.
         let adj = if copy || ins <= first {
             ins
         } else {
             ins - count
-        }
-        .min(lines.len());
-        for (k, line) in block.into_iter().enumerate() {
-            lines.insert(adj + k, line);
-        }
-        let mut new_bytes = lines.join(&b'\n');
-        if had_trailing_nl && !new_bytes.is_empty() {
-            new_bytes.push(b'\n');
-        }
-        let ls = crate::pos::raw::nth_line_start(&new_bytes, adj + count - 1).min(new_bytes.len());
-        let cursor = self.relocated_cursor(&new_bytes, ls);
+        };
 
         // A move is the block deleted at its place and inserted at the destination, so the line anchors on
         // it go along (nvim's `ex_copymove` moves the marks, #1125). Without a final newline the last line
         // has none: a block holding it is cut with the `\n` before it, and one moved after it goes in after
         // a `\n`. The one shape that does not split that way (the last line moved onto an empty line just
-        // above it) takes the whole-region rewrite, whose marks keep their lines.
-        let old = self.doc.bytes();
-        let at = |line: usize| crate::pos::raw::nth_line_start(old, line).min(old.len());
-        let (s, e, p) = (at(first), at(last + 1), at(ins));
+        // above it) takes the whole-region rewrite, whose marks keep their lines. A copy is the block
+        // inserted, recorded as the one line edit [`Edit::lines_changed`] finds for it.
         let mut block = old[s..e].to_vec();
         let edits = if copy {
-            None
+            if !had_trailing_nl {
+                if p == old.len() {
+                    // After the unterminated last line: `\n` + the block without its own.
+                    if e < old.len() {
+                        block.pop();
+                    }
+                    block.insert(0, b'\n');
+                } else if e == old.len() {
+                    block.push(b'\n'); // the unterminated last line copied above: give it its newline
+                }
+            }
+            Some(vec![Edit::lines_changed_by_insert(old, p, block)])
         } else if had_trailing_nl || (e < old.len() && p < old.len()) {
             Some(if p < s {
                 vec![
@@ -2513,13 +2493,13 @@ impl EditorState {
         } else {
             None
         };
-        let edits = edits.unwrap_or_else(|| vec![Edit::lines_changed(old, new_bytes.clone())]);
+        let edits = edits.unwrap_or_else(|| {
+            vec![Edit::lines_changed(
+                old,
+                relocated_by_lines(old, first, last, ins, copy),
+            )]
+        });
         let list = EditList::new(edits).expect("the move's delete and insert are disjoint");
-        debug_assert_eq!(
-            list.apply_to(old),
-            new_bytes,
-            "the edits make the relocated text"
-        );
         // `u` and `CTRL-R` start from where the cursor stood: Vim's `u_save` in `ex_copy`/`do_move` runs
         // before the cursor moves, so `uh_cursor` is the cursor before the command (#1258).
         let txn = Transaction::new(self.doc.revision(), list, self.origin)
@@ -2527,7 +2507,10 @@ impl EditorState {
             .with_cursor(BytePos(self.view.cursor.min(old.len())));
         self.apply_txn(txn).expect("line relocate applies cleanly");
         self.view.last_was_edit = true;
-        self.view.cursor = cursor.min(self.doc.bytes().len());
+        // On the block's last line where it now is.
+        let new = self.doc.bytes();
+        let ls = self.doc.nth_line_start(adj + count - 1).0;
+        self.view.cursor = self.relocated_cursor(new, ls).min(new.len());
         self.settle_offsets();
         Some(count)
     }
@@ -3533,7 +3516,38 @@ fn strtod_prefix(s: &str) -> f64 {
     sign * s[start..i].parse::<f64>().unwrap_or(0.0)
 }
 
-pub(crate) use substitute::{find_substitutions, line_spans, resolve_line_range};
+pub(crate) use substitute::{
+    find_substitutions, line_count, line_span, line_spans, resolve_line_range, resolve_lines,
+};
+
+/// The text `:m` (or `:t`, with `copy`) makes of the non-empty `old`, by the line model: its lines with
+/// `first..=last` (0-based, in range) moved or copied to before line `ins` (`0..=lines`), the final
+/// newline kept as it was. [`EditorState::relocate_lines`] edits only the block; this is the rewrite
+/// for the one shape it cannot split, and the reference its tests hold it to.
+fn relocated_by_lines(old: &[u8], first: usize, last: usize, ins: usize, copy: bool) -> Vec<u8> {
+    let had_trailing_nl = old.ends_with(b"\n");
+    let mut lines: Vec<&[u8]> = old.split(|&c| c == b'\n').collect();
+    if had_trailing_nl {
+        lines.pop(); // drop the empty element after the final '\n'
+    }
+    let block: Vec<&[u8]> = lines[first..=last].to_vec();
+    let count = block.len();
+    if !copy {
+        lines.drain(first..=last);
+    }
+    let adj = if copy || ins <= first {
+        ins
+    } else {
+        ins - count
+    }
+    .min(lines.len());
+    lines.splice(adj..adj, block);
+    let mut new = lines.join(&b'\n');
+    if had_trailing_nl && !new.is_empty() {
+        new.push(b'\n');
+    }
+    new
+}
 pub use substitute::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substitution};
 
 mod ex_cmd;

@@ -794,10 +794,9 @@ pub(crate) fn set_exit_status(code: u8) {
 /// Whether a `:m`/`:t` destination lands inside the focused buffer. A relative one (`:m+5`, `:m$-9`) can
 /// fall off either end, which Vim refuses with E16 rather than clamping.
 pub(crate) fn dest_in_range(ws: &Workspace, dest: ruse_core::LineAddr) -> bool {
-    let b = ws.focused().doc.bytes();
-    let cursor = ws.focused().view.cursor().0.min(b.len());
-    let cursor_line = b[..cursor].iter().filter(|&&c| c == b'\n').count();
-    let nlines = b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"));
+    let doc = ws.focused().doc;
+    let cursor_line = doc.line_of(ws.focused().view.cursor());
+    let nlines = doc.line_starts().len() - usize::from(doc.bytes().ends_with(b"\n"));
     // An absolute line past the end is E16 too (`:t99`, #801), not the end of the buffer.
     let absolute_ok = !matches!(dest, ruse_core::LineAddr::Line(n) if n > nlines.max(1));
     absolute_ok && dest.insert_index(cursor_line, nlines).is_some()

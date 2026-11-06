@@ -1425,10 +1425,9 @@ impl Workspace {
     #[must_use]
     pub fn resolve_range(&self, range: SubRange) -> (usize, usize) {
         let p = self.focused();
-        let b = p.doc.bytes();
-        let spans = crate::editor::line_spans(b);
-        let cursor_line = crate::pos::raw::line_of(b, p.view.cursor().0);
-        let (first, last) = crate::editor::resolve_line_range(range, &spans, cursor_line);
+        let cursor_line = p.doc.line_of(p.view.cursor());
+        let (first, last) =
+            crate::editor::resolve_lines(range, crate::editor::line_count(p.doc), cursor_line);
         (first + 1, last + 1)
     }
 
@@ -1442,9 +1441,9 @@ impl Workspace {
         let nlines = if b.is_empty() {
             0
         } else {
-            crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'))
+            crate::editor::line_count(p.doc)
         };
-        addr.insert_index(crate::pos::raw::line_of(b, p.view.cursor().0), nlines)
+        addr.insert_index(p.doc.line_of(p.view.cursor()), nlines)
     }
 
     /// Set one `:set` option on the focused view and as the global value every View created afterward

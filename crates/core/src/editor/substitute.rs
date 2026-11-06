@@ -118,7 +118,13 @@ pub(crate) fn resolve_line_range(
     lines: &[(usize, usize)],
     cursor_line: usize,
 ) -> (usize, usize) {
-    let last = lines.len().saturating_sub(1);
+    resolve_lines(range, lines.len(), cursor_line)
+}
+
+/// [`resolve_line_range`] over a buffer of `nlines` lines ([`line_count`]), for the line commands that
+/// need only the ends of the range and not every line's span (#1257).
+pub(crate) fn resolve_lines(range: SubRange, nlines: usize, cursor_line: usize) -> (usize, usize) {
+    let last = nlines.saturating_sub(1);
     match range {
         SubRange::CurrentLine => (cursor_line.min(last), cursor_line.min(last)),
         SubRange::WholeFile => (0, last),
@@ -149,6 +155,19 @@ pub(crate) fn line_spans<B: AsRef<[u8]> + ?Sized>(hay: &B) -> Vec<(usize, usize)
         out.push((start, hay.len())); // an unterminated final line, or the empty buffer's one line
     }
     out
+}
+
+/// The number of lines [`line_spans`] finds in `doc` (at least one), from its line index (#1257).
+pub(crate) fn line_count(doc: &crate::Document) -> usize {
+    doc.line_starts().len() - usize::from(doc.bytes().last() == Some(&b'\n'))
+}
+
+/// The span [`line_spans`] gives the 0-based line `i` of `doc` (`i` below [`line_count`]), from its
+/// line index.
+pub(crate) fn line_span(doc: &crate::Document, i: usize) -> (usize, usize) {
+    let (starts, len) = (doc.line_starts(), doc.len());
+    let s = starts.get(i).copied().unwrap_or(len);
+    (s, starts.get(i + 1).map_or(len, |&next| next - 1))
 }
 
 /// Find the substitutions `:s` makes on the lines `first..=last` (0-based, inclusive) of `hay`, appending

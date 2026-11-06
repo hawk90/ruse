@@ -119,18 +119,19 @@ fn resolve(
 ) -> Result<ExRange, ExRangeError> {
     let rest = line.trim_start_matches([' ', ':']);
     let (nlines, mut cur_line, visual) = {
+        // From the buffer's line index (#1257): a `:g` resolves a range once per line it runs on.
         let pane = ws.focused();
-        let b = pane.doc.bytes();
+        let doc = pane.doc;
         let nlines =
-            (b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"))).max(1) as i64;
-        let cur = (ruse_core::pos::line_of(b, pane.view.cursor()) as i64 + 1).min(nlines);
+            (doc.line_starts().len() - usize::from(doc.bytes().ends_with(b"\n"))).max(1) as i64;
+        let cur = (doc.line_of(pane.view.cursor()) as i64 + 1).min(nlines);
         let visual = pane
             .view
             .last_visual_bounds()
             .map(|(BytePos(s), BytePos(e), _)| {
                 (
-                    ruse_core::pos::line_of(b, ruse_core::BytePos(s)) as i64 + 1,
-                    ruse_core::pos::line_of(b, ruse_core::BytePos(e)) as i64 + 1,
+                    doc.line_of(BytePos(s)) as i64 + 1,
+                    doc.line_of(BytePos(e)) as i64 + 1,
                 )
             });
         (nlines, cur, visual)

@@ -47,6 +47,11 @@ pub struct Document {
     anchors: AnchorStore,
     undo: UndoHistory,
     anchor_index: std::sync::OnceLock<Arc<AnchorIndex>>,
+    /// Where every line starts ([`Document::line_starts`]), made on first use after each change.
+    line_starts: std::sync::OnceLock<Vec<usize>>,
+    /// The line starts before the last change and its edits, when they had been made: the next
+    /// [`Document::line_starts`] carries them through the edits instead of scanning the text.
+    line_starts_before: Option<(Vec<usize>, EditList)>,
     saved_node: Option<MonotonicSeq>,
     /// The line Vim's `U` restores ([`Document::line_undo`]).
     line_undo: LineUndo,
@@ -87,6 +92,8 @@ impl Document {
             anchors: AnchorStore::new(),
             undo: UndoHistory::new(revision),
             anchor_index: std::sync::OnceLock::new(),
+            line_starts: std::sync::OnceLock::new(),
+            line_starts_before: None,
             saved_node: None,
             line_undo: LineUndo::default(),
             undo_block: None,
@@ -124,6 +131,45 @@ impl Document {
     #[must_use]
     pub fn text_arc(&self) -> Arc<Vec<u8>> {
         Arc::clone(&self.text)
+    }
+
+    /// The byte offset where each line starts: `0`, then one past every `\n` (so a final newline is
+    /// followed by the start of an empty last line). Built in one pass on the first call after a change
+    /// and kept until the next, so a command that looks lines up many times scans the text once (#1257).
+    #[must_use]
+    pub fn line_starts(&self) -> &[usize] {
+        self.line_starts
+            .get_or_init(|| match &self.line_starts_before {
+                Some((starts, edits)) => carried_line_starts(starts, edits),
+                None => line_starts_of(&self.text),
+            })
+    }
+
+    /// The text just changed by `edits`: keep the line starts made before it, if any, for the next
+    /// [`Document::line_starts`] to carry through the edits (`O(lines)` with no text scan). A change
+    /// with no lookup since the last one drops them, so a run of edits pays nothing.
+    fn carry_line_starts(&mut self, edits: &EditList) {
+        self.line_starts_before = std::mem::take(&mut self.line_starts)
+            .into_inner()
+            .map(|starts| (starts, edits.clone()));
+    }
+
+    /// The 0-based row of `at` — the number of `\n` before it ([`crate::pos::line_of`]), in `O(log n)`.
+    #[must_use]
+    pub fn line_of(&self, at: BytePos) -> usize {
+        let at = at.0.min(self.text.len());
+        self.line_starts().partition_point(|&s| s <= at) - 1
+    }
+
+    /// Where the 0-based `line`-th line starts, clamped to the end ([`crate::pos::nth_line_start`]).
+    #[must_use]
+    pub fn nth_line_start(&self, line: usize) -> BytePos {
+        BytePos(
+            self.line_starts()
+                .get(line)
+                .copied()
+                .unwrap_or(self.text.len()),
+        )
     }
 
     /// The document as UTF-8 text, or `None` if not valid UTF-8.
@@ -313,6 +359,7 @@ impl Document {
             .map(|t| t.pos.map(|p| p.0))
             .collect();
         let old = std::mem::replace(&mut self.text, Arc::new(new_text));
+        self.carry_line_starts(&txn.edits);
         self.track_change(&old, &txn.edits, tracked);
         let prev = self.revision;
         self.revision = self.revision.next();
@@ -663,6 +710,7 @@ impl Document {
             });
         }
         let old = std::mem::replace(&mut self.text, Arc::new(new_text));
+        self.carry_line_starts(edits);
         self.revision = self.revision.next();
         self.anchors.apply_change(&old, &self.text, edits);
         self.track_change(&old, edits, tracked);
@@ -708,11 +756,124 @@ impl Document {
     }
 }
 
+/// [`Document::line_starts`] of `text`: 64 bytes at a time, a mask of the newlines (which the compiler
+/// vectorises) and then one push per set bit.
+fn line_starts_of(text: &[u8]) -> Vec<usize> {
+    let mut starts = Vec::with_capacity(text.len() / 32 + 1);
+    starts.push(0);
+    for (k, chunk) in text.chunks(64).enumerate() {
+        let mut mask = chunk
+            .iter()
+            .enumerate()
+            .fold(0u64, |m, (i, &c)| m | (u64::from(c == b'\n') << i));
+        while mask != 0 {
+            starts.push(k * 64 + mask.trailing_zeros() as usize + 1);
+            mask &= mask - 1;
+        }
+    }
+    starts
+}
+
+/// The line starts of the text `edits` made, from the `starts` of the text before them: a start whose
+/// newline the edits deleted goes, one per inserted newline comes, and every other moves by the edits
+/// before it.
+fn carried_line_starts(starts: &[usize], edits: &EditList) -> Vec<usize> {
+    let mut out = Vec::with_capacity(starts.len() + 16);
+    out.push(0);
+    let mut delta: isize = 0;
+    let mut i = 1;
+    let shifted = |s: usize, d: isize| s.wrapping_add_signed(d);
+    for e in edits.edits() {
+        let (pos, end) = (e.pos.0, e.pos.0 + e.del);
+        // A newline before the edit (start `<= pos`) stays; one inside the deleted span goes.
+        let keep = i + starts[i..].partition_point(|&s| s <= pos);
+        out.extend(starts[i..keep].iter().map(|&s| shifted(s, delta)));
+        i = keep + starts[keep..].partition_point(|&s| s <= end);
+        let at = shifted(pos, delta);
+        out.extend(
+            e.ins
+                .iter()
+                .enumerate()
+                .filter(|&(_, &c)| c == b'\n')
+                .map(|(j, _)| at + j + 1),
+        );
+        delta += e.delta();
+    }
+    out.extend(starts[i..].iter().map(|&s| shifted(s, delta)));
+    out
+}
+
 #[cfg(test)]
 mod text_arc_tests {
     use super::*;
     use crate::edit::{Edit, EditList};
     use crate::transaction::{Transaction, TransactionOrigin};
+
+    /// The line index answers what the scanning [`crate::pos`] helpers answer, before and after an edit
+    /// and an undo.
+    #[test]
+    fn line_index_matches_the_scans() {
+        let check = |d: &Document| {
+            let b = d.bytes();
+            for at in 0..=b.len() + 1 {
+                assert_eq!(d.line_of(BytePos(at)), crate::pos::line_of(b, BytePos(at)));
+            }
+            for line in 0..=crate::pos::count_newlines(b) + 2 {
+                assert_eq!(d.nth_line_start(line), crate::pos::nth_line_start(b, line));
+            }
+        };
+        let long: Vec<u8> = (0..300u32)
+            .flat_map(|i| {
+                let mut l = vec![b'x'; (i % 70) as usize];
+                l.push(b'\n');
+                l
+            })
+            .collect();
+        for text in [&b""[..], b"\n", b"a", b"a\n", b"\n\nb", &long] {
+            let mut d = Document::new(DocumentId(1), text.to_vec());
+            check(&d);
+            let edit = EditList::new(vec![Edit::insert(BytePos(0), "x\ny\n")]).unwrap();
+            d.apply(Transaction::new(
+                d.revision(),
+                edit,
+                TransactionOrigin::UserInput,
+            ))
+            .unwrap();
+            check(&d);
+            d.undo();
+            check(&d);
+        }
+        // Carried through edits that delete and insert newlines, against a scan of the result.
+        for len in [0usize, 1, 2, 3, 7, 40, 200] {
+            let text: Vec<u8> = (0..len)
+                .map(|i| if i % 3 == 1 { b'\n' } else { b'a' })
+                .collect();
+            for a in 0..=len {
+                for b in a..=len {
+                    let mut d = Document::new(DocumentId(1), text.clone());
+                    let _ = d.line_starts();
+                    let mut es = vec![Edit::replace(BytePos(a), b - a, "\nq\n")];
+                    if b + 2 <= len {
+                        es.push(Edit::delete(BytePos(b + 1), 1));
+                    }
+                    let list = EditList::new(es).unwrap();
+                    d.apply(Transaction::new(
+                        d.revision(),
+                        list,
+                        TransactionOrigin::UserInput,
+                    ))
+                    .unwrap();
+                    assert_eq!(d.line_starts(), line_starts_of(d.bytes()), "{len} {a} {b}");
+                    d.undo();
+                    assert_eq!(
+                        d.line_starts(),
+                        line_starts_of(d.bytes()),
+                        "{len} {a} {b} u"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn text_arc_is_a_cheap_shared_handle() {

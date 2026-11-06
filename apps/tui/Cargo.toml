@@ -82,3 +82,7 @@ harness = false
 [[bench]]
 name = "journal_replay"
 harness = false
+
+[[bench]]
+name = "ex_lines"
+harness = false
