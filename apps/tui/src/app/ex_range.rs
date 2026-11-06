@@ -63,7 +63,7 @@ impl std::fmt::Display for ExRangeError {
             ExRangeError::NoPreviousSubstitute => {
                 f.write_str("E33: No previous substitute regular expression")
             }
-            ExRangeError::PatternNotFound(p) => write!(f, "E486: pattern not found: {p}"),
+            ExRangeError::PatternNotFound(p) => write!(f, "E486: Pattern not found: {p}"),
             ExRangeError::BadPattern(m) => f.write_str(m),
             ExRangeError::PositiveCount => f.write_str("E939: Positive count required"),
             ExRangeError::Trailing(t) => write!(f, "E488: Trailing characters: {t}"),

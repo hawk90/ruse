@@ -261,12 +261,17 @@ where `b`/`k`/`u`/`g`/`<Up>`/`<PageUp>` scroll back and `j`/`d`/`f`/`<Down>`/`<P
 Every message is given with a kind where it is set (`app/messages.rs`: error, warning, info, echo); errors
 fail the command, and all but echoes are kept in the history `:[count]mes[sages]` shows and
 `:[count]mes[sages] clear` trims, sized by `'messagesopt'` `history:` (default 500). What nvim keeps and does
-not keep is listed at the top of `app/messages.rs`. Differences from nvim:
+not keep is listed at the top of `app/messages.rs`. A command's line-count report (`3 fewer lines`, `3 lines
+yanked`, `3 lines >ed 1 time`, `3 substitutions on 2 lines`) is given only when its count is more than
+`'report'` (default 2), with nvim's wording; `app/report.rs` lists them (#1276). Differences from nvim:
 - nvim's message gets a whole command-line row. ruse's shares the row with the bar, so a message that would
   fit nvim's row, but not the space left after a long file name, also asks for `<CR>`.
 - The pager's first page starts at the message, not at the typed command line nvim scrolls up with it; there
   is no `g<`, `'more'`, `'cmdheight'`, or `'shortmess'` flag other than the built-in `t`; `'messagesopt'`
   `wait:` and `progress:` are checked and kept but ruse always behaves as `hit-enter`.
+- There is no undo/redo report (`1 more line; before #2  0 seconds ago`), nor the `3 lines changed` /
+  `indented` / `filtered` reports of `g~`, `=` and `!`. A Visual put over a charwise selection reports the
+  net line change, where nvim counts the lines the put itself added.
 - Listings ruse shows in an overlay (`:reg`, `:marks`, `:jumps`, `[I`, multi-row `:p`) and `:!` output (one
   row joined with ` | `) do not go through the pager.
 

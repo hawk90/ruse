@@ -73,6 +73,8 @@ pub(crate) struct UiOptions {
     /// `render.conceal` (F-031): marked-up byte ranges are hidden off the caret line. A config key with
     /// no `:set` option (nvim's `'conceallevel'` is per-syntax-group, which ruse does not model).
     pub conceal: bool,
+    /// `'report'`: the line count a command's report needs to pass (#1276).
+    pub report: i64,
 }
 
 impl UiOptions {
@@ -92,6 +94,7 @@ impl Default for UiOptions {
             messagesopt: crate::input::set_cmd::MESSAGESOPT.to_string(),
             foldopen: crate::input::set_cmd::FOLDOPEN.to_string(),
             conceal: true,
+            report: crate::app::report::REPORT_DEFAULT,
         }
     }
 }
@@ -302,6 +305,7 @@ impl OptionHost<'_> {
             Opt::Verbose => OptVal::Num(self.ui.verbose),
             Opt::MessageOptions => OptVal::Text(self.ui.messagesopt.clone().into()),
             Opt::FoldOpen => OptVal::Text(self.ui.foldopen.clone().into()),
+            Opt::Report => OptVal::Num(self.ui.report),
             Opt::History => {
                 OptVal::Num(i64::try_from(self.engine.history_len()).unwrap_or(i64::MAX))
             }
@@ -421,6 +425,7 @@ impl OptionHost<'_> {
             (Opt::Verbose, OptVal::Num(n)) => self.ui.verbose = n,
             (Opt::MessageOptions, _) => self.ui.messagesopt = text,
             (Opt::FoldOpen, _) => self.ui.foldopen = text,
+            (Opt::Report, OptVal::Num(n)) => self.ui.report = n,
             (Opt::History, OptVal::Num(n)) => {
                 self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
             }

@@ -578,6 +578,13 @@ features:
     # where they are set (app/messages.rs); :[count]messages [clear] shows/trims the history nvim keeps (errors,
     # warnings, reports; not echoes, option replies, file messages or :silent output), sized by 'messagesopt'
     # history: (500); output taller than the screen pages with -- More -- (ui/message.rs Pager).
+    # #1276: the line-count reports follow nvim's wording and the 'report' option (global, default 2, E487
+    # below 0; app/report.rs): `3 fewer lines`/`1 line less`/`3 more lines` after d, c, p, gq, :d, :t, :pu,
+    # :sort u and :g; `3 lines yanked [into "x]`/`block of 3 lines yanked`; `3 lines moved`; `3 lines >ed 2
+    # times`; `3 substitutions on 2 lines` (counted by substitutions); only past 'report', for Normal, Visual,
+    # `.` and Ex alike (the :s///n count always shows); :j and x give none; E486 reads `Pattern not found`.
+    # Not yet: the undo/redo report (`1 more line; before #2  0 seconds ago`) and the `N lines changed` /
+    # `indented` / `filtered` reports of g~, =, !.
     # Repoint (D-043): TERM-SYNC-1 -> census nvim.termmode.synchronizedoutput (from #91); the render-
     # architecture / heuristic / post-MVP-graphics ids (TERM-COLOR-1 truecolor, TERM-WIDTH-1 width,
     # TERM-GFX-1/2/3 images) are backlogged; NVIM-UI-2 stays derived via its other UI citer.
