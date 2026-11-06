@@ -294,9 +294,27 @@ pub(crate) struct MessagesCmd {
     pub(crate) clear: bool,
 }
 
+/// Why a `:messages` line is refused. `Display` is nvim's message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MessagesError {
+    /// An argument other than `clear` (`E474`).
+    InvalidArgument,
+    /// `:messages!` (`E477`); the line as typed.
+    NoBang(String),
+}
+
+impl std::fmt::Display for MessagesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessagesError::InvalidArgument => f.write_str("E474: Invalid argument"),
+            MessagesError::NoBang(line) => write!(f, "E477: No ! allowed: {line}"),
+        }
+    }
+}
+
 /// Parse a `:messages` line, before any range is resolved (its count is no line number). `None` when the
-/// line is not `:messages`; `Err` with nvim's message when its argument is wrong.
-pub(crate) fn parse_messages(line: &str) -> Option<Result<MessagesCmd, String>> {
+/// line is not `:messages`; `Err` when its argument is wrong.
+pub(crate) fn parse_messages(line: &str) -> Option<Result<MessagesCmd, MessagesError>> {
     let line = line.trim_start_matches([' ', '\t', ':']);
     let digits = |s: &str| s.bytes().take_while(u8::is_ascii_digit).count();
     let mut count = None;
@@ -323,7 +341,7 @@ pub(crate) fn parse_messages(line: &str) -> Option<Result<MessagesCmd, String>> 
     }
     let rest = &rest[word..];
     if rest.starts_with('!') {
-        return Some(Err(format!("E477: No ! allowed: {}", line.trim_end())));
+        return Some(Err(MessagesError::NoBang(line.trim_end().to_string())));
     }
     if !rest.is_empty() && !rest.starts_with([' ', '\t', '|', '"']) {
         return None;
@@ -335,7 +353,7 @@ pub(crate) fn parse_messages(line: &str) -> Option<Result<MessagesCmd, String>> 
             clear: false,
         }),
         "clear" => Ok(MessagesCmd { count, clear: true }),
-        _ => Err("E474: Invalid argument".to_string()),
+        _ => Err(MessagesError::InvalidArgument),
     })
 }
 
@@ -458,15 +476,15 @@ mod tests {
         assert_eq!(parse_messages("2mes clear"), ok(Some(2), true));
         assert_eq!(
             parse_messages("messages foo"),
-            Some(Err("E474: Invalid argument".into()))
+            Some(Err(MessagesError::InvalidArgument))
         );
         assert_eq!(
             parse_messages("messages cl"),
-            Some(Err("E474: Invalid argument".into()))
+            Some(Err(MessagesError::InvalidArgument))
         );
         assert_eq!(
             parse_messages("messages!"),
-            Some(Err("E477: No ! allowed: messages!".into()))
+            Some(Err(MessagesError::NoBang("messages!".into())))
         );
         assert_eq!(parse_messages("me"), None);
         assert_eq!(parse_messages("mesx"), None);

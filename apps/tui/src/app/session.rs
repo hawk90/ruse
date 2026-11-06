@@ -3530,7 +3530,7 @@ impl Session {
                     let shown = shown.join("\n");
                     status.echo(shown);
                 }
-                Err(e) => status.error(e),
+                Err(e) => status.error(e.to_string()),
             }
             return;
         }
