@@ -4,6 +4,7 @@
 //! the server is ready are queued and flushed on `initialized`.
 
 use std::io::BufReader;
+use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
@@ -17,6 +18,10 @@ use super::protocol::{
 
 pub struct LspClient {
     child: Child,
+    /// The server's program name (`rust-analyzer`), for the log; never a path or an argument.
+    server: String,
+    /// The server ended on its own and that was logged (#966).
+    exited: bool,
     stdin: ChildStdin,
     rx: Receiver<Value>,
     reader: Option<JoinHandle<()>>,
@@ -36,13 +41,25 @@ impl LspClient {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        let mut child = command.spawn().ok()?;
+        let server = Path::new(command.get_program())
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let mut child = match command.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                crate::log::lsp_spawn_failed(&server, &e);
+                return None;
+            }
+        };
+        crate::log::lsp_spawned(&server, child.id());
         let stdin = child.stdin.take()?;
         let stdout = child.stdout.take()?;
         let (tx, rx) = mpsc::channel();
         let reader = spawn_reader(BufReader::new(stdout), tx);
         let mut client = LspClient {
             child,
+            server,
+            exited: false,
             stdin,
             rx,
             reader: Some(reader),
@@ -95,6 +112,14 @@ impl LspClient {
     /// blocks), and return diagnostics + any request responses that arrived. Call once per frame.
     pub fn poll(&mut self) -> Polled {
         let mut out = Polled::default();
+        // A server that ended on its own (a crash, or an exit the editor did not ask for) is logged once;
+        // its features stop for the session (no restart yet).
+        if !self.exited {
+            if let Ok(Some(status)) = self.child.try_wait() {
+                self.exited = true;
+                crate::log::lsp_exited(&self.server, status);
+            }
+        }
         while let Ok(msg) = self.rx.try_recv() {
             match classify(&msg, self.init_id) {
                 // A server→client REQUEST: reply with a null result so the server proceeds (we advertise no
@@ -198,6 +223,9 @@ impl Drop for LspClient {
         let _ = write_message(&mut self.stdin, &json!({"jsonrpc":"2.0","method":"exit"}));
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if !self.exited {
+            crate::log::lsp_stopped(&self.server);
+        }
         if let Some(h) = self.reader.take() {
             let _ = h.join();
         }
@@ -207,6 +235,51 @@ impl Drop for LspClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A server that cannot start, one that dies on its own, and one the editor stops are each logged
+    /// (#966), by program name only.
+    #[cfg(unix)]
+    #[test]
+    fn spawn_failure_exit_and_stop_are_logged() {
+        let lines = crate::log::tests::Capture::run(|| {
+            assert!(
+                LspClient::spawn(Command::new("/nonexistent/ruse-no-such-server"), "file:///")
+                    .is_none()
+            );
+            let mut dies = Command::new("sh");
+            dies.args(["-c", "exit 3"]);
+            let mut c = LspClient::spawn(dies, "file:///").expect("sh starts");
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !c.exited && std::time::Instant::now() < until {
+                c.poll();
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            drop(c);
+            let mut stays = Command::new("sh");
+            stays.args(["-c", "cat >/dev/null"]);
+            drop(LspClient::spawn(stays, "file:///").expect("sh starts"));
+        });
+        let failed = crate::log::tests::line(&lines, "lsp.spawn_failed");
+        assert!(
+            failed.contains("server=\"ruse-no-such-server\"") && !failed.contains("/nonexistent")
+        );
+        assert!(failed.contains("error_kind=\"NotFound\""), "{failed}");
+        let exited = crate::log::tests::line(&lines, "lsp.exited");
+        assert!(
+            exited.contains("crashed=true") && exited.contains("code=3"),
+            "{exited}"
+        );
+        assert_eq!(
+            lines.iter().filter(|l| l.contains("lsp.spawned")).count(),
+            2
+        );
+        // The server that died is not also reported stopped; the one the editor dropped is.
+        assert_eq!(
+            lines.iter().filter(|l| l.contains("lsp.stopped")).count(),
+            1,
+            "{lines:#?}"
+        );
+    }
 
     #[test]
     fn classify_init_response_diagnostics_and_requests() {

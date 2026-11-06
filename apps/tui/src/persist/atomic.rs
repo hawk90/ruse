@@ -309,7 +309,7 @@ fn sweep_stale_temps(target: &Path) {
         };
         let is_file = fs::symlink_metadata(e.path()).is_ok_and(|m| m.file_type().is_file());
         if pid != me && is_file && !super::journal::alive(pid) {
-            tracing::info!(event = "save.stale_temp_removed", path = %e.path().display());
+            crate::log::stale_temp_removed(&e.path());
             let _ = fs::remove_file(e.path());
         }
     }

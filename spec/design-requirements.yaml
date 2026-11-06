@@ -1103,11 +1103,12 @@ items:
       - A default never-log field list exists and is enforced
     evidence:
       - docs/design/stability-and-observability.md
+      - apps/tui/src/log.rs
     legacy_ids:
       - DR-STAB-3
     source:
       - design-requirements.md §11 Extended Error / Log / Status
-    notes: D-017 (PII/redaction) open. Logging is off unless RUSE_LOG is set; log events include file paths.
+    notes: D-017 (PII/redaction) open. Logging is off unless RUSE_LOG is set. Since #966 every event goes through one facade (apps/tui/src/log.rs) that never logs buffer text, message text, environment variables or paths (a file is a hash of its path), checked by a unit test; the field list is not yet a D-017 decision.
   - id: STAB-004
     title: Per-component ring buffer of recent logs; trace sampling
     area: stab

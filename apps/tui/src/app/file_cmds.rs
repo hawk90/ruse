@@ -132,7 +132,7 @@ fn write_own(
                 }
                 persist::journal::clear(Some(path)); // saved bytes are durable — nothing to recover
             }
-            tracing::info!(event = "save", path = %path.display(), bytes = disk.len());
+            crate::log::save(path, disk.len());
             Ok(write_report(
                 &path.display().to_string(),
                 false,
@@ -143,7 +143,7 @@ fn write_own(
         }
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
-            tracing::warn!(event = "save.failed", path = %path.display(), error = %e);
+            crate::log::save_failed(path, &e);
             Err(FileError::Write(e))
         }
     }
@@ -488,7 +488,10 @@ pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: F
             }
             Msg::echo(format!("\"{}\" reloaded", path.display()))
         }
-        Err(e) => Msg::error(format!("E484: can't open {}: {e}", path.display())),
+        Err(e) => {
+            crate::log::open_failed("reload", &path, &e);
+            Msg::error(format!("E484: can't open {}: {e}", path.display()))
+        }
     }
 }
 

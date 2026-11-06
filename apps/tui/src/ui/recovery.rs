@@ -252,13 +252,17 @@ pub(crate) fn resolve(
     };
     match rec {
         Recovery::None => Ok(open(None, false, None)),
-        Recovery::Unreplayable { reason } => Ok(open(None, false, Some(reason))),
+        Recovery::Unreplayable { reason } => {
+            crate::log::recover_unreplayable(doc);
+            Ok(open(None, false, Some(reason)))
+        }
         Recovery::InUse {
             owner,
             journal,
             crashed,
             note,
         } => {
+            crate::log::recover_found("in_use", doc, &journal, crashed.is_some());
             let lines = in_use_lines(name, &owner, crashed.as_deref(), quit);
             let also = format!("also open in {}", who(&owner));
             // A journal beside it that could not be offered says why after the answer.
@@ -269,7 +273,17 @@ pub(crate) fn resolve(
                 )
             };
             let has_crashed = crashed.is_some();
-            Ok(match ask(out, &lines, |k| in_use_choice(k, has_crashed))? {
+            let pick = ask(out, &lines, |k| in_use_choice(k, has_crashed))?;
+            crate::log::recover_chosen(
+                match pick {
+                    Some(InUseChoice::ReadOnly) => "read_only",
+                    Some(InUseChoice::EditAnyway) => "edit_anyway",
+                    Some(InUseChoice::RecoverCrashed) => "recover_crashed",
+                    Some(InUseChoice::Quit) | None => "quit",
+                },
+                doc,
+            );
+            Ok(match pick {
                 Some(InUseChoice::ReadOnly) => {
                     open(None, true, with_note(format!("[readonly]: {also}")))
                 }
@@ -301,9 +315,20 @@ pub(crate) fn resolve(
             })
         }
         Recovery::Available(a) => {
+            crate::log::recover_found("available", doc, &a.journal, false);
             let lines = lines(name, &a, quit);
             loop {
                 let pick = ask(out, &lines, choice)?;
+                crate::log::recover_chosen(
+                    match pick {
+                        Some(Choice::Recover) => "recover",
+                        Some(Choice::Diff) => "diff",
+                        Some(Choice::EditDisk) => "edit_disk",
+                        Some(Choice::Discard) => "discard",
+                        Some(Choice::Quit) | None => "quit",
+                    },
+                    doc,
+                );
                 let Some(j) = journal::current() else {
                     return Ok(Resolved::Quit {
                         journal: a.journal.clone(),
@@ -322,11 +347,14 @@ pub(crate) fn resolve(
                     Some(Choice::Recover) => {
                         let note = match j.adopt(&a, doc, fmt) {
                             Ok(_) => "recovered unsaved changes (:w to save)".to_string(),
-                            Err(e) => format!(
+                            Err(e) => {
+                                crate::log::recover_failed("adopt", doc, Some(&a.journal), &e);
+                                format!(
                                 "recovered unsaved changes (:w to save); the journal was not taken \
                                  over ({e}): {}",
-                                a.journal.display()
-                            ),
+                                    a.journal.display()
+                                )
+                            }
                         };
                         open(Some(a.recovered.clone()), false, Some(note))
                     }
@@ -338,10 +366,13 @@ pub(crate) fn resolve(
                         };
                         let note = match j.archive(&a.journal) {
                             Ok(p) => format!("{what}; journal archived as {}", p.display()),
-                            Err(e) => format!(
-                                "{what}; the journal could not be archived ({e}) and stays: {}",
-                                a.journal.display()
-                            ),
+                            Err(e) => {
+                                crate::log::recover_failed("archive", doc, Some(&a.journal), &e);
+                                format!(
+                                    "{what}; the journal could not be archived ({e}) and stays: {}",
+                                    a.journal.display()
+                                )
+                            }
                         };
                         open(None, false, Some(note))
                     }

@@ -142,8 +142,16 @@ impl Highlight {
     pub fn for_ext(ext: &str) -> Option<Highlight> {
         let (language, query_src) = grammar_for(ext)?;
         let mut parser = Parser::new();
-        parser.set_language(&language).ok()?;
-        let query = Query::new(&language, query_src).ok()?;
+        // A grammar or query that ships with ruse and does not load drops the file to no highlighting
+        // (stability §7); say so in the log (#966).
+        if parser.set_language(&language).is_err() {
+            crate::log::degrade("syntax", "grammar_load_failed", ext);
+            return None;
+        }
+        let Ok(query) = Query::new(&language, query_src) else {
+            crate::log::degrade("syntax", "query_load_failed", ext);
+            return None;
+        };
         // An injections query is optional: a grammar without one (or with a query that fails to compile)
         // simply never injects — the outer highlighting still applies.
         let injections = injections_for(ext).and_then(|src| Query::new(&language, src).ok());
@@ -416,7 +424,12 @@ impl CachedHighlight {
                     tree.edit(&edit);
                 }
             }
+            let had_tree = self.tree.is_some() || self.rev.is_none();
             self.tree = self.hl.parser.parse(src, self.tree.as_ref());
+            // No tree means no highlighting until a parse succeeds again: logged when it starts.
+            if self.tree.is_none() && had_tree {
+                crate::log::degrade("syntax", "parse_failed", "");
+            }
             self.src.clear();
             self.src.extend_from_slice(src);
             self.rev = Some(rev);

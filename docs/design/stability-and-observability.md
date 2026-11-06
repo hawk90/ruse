@@ -68,6 +68,17 @@ all now would be exactly the "pattern names first" over-design warned against ab
   the TUI logs errors / panics / recoveries as structured events when `RUSE_LOG` is set. The diagnostic log
   is kept **separate from the replay `Trace`** (anti-pattern **TRACE-1 [P2]**): the `Trace` is a domain
   record/replay artifact, not the debug log.
+  Every event goes through one facade, `apps/tui/src/log.rs` (#966): a fixed `event` name, field set and
+  level per event. The v0 events: `message` (an error or warning shown to the user, at the `Status` setter),
+  `panic` (`severity="fatal"`), `recover.found` / `recover.chosen` / `recover.failed` / `recover.written` /
+  `recover.unreplayable`, `journal.failed`, `open.failed`, `save` / `save.failed` /
+  `save.stale_temp_removed`, `lsp.spawned` / `lsp.spawn_failed` / `lsp.exited` / `lsp.stopped` /
+  `lsp.frame_dropped`, `degrade` (`component` `syntax`, `terminal` or `config` for safe mode, a fixed `reason`) and
+  `config.diagnostic`. `tracing` has no `fatal` level: a fatal event is `error` with `severity="fatal"`.
+  **Privacy (§10's default):** no field carries buffer text, a message's text (only its `E486`-style code),
+  an environment variable or a path; a file is a stable 16-hex-digit hash of its path (`doc`, `journal`) and
+  its extension, and an error is its `io::ErrorKind` and OS error number. The one exception is a panic's
+  message and location, which the code writes. The exact never-log list stays open in D-017.
 - **§11.4 the status bar is a view.** v0 renders one status line; it is not the source of truth for any
   subsystem state (INV-STATUS holds trivially with ~one component).
 

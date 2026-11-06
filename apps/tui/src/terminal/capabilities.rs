@@ -18,8 +18,12 @@ pub(crate) fn detect_capabilities() -> (caps::ledger::Ledger, Vec<u8>) {
             {
                 use std::io::IsTerminal;
                 if io::stdin().is_terminal() {
-                    // Best-effort; env/default belief stands on failure.
-                    let _ = live_probe(ledger, &mut typed);
+                    // Best-effort; env/default belief stands on failure, and the log says so (#966).
+                    match live_probe(ledger, &mut typed) {
+                        Ok(true) => {}
+                        Ok(false) => crate::log::degrade("terminal", "probe_unanswered", ""),
+                        Err(_) => crate::log::degrade("terminal", "probe_failed", ""),
+                    }
                 }
             }
             #[cfg(not(unix))]
@@ -59,13 +63,15 @@ fn build_ledger(
 /// Emit the probe batch and drain the terminal's replies until the DA1 fence (F-010 acceptance #1).
 /// The `poll` deadline is a LIVENESS net for a terminal that never answers DA1 — NOT a
 /// per-capability timeout; the fence, not the clock, decides support (see `caps::probe`). What the user
-/// typed meanwhile goes to `typed`, even when a read fails.
+/// typed meanwhile goes to `typed`, even when a read fails. `Ok(false)` when the fence never replied: the
+/// capabilities the terminal did not confirm keep their env/default belief.
 #[cfg(unix)]
-fn live_probe(ledger: &mut caps::ledger::Ledger, typed: &mut Vec<u8>) -> io::Result<()> {
+fn live_probe(ledger: &mut caps::ledger::Ledger, typed: &mut Vec<u8>) -> io::Result<bool> {
     let mut parser = caps::probe::ProbeParser::new();
     let res = drain_probe(ledger, &mut parser);
+    let fenced = parser.is_fenced();
     *typed = parser.take_typed();
-    res
+    res.map(|()| fenced)
 }
 
 #[cfg(unix)]

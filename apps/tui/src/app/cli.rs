@@ -179,6 +179,7 @@ pub fn run() -> ExitCode {
         Some(Ok(bytes)) => bytes,
         Some(Err(e)) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
         Some(Err(e)) => {
+            crate::log::open_failed("startup", path.as_deref().unwrap_or(Path::new("")), &e);
             let shown = path.as_deref().unwrap_or(Path::new("")).display();
             eprintln!("ruse: {shown}: {e}");
             return ExitCode::FAILURE;

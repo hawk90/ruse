@@ -56,11 +56,7 @@ pub(crate) fn read_frame<R: BufRead>(r: &mut R) -> io::Result<Option<Value>> {
         return Ok(Some(Value::Null)); // malformed header block — skip
     };
     if len > MAX_FRAME_BYTES {
-        tracing::warn!(
-            len,
-            limit = MAX_FRAME_BYTES,
-            "LSP message over the size limit; dropped"
-        );
+        crate::log::lsp_frame_dropped(len, MAX_FRAME_BYTES);
         let want = len as u64;
         if io::copy(&mut r.by_ref().take(want), &mut io::sink())? < want {
             return Ok(None); // EOF inside the oversized body

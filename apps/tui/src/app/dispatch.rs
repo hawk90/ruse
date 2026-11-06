@@ -82,10 +82,11 @@ pub(crate) fn open_file_with(
             (Vec::new(), true)
         }
         Err(e) => {
+            crate::log::open_failed("edit", &p, &e);
             return Opened {
                 status: Msg::error(format!("E484: can't open {file}: {e}")),
                 id: None,
-            }
+            };
         }
     };
     let f = format(persist::encoding::FileFormat::detect(&raw));
@@ -929,7 +930,7 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status, fixeo
             persist::disk::saw(&bf.path, &bytes);
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
-            tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());
+            crate::log::save(&bf.path, bytes.len());
             // Vim-style write report: `"file" 42L, 1024B written` (L = buffer lines, B = bytes on disk).
             // ruse preserves final-newline presence exactly by default (no silent fixeol); when the file was
             // written WITHOUT a trailing newline, surface `[noeol]` (as Vim does) so the missing EOL is never
@@ -950,7 +951,7 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status, fixeo
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
             // Not saved: the buffer stays modified and keeps its journal (an fsync that failed after the
             // rename is `E667`, never "written", #936).
-            tracing::warn!(event = "save.failed", path = %bf.path.display(), error = %e);
+            crate::log::save_failed(&bf.path, &e);
             status.error(e.to_string());
             false
         }

@@ -67,22 +67,11 @@ pub fn rescue_on_exit(reason: &str) {
 }
 
 fn log_outcome(reason: &str, path: Option<&Path>, r: &Recovery) {
-    let doc = path.map_or_else(|| "[No Name]".into(), |p| p.display().to_string());
     match r {
-        Recovery::Written(rp) => tracing::error!(
-            event = "recover.written",
-            reason,
-            doc = %doc,
-            recovery = %rp.display(),
-            "unsaved buffer written to its recovery journal"
-        ),
-        Recovery::Failed(e) => tracing::error!(
-            event = "recover.failed",
-            reason,
-            doc = %doc,
-            error = %e,
-            "recovery journal write failed"
-        ),
+        Recovery::Written(rp) => crate::log::recover_written(reason, path, rp),
+        Recovery::Failed(journal, e) => {
+            crate::log::recover_failed("rescue", path, Some(journal), e)
+        }
         Recovery::Clean => {}
     }
 }
@@ -105,7 +94,7 @@ fn recover_write(e: &Entry) -> Recovery {
         e.node,
     ) {
         Ok(written) => Recovery::Written(written),
-        Err(err) => Recovery::Failed(err.to_string()),
+        Err(err) => Recovery::Failed(e.journal.clone(), err),
     }
 }
 
@@ -116,8 +105,8 @@ enum Recovery {
     Clean,
     /// Unsaved work was written to this recovery file.
     Written(PathBuf),
-    /// The buffer was modified but the recovery write failed (message).
-    Failed(String),
+    /// The buffer was modified but the write of this journal failed.
+    Failed(PathBuf, std::io::Error),
 }
 
 /// Install the panic hook: journal every modified buffer, log a structured event with the panic's message
@@ -151,11 +140,9 @@ fn install_hook_with(restore: fn()) {
                     log_outcome("panic", path.as_deref(), r);
                     saved += usize::from(matches!(r, Recovery::Written(_)));
                 }
-                tracing::error!(event = "panic", recovered = saved, %location, "core panic: {message}");
+                crate::log::panic(&message, &location, Some(saved));
             }
-            None => {
-                tracing::error!(event = "panic", %location, "core panic; buffer store busy: {message}")
-            }
+            None => crate::log::panic(&message, &location, None),
         }
         restore();
         previous(info);

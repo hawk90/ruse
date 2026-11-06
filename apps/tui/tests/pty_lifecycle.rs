@@ -553,3 +553,44 @@ fn a_legacy_sidecar_journal_is_offered_then_archived() {
     let mut ed = Editor::start(&dir, &[f_txt()]);
     opened_without_offer(&mut ed, "legacy work", "offered once");
 }
+
+/// #966: with `RUSE_LOG` set, a panic is logged as a fatal `panic` event with its message and location,
+/// after the modified buffer's `recover.written`, and the log names neither the buffer's text nor its file.
+/// The panic comes from a debug build's `RUSE_DEBUG_PANIC_FILE` trigger, created once the edit is in.
+#[cfg(debug_assertions)]
+#[test]
+fn ruse_log_gets_the_panic_event() {
+    let dir = Scratch::new();
+    dir.file("f.txt", b"orig\n");
+    let mut ed = Editor::start_env(
+        &dir,
+        &[f_txt()],
+        &["RUSE_LOG=ruse.log", "RUSE_DEBUG_PANIC_FILE=panic-now"],
+    );
+    ed.keys(&format!("izzsecret{ESC}"));
+    ed.sync();
+    dir.file("panic-now", b"");
+    ed.keys("l"); // one more frame: the loop sees the file
+    assert_eq!(
+        ed.exit_status(),
+        101,
+        "a panic exits with Rust's panic status"
+    );
+    let log = String::from_utf8(std::fs::read(dir.path("ruse.log")).unwrap()).unwrap();
+    let panic = log
+        .lines()
+        .find(|l| l.contains("event=\"panic\""))
+        .unwrap_or_else(|| panic!("no panic event in {log}"));
+    assert!(panic.contains("severity=\"fatal\""), "{panic}");
+    assert!(panic.contains("RUSE_DEBUG_PANIC_FILE exists"), "{panic}");
+    assert!(panic.contains("location=\"apps/tui/src/log.rs:"), "{panic}");
+    assert!(panic.contains("recovered=1"), "{panic}");
+    assert!(
+        log.contains("event=\"recover.written\" reason=\"panic\""),
+        "{log}"
+    );
+    assert!(!log.contains("zzsecret"), "no buffer text: {log}");
+    assert!(!log.contains("f.txt"), "no file name: {log}");
+    // The journal it names holds the edit.
+    assert_eq!(restart_and_recover(&dir, "panic"), b"zzsecretorig\n");
+}
