@@ -106,3 +106,24 @@ fn a_workspace_cannot_set_user_or_locked_keys() {
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(file).unwrap(), b"\n");
 }
+
+/// `render.conceal` (F-031, #1152): on by default, a Markdown heading off the caret line shows without
+/// its `# `; `render.conceal = false` in the user config shows the markup.
+#[test]
+fn render_conceal_comes_from_the_config() {
+    let screen_row = |conceal: Option<&str>| {
+        let dir = Scratch::new();
+        if let Some(text) = conceal {
+            user_config(&dir, text);
+        }
+        dir.file("n.md", b"top\n# Title\n");
+        let mut ed = Editor::start(&dir, &[Path::new("n.md")]);
+        let rows = ed.wait_for_row("Title");
+        ed.keys(":q\r");
+        assert_eq!(ed.exit_status(), 0);
+        rows[1].clone()
+    };
+    assert_eq!(screen_row(None), "Title");
+    assert_eq!(screen_row(Some("render.conceal = true\n")), "Title");
+    assert_eq!(screen_row(Some("[render]\nconceal = false\n")), "# Title");
+}

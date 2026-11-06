@@ -5620,6 +5620,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>, read_only_mode: bool) -> 
                 &s.line_idx,
                 &s.pane_idx,
                 s.ui_opts.showmode,
+                s.ui_opts.conceal,
                 &flags,
                 s.status.serial(),
                 &mut s.pager,

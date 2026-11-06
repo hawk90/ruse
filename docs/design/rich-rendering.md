@@ -228,6 +228,9 @@ genuine product decision (D-052):
   everything concealable. **Default (chosen): `off` globally**, auto-`markers` for `.md`/`.org` buffers — a
   code editor shows raw bytes by default and only softens markup in prose filetypes. Resolved through the
   config/census path (D-042); user-overridable per buffer.
+  **Built (#1152):** `spec/config-schema.yaml` declares `render.conceal` as a `bool` (default `true`), and the
+  renderer reads it from the config layers: `false` is the `off` level, `true` the `full` level. The
+  `markers` level, the per-filetype default and the per-buffer override are not built.
 - **Motion:** horizontal motion over a fully-concealed (un-revealed) range steps to its far edge (the interior
   has no landing cells); when revealed (caret on its line), motion is ordinary grapheme motion. Vertical
   motion keeps a **display** goal column (P5). Selection/yank/operators always act on **buffer** content (you

@@ -14,7 +14,9 @@
 //!   file that does not parse is quarantined whole (`config.layer_quarantined`);
 //! - the workspace layer is merged only while the workspace is trusted and the trust record's content
 //!   hash still matches `.ruse/` (D-062, [`crate::trust`]); otherwise it is `untrusted` or `stale`, and
-//!   inert. Keymaps are `scope: user`, so a workspace never binds keys.
+//!   inert. Keymaps are `scope: user`, so a workspace never binds keys;
+//! - a key under a name an older schema version used is migrated ([`MIGRATIONS`], CFG-MIG-001): a rename
+//!   loads under the new name, a removed key stays inert with a warning; the file is never rewritten.
 //!
 //! Every effective value carries its source (layer, file, line) for `:verbose set` and `:inspect config`.
 
@@ -598,7 +600,7 @@ pub struct Source {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Diagnostic {
     /// `config.unknown_key`, `config.invalid_value`, `config.layer_quarantined`, `config.locked_key_ignored`
-    /// or `config.workspace_inert`.
+    /// `config.workspace_inert` or `config.migrated`.
     pub code: &'static str,
     pub message: String,
 }
@@ -931,30 +933,192 @@ fn line_of(text: &str, at: usize) -> usize {
         + 1
 }
 
+/// The config schema version this ruse reads (`version` in `spec/config-schema.yaml`). A layer file may
+/// name the version it was written for with a top-level `version = N`; a file without one is taken to be
+/// current.
+pub const SCHEMA_VERSION: i64 = 1;
+
+/// One change of a schema version step (CFG-MIG-001, `config-model.md` Migration strategy).
+// Only the tests build one until the schema's first version step ([`MIGRATIONS`] is empty).
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Change {
+    /// Auto-conversion: a lossless rename. The old key's value loads as the new key, with a
+    /// `config.migrated` note; the file on disk is left as it is.
+    Rename {
+        from: &'static str,
+        to: &'static str,
+    },
+    /// Manual-warning: a key removed with no equivalent, or changed in meaning. Its value is kept inert
+    /// and a `config.migrated` (manual) diagnostic says what to do instead.
+    Manual {
+        key: &'static str,
+        note: &'static str,
+    },
+}
+
+/// The changes from schema version `from` to `from + 1`.
+#[derive(Clone, Copy, Debug)]
+pub struct Migration {
+    pub from: i64,
+    pub changes: &'static [Change],
+}
+
+/// A schema version and the steps that lead to it, oldest first.
+#[derive(Clone, Copy, Debug)]
+pub struct Migrations {
+    pub current: i64,
+    pub steps: &'static [Migration],
+}
+
+/// The migration table. No step: the schema is still at its first version, and no key has been renamed
+/// or removed since it was introduced (the history of `spec/config-schema.yaml` only adds keys and edits
+/// their rows). A rename or removal bumps [`SCHEMA_VERSION`] and adds its step here and to the schema's
+/// `migrations:`.
+pub const MIGRATIONS: Migrations = Migrations {
+    current: SCHEMA_VERSION,
+    steps: &[],
+};
+
+impl Migrations {
+    /// The steps a layer written for `version` goes through.
+    fn from(&self, version: i64) -> impl Iterator<Item = &'static Migration> + '_ {
+        self.steps
+            .iter()
+            .filter(move |m| m.from >= version && m.from < self.current)
+    }
+
+    /// What the steps from `version` make of `name`: the key to load it as, or the manual note.
+    fn name(&self, name: &str, version: i64) -> Result<String, &'static str> {
+        let mut name = name.to_string();
+        for step in self.from(version) {
+            for change in step.changes {
+                match *change {
+                    Change::Rename { from, to } if from == name => name = to.to_string(),
+                    Change::Manual { key, note } if key == name => return Err(note),
+                    _ => {}
+                }
+            }
+        }
+        Ok(name)
+    }
+
+    /// Whether some key the steps from `version` know by an old name starts with `dotted`.
+    fn knows_prefix(&self, dotted: &str, version: i64) -> bool {
+        self.from(version)
+            .flat_map(|m| m.changes)
+            .any(|c| match *c {
+                Change::Rename { from, .. } => from.starts_with(dotted),
+                Change::Manual { key, .. } => key.starts_with(dotted),
+            })
+    }
+
+    /// The layer's `version`: its top-level `version = N`, or the current one without it. A version that
+    /// is not a positive integer, or newer than this ruse reads, is a diagnostic and read as current.
+    fn layer_version(
+        &self,
+        table: &toml::de::DeTable<'_>,
+        text: &str,
+        path: &Path,
+        diags: &mut Vec<Diagnostic>,
+    ) -> i64 {
+        let current = self.current;
+        let Some((k, v)) = table.iter().find(|(k, _)| k.get_ref() == "version") else {
+            return current;
+        };
+        let at = format!("{}:{}", short_path(path), line_of(text, k.span().start));
+        let n = match v.get_ref() {
+            toml::de::DeValue::Integer(i) => i64::from_str_radix(i.as_str(), i.radix()).ok(),
+            _ => None,
+        };
+        match n {
+            Some(n) if (1..=current).contains(&n) => n,
+            Some(n) if n > current => {
+                diags.push(Diagnostic {
+                    code: "config.migrated",
+                    message: format!(
+                        "version {n} ({at}) is newer than this ruse reads ({current}); \
+                         keys it does not know are ignored"
+                    ),
+                });
+                current
+            }
+            _ => {
+                diags.push(Diagnostic {
+                    code: "config.invalid_value",
+                    message: format!(
+                        "version ({at}): not a version number 1..={current}; read as {current}"
+                    ),
+                });
+                current
+            }
+        }
+    }
+}
+
 /// Parse a layer's TOML text into schema entries. A key the schema does not know, one the layer may not
-/// set, or a value of the wrong type is a diagnostic and dropped; the rest load. A file that is not
-/// TOML is the error (the caller quarantines it).
+/// set, or a value of the wrong type is a diagnostic and dropped; the rest load. A key under an old
+/// name is migrated ([`MIGRATIONS`]). A file that is not TOML is the error (the caller quarantines it).
 fn parse_layer(
     kind: LayerKind,
     path: &Path,
     text: &str,
     diags: &mut Vec<Diagnostic>,
 ) -> Result<Vec<Entry>, Rejected> {
-    let table = toml::de::DeTable::parse(text).map_err(|e| Rejected::Syntax {
+    parse_layer_in(kind, path, text, diags, &MIGRATIONS)
+}
+
+/// [`parse_layer`] with the migration table `mig` (a test passes its own).
+fn parse_layer_in(
+    kind: LayerKind,
+    path: &Path,
+    text: &str,
+    diags: &mut Vec<Diagnostic>,
+    mig: &Migrations,
+) -> Result<Vec<Entry>, Rejected> {
+    let parsed = toml::de::DeTable::parse(text).map_err(|e| Rejected::Syntax {
         line: e.span().map_or(0, |s| line_of(text, s.start)),
         message: e.message().trim_end().to_string(),
     })?;
+    let version = mig.layer_version(parsed.get_ref(), text, path, diags);
+    let current = mig.current;
     let mut entries = Vec::new();
     let at = |line: usize| format!("{}:{line}", short_path(path));
-    let mut stack: Vec<(String, &toml::de::DeTable<'_>)> = vec![(String::new(), table.get_ref())];
+    let mut stack: Vec<(String, &toml::de::DeTable<'_>)> = vec![(String::new(), parsed.get_ref())];
     while let Some((prefix, t)) = stack.pop() {
         for (k, v) in t {
-            let name = if prefix.is_empty() {
+            if prefix.is_empty() && k.get_ref() == "version" {
+                continue;
+            }
+            let written = if prefix.is_empty() {
                 k.get_ref().to_string()
             } else {
                 format!("{prefix}.{}", k.get_ref())
             };
             let line = line_of(text, k.span().start);
+            let name = match mig.name(&written, version) {
+                Ok(name) => name,
+                Err(note) => {
+                    diags.push(Diagnostic {
+                        code: "config.migrated",
+                        message: format!(
+                            "{written} ({}) is no longer read (manual migration): {note}",
+                            at(line)
+                        ),
+                    });
+                    continue;
+                }
+            };
+            if name != written && key_def(&name).is_some() {
+                diags.push(Diagnostic {
+                    code: "config.migrated",
+                    message: format!(
+                        "{written} ({}) is now {name}; read as {name} (version {version} \
+                         to {current}, the file is unchanged)",
+                        at(line)
+                    ),
+                });
+            }
             if let Some(def) = key_def(&name) {
                 if !def.scope.allows(kind) || (kind == LayerKind::Workspace && def.locked) {
                     let why = if def.locked && kind == LayerKind::Workspace {
@@ -981,16 +1145,17 @@ fn parse_layer(
                 }
                 continue;
             }
-            let dotted = format!("{name}.");
+            let dotted = format!("{written}.");
             match v.get_ref() {
                 toml::de::DeValue::Table(sub)
-                    if SCHEMA.iter().any(|d| d.key.starts_with(&dotted)) =>
+                    if SCHEMA.iter().any(|d| d.key.starts_with(&dotted))
+                        || mig.knows_prefix(&dotted, version) =>
                 {
-                    stack.push((name, sub));
+                    stack.push((written, sub));
                 }
                 _ => diags.push(Diagnostic {
                     code: "config.unknown_key",
-                    message: format!("unknown key {name} ({}); ignored", at(line)),
+                    message: format!("unknown key {written} ({}); ignored", at(line)),
                 }),
             }
         }

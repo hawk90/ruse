@@ -33,6 +33,14 @@
 
 version: 1
 
+# CFG-MIG-001 migration table (docs/design/config-model.md "Migration strategy"), one step per version bump,
+# oldest first: `- { from: N, rename: { old.key: new.key }, manual: { removed.key: "what to do instead" } }`.
+# `rename` is the auto-conversion (lossless; the old key's value loads as the new one, the file is left as it
+# is); `manual` is the manual-warning (the old value stays inert with a config.migrated diagnostic). A layer
+# file names its version with a top-level `version = N`; one without is current. Empty: no key has been
+# renamed or removed since version 1. Mirrored by MIGRATIONS in apps/tui/src/config.rs (a test keeps them equal).
+migrations: []
+
 scopes:
   # precedence low -> high; for a `replace` key the highest layer ALLOWED to write it wins (per-key, not per-file).
   machine:   { precedence: 1, location: "system/admin (/etc/ruse, install dir)", trust: core, note: "admin baseline; may PIN security_locked / scope:machine keys above user+workspace (enterprise lock)" }
@@ -110,7 +118,7 @@ settings:
   editor.hidden:        { type: bool,   default: false,  scope: workspace, merge: replace,   security_locked: false, derives_from: [F-032], desc: "Allow a modified buffer to become Hidden (retained without a window) instead of blocking :bd/:bn/window-close (Vim hidden/hid). OFF by default (Vim factory). Governs the D-057 buffer Disposition; not yet wired (buffer lifecycle is design-stage, RFC-0018)." }
 
   # ---- render (in-buffer rendering; F-031) ----
-  render.conceal:       { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: false, derives_from: [F-031], desc: "Conceal marked-up byte ranges (e.g. Markdown heading prefixes), revealed on the caret line. Overridable at runtime by RUSE_CONCEAL=off; the config loader (#614) reads the key, but the renderer does not consume it yet." }
+  render.conceal:       { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: false, derives_from: [F-031], desc: "Conceal marked-up byte ranges (e.g. Markdown heading prefixes), revealed on the caret line. Read from the config layers (#1152); RUSE_CONCEAL=off also turns it off for one run. No :set option (nvim's conceallevel is per syntax group)." }
   render.wrap:          { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: false, derives_from: [F-006], desc: "Soft-wrap lines longer than the window onto the next screen rows (Vim wrap); off scrolls the window sideways instead (editor.sidescroll). ON as nvim. A window option: :set wrap / :setlocal wrap (#615); a split copies it." }
   render.linebreak:     { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, derives_from: [F-006], desc: "Wrap at a 'breakat' character instead of the last cell that fits (Vim linebreak/lbr). OFF as nvim. A window option (#615)." }
   render.breakindent:   { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, derives_from: [F-006], desc: "Indent wrapped rows like their line (Vim breakindent/bri; 'breakindentopt' min/shift/sbr/column). OFF as nvim. A window option (#615)." }

@@ -962,6 +962,7 @@ pub(crate) fn render(
     line_idx: &crate::line_index::LineIndex,
     pane_idx: &crate::line_index::PaneIndexes,
     showmode: bool,
+    conceal_on: bool,
     flags: &str,
     status_serial: u64,
     pager: &mut crate::ui::message::Pager,
@@ -1004,9 +1005,9 @@ pub(crate) fn render(
         }
     }
     // F-031 conceal: the byte ranges the providers marked hidden (Markdown heading `# ` prefixes today).
-    // Disabled by `RUSE_CONCEAL=off` (the config-file `render.conceal` key has no loader yet — same seam
-    // as RUSE_PROFILE). The revealed line is the focused caret's buffer line (reveal-at-point).
-    let conceal_on = std::env::var("RUSE_CONCEAL").as_deref() != Ok("off");
+    // Off with `render.conceal = false` in the config (`conceal_on`), or `RUSE_CONCEAL=off` for one run.
+    // The revealed line is the focused caret's buffer line (reveal-at-point).
+    let conceal_on = conceal_on && std::env::var("RUSE_CONCEAL").as_deref() != Ok("off");
     let conceal: Vec<(usize, usize, Option<&'static str>)> = if conceal_on {
         spans
             .iter()
