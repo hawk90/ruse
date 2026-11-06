@@ -65734,6 +65734,1093 @@
       }
     },
     {
+      "name": "utm_t0_first",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":1t0<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t0_first_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":1t0<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "one",
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t0_third",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "3G:t0<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_end",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G:t$<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          6,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_end_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G:t$<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six",
+          "two"
+        ],
+        "cursor": [
+          7,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_dot",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G:t.<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_mid",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":5t1<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_col",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "3G$:t0<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_range_top",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":3,4t0<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_range_end",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":2,3t$<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          6,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_range_end_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":2,3t$<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six",
+          "two",
+          "three"
+        ],
+        "cursor": [
+          7,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_t_count",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G3:t0<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m0",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "4G:m0<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m0_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "4G:m0<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "four",
+          "one",
+          "two",
+          "three",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_end",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G:m$<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_down",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G:m4<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_down_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G:m4<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "one",
+          "three",
+          "four",
+          "two",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_up",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "5G:m1<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_up_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "5G:m1<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "one",
+          "five",
+          "two",
+          "three",
+          "four",
+          "six"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_plus",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2G:m+1<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_minus",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "3G:m-2<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_range_up",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":4,5m1<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_range_down",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":1,2m4<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_range_down_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":1,2m4<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "three",
+          "four",
+          "one",
+          "two",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_m_count_end",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": "2:m$<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_g_m0",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":g/t/m0<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_g_m0_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":g/t/m0<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "three",
+          "two",
+          "one",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_g_t_end",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":g/o/t$<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          6,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_g_t_end_redo",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":g/o/t$<CR>u<C-r>",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six",
+          "one",
+          "two",
+          "four"
+        ],
+        "cursor": [
+          7,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "utm_g_m_end",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six"
+      ],
+      "keys": ":g/f/m$<CR>u",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three",
+          "four",
+          "five",
+          "six"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "exa_err_filter_past_end",
       "lines": [
         "a1",

@@ -14,5 +14,3 @@ ik_c_label_after_unterminated # `o` after `if (a)` gets no continuation indent; 
 ik_c_label_after_comma # `o` after `g(a,` gets no continuation indent; `out:` there is rightly no label (#1163)
 ik_c_brace_not_first # `o` after `if (a)` gets no continuation indent; a `{` not first on its line re-indents nothing (#1163)
 ik_js_brace_object_value # `o` after `var o =` gets no continuation indent; an object's `{` is rightly left alone (#1163)
-gex_reverse_undo # the text undoes as one step (#1245); the cursor after undoing the group of :m lands on line 1, nvim's on line 2 (the undo cursor of :m/:t, a follow-up)
-gex_t0_undo # the text undoes as one step; the cursor after undoing :t0 diverges outside :g too (:1t0<CR>u lands on line 2, nvim line 1)
