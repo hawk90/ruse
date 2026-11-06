@@ -79,30 +79,45 @@ impl TraceWatch {
     }
 }
 
-/// Whether `trace` may be written: its replay onto `initial` gives the start buffer's text. `Err` is the
-/// status line naming why not.
+/// Why `:trace save` refused to write a trace. Its `Display` is the status line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Refusal {
+    /// The buffer the trace follows was closed (`:bd`).
+    Closed,
+    /// The trace does not replay at all.
+    NoReplay(ruse_core::TraceError),
+    /// The replay gives another text, with the events the session saw that explain it (none: an edit
+    /// outside the recorder it could not name).
+    Differs(Vec<&'static str>),
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("trace save refused: ")?;
+        match self {
+            Refusal::Closed => f.write_str("the buffer the trace follows was closed"),
+            Refusal::NoReplay(e) => write!(f, "the trace does not replay ({e:?})"),
+            Refusal::Differs(why) if why.is_empty() => {
+                f.write_str("an edit the trace cannot record")
+            }
+            Refusal::Differs(why) => f.write_str(&why.join(", ")),
+        }
+    }
+}
+
+/// Whether `trace` may be written: its replay onto `initial` gives the start buffer's text.
 pub(crate) fn check(
     trace: &Trace,
     initial: &[u8],
     ws: &Workspace,
     files: &Files,
     watch: &TraceWatch,
-) -> Result<(), String> {
-    let refuse = |why: &str| format!("trace save refused: {why}");
-    let Some(doc) = ws.document(watch.start) else {
-        return Err(refuse("the buffer the trace follows was closed"));
-    };
-    let replayed = match trace.replay(initial) {
-        Ok(st) => st,
-        Err(e) => return Err(refuse(&format!("the trace does not replay ({e:?})"))),
-    };
+) -> Result<(), Refusal> {
+    let doc = ws.document(watch.start).ok_or(Refusal::Closed)?;
+    let replayed = trace.replay(initial).map_err(Refusal::NoReplay)?;
     if replayed.bytes() == doc.bytes() {
-        return Ok(());
-    }
-    let reasons = watch.reasons(files);
-    Err(refuse(&if reasons.is_empty() {
-        "an edit the trace cannot record".to_string()
+        Ok(())
     } else {
-        reasons.join(", ")
-    }))
+        Err(Refusal::Differs(watch.reasons(files)))
+    }
 }

@@ -4206,7 +4206,8 @@ impl Session {
                 // register contents and pasted clipboard text as well as the edits (RFC-0020 R6, Security
                 // impact), so the message says so.
                 let checked =
-                    crate::app::trace_check::check(&trace, initial, ws, files, trace_watch);
+                    crate::app::trace_check::check(&trace, initial, ws, files, trace_watch)
+                        .map_err(|r| r.to_string());
                 match checked.and_then(|()| {
                     std::fs::write(&p, trace.to_text())
                         .map_err(|e| format!("trace save failed: {e}"))
