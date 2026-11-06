@@ -2520,8 +2520,11 @@ impl EditorState {
             new_bytes,
             "the edits make the relocated text"
         );
+        // `u` and `CTRL-R` start from where the cursor stood: Vim's `u_save` in `ex_copy`/`do_move` runs
+        // before the cursor moves, so `uh_cursor` is the cursor before the command (#1258).
         let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
+            .with_hint(GroupHint::BreakBefore)
+            .with_cursor(BytePos(self.view.cursor.min(old.len())));
         self.apply_txn(txn).expect("line relocate applies cleanly");
         self.view.last_was_edit = true;
         self.view.cursor = cursor.min(self.doc.bytes().len());
