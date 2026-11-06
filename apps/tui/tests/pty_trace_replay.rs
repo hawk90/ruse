@@ -110,6 +110,14 @@ fn a_window_switch_replays() {
 }
 
 #[test]
+fn a_window_switch_replays_with_the_window_s_wanted_column() {
+    // #1272: the window switched to wants column 0, the one left wants 1; `G` reads the wanted column.
+    replays_to_the_written_file(b"\nbb\nb \n", ":split\rihi\x1b\x17wddGx");
+    // Closing the focused first window focuses the other, at the same tile index.
+    replays_to_the_written_file(b"a\n", ":split\rihi\x1b\x17wx\x17cp");
+}
+
+#[test]
 fn a_re_read_file_refuses_the_save() {
     save_is_refused(b"aaa\n", "x:e!\rx", "re-read from disk");
 }

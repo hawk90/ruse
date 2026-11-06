@@ -285,7 +285,7 @@ cursor and undo grouping, with no IO and no re-resolution):
   `shiftwidth`, `expandtab` and `textwidth`, captured when the session starts.
 - **Format.** The verbs are `ex_substitute`, `ex_global`, `ex_delete`, `ex_yank`, `ex_join`, `ex_shift`,
   `ex_move`, `ex_copy`, `ex_put`, `ex_sort`, `ex_retab`, `ex_read`, `ex_filter`, `ex_mark`, `ex_set`,
-  `ex_place`, `ex_undo_sync`, `ex_begin`, `ex_end` (codec: `crates/core/src/editor/ex_cmd.rs`). An unbalanced
+  `ex_place`, `ex_want`, `ex_undo_sync`, `ex_begin`, `ex_end` (codec: `crates/core/src/editor/ex_cmd.rs`). An unbalanced
   group is `TraceError::UnbalancedGroup`. `:>` records at most `MAX_SHIFT_LEVELS` (1000) levels so a hostile
   trace line stays bounded.
 - **Session cursor moves and the caret gravity (#1134).** A cursor the session places outside the core
@@ -345,12 +345,16 @@ remained, fixed without a format change (no new verb or header field):
   the same either way, so earlier traces of those still replay.
 - **Window switches.** A switch to another window on the start buffer moved the cursor without a record;
   it now records the new window's cursor as `ex_place` (`trace_check::TraceWatch::after_input`).
+  Amended by #1272: the switch also records that window's wanted column as `ex_want {col}` (`ex_want $`
+  after `$`), the one new verb (additive under R5, by R6: the session makes another View's `curswant`
+  current, and the next `j`/`k`/`G` reads it). A switch is a change of the focused View, not of the tile
+  index, so closing the focused first window counts.
 - **What a trace cannot follow** is refused, not written. `:trace save` replays the trace onto the start
   text first (`trace_check::check`) and refuses when the result is not the start buffer's text, naming
   what it saw: the file re-read by `:e`/`:e!` (new text from disk, a fresh undo history), commands typed in
   another buffer (a trace follows one document; they were recorded into it), or the start buffer closed.
   The replay is the backstop for anything else the session did outside the recorder (an LSP edit to the
-  start buffer while another was focused, a window's own wanted column): the save is refused as "an edit
+  start buffer while another was focused): the save is refused as "an edit
   the trace cannot record" rather than written wrong.
 
 Not done, because it changes the format: a replay that reaches a different document than the session did

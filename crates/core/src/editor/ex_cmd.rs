@@ -138,6 +138,10 @@ pub enum ExCmd {
     /// The cursor placed at a byte offset by the frontend (`:normal`'s per-line column 0, a `:g` landing
     /// line, a `:s///c` match left under the cursor). Leaves the wanted column alone, as the live placement.
     Place(BytePos),
+    /// The wanted column (Vim's `curswant`) set by the frontend: `MAXCOL` after `$`. A switch to
+    /// another window on the same buffer brings that window's cursor ([`ExCmd::Place`]) and its wanted
+    /// column, which the next `j`/`k`/`G` reads (#1272).
+    Want(usize),
     /// Vim's `u_sync` before a typed command: the next change starts a new undo step.
     UndoSync,
     /// An edit list that came from outside the core (RFC-0020 R6): a language server's formatting, rename,
@@ -330,6 +334,10 @@ impl EditorState {
                 let b = self.doc.bytes();
                 let at = crate::motion::snap(b, at.0.min(b.len()));
                 self.view.set_cursor(BytePos(at));
+                ExOutcome::Done
+            }
+            ExCmd::Want(col) => {
+                self.view.curswant = super::Want::col(*col);
                 ExOutcome::Done
             }
             ExCmd::UndoSync => {
@@ -611,6 +619,8 @@ impl ExCmd {
                 format!("ex_set {name} {value}")
             }
             ExCmd::Place(at) => format!("ex_place {}", at.0),
+            ExCmd::Want(col) if *col == super::range::MAXCOL => "ex_want $".into(),
+            ExCmd::Want(col) => format!("ex_want {col}"),
             ExCmd::UndoSync => "ex_undo_sync".into(),
             ExCmd::Edits { origin, edits } => {
                 let mut s = format!("ex_edits {}", origin_token(*origin));
@@ -833,6 +843,10 @@ impl ExCmd {
                 }
             }
             "ex_place" => ExCmd::Place(BytePos(a.num()?)),
+            "ex_want" => match a.tok()? {
+                "$" => ExCmd::Want(super::range::MAXCOL),
+                n => ExCmd::Want(n.parse().map_err(|_| a.bad())?),
+            },
             "ex_undo_sync" => ExCmd::UndoSync,
             "ex_edits" => {
                 let origin = match a.tok()? {
@@ -1212,6 +1226,8 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::CaretGravity(CaretGravity::OnChar)),
         ExCmd::Set(EditorOption::CaretGravity(CaretGravity::BetweenChar)),
         ExCmd::Place(BytePos(17)),
+        ExCmd::Want(3),
+        ExCmd::Want(super::range::MAXCOL),
         ExCmd::UndoSync,
         ExCmd::Edits {
             origin: TransactionOrigin::Lsp,

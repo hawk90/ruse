@@ -65,6 +65,28 @@ fn a_window_switch_records_the_cursor_it_brings() {
     }
 }
 
+/// #1272: a switch brings the window's wanted column too, and closing the focused first window (whose
+/// tile index the remaining one takes) is a switch.
+#[test]
+fn a_window_switch_records_the_wanted_column_and_a_close_switches() {
+    for (text, keys) in [
+        // `ihi<Esc>` leaves this window wanting column 1; the other wants 0, which `G` reads.
+        ("\nbb\nb ", ":split<CR>ihi<Esc><C-w>wddGx"),
+        ("a", ":split<CR>ihi<Esc><C-w>wx<C-w>cp"),
+        ("abc\ndef\nghi\n", "$:split<CR>0<C-w>wjx"),
+    ] {
+        let mut h = Headless::vim(text);
+        h.keys(keys);
+        let saved = save(&mut h).unwrap_or_else(|e| panic!("{keys:?}: {e}"));
+        let st = Trace::from_text(&saved)
+            .expect("parses")
+            .replay(text.as_bytes())
+            .expect("replays");
+        assert_eq!(String::from_utf8_lossy(st.bytes()), h.text(), "{keys:?}");
+        assert_eq!(st.cursor().0, h.cursor(), "{keys:?}: replayed cursor");
+    }
+}
+
 #[test]
 fn commands_in_another_buffer_refuse_the_save() {
     let mut h = Headless::vim("aaa\n");
@@ -145,7 +167,6 @@ const OTHER_BUFFER: &[&str] = &[":enew<CR>", ":b1<CR>", ":bn<CR>", "ixy<Esc>"];
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 64,
-        failure_persistence: None,
         ..ProptestConfig::default()
     })]
 

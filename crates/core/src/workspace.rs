@@ -342,6 +342,13 @@ impl Workspace {
         self.focus
     }
 
+    /// The View the focused Window shows. Unlike [`Workspace::focus`], it names the window itself: closing
+    /// the focused first window leaves the index at 0 but focuses another View.
+    #[must_use]
+    pub fn focused_view(&self) -> ViewId {
+        self.windows[self.focus].view
+    }
+
     /// Borrow the `i`th Window as a [`Pane`] for rendering / viewport math. Panics on a bad index or a
     /// retired slot (an INV-HANDLE assert: the layout never names a dead View/Document).
     #[must_use]

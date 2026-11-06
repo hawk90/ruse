@@ -8,12 +8,13 @@
 //! does not give the start buffer's text is refused, with the events that explain it. So a saved trace
 //! replays to the same document, or there is no saved trace.
 //!
-//! A window switch on the start buffer has a recorded form: the focused window's cursor, as an `ex_place`
-//! ([`TraceWatch::after_input`]), so the commands after it replay from where they ran.
+//! A window switch on the start buffer has a recorded form: the focused window's cursor and wanted column,
+//! as an `ex_place` and an `ex_want` ([`TraceWatch::after_input`]), so the commands after it replay from
+//! where they ran.
 
-use ruse_core::{Command, DocumentId, Trace, Workspace};
+use ruse_core::{Command, DocumentId, ExCmd, Trace, ViewId, Workspace};
 
-use crate::app::dispatch::{place_cursor, Files};
+use crate::app::dispatch::{place_cursor, run_ex, Files};
 
 /// What the session did to the trace's document that the trace cannot hold.
 #[derive(Clone, Debug)]
@@ -22,8 +23,10 @@ pub(crate) struct TraceWatch {
     pub(crate) start: DocumentId,
     /// The start buffer's [`crate::app::dispatch::BufferFile::reloads`] when the trace began.
     start_reloads: u32,
-    /// The focused window after the last key, to record the cursor a window switch brings.
-    window: usize,
+    /// The focused window after the last key (its View and tile index), to record the cursor a window
+    /// switch brings. The View tells windows apart where the index does not: closing the focused first
+    /// window keeps the index at 0 and focuses another View (#1272).
+    window: (ViewId, usize),
     /// A key recorded commands while another buffer was focused.
     other_buffer: bool,
 }
@@ -35,7 +38,7 @@ impl TraceWatch {
         TraceWatch {
             start,
             start_reloads: files.get(&start).map_or(0, |bf| bf.reloads),
-            window: ws.focus(),
+            window: (ws.focused_view(), ws.focus()),
             other_buffer: false,
         }
     }
@@ -54,11 +57,16 @@ impl TraceWatch {
         if recorded.len() > len && (buf != self.start || here != self.start) {
             self.other_buffer = true;
         }
-        if ws.focus() != self.window {
-            self.window = ws.focus();
+        let window = (ws.focused_view(), ws.focus());
+        if window != self.window {
+            self.window = window;
             if here == self.start {
-                let at = ws.focused().view.cursor().0;
+                // The window's cursor and its wanted column: the `j`/`k`/`G` after the switch read
+                // that window's column, not the one the last window left (#1272).
+                let view = ws.focused().view;
+                let (at, want) = (view.cursor().0, view.curswant());
                 place_cursor(ws, recorded, at);
+                run_ex(ExCmd::Want(want), ws, recorded);
             }
         }
     }
