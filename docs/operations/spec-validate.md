@@ -55,7 +55,9 @@ Anti-pattern categories are ALL-CAPS by convention, so section headers like `## 
 2. **PRD component `depends_on`** resolve, and respect **build_stage order** `kernel < input < tui < workspace <
    plugin < remote` (a component may not depend on a later-stage component; D-036). This makes the build order
    machine-checkable (V-10/V-11 could not have slipped past this).
-3. **PRD feature `depends_on`** resolve to a component or feature.
+3. **PRD feature `depends_on`** resolve to a component or feature. A feature's `trace.design` paths resolve,
+   and a `status: done` feature's `trace.verify` is non-empty and every `trace.verify` / `trace.contract`
+   path resolves to a real file (#886; `tools/rusekit/spec_trace.py`).
 4. **POLICY `invariants:`** resolve to the INV-* registry.
 5. **POLICY `antipattern.refs`** resolve to a real anti-pattern catalog ID (`CODE-n` in range).
 6. **context-profiles `include`** resolve to a known ID (F/C/ENG/ARCH/D/INV), an anti-pattern ID, or an
