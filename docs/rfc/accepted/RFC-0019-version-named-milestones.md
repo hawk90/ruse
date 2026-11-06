@@ -6,7 +6,7 @@ summary: >
   Each phase in spec/phases.yaml carries a release version, and that version titles its GitHub Milestone.
   Phases remain the spec axis and milestones remain a one-way mirror. Records D-059.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/DECISIONS.md
   - ../../../spec/phases.yaml

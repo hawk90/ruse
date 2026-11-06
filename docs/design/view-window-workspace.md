@@ -17,8 +17,8 @@ audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
 status: draft
 related:
   - ../architecture/architecture.md          # §7 UI/workspace, §3 state ownership
-  - ../rfc/proposed/RFC-0008-document-model.md  # Document/View/handle/kind noun (INV-DOC-VIEW, D-003)
-  - ../rfc/proposed/RFC-0002-workspace-architecture.md # layer model + interactive write-back
+  - ../rfc/accepted/RFC-0008-document-model.md  # Document/View/handle/kind noun (INV-DOC-VIEW, D-003)
+  - ../rfc/accepted/RFC-0002-workspace-architecture.md # layer model + interactive write-back
   - ../parity/workspace.md                    # WS-* surfaces, virtual-doc kinds, V-14 write-back
   - ../parity/vim.md                          # VIM-WIN windows/tabs/buffers, hidden
   - ../parity/emacs.md                        # EMACS-BUFFER, EMACS-EDIT-2 narrowing (V-27)
@@ -36,8 +36,8 @@ related:
 > This doc specifies **C-VIEW** (View/Window/layout, `depends_on: C-RENDER, C-ANCHOR`) and
 > **C-WORKSPACE** (Workspace + buffers, `depends_on: C-DOCUMENT, C-VIEW`) as declared in
 > [spec/PRD.yaml](../../spec/PRD.yaml). It is the *container* tier that sits above the Document noun
-> ([RFC-0008](../rfc/proposed/RFC-0008-document-model.md)) and inside the workspace layer model
-> ([RFC-0002](../rfc/proposed/RFC-0002-workspace-architecture.md)). Those two RFCs fix *what a Document
+> ([RFC-0008](../rfc/accepted/RFC-0008-document-model.md)) and inside the workspace layer model
+> ([RFC-0002](../rfc/accepted/RFC-0002-workspace-architecture.md)). Those two RFCs fix *what a Document
 > and a buffer-kind are*; this doc fixes *how Views are laid out, focused, resized, torn down, and
 > persisted*, and how the Workspace owns the buffer list. It cites the Document/kind/handle/anchor model
 > by ID and does not re-derive it.
@@ -81,7 +81,7 @@ closes **narrowing ownership** (V-27), the **overlay/modal layer** vs the tiling
   revision stream and one anchor store; an explicit *cloned/linked* variant where views may or may not
   share view-local facts. *(VW-MULTI)*
 - **G5** Buffer **kinds** and the **interactive-view write-back** contract from the View side (edits →
-  typed domain CommandRequests, preflighted) — binding [RFC-0002](../rfc/proposed/RFC-0002-workspace-architecture.md)
+  typed domain CommandRequests, preflighted) — binding [RFC-0002](../rfc/accepted/RFC-0002-workspace-architecture.md)
   §write-back to the layout engine.
 - **G6** **Narrowing as a Document-level restriction** (V-27) that confines *all* ops, reconciled with
   INV-DOC-VIEW, plus independent narrowing via an *indirect document*. *(VW-NARROW)*
@@ -96,10 +96,10 @@ closes **narrowing ownership** (V-27), the **overlay/modal layer** vs the tiling
 ## Non-goals
 
 - The Document / typed-coordinate / anchor / identity / **kind** model itself — owned by
-  [RFC-0008](../rfc/proposed/RFC-0008-document-model.md). We *use* `DocumentId`, `Snapshot`, `Anchor`,
+  [RFC-0008](../rfc/accepted/RFC-0008-document-model.md). We *use* `DocumentId`, `Snapshot`, `Anchor`,
   and `BufferKind`; we do not redefine them.
 - The transaction/undo contract and the save/recovery **journal** — owned by
-  [RFC-0007](../rfc/proposed/RFC-0007-transaction-engine.md) / [persistence-and-recovery.md](persistence-and-recovery.md). Session persistence here reuses
+  [RFC-0007](../rfc/accepted/RFC-0007-transaction-engine.md) / [persistence-and-recovery.md](persistence-and-recovery.md). Session persistence here reuses
   that versioned format; it does not invent a second one.
 - The **positions-history** model (marks `a-z`/`A-Z`, mark ring, jumplist, changelist) — owned by
   [positions-history.md](positions-history.md) (D-027). We fix only *which owner* (view vs document vs
@@ -167,7 +167,7 @@ not redefined here):
 ### 1. The three handles and who owns what (VW-HANDLE, VW-VIEWSTATE)
 
 Ownership is partitioned one-fact-one-owner, extending
-[RFC-0008 §1](../rfc/proposed/RFC-0008-document-model.md):
+[RFC-0008 §1](../rfc/accepted/RFC-0008-document-model.md):
 
 | Fact | Owner | Handle | Never on |
 | --- | --- | --- | --- |
@@ -304,8 +304,8 @@ Every solve bumps `LayoutTree.epoch`.
 
 ### 3. Layout lifecycle ≠ view lifecycle ≠ document lifecycle (VW-LIFE) — leak prevention
 
-This is the load-bearing decoupling ([RFC-0002](../rfc/proposed/RFC-0002-workspace-architecture.md),
-[RFC-0008 §1](../rfc/proposed/RFC-0008-document-model.md), design-requirements §11). Three lifetimes,
+This is the load-bearing decoupling ([RFC-0002](../rfc/accepted/RFC-0002-workspace-architecture.md),
+[RFC-0008 §1](../rfc/accepted/RFC-0008-document-model.md), design-requirements §11). Three lifetimes,
 three owners, released bottom-up:
 
 ```
@@ -398,9 +398,9 @@ by construction (VW-HANDLE) each window is an independent view. This is delibera
 
 ### 5. Buffer kinds and interactive-view write-back (from the View side)
 
-Kind is a Document property ([RFC-0008 §5](../rfc/proposed/RFC-0008-document-model.md), INV-BUFFER-KIND);
+Kind is a Document property ([RFC-0008 §5](../rfc/accepted/RFC-0008-document-model.md), INV-BUFFER-KIND);
 the *View* is what turns a user gesture into the kind-appropriate mutation. The write-back contract is
-[RFC-0002 §write-back](../rfc/proposed/RFC-0002-workspace-architecture.md) / [workspace.md V-14](../parity/workspace.md);
+[RFC-0002 §write-back](../rfc/accepted/RFC-0002-workspace-architecture.md) / [workspace.md V-14](../parity/workspace.md);
 this doc pins the **View-side descriptor** that a WS-* surface supplies:
 
 ```rust
@@ -521,7 +521,7 @@ temporary-state layer, never by owning mode.
 
 ### 8. Workspace & Session (VW-SESSION)
 
-The **Workspace** is a Built-in Service ([RFC-0002](../rfc/proposed/RFC-0002-workspace-architecture.md)),
+The **Workspace** is a Built-in Service ([RFC-0002](../rfc/accepted/RFC-0002-workspace-architecture.md)),
 owning the whole container tier:
 
 ```rust

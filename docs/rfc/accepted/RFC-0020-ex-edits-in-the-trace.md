@@ -10,7 +10,7 @@ summary: >
   flags used, external bytes recorded as data, `:g`/`:normal` as a group of their children, and only the
   replay-relevant `:set`s. The trace stays `v1` with additive verbs.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/DECISIONS.md
   - ../../design/command-engine.md
@@ -21,7 +21,7 @@ related:
 
 # RFC-0020: Ex edits are recorded in the trace as resolved commands
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-061); moved to accepted/ (#1027)
 - **Author(s):** Claude Opus 5.5 (design agent), for maintainer review
 - **Created:** 2026-11-03
 - **Decision link:** D-061

@@ -48,7 +48,7 @@ before "remote."
   connect — the mechanism behind acceptance #3, built now so the SSH slice inherits it). One trivial service,
   `fs.readFile`, proves *execution on the agent, UI on the client* end-to-end; `ruse ssh <host>` is wired as
   the local proof path. It lives as a **module, not the deferred `workspace-runtime` crate** — per
-  [RFC-0012](../rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md) §Re-evaluation, that crate boundary
+  [RFC-0012](../rfc/accepted/RFC-0012-collapse-to-two-crate-editor.md) §Re-evaluation, that crate boundary
   returns only when the agent becomes a **separately-deployed remote binary** (the SSH/bootstrap slice), not
   at this local proof. Slice 1 is structurally a sibling of `lsp/` (framed JSON over a child's stdio), so a
   module is the honest, precedent-matching home.

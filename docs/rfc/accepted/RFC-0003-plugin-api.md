@@ -10,7 +10,7 @@ summary: >
   lockfile, deterministic deactivation cleanup, and the client/workspace execution-location distinction.
   Cites D-004/D-009/D-010, ENG-PLUG-001, ENG-PROTO-001.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../architecture/architecture.md
   - ../../protocols/versioning-and-evolution.md
@@ -21,7 +21,7 @@ related:
 
 # RFC-0003: Plugin API & Lifecycle
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-004, D-009, D-010; D-039 defers the plugin host); moved to accepted/ (#1027)
 - **Author(s):** hawking90a@gmail.com
 - **Created:** 2026-08-05
 - **Decision link:** D-004, D-009, D-010 (see also D-006 command IDs)

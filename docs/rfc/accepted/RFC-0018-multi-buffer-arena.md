@@ -18,8 +18,8 @@ related:
   - ../../design/view-window-workspace.md
   - ../../design/positions-history.md
   - ../../design/register-model.md
-  - ../proposed/RFC-0002-workspace-architecture.md
-  - ../proposed/RFC-0008-document-model.md
+  - RFC-0002-workspace-architecture.md
+  - RFC-0008-document-model.md
 ---
 
 # RFC-0018: Multi-buffer arena — workspace-global state + buffer lifecycle

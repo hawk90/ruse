@@ -14,7 +14,7 @@ summary: >
   TOTAL and BOUNDED. The terminal-side IME composes TEXT that arrives on the paste/IME path and bypasses
   lmap, so the two never double-apply. Unblocks F-027; the layer stack's `resolve` stays total.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/parity/concepts/irreconcilable.yaml
   - ../../../spec/parity/contracts/keymap-layers.yaml
@@ -26,7 +26,7 @@ related:
 
 # RFC-0013: The Lang-Arg translation stage (resolving CONCEPT-LANG-ARG)
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-048); moved to accepted/ (#1027)
 - **Decision link:** D-048
 - **Resolves:** CONCEPT-LANG-ARG (`spec/parity/concepts/irreconcilable.yaml`), KL-Q-LANG-ARG
   (`spec/parity/contracts/keymap-layers.yaml`), D-045's stated re-evaluation trigger.

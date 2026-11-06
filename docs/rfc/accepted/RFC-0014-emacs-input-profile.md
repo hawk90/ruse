@@ -15,7 +15,7 @@ summary: >
   motions, kill ring + yank-pop, `C-u`, mark ring, `C-x` prefix maps, `M-x`). Unblocks F-012; running Elisp
   stays a non-goal (D-020, D-007 L3).
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/parity/concepts/irreconcilable.yaml
   - ../../../spec/parity/contracts/keymap-layers.yaml
@@ -27,7 +27,7 @@ related:
 
 # RFC-0014: The Emacs input profile (F-012)
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-049); moved to accepted/ (#1027)
 - **Decision link:** D-049
 - **Resolves:** CONCEPT-COUNT-VS-PREFIX, CONCEPT-POSITION-HISTORY (`spec/parity/concepts/irreconcilable.yaml`).
 - **Unblocks:** F-012; C-COMMAND (prefix-arg), C-POSHIST / C-ANCHOR (mark ring).

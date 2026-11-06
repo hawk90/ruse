@@ -11,7 +11,7 @@ summary: >
   (D-049). Records D-051; established by DeleteForward and extended to EmacsYank and EmacsBufferEdge, which
   complete the Emacs parity corpus at 23/23.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ./RFC-0014-emacs-input-profile.md
   - ./RFC-0015-emacs-caret-gravity.md
@@ -25,7 +25,7 @@ related:
 
 # RFC-0016: Emacs-vs-Vim command divergence is modeled as distinct Commands
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-051); moved to accepted/ (#1027)
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-16
 - **Decision link:** D-051

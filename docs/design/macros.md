@@ -11,7 +11,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - ../rfc/proposed/RFC-0004-input-profiles.md
+  - ../rfc/accepted/RFC-0004-input-profiles.md
   - view-window-workspace.md
 ---
 

@@ -12,7 +12,7 @@ summary: >
   generalization. Calls out the register/kill-ring (D-026) and positions-history (D-027) models as
   blocking-open.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../architecture/architecture.md
   - ../../parity/vim.md
@@ -27,7 +27,7 @@ related:
 
 # RFC-0004: Input Profiles & Command Layer
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-006, D-008 (narrowed by D-046)); moved to accepted/ (#1027)
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-05
 - **Decision link:** D-006, D-008 (principle); depends on D-025, D-026, D-027.

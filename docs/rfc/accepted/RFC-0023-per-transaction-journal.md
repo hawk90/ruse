@@ -9,7 +9,7 @@ summary: >
   recovery, but leaves open how the core exposes transactions, where journals live, how often they are
   synced, how the shipped format migrates, and what the prompt and status show. This RFC decides those.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../design/persistence-and-recovery.md
   - ../../../spec/DECISIONS.md
@@ -20,7 +20,7 @@ related:
 
 # RFC-0023: Per-transaction recovery journal (RJ01), state-dir location and three-way recovery
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-064); moved to accepted/ (#1027)
 - **Author(s):** Claude Opus 5.5, for maintainer review
 - **Created:** 2026-11-05
 - **Decision link:** D-064 (refines D-005)

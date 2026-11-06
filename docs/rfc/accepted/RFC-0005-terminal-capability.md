@@ -11,7 +11,7 @@ summary: >
   open) rather than disappear. Covers ConPTY vs Unix PTY, grapheme width, and bracketed-paste / OSC-52
   security. Decision record ratifying D-015; detail lives in the linked parity/design docs.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../parity/terminal.md
   - ../../architecture/architecture.md
@@ -23,7 +23,7 @@ related:
 
 # RFC-0005: Terminal Capability
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-015); moved to accepted/ (#1027)
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-05
 - **Decision link:** [D-015](../../../spec/DECISIONS.md) (terminal capability fallback + pinned render profile); relates to [D-014](../../../spec/DECISIONS.md) (View Model ↔ Render IR boundary) via [RFC-0009](RFC-0009-render-model.md), and to [D-012](../../../spec/DECISIONS.md) (multi-client, open)

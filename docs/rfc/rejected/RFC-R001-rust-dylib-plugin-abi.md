@@ -11,7 +11,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: rejected
 related:
-  - ../proposed/RFC-0003-plugin-api.md
+  - ../accepted/RFC-0003-plugin-api.md
   - ../../architecture/architecture.md
   - ../../invariants/reference-invariants.md
 ---
@@ -26,7 +26,7 @@ related:
 - **Decision link:** D-004 (rejected alternative to the accepted WASM/process protocol)
 
 > This is a **rejected-decision record**. It exists so the "just load a Rust `.so`" idea is not re-argued every
-> six months. The accepted decision is D-004 / [RFC-0003](../proposed/RFC-0003-plugin-api.md); this document
+> six months. The accepted decision is D-004 / [RFC-0003](../accepted/RFC-0003-plugin-api.md); this document
 > records *why the native-ABI alternative loses* and *the one condition* under which it could be reopened.
 
 ## Summary
@@ -36,7 +36,7 @@ Using Rust's native dynamic-library ABI (a `Plugin` trait behind `.so`/`.dylib`/
 exact compiler and crate versions, provides **no crash isolation**, and forces a **Rust-only** SDK — the
 opposite of ruse's "reference design that outlives the language" goal. It is replaced by a **versioned,
 language-independent protocol over WASM or an external process** (D-004, INV-PROTOCOL-VERSIONED, ENG-PLUG-001),
-specified in [RFC-0003](../proposed/RFC-0003-plugin-api.md).
+specified in [RFC-0003](../accepted/RFC-0003-plugin-api.md).
 
 ## Motivation / Problem
 
@@ -89,7 +89,7 @@ pub trait Plugin {
 ## The replacement
 
 A **versioned protocol over WASM or an external process** ([architecture.md](../../architecture/architecture.md)
-§4.3; [RFC-0003](../proposed/RFC-0003-plugin-api.md)):
+§4.3; [RFC-0003](../accepted/RFC-0003-plugin-api.md)):
 
 - **Stable across host builds** — the contract is a language-independent protocol with a `major.minor` +
   capability header, not a Rust vtable (INV-CONTRACT-FIRST, INV-ADDITIVE).
@@ -118,7 +118,7 @@ versioned protocol — `exception.allowed: false`). All defined in
 ## Alternatives
 
 - **Accepted:** WASM / external-process versioned protocol — D-004,
-  [RFC-0003](../proposed/RFC-0003-plugin-api.md). See its Alternatives section for embedded-script, MVP-host,
+  [RFC-0003](../accepted/RFC-0003-plugin-api.md). See its Alternatives section for embedded-script, MVP-host,
   and composition trade-offs.
 - **C ABI with a hand-frozen `extern "C"` boundary** — a stable-ish ABI is possible, but still no crash
   isolation, still in-process native privileges, still a C-shaped SDK; it solves only problem (1) of six.
@@ -144,4 +144,4 @@ not by abandoning isolation.
 
 None for this record — it is closed by D-004. Concrete transport details (WASM component model vs. framed
 process protocol, resource budgets) are open questions of the accepted design,
-[RFC-0003](../proposed/RFC-0003-plugin-api.md).
+[RFC-0003](../accepted/RFC-0003-plugin-api.md).

@@ -13,8 +13,8 @@ summary: >
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
 status: draft
 related:
-  - ../rfc/proposed/RFC-0008-document-model.md
-  - ../rfc/proposed/RFC-0007-transaction-engine.md
+  - ../rfc/accepted/RFC-0008-document-model.md
+  - ../rfc/accepted/RFC-0007-transaction-engine.md
   - positions-history.md
   - editing-language.md
   - query-and-snapshot.md

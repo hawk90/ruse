@@ -13,7 +13,7 @@ summary: >
   large-file/degraded mode as a distinct profile rather than a slow normal mode. It defers no new
   identity to other RFCs and delegates the transaction/undo contract itself to RFC-0007.
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
-status: proposed
+status: accepted
 related:
   - ../../architecture/architecture.md
   - ../../parity/common.md
@@ -25,7 +25,7 @@ related:
 
 # RFC-0008: Document Model & Coordinates
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-003, D-023); moved to accepted/ (#1027)
 - **Author(s):** ruse core
 - **Created:** 2026-08-05
 - **Decision link:** D-003 (Document ≠ View), D-023 (anchor-based typed positions); relates to

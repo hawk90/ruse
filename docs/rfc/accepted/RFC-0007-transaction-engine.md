@@ -12,7 +12,7 @@ summary: >
   the temporal-index format (D-005), and delegates the dot-repeat change-intent to the
   editing-language engine (D-025).
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
-status: proposed
+status: accepted
 related:
   - ../../architecture/architecture.md
   - ../../design/stability-and-observability.md
@@ -24,7 +24,7 @@ related:
 
 # RFC-0007: Transaction Engine
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-001); moved to accepted/ (#1027)
 - **Author(s):** ruse core
 - **Created:** 2026-08-05
 - **Decision link:** D-001 (transaction is the only path); relates to D-005, D-025

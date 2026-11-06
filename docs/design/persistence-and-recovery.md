@@ -193,7 +193,7 @@ magnitude**. (Vim's `[+]` behaves the same via `undofile` seq.)
 
 ### 2. Append-only transaction journal
 
-> **Decided details (D-064, [RFC-0023](../rfc/proposed/RFC-0023-per-transaction-journal.md)):** the core change
+> **Decided details (D-064, [RFC-0023](../rfc/accepted/RFC-0023-per-transaction-journal.md)):** the core change
 > log the journal drains, the state-dir location and naming, the sync policy, the 32 MiB `DiskBase` mode, the
 > legacy `RJS0` migration, and SHA-256 (not BLAKE3) for content hashes. Where this section and the RFC differ, the
 > RFC wins.
@@ -374,7 +374,7 @@ fail cleanly.
 
 ### 4. Three-way crash recovery
 
-> **Decided details (D-064, [RFC-0023](../rfc/proposed/RFC-0023-per-transaction-journal.md) §6-§9):** the prompt
+> **Decided details (D-064, [RFC-0023](../rfc/accepted/RFC-0023-per-transaction-journal.md) §6-§9):** the prompt
 > keys, the live-owner case, when a journal is deleted versus archived, retention numbers, and the status flags.
 >
 > **As built (v0.1.8, RFC-0023 slice 3, #933):** `persist::Recovery` is `None` / `Available` / `InUse` /

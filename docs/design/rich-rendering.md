@@ -16,8 +16,8 @@ related:
   - render-and-frontends.md
   - view-window-workspace.md
   - terminal.md
-  - ../rfc/proposed/RFC-0009-render-model.md
-  - ../rfc/proposed/RFC-0005-terminal-capability.md
+  - ../rfc/accepted/RFC-0009-render-model.md
+  - ../rfc/accepted/RFC-0005-terminal-capability.md
   - ../parity/terminal.md
 ---
 

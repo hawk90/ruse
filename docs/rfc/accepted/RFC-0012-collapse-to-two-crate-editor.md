@@ -10,7 +10,7 @@ summary: >
   re-boundary triggers, freeze the governance rubric, and adopt command-level edit traces as a product
   pillar. The governance plane stays as the dogfooded methodology, not a co-equal shipped product.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/PROJECT.md
   - ../../../spec/DECISIONS.md
@@ -22,7 +22,7 @@ related:
 
 # RFC-0012: Collapse to a two-crate terminal modal editor; defer remote/plugin/render boundaries
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-039); moved to accepted/ (#1027)
 - **Author(s):** hawk
 - **Created:** 2026-08-07
 - **Decision link:** D-039

@@ -712,7 +712,7 @@ outcomes bounded (§3.1) while faithfully reproducing the Ex re-entry semantics;
 lives in `C-EDITLANG`, and this doc only defines the command entry points and their `SideEffectSet`
 (`DOC_MUTATE` + possibly `PROCESS_SPAWN`).
 
-**Recording (D-061, [RFC-0020](../rfc/proposed/RFC-0020-ex-edits-in-the-trace.md)).** In the command trace, an Ex
+**Recording (D-061, [RFC-0020](../rfc/accepted/RFC-0020-ex-edits-in-the-trace.md)).** In the command trace, an Ex
 edit is recorded as the resolved command it ran (`Command::Ex(ExCmd)`: resolved line numbers, the literal pattern
 and flags used), an IO-dependent edit (`:r`, `:{range}!`) as the bytes the frontend obtained, `:g/pat/d` and
 `:g/pat/s` as the marked lines plus the command, and `:g/pat/normal` / `:normal` as a `Begin`/`End` group of their

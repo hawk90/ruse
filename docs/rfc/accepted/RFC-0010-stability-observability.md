@@ -14,7 +14,7 @@ summary: >
   (D-016) and defers the PII/redaction field list and retention (D-017). It does not duplicate the
   design model it links.
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
-status: proposed
+status: accepted
 related:
   - ../../design/stability-and-observability.md
   - ../../architecture/architecture.md
@@ -25,7 +25,7 @@ related:
 
 # RFC-0010: Stability & Observability
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-016); moved to accepted/ (#1027)
 - **Author(s):** ruse core
 - **Created:** 2026-08-05
 - **Decision link:** D-016 (Status / Error / Panic are separate); relates to D-017 (log PII / redaction, open)

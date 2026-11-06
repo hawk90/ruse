@@ -10,7 +10,7 @@ summary: >
   Vim parity. First applied: editor.ignorecase + editor.smartcase ship ON via
   Workspace::set_default_search_case, which propagates to every buffer (not just the first). Records D-056.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/DECISIONS.md
   - ../../../spec/config-schema.yaml
@@ -21,7 +21,7 @@ related:
 
 # RFC-0017: Better-than-Vim interactive defaults live at the frontend/Workspace layer
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-056); moved to accepted/ (#1027)
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-23
 - **Decision link:** D-056

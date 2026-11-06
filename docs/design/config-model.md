@@ -224,7 +224,7 @@ recomputed. If it differs — a pull, a branch switch, a merged change — the w
 treated as untrusted, kept inert, shown as `stale` in `:inspect config`, and not loaded until the user
 re-confirms (for example `:trust` again), which records the new hash. Content binding applies to the config
 layer; the D-058 language-server gate stays root-bound. Full rationale:
-[RFC-0021](../rfc/proposed/RFC-0021-workspace-config-boundary.md).
+[RFC-0021](../rfc/accepted/RFC-0021-workspace-config-boundary.md).
 
 The loader (#614, `apps/tui/src/trust.rs`, `apps/tui/src/config.rs`) settles the details:
 

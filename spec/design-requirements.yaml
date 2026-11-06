@@ -174,7 +174,7 @@ items:
     acceptance:
       - Divergent same-name behavior gets separate commands per profile
     evidence:
-      - docs/rfc/proposed/RFC-0016-emacs-command-divergence.md
+      - docs/rfc/accepted/RFC-0016-emacs-command-divergence.md
       - spec/parity/concepts/irreconcilable.yaml
       - apps/tui/src/input/emacs.rs
     legacy_ids:
@@ -876,7 +876,7 @@ items:
       - Official and third-party plugin responsibilities are defined
     evidence:
       - spec/capabilities.yaml
-      - docs/rfc/proposed/RFC-0003-plugin-api.md
+      - docs/rfc/accepted/RFC-0003-plugin-api.md
     legacy_ids:
       - DR-GOV-1
     source:
@@ -908,7 +908,7 @@ items:
       - A permission change requires re-approval
       - Malicious/abandoned package policy exists
     evidence:
-      - docs/rfc/proposed/RFC-0003-plugin-api.md
+      - docs/rfc/accepted/RFC-0003-plugin-api.md
       - docs/parity/plugin-ecosystem.md
     legacy_ids:
       - DR-GOV-3
@@ -941,7 +941,7 @@ items:
       - Dependency resolution via lockfile + checksum
     evidence:
       - docs/parity/plugin-ecosystem.md
-      - docs/rfc/proposed/RFC-0003-plugin-api.md
+      - docs/rfc/accepted/RFC-0003-plugin-api.md
     legacy_ids:
       - DR-GOV-5
     source:
@@ -1036,7 +1036,7 @@ items:
     acceptance:
       - Profiles carry behavior policy within a bounded scope
     evidence:
-      - docs/rfc/proposed/RFC-0015-emacs-caret-gravity.md
+      - docs/rfc/accepted/RFC-0015-emacs-caret-gravity.md
       - apps/tui/src/input/emacs.rs
     legacy_ids:
       - DR-CFG-4
@@ -1117,7 +1117,7 @@ items:
       - Recent logs are kept in per-component ring buffers
       - A trace-sampling policy exists
     evidence:
-      - docs/rfc/proposed/RFC-0010-stability-observability.md
+      - docs/rfc/accepted/RFC-0010-stability-observability.md
     legacy_ids:
       - DR-STAB-4
     source:
@@ -1357,7 +1357,7 @@ items:
       - apps/tui/src/caps/ledger.rs::Source
       - apps/tui/src/caps/mod.rs
       - apps/tui/tests/caps_probe.rs
-      - docs/rfc/proposed/RFC-0005-terminal-capability.md
+      - docs/rfc/accepted/RFC-0005-terminal-capability.md
     legacy_ids:
       - DR-TUX-1
     source:
@@ -1420,7 +1420,7 @@ items:
       - A semantic view model sits above the render IR
       - Plugin API exposes only the semantic model
     evidence:
-      - docs/rfc/proposed/RFC-0009-render-model.md
+      - docs/rfc/accepted/RFC-0009-render-model.md
       - spec/DECISIONS.md
     legacy_ids:
       - DR-RIR-1
@@ -1437,7 +1437,7 @@ items:
       - IR is not the union of backends
       - Backend-specific extensions in capability namespaces
     evidence:
-      - docs/rfc/proposed/RFC-0009-render-model.md
+      - docs/rfc/accepted/RFC-0009-render-model.md
     legacy_ids:
       - DR-RIR-2
     source:
@@ -1454,7 +1454,7 @@ items:
       - Incremental diff supported
     evidence:
       - apps/tui/src/ui/render.rs
-      - docs/rfc/proposed/RFC-0009-render-model.md
+      - docs/rfc/accepted/RFC-0009-render-model.md
     legacy_ids:
       - DR-RIR-3
     source:
@@ -1470,7 +1470,7 @@ items:
       - Image/font/binary lifecycle specified
     evidence:
       - apps/tui/src/graphics.rs
-      - docs/rfc/proposed/RFC-0009-render-model.md
+      - docs/rfc/accepted/RFC-0009-render-model.md
     legacy_ids:
       - DR-RIR-4
     source:
@@ -1773,7 +1773,7 @@ items:
       - Remote boundary deferred behind re-boundary triggers
     evidence:
       - spec/DECISIONS.md
-      - docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md
+      - docs/rfc/accepted/RFC-0012-collapse-to-two-crate-editor.md
     legacy_ids:
       - DR-SCOPE-4
     source:
@@ -1787,7 +1787,7 @@ items:
     acceptance:
       - Generalization is deferred until needed
     evidence:
-      - docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md
+      - docs/rfc/accepted/RFC-0012-collapse-to-two-crate-editor.md
       - spec/DECISIONS.md
     legacy_ids:
       - DR-SCOPE-5

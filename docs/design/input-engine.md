@@ -22,7 +22,7 @@ related:
   - ../parity/terminal.md                     # TERM-KBD / TERM-PASTE / TERMIN-*
   - ../parity/vim.md                          # VIM-MAP (timeouts), VIM-MODE-6, VIM-CNT, VIM-REPEAT-DOT
   - ../invariants/reference-invariants.md     # INV-PRIORITY, INV-PROFILE-ISOLATION, INV-CMD-SEMANTIC
-  - ../rfc/proposed/RFC-0004-input-profiles.md
+  - ../rfc/accepted/RFC-0004-input-profiles.md
   - ../../spec/parity/contracts/keymap-layers.yaml  # the SCOPE axis — the kernel keymap primitive (D-045)
   - ../../spec/parity/contracts/vim-style.yaml      # the Vim profile's own obligations (VS-OBL-1..4)
   - ../../spec/DECISIONS.md                    # D-008, D-025, D-002, D-043, D-045, D-046
@@ -36,7 +36,7 @@ notation: "See parity/terminal.md for escape-sequence notation (ESC/CSI/OSC …)
 `C-INPUT` is the mechanical layer that turns **decoded input events into a resolved binding**, and hands that
 binding to whatever will execute it. It sits **below** two things this doc is careful not to re-specify:
 
-- **Profiles** ([architecture.md §1](../architecture/architecture.md), [RFC-0004](../rfc/proposed/RFC-0004-input-profiles.md))
+- **Profiles** ([architecture.md §1](../architecture/architecture.md), [RFC-0004](../rfc/accepted/RFC-0004-input-profiles.md))
   supply the *grammar and keymaps* (Vim/Emacs/Native). C-INPUT is the engine those grammars run **on**.
 - **The editing-language engine** `C-EDITLANG` ([editing-language.md](editing-language.md), D-025) *composes*
   `operator + count + motion|text-object` into a Range and emits a Transaction. **That is not this doc.** This
@@ -510,7 +510,7 @@ text-objects are valid after `d`, what registers after `"`).
   ([TERM-PASTE-2](../parity/terminal.md)); paste cannot invoke commands.
 - **`<expr>`/host callbacks** run under the same trust principal as their source (user config vs plugin) and
   cannot escalate by being bound to a key — command side effects remain capability-gated
-  ([RFC-0004 Security](../rfc/proposed/RFC-0004-input-profiles.md)).
+  ([RFC-0004 Security](../rfc/accepted/RFC-0004-input-profiles.md)).
 - The passthrough chord is the *only* key that crosses from a PTY child back to the editor, so a program
   running in a terminal buffer cannot spoof editor commands via its output.
 

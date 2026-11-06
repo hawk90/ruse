@@ -12,7 +12,7 @@ summary: >
   code lands in a separate implementation slice whose acceptance is the caret-family fixtures flipping
   divergent -> verified.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ./RFC-0014-emacs-input-profile.md
   - ./RFC-0004-input-profiles.md
@@ -28,7 +28,7 @@ related:
 
 # RFC-0015: Caret gravity — the Emacs profile's caret is between-character
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-050); moved to accepted/ (#1027)
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-13
 - **Decision link:** D-050

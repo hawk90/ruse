@@ -8,7 +8,7 @@ summary: >
   the maturity ladder (Spec → Reference Architecture → Reference Implementation → Production) and points
   at the single-homed non-goals. This is a decision record; depth lives in the linked design docs.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../README.md
   - ../../../spec/PROJECT.md
@@ -21,7 +21,7 @@ related:
 
 # RFC-0001: Project Vision & Non-Goals
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-020, D-021); moved to accepted/ (#1027)
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-05
 - **Decision link:** [D-020](../../../spec/DECISIONS.md) (scope/non-goals), [D-021](../../../spec/DECISIONS.md) (doc system)

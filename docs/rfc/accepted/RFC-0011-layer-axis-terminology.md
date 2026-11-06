@@ -12,7 +12,7 @@ summary: >
   the four axis terms to the glossary. `runtime`/`trust` already have unambiguous names and are unchanged;
   `product_layer` (delivery axis) is a distinct compound and is left as-is for now.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/glossary.yaml
   - ../../../spec/PRD.yaml
@@ -22,7 +22,7 @@ related:
 
 # RFC-0011: Disambiguate the overloaded "layer" terminology
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-036); moved to accepted/ (#1027)
 - **Decision link:** D-036
 
 ## Summary

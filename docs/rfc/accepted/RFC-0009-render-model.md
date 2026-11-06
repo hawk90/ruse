@@ -10,7 +10,7 @@ summary: >
   pins the compatibility-vs-enhanced render profile per client-view, and makes every pipeline stage
   dumpable via :debug. This is a decision record ratifying D-014/D-015; depth lives in the linked design doc.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../design/render-and-frontends.md
   - ../../parity/terminal.md
@@ -22,7 +22,7 @@ related:
 
 # RFC-0009: Render Model & Frontends
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-014, D-015; D-039 defers the render IR); moved to accepted/ (#1027)
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-05
 - **Decision link:** [D-014](../../../spec/DECISIONS.md) (Semantic View vs Render IR boundary), [D-015](../../../spec/DECISIONS.md) (terminal capability fallback + pinned render profile); relates to [D-012](../../../spec/DECISIONS.md) (multi-client, open)

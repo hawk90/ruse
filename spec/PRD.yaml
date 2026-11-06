@@ -39,8 +39,8 @@ mvp:
 
 components:
   # kernel (stage 1: ruse-core, includes Command per ARCH-LAYER-001)
-  C-DOCUMENT:   { title: Document model, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/rfc/proposed/RFC-0008-document-model.md }
-  C-TRANSACTION: { title: Transaction engine, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/rfc/proposed/RFC-0007-transaction-engine.md }
+  C-DOCUMENT:   { title: Document model, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/rfc/accepted/RFC-0008-document-model.md }
+  C-TRANSACTION: { title: Transaction engine, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/rfc/accepted/RFC-0007-transaction-engine.md }
   C-ANCHOR:     { title: Anchor/position model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/anchor-store.md }   # D-023
   C-UNDO:       { title: Undo history, build_stage: kernel, depends_on: [C-TRANSACTION], status: planned, ref: ../docs/design/persistence-and-recovery.md }
   C-REGISTER:   { title: Register/kill-ring model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/register-model.md }   # D-026
@@ -65,7 +65,7 @@ components:
   C-LSPHOST:    { title: Language Service host (LSP mgmt + normalized model), build_stage: workspace, depends_on: [C-WORKSPACE, C-QUERY], status: planned, ref: ../docs/design/remote-runtime.md }
   C-DEBUG:      { title: Debug service (DAP/GDB, location model), build_stage: workspace, depends_on: [C-WORKSPACE], status: planned, ref: ../docs/design/remote-runtime.md }  # D-032
   # plugin (stage 5) / remote (stage 6)
-  C-PLUGIN:     { title: Plugin protocol/host, build_stage: plugin, depends_on: [C-COMMAND, C-RENDER, C-WORKSPACE], status: planned, ref: ../docs/rfc/proposed/RFC-0003-plugin-api.md }
+  C-PLUGIN:     { title: Plugin protocol/host, build_stage: plugin, depends_on: [C-COMMAND, C-RENDER, C-WORKSPACE], status: planned, ref: ../docs/rfc/accepted/RFC-0003-plugin-api.md }
   C-AGENT:      { title: Remote workspace agent (headless service supervisor), build_stage: remote, depends_on: [C-WORKSPACE, C-LSPHOST, C-DEBUG], status: planned, ref: ../docs/design/remote-runtime.md }  # D-029/D-030/D-031
   C-REMOTE:     { title: Remote client/runtime boundary, build_stage: remote, depends_on: [C-WORKSPACE, C-PLUGIN, C-AGENT], status: planned, ref: ../docs/design/remote-runtime.md }
 
@@ -1145,7 +1145,7 @@ features:
       no external-editor parity). Deterministic replay is the contract and the substrate for the test corpus.
     trace:
       parity: []
-      design: [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md, ../docs/rfc/proposed/RFC-0020-ex-edits-in-the-trace.md]
+      design: [../docs/rfc/accepted/RFC-0012-collapse-to-two-crate-editor.md, ../docs/rfc/accepted/RFC-0020-ex-edits-in-the-trace.md]
       verify: [../crates/core/tests/editor_spine.rs, ../crates/core/tests/properties.rs, ../apps/tui/tests/trace_replay_ex.rs]
     acceptance:
       - Same initial document + same command trace → byte-identical final state (determinism is the contract).

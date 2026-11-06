@@ -16,7 +16,7 @@ status: draft
 source_of_truth: false
 verified_against_upstream: false
 related:
-  - ../rfc/proposed/RFC-0015-emacs-caret-gravity.md
+  - ../rfc/accepted/RFC-0015-emacs-caret-gravity.md
   - input-engine.md
   - positions-history.md
   - register-model.md
@@ -100,7 +100,7 @@ enum CaretGravity { OnChar /* Vim Normal */, BetweenChar /* Emacs point, Vim Ins
 This is minimal blast radius (one struct field, one clamp condition, profile-init), keeps Vim byte-identical
 (`OnChar` is the default), and a between-char caret is exactly what Vim's Insert mode already does — so the
 core already supports the position; we are only choosing when to keep it. **The decision is now recorded as
-D-050 / [RFC-0015](../rfc/proposed/RFC-0015-emacs-caret-gravity.md);** the implementing slice must audit the
+D-050 / [RFC-0015](../rfc/accepted/RFC-0015-emacs-caret-gravity.md);** the implementing slice must audit the
 *other* Normal-mode on-char behaviours (horizontal-motion end clamp, the `curswant` end column) for the same
 gate, not only the edit clamp. **Ratchets:** `kill_line`, `copy_region_then_yank`,
 `kill_region_then_yank_at_end`, and the point half of the yank fixtures. (`previous_line` also needs the

@@ -12,7 +12,7 @@ summary: >
   hash of the workspace's `.ruse/` contents, and a change after the grant makes the workspace config stale
   and unloaded until the user re-confirms.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/DECISIONS.md
   - ../../design/config-model.md
@@ -23,7 +23,7 @@ related:
 
 # RFC-0021: The workspace config boundary (keymaps, .ruse/ ownership, content-bound trust)
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-062); moved to accepted/ (#1027)
 - **Author(s):** Claude Opus 5.5 (design agent), recording the maintainer's decision
 - **Created:** 2026-11-03
 - **Decision link:** D-062

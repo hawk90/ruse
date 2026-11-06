@@ -9,7 +9,7 @@ summary: >
   keyed to INV-BUFFER-KIND, and the interactive-view write-back contract that turns buffer edits into
   typed domain CommandRequests rather than text transactions.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/ARCHITECTURE.md
   - ../../architecture/architecture.md
@@ -19,7 +19,7 @@ related:
 
 # RFC-0002: Workspace Architecture
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-003); moved to accepted/ (#1027)
 - **Author(s):** hawking90a@gmail.com
 - **Created:** 2026-08-05
 - **Decision link:** D-003

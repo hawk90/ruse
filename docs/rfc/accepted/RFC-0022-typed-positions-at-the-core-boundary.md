@@ -10,17 +10,17 @@ summary: >
   carries its unit; arithmetic inside a function may unwrap it; line and column indices are named
   indices, not untyped coordinates. A source-scan test enforces the boundary.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../../spec/DECISIONS.md
   - ../../invariants/reference-invariants.md
   - ../../../spec/POLICY.yaml
-  - ../proposed/RFC-0008-document-model.md
+  - RFC-0008-document-model.md
 ---
 
 # RFC-0022: Typed positions at the core boundary
 
-- **Status:** proposed
+- **Status:** accepted — its decision is decided in spec/DECISIONS.md (D-063); moved to accepted/ (#1027)
 - **Author(s):** Claude Opus 5.5, for maintainer review
 - **Created:** 2026-11-04
 - **Decision link:** D-063
