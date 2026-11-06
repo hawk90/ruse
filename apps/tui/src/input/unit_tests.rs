@@ -5354,10 +5354,61 @@ mod global_parse_tests {
 
     #[test]
     fn global_normalx_is_not_the_normal_verb() {
-        // `normalx` is not `normal x` — with no `d`/`s`/`normal` payload the whole `:g` line is Unknown.
-        assert!(matches!(parse_ex("g/foo/normalx"), Ex::Unknown(_)));
-        // A bare `normal` (no delimiting space/keys) is likewise not a valid payload.
-        assert!(matches!(parse_ex("g/foo/normal"), Ex::Unknown(_)));
+        // `normalx` is not `normal x`: it is some other command, which the Ex dispatch runs (and refuses)
+        // per marked line (#1245).
+        assert_eq!(
+            glob("g/foo/normalx").cmd,
+            GlobalPayload::Ex("normalx".into())
+        );
+        // A bare `normal` (no delimiting space/keys) is likewise not a `normal` payload.
+        assert_eq!(glob("g/foo/normal").cmd, GlobalPayload::Ex("normal".into()));
+    }
+
+    /// #1245: only a bare `d` and a plain `s///` run in core's one pass; every other command is the
+    /// verbatim text the Ex dispatch runs per marked line, `|` and all.
+    #[test]
+    fn other_global_commands_run_through_the_ex_dispatch() {
+        let ex = |line: &str| glob(line).cmd;
+        for (line, cmd) in [
+            ("g/b/d 2", "d 2"),
+            ("g/b/d a", "d a"),
+            ("g/b/j", "j"),
+            ("g/^/m0", "m0"),
+            ("g/a/>2", ">2"),
+            ("g/a/d|d", "d|d"),
+            ("g/a/s/1/X/ 2", "s/1/X/ 2"),
+            ("g/a/s/1/X/n", "s/1/X/n"),
+            ("g/a/s/1/X/&", "s/1/X/&"),
+            ("g/a/s/1/X/p", "s/1/X/p"),
+            ("g/./s/1/X/|s/a/Y/", "s/1/X/|s/a/Y/"),
+            ("g/a/g/1/d", "g/1/d"),
+            ("g/a/foo", "foo"),
+        ] {
+            assert_eq!(ex(line), GlobalPayload::Ex(cmd.into()), "{line}");
+        }
+        assert_eq!(ex("g/a/delete"), GlobalPayload::Core(GlobalCmd::Delete));
+        assert!(matches!(ex("g/a/s/1/X/g"), GlobalPayload::Core(_)));
+        assert!(matches!(ex("g/a/s/1/X/e"), GlobalPayload::Core(_)));
+    }
+
+    /// The keys of a `:g/pat/normal` are verbatim to the end of the line, as `:normal`'s are: a trailing
+    /// blank or `<C-v><CR>` survives.
+    #[test]
+    fn global_normal_keys_keep_their_trailing_chars() {
+        assert_eq!(
+            glob("g/a/normal :.d\r").cmd,
+            GlobalPayload::Normal {
+                bang: false,
+                keys: ":.d\r".into()
+            }
+        );
+        assert_eq!(
+            glob("g/a/normal A ").cmd,
+            GlobalPayload::Normal {
+                bang: false,
+                keys: "A ".into()
+            }
+        );
     }
 }
 

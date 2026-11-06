@@ -34,6 +34,9 @@ pre-push:
       run: python3 tools/ruse.py verify --full
 
 # --- keep local deps in sync with the lockfiles after pull / checkout / rebase ---
+# Guards (#556): post-checkout runs only for a branch checkout ({3} = 1) and not while a rebase is checking
+# out <onto> (post-rewrite syncs once the rebase finishes, so it would run twice). post-rewrite runs only
+# for a rebase ({1} = rebase): `commit --amend` leaves ORIG_HEAD stale, so the range would be wrong.
 post-merge:
   commands:
     sync-deps:
@@ -41,8 +44,10 @@ post-merge:
 post-checkout:
   commands:
     sync-deps:
-      run: scripts/sync-deps.sh --since {1}
+      run: >-
+        if [ "{3}" = 1 ] && [ ! -d "$(git rev-parse --git-path rebase-merge)" ]
+        && [ ! -d "$(git rev-parse --git-path rebase-apply)" ]; then scripts/sync-deps.sh --since {1}; fi
 post-rewrite:
   commands:
     sync-deps:
-      run: scripts/sync-deps.sh
+      run: if [ "{1}" = rebase ]; then scripts/sync-deps.sh; fi

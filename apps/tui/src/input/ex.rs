@@ -351,13 +351,17 @@ pub struct GlobalSpec {
     pub cmd: GlobalPayload,
 }
 
-/// The command a `:g/pat/…` runs on each marked line, split by WHERE it executes. `d`/`s///` run entirely
-/// in core's two-pass ([`Workspace::global`]); `normal` drives the input engine, so it is carried here as a
-/// frontend payload and executed by the run loop (which owns the engine) rather than descending into core.
+/// The command a `:g/pat/…` runs on each marked line, split by WHERE it executes. A bare `d` and a plain
+/// `s///` run entirely in core's two-pass ([`Workspace::global`]); `normal` drives the input engine and any
+/// other command runs through the session's Ex dispatch, so both are carried here as frontend payloads and
+/// executed by the run loop rather than descending into core.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum GlobalPayload {
     /// A core-executed payload — `:g/pat/d` or `:g/pat/s/pat2/rep/flags` — run by [`Workspace::global`].
     Core(GlobalCmd),
+    /// Any other command (`:g/pat/d 2`, `:g/pat/m0`, `:g/pat/j|s/a/b/`, a nested `:g`): its VERBATIM text,
+    /// `|` included, run once per marked line through the Ex dispatch, as Vim's `global_exe` does (#1245).
+    Ex(String),
     /// `:g/pat/normal[!] {keys}` — replay `{keys}` as Normal-mode input on each marked line (frontend).
     /// `keys` is the VERBATIM payload after the single delimiting space (internal spaces preserved).
     Normal { bang: bool, keys: String },
@@ -730,10 +734,11 @@ fn strip_global_verb(rest: &str) -> Option<(&str, bool)> {
     }
 }
 
-/// Parse the command that follows `:g/pat/`: `normal[!] {keys}` (frontend-executed), `d`/`delete`, or a
-/// `s/pat/rep/flags` substitute (both core-executed).
-fn parse_global_cmd(cmd: &str) -> Option<GlobalPayload> {
-    let resolved = super::ex_cmd::resolve_command_word(cmd);
+/// Parse the command that follows `:g/pat/`: `normal[!] {keys}` (frontend-executed), a bare `d`/`delete`
+/// or a plain `s/pat/rep/flags` substitute (both core-executed, one pass over the marks), the print
+/// commands, or any other command line, run per marked line through the Ex dispatch (#1245).
+fn parse_global_cmd(raw: &str) -> Option<GlobalPayload> {
+    let resolved = super::ex_cmd::resolve_command_word(raw);
     let cmd = &*resolved;
     // `normal[!] {keys}` is recognized BEFORE the `.trim()` below so the key payload keeps its internal
     // spaces — only the single delimiting space after the verb is consumed (as `:normal` does).
@@ -751,17 +756,28 @@ fn parse_global_cmd(cmd: &str) -> Option<GlobalPayload> {
         // A bare `:g/pat/` prints the marked lines (`:help :g`).
         "" => Some(GlobalPayload::Print(super::PrintFlags::default())),
         "d" | "delete" => Some(GlobalPayload::Core(GlobalCmd::Delete)),
-        other => {
-            let spec = parse_substitute(other, false)?.ok()?;
-            Some(GlobalPayload::Core(GlobalCmd::Substitute {
-                pattern: spec.pattern,
-                replacement: spec.replacement,
-                flags: SubFlags {
-                    global: spec.global,
-                    ignore_case: spec.ignore_case,
-                },
-            }))
-        }
+        other => Some(match parse_substitute(other, false) {
+            // Core's pass knows the pattern, the replacement and the `g`/`i`/`I` flags. Anything more (a
+            // count, `n`, `&`, a print flag, a `|` after it) is one `:s` per line through the Ex dispatch.
+            // `c` stays in core's pass, which does not ask: unchanged by #1245.
+            Some(Ok(spec))
+                if spec.count.is_none()
+                    && !spec.count_only
+                    && !spec.keep_flags
+                    && spec.print.is_none()
+                    && split_bar(other).len() == 1 =>
+            {
+                GlobalPayload::Core(GlobalCmd::Substitute {
+                    pattern: spec.pattern,
+                    replacement: spec.replacement,
+                    flags: SubFlags {
+                        global: spec.global,
+                        ignore_case: spec.ignore_case,
+                    },
+                })
+            }
+            _ => GlobalPayload::Ex(raw.to_string()),
+        }),
     }
 }
 
@@ -1153,6 +1169,12 @@ pub fn parse_ex(line: &str) -> Ex {
     // is the verbatim key payload, so a trailing space in the keys must survive the `line.trim()` below.
     if let Some(ex) = parse_normal(line) {
         return ex;
+    }
+    // So is `:g/pat/normal {keys}`: a trailing space or `<C-v><CR>` in its keys is part of them.
+    if let Some(spec) = parse_global(line.trim_start()) {
+        if matches!(spec.cmd, GlobalPayload::Normal { .. }) {
+            return Ex::Global(spec);
+        }
     }
     let line = line.trim();
     match line {

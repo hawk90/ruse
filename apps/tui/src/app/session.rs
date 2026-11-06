@@ -843,6 +843,9 @@ pub(crate) struct Session {
     pub(crate) status: String,
     /// How many `:normal` runs are in progress (nested ones count each).
     normal_depth: usize,
+    /// A `:g` is running its command over the marked lines (Vim's `global_busy`): a nested `:g` runs on
+    /// the current line only, and a `:s` that matches nothing is no error (#1245).
+    global_busy: bool,
     /// The error a `:silent!` hid from the status line (Vim's `v:errmsg` still records it, #609); the
     /// headless harness reads and clears it.
     pub(crate) silenced_error: Option<String>,
@@ -973,6 +976,7 @@ impl Session {
             lsp: LspCoordinator::new(cwd, trusted),
             status,
             normal_depth: 0,
+            global_busy: false,
             silenced_error: None,
             alt_file: None,
             prev_dir: None,
@@ -3429,6 +3433,7 @@ impl Session {
             journals,
             journal_writers,
             readonly,
+            global_busy,
             ..
         } = self;
         let (cols, text_rows) = (frame.cols, frame.text_rows);
@@ -3712,8 +3717,9 @@ impl Session {
             // `:[range]normal[!] {keys}` replays the key payload through the input `engine` → the same
             // `Command` pipeline as typed keys / macro replay.
             Ex::Normal { range, keys, .. } => self.ex_normal(range, &keys, frame),
-            // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window. The `d`/`s`
-            // payloads run in core; a `normal` payload replays keys per marked line through the engine.
+            // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window. A bare `d`
+            // and a plain `s` run in core; a `normal` payload replays keys per marked line through the
+            // engine, and any other command runs per marked line through this dispatch (#1245).
             // An empty `:g//` pattern is the last search, and the `:g` pattern becomes the last search
             // before the command runs, so `:g/pat/s//X/` substitutes `pat` (Vim, #804).
             mut ex @ Ex::Global(_) => {
@@ -3724,23 +3730,47 @@ impl Session {
                 let Ex::Global(spec) = ex else {
                     unreachable!("bound by the arm's pattern")
                 };
+                // A `:g` inside a `:g` (Vim's `global_busy`) takes no range but the whole file (E147), and
+                // runs its command on the current line only, when that line matches.
+                let nested = *global_busy;
+                let range = if nested {
+                    let b = ws.focused().doc.bytes();
+                    let whole = match spec.range {
+                        ruse_core::SubRange::WholeFile => true,
+                        ruse_core::SubRange::Lines(1, n) => {
+                            n == crate::app::dispatch::line_count(b).max(1)
+                        }
+                        _ => false,
+                    };
+                    if !whole {
+                        *status = "E147: Cannot do :global recursive with a range".into();
+                        return;
+                    }
+                    let line = ruse_core::pos::line_of(b, ws.focused().view.cursor()) + 1;
+                    ruse_core::SubRange::Lines(line, line)
+                } else {
+                    spec.range
+                };
                 engine.set_last_search_pattern(spec.pattern.clone());
                 *search_hl = Some(spec.pattern.clone());
+                // Vim reports a pattern `:g` cannot use as `E476` (`ex_global`).
+                let marked = match ws.global_marks(range, &spec.pattern, spec.negate) {
+                    Ok(marked) => marked,
+                    Err(e) => {
+                        *status = crate::app::dispatch::invalid_command_msg(&e);
+                        return;
+                    }
+                };
+                // Not an error in Vim: `:g` with no match only echoes the message (no `E486`), and a
+                // nested one says nothing.
+                let Some(&last_marked) = marked.last() else {
+                    if !nested {
+                        *status = format!("Pattern not found: {}", spec.pattern);
+                    }
+                    return;
+                };
                 match &spec.cmd {
                     crate::input::GlobalPayload::Core(cmd) => {
-                        // Vim reports a pattern `:g` cannot use as `E476` (`ex_global`).
-                        let marked = match ws.global_marks(spec.range, &spec.pattern, spec.negate) {
-                            Ok(marked) => marked,
-                            Err(e) => {
-                                *status = crate::app::dispatch::invalid_command_msg(&e);
-                                return;
-                            }
-                        };
-                        // Not an error in Vim: `:g` with no match only echoes the message (no `E486`).
-                        let Some(&last_marked) = marked.last() else {
-                            *status = format!("Pattern not found: {}", spec.pattern);
-                            return;
-                        };
                         // Recorded as the lines the pattern marked and the command (RFC-0020).
                         let ex = ExCmd::Global {
                             marks: marked,
@@ -3773,17 +3803,6 @@ impl Session {
                     }
                     // `:g/pat/p` (#609): show the marked lines; the cursor ends on the last one.
                     crate::input::GlobalPayload::Print(flags) => {
-                        let marked = match ws.global_marks(spec.range, &spec.pattern, spec.negate) {
-                            Ok(marked) => marked,
-                            Err(e) => {
-                                *status = crate::app::dispatch::invalid_command_msg(&e);
-                                return;
-                            }
-                        };
-                        let Some(&last_marked) = marked.last() else {
-                            *status = format!("Pattern not found: {}", spec.pattern);
-                            return;
-                        };
                         let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
                             Ok(keep) => keep,
                             Err(e) => {
@@ -3803,8 +3822,9 @@ impl Session {
                         crate::app::ex_more::show_rows(rows, status, overlay);
                     }
                     crate::input::GlobalPayload::Normal { keys, .. } => {
-                        self.ex_global_normal(spec.range, &spec.pattern, spec.negate, keys, frame);
+                        self.ex_global_normal(&marked, keys, frame);
                     }
+                    crate::input::GlobalPayload::Ex(cmd) => self.ex_global_ex(&marked, cmd, frame),
                 }
             }
             // `:checkhealth` (F-030): gather the frontend snapshot (guard/profile/highlighter) and render
@@ -3952,6 +3972,7 @@ impl Session {
                         let use_flags = flags.unwrap_or(*stored);
                         let ex = substitute_cmd(ws, range, pat, rep, use_flags, None);
                         match sub_outcome(run_ex(ex, ws, recorded)) {
+                            Ok(out) if out.lines == 0 && *global_busy => String::new(),
                             Ok(out) if out.lines == 0 => format!("E486: pattern not found: {pat}"),
                             // A `:s/\n//` join on the last line: nothing to join, not an error.
                             Ok(out) if out.replacements == 0 => String::new(),
@@ -4006,6 +4027,7 @@ impl Session {
                     // `n`: REPORT ONLY — count the matches and echo the tally, editing nothing (Vim `:s///n`).
                     // Overrides `c` (like Vim). `substitute_count` borrows `&`, so no edit / undo / cursor move.
                     *status = match ws.substitute_count(spec.range, &spec.pattern, flags) {
+                        Ok(out) if out.replacements == 0 && *global_busy => String::new(),
                         Ok(out) if out.replacements == 0 => {
                             format!("E486: pattern not found: {}", spec.pattern)
                         }
@@ -4046,7 +4068,8 @@ impl Session {
                         None,
                     );
                     *status = match sub_outcome(run_ex(ex, ws, recorded)) {
-                        Ok(out) if out.lines == 0 && spec.quiet => String::new(),
+                        // Nor inside a `:g`, which says nothing for the lines `:s` misses (Vim's `do_sub`).
+                        Ok(out) if out.lines == 0 && (spec.quiet || *global_busy) => String::new(),
                         Ok(out) if out.lines == 0 => {
                             format!("E486: pattern not found: {}", spec.pattern)
                         }
@@ -4903,33 +4926,59 @@ impl Session {
         });
     }
 
-    /// Execute `:[range]g/pat/normal {keys}` (`:help :g`): PASS 1 marks every matching (`:v`/`:g!`:
-    /// non-matching) line; PASS 2 runs `{keys}` as a `:normal` at column 0 of each marked line that still
-    /// exists. The marks are anchors that move with the edits (#853, INV-ANCHOR), so a mark follows its
-    /// line wherever earlier passes moved it, and a line the keys deleted (or joined into another) is
-    /// skipped, as Vim's line marks are. Lines the keys insert are never marked.
-    fn ex_global_normal(
-        &mut self,
-        range: ruse_core::SubRange,
-        pattern: &str,
-        negate: bool,
-        keys: &str,
-        frame: &FrameCtx,
-    ) {
-        use ruse_core::{AnchorPolicy, Bias, BytePos};
-        let marks = match self.ws.global_marks(range, pattern, negate) {
-            Ok(m) => m,
-            Err(e) => {
-                self.status = regex_error_msg(&e);
-                return;
+    /// Execute `:[range]g/pat/normal {keys}` (`:help :g`) over the lines PASS 1 marked: `{keys}` run as a
+    /// `:normal` at column 0 of each marked line that still exists ([`Self::over_global_marks`]).
+    fn ex_global_normal(&mut self, marks: &[usize], keys: &str, frame: &FrameCtx) {
+        let events = crate::keys::parse_normal_keys(keys);
+        self.over_global_marks(marks, |s| {
+            s.normal_pass(&events, frame);
+            true
+        });
+        self.status = format!("{} lines changed", marks.len());
+    }
+
+    /// Execute `:[range]g/pat/{cmd}` for any command but the ones core runs in one pass (#1245): `cmd`, `|`
+    /// and all, runs through the Ex dispatch once per marked line that still exists, with the cursor at
+    /// the start of that line and so the command's default range there (Vim's `global_exe`). The first
+    /// command that fails ends the `:g` (Vim's `emsg` bumps `global_busy`); one a `:silent!` hid does not.
+    /// The whole `:g` is one undo step, and the trace records it as a group of the commands it ran.
+    fn ex_global_ex(&mut self, marks: &[usize], cmd: &str, frame: &FrameCtx) {
+        let pieces = crate::input::split_bar(cmd);
+        let lines = |s: &Session| crate::app::dispatch::line_count(s.ws.focused().doc.bytes());
+        let before = lines(self);
+        let mut last = String::new();
+        self.over_global_marks(marks, |s| {
+            s.run_ex_pieces(pieces.clone(), frame);
+            if !s.status.is_empty() {
+                last.clone_from(&s.status);
             }
-        };
-        if marks.is_empty() {
-            // Vim only echoes this for `:g` (no `E486`).
-            self.status = format!("Pattern not found: {pattern}");
+            !(is_ex_error(&s.status) || s.swap.is_some() || s.confirm.is_some())
+        });
+        if is_ex_error(&self.status) || self.swap.is_some() || self.confirm.is_some() {
             return;
         }
-        let acted = marks.len();
+        // Vim reports the lines the commands added or removed (`msgmore`, past 'report' = 2), else the
+        // message of the last command that left one.
+        let after = lines(self);
+        self.status = match after.cmp(&before) {
+            std::cmp::Ordering::Less if before - after > 2 => {
+                format!("{} fewer lines", before - after)
+            }
+            std::cmp::Ordering::Greater if after - before > 2 => {
+                format!("{} more lines", after - before)
+            }
+            _ => last,
+        };
+    }
+
+    /// PASS 2 of a `:g` (`:help :g`): run `each` once per line PASS 1 marked (`marks`, 1-based) that still
+    /// exists, the cursor placed at its start, until `each` returns `false`. The marks are anchors that move
+    /// with the edits (#853, INV-ANCHOR), so a mark follows its line wherever earlier passes moved it, and a
+    /// line deleted (or joined into another) is skipped, as Vim's line marks are. Lines the commands insert
+    /// are never marked. The pass runs as a `:normal` does (one undo step, a trace group) with
+    /// [`Session::global_busy`] set.
+    fn over_global_marks(&mut self, marks: &[usize], mut each: impl FnMut(&mut Session) -> bool) {
+        use ruse_core::{AnchorPolicy, Bias, BytePos};
         let doc_id = self.ws.focused_buffer();
         // Each line is held by two anchors: its start (pushed right by text inserted before it) and the
         // start of the next line (held left). A deleted line collapses them together.
@@ -4957,7 +5006,7 @@ impl Session {
                 .map(|(&(s, e), &[a, z])| (a, z, s == e))
                 .collect()
         };
-        let events = crate::keys::parse_normal_keys(keys);
+        let busy = std::mem::replace(&mut self.global_busy, true);
         self.as_normal(GroupKind::Global, |s| {
             for &(start, end, empty_buffer) in &anchors {
                 if s.quit || s.ws.focused_buffer() != doc_id || ruse_core::interrupt::interrupted()
@@ -4976,13 +5025,15 @@ impl Session {
                     continue; // the line was deleted, or joined into the one before it
                 }
                 place_cursor(&mut s.ws, &mut s.recorded, a);
-                s.normal_pass(&events, frame);
+                if !each(s) {
+                    break;
+                }
             }
         });
+        self.global_busy = busy;
         if let Some(doc) = self.ws.document_mut(doc_id) {
             doc.remove_anchors(anchors.into_iter().flat_map(|(start, end, _)| [start, end]));
         }
-        self.status = format!("{acted} lines changed");
     }
 
     /// Test seam: run ONE Ex command (`line`, no leading `:`) against `ws` through the session's Ex

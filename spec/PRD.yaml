@@ -12,7 +12,9 @@
 #                   REM-SERVICE-*/ECO-*/NAT-*), defined in ../docs/parity/*.md (index: ../docs/parity/README.md).
 #                   Omitted when a feature genuinely has no external parity target.
 #   trace.design  = 1-3 design/architecture docs that specify it (../docs/architecture/* | ../docs/design/*).
-#   trace.verify  = planned test fixture path(s)/method that will prove it (../tests/...).
+#   trace.verify  = test path(s) that prove it. For `status: done` they are real files (crate tests, inline
+#                   test modules, the parity corpus) and spec-validate fails one that does not resolve
+#                   (#886); for other statuses they may name where the proof will live (../tests/...).
 # `acceptance:` lists 2-4 concrete, testable pass criteria.
 # Feature <-> capability links are NOT stored here: they live in spec/capabilities.yaml as `prd:` on CAP-*
 # entries (one fact, one home). Do not add a `capability` field to features.
@@ -79,7 +81,7 @@ features:
     trace:
       parity: [COM-7, VIM-UNDO-1, EMACS-EDIT-1]
       design: [../docs/architecture/architecture.md#3]
-      verify: [../tests/property/undo-roundtrip, ../tests/unit/transaction-revision]
+      verify: [../crates/core/tests/properties.rs, ../crates/core/tests/reference_model.rs, ../crates/core/tests/change_log.rs, ../crates/core/src/document.rs]
     acceptance:
       - Undo after an edit restores the byte-identical original document.
       - Every change records an origin and a revision.
@@ -111,7 +113,7 @@ features:
     trace:
       parity: []
       design: [../docs/architecture/architecture.md#3, ../docs/design/positions-history.md]
-      verify: [../tests/property/anchor-stability, ../tests/unit/coordinate-widths]
+      verify: [../crates/core/src/anchor.rs, ../crates/core/tests/long_line_columns.rs, ../crates/core/tests/grapheme_conformance.rs, ../crates/core/tests/no_usize_coords.rs]
     acceptance:
       - Cursor/decoration positions survive edits via anchors, not raw offsets.
       - Wide/emoji/combining/ZWJ clusters do not desync the cursor from logical text.
@@ -155,7 +157,7 @@ features:
       parity: [nvim.mapmode.norm, nvim.mapmode.opr]   # was VIM-MODE-1/6 — repointed onto the map_mode census (D-043)
       contract: [../spec/parity/contracts/keymap-layers.yaml, ../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/editing-language.md]
-      verify: [../tests/parity/vim/namespaces.yaml, ../tests/parity/vim/mode-stack.yaml]
+      verify: [../crates/core/src/keymap.rs, ../apps/tui/tests/vim_pending_grammar.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "Resolution walks an ordered layer stack highest-rank-first until a layer binds; a `sealed` layer stops the walk whether or not it bound (KL-OBL-1..3). The Vim profile declares depth 1 and sealed — depth is an OBLIGATION of the profile, not an accident of having one layer active, or `closed/ignore` starts leaking into a lower layer."
       - "The same router at depth 9, unsealed and buffer-selected, resolves an Emacs-style stack, and a depth-2 `[override, base]` resolves a derived mode; neither needs a code path of its own. Build-time collapse of a derived layer is observably identical to consulting it at dispatch (KL-OBL-6)."
@@ -218,7 +220,7 @@ features:
       parity: [nvim.key.normal.x5bx22xx5ddx7bmotionx7d, nvim.key.normal.x5bx22xx5ddd, nvim.key.normal.x5bx22xx5dcx7bmotionx7d, nvim.key.normal.x5bx22xx5dcc, nvim.key.normal.x5bx22xx5dyx7bmotionx7d, nvim.key.normal.x5bx22xx5dyy, nvim.key.normal.x5bx22xx5dx, nvim.key.normal.x5bx22xx5dD, nvim.key.normal.x5bx22xx5dC, nvim.key.normal.x5bx22xx5dY, nvim.key.normal.x5bx22xx5dS, nvim.key.normal.empty, nvim.key.normal.h, nvim.key.normal.l, nvim.key.normal.0, nvim.key.normal.x24, nvim.key.normal.w, nvim.key.normal.W, nvim.key.normal.b, nvim.key.normal.B, nvim.key.normal.e, nvim.key.normal.E, nvim.key.normal.fx7bcharx7d, nvim.key.normal.Fx7bcharx7d, nvim.key.normal.tx7bcharx7d, nvim.key.normal.Tx7bcharx7d, nvim.key.normal.x3b, nvim.key.normal.x2c, nvim.key.normal.G, nvim.key.normal.x25, nvim.key.normal.x7b, nvim.key.normal.x7d, nvim.key.normal.j, nvim.key.normal.k, nvim.key.normal.1, nvim.key.normal.2, nvim.key.normal.3, nvim.key.normal.4, nvim.key.normal.5, nvim.key.normal.6, nvim.key.normal.7, nvim.key.normal.8, nvim.key.normal.9, nvim.key.normal.., nvim.key.normal.x5bx22xx5dX, nvim.key.normal.x5bx22xx5dDel, nvim.key.normal.x7bcountx7dDel, nvim.key.normal.Space, nvim.key.normal.BS, nvim.key.normal.Home, nvim.key.normal.End, nvim.key.normal.Insert, nvim.key.normal.ZZ, nvim.key.normal.ZQ, nvim.key.normal.U, nvim.key.normal.x7bcountx7dx3a, nvim.key.normal.x7ex7bmotionx7d, nvim.key.normal.c_x5cx20c_N, nvim.key.normal.c_x5cx20c_G, nvim.key.operator_pending.v, nvim.key.operator_pending.V, nvim.key.operator_pending.c_V]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/editing-language.md, ../docs/design/positions-history.md]
-      verify: [../tests/parity/vim/operator-motion.yaml]
+      verify: [../crates/core/src/motion.rs, ../apps/tui/tests/dot_repeat.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "Operator+motion composes with count multiplication (2d3w deletes 6 words) and doubling goes linewise (dd/yy)."
       - "Exclusive->inclusive->linewise motion promotion (VIM-MOT-PROMOTE) matches the vim.md checklist item 1."
@@ -244,7 +246,7 @@ features:
       parity: [nvim.key.text_object.aw, nvim.key.text_object.aW, nvim.key.text_object.iw, nvim.key.text_object.iW, nvim.key.text_object.ap, nvim.key.text_object.ip, nvim.key.text_object.as, nvim.key.text_object.is, nvim.key.text_object.at, nvim.key.text_object.it, nvim.key.text_object.ab, nvim.key.text_object.aB, nvim.key.text_object.ib, nvim.key.text_object.iB, nvim.key.text_object.ax28, nvim.key.text_object.ax29, nvim.key.text_object.ix28, nvim.key.text_object.ix29, nvim.key.text_object.ax7b, nvim.key.text_object.ax7d, nvim.key.text_object.ix7b, nvim.key.text_object.ix7d, nvim.key.text_object.ax5b, nvim.key.text_object.ax5d, nvim.key.text_object.ix5b, nvim.key.text_object.ix5d, nvim.key.text_object.a, nvim.key.text_object.i, nvim.key.text_object.ax22, nvim.key.text_object.ix22, nvim.key.text_object.ax27, nvim.key.text_object.ix27, nvim.key.text_object.ax60, nvim.key.text_object.ix60]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/editing-language.md]
-      verify: [../tests/parity/vim/text-objects.yaml]
+      verify: [../crates/core/src/textobj.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "diw / daw / di( / da\" select the inner/around span; usable as an operator operand (diw) and to extend a visual selection."
       - "Inner vs around differ by the surrounding whitespace/delimiters per the vim.md L2 checklist."
@@ -279,7 +281,7 @@ features:
       parity: [nvim.key.normal.x22x7bregisterx7d, nvim.key.normal.x5bx22xx5dp, nvim.key.normal.x5bx22xx5dP]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/register-model.md, ../docs/design/macros.md]
-      verify: [../tests/parity/vim/registers.yaml]
+      verify: [../crates/core/src/register.rs, ../apps/tui/tests/register_model.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "The unnamed and yank-only (reg 0) registers behave per the L2 checklist; `\"ayy` / `\"ap` address a named register."
       - "Register entries carry a SHAPE (charwise/linewise/blockwise) that survives round-trip (CONCEPT-REGISTER-STORE); dd then p opens a line."
@@ -339,7 +341,7 @@ features:
       parity: [nvim.mapmode.ins]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/persistence-and-recovery.md]
-      verify: [../tests/parity/vim/insert.yaml]
+      verify: [../apps/tui/tests/vim_special_keys.rs, ../apps/tui/tests/paste.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "An unmatched printable key inserts literally; the control-key table is the exception, not the default path."
       - "`CTRL-O` runs exactly one Normal command and resumes Insert at the same position (the shared one-shot-return construct)."
@@ -365,7 +367,7 @@ features:
       parity: [nvim.mapmode.vis, nvim.mapmode.sel]   # was VIM-MODE-4/5 — repointed onto the map_mode census (D-043)
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/view-window-workspace.md]
-      verify: [../tests/parity/vim/visual.yaml]
+      verify: [../apps/tui/tests/scenarios.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "Selection shape (charwise/linewise/blockwise) is namespace state, not a boolean; `v`/`V`/`CTRL-V` switch shape or leave the namespace."
       - "`o` moves to the other corner and `gv` restores the PREVIOUS selection — anchor and shape outlive the namespace."
@@ -403,7 +405,11 @@ features:
     # count, glued on or not (`:d2`, `:j2`), never a register, and a `"` starts a comment. #1241: `:dl`/`:dp`
     # (and `:dell` … `:deletep`) delete then show the new line; `:mark`/`:k` set `0`-`9`, `'`, `[`, `]`, `<`
     # and `>` too (E191 for any other mark), on the line's first non-blank. Oracle fixtures `exc_*`, `exd_*`,
-    # `exk_*`. Not yet: a count or another command than d/s/normal/p after `:g/pat/` (`:g/b/d 2`, `:g/b/j`).
+    # `exk_*`. #1245: `:g/pat/{cmd}` runs any Ex command line (`|` included) once per marked line through the
+    # one Ex dispatch, cursor at the line's start (`:g/b/d 2`, `:g/^/m0`, `:g/b/j`); the first failing command
+    # stops it, a nested `:g` runs on the current line (E147 with a range), the whole `:g` is one undo step
+    # and one trace group. A bare `d` and a plain `s///` keep core's one-pass. #1246: `:d #`/`:y #` write
+    # `"0`. Oracle fixtures `gex_*`, `exa_register_hash_*`.
     # #613: `:` completion at nvim's defaults (wildmode=full, wildoptions=pum): <Tab>/<S-Tab> complete
     # (input/complete.rs: Ex command names, file/directory names with %/# and escaping, buffer names,
     # :set option names and values), the wildmenu cycles with <Tab>/CTRL-N/<Right> and back, CTRL-E/CTRL-Y
@@ -430,7 +436,7 @@ features:
       parity: [nvim.mapmode.cmd]   # Cmd namespace onto the map_mode census (D-043); VIM-MODE-8 (Ex mode) backlogged in #97 — gQ-only, Adapted, not a map_mode namespace
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/command-engine.md]
-      verify: [../tests/parity/vim/command-line.yaml]
+      verify: [../apps/tui/src/input/cmdline.rs, ../apps/tui/tests/cmdline_completion.rs, ../apps/tui/tests/ex_messages.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "':' / '/' enter the namespace, <CR> executes and <Esc> aborts; it is engine-routed with a single mode owner, not an ad-hoc text buffer (anti-patterns command-line P2)."
       - "An unmatched printable key is typed at the caret (open/append); the namespace owns line buffer, cursor and history index, and edits mid-line (#612)."
@@ -461,7 +467,7 @@ features:
       parity: [nvim.mapmode.lang]   # the 8th namespace, realised on the pre-dispatch stage (D-048 answering KL-Q-LANG-ARG)
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md]
-      verify: [../tests/parity/vim/lang-arg.yaml]
+      verify: [../apps/tui/tests/lang_arg_e2e.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "A translation stage exists in the input pipeline where a language map can rewrite a key before dispatch."
       - "The stage applies to the Insert and Command-line namespaces and to commands reading a single character, and to nothing else."
@@ -501,7 +507,7 @@ features:
       # command-registry/palette this feature ships, so it is READY-WITH-SCOPE (carve-out), not a blocker.
       parity: []
       design: [../docs/design/command-engine.md, ../docs/architecture/architecture.md#2, ../docs/design/render-and-frontends.md]
-      verify: [../tests/unit/command-registry, ../tests/integration/palette-context]
+      verify: [../crates/core/src/registry.rs, ../crates/core/src/command.rs, ../apps/tui/src/ui/palette.rs]
     acceptance:
       - Commands are invocable by stable namespaced ID independent of any key binding.
       - The palette lists only context-appropriate commands and shows each command's current binding.
@@ -528,7 +534,7 @@ features:
     trace:
       parity: []
       design: [../docs/architecture/architecture.md#3, ../docs/design/editing-language.md, ../docs/design/persistence-and-recovery.md]
-      verify: [../tests/parity/vim/undo-tree.yaml, ../tests/unit/undo-grouping]
+      verify: [../crates/core/src/undo.rs, ../apps/tui/tests/vim_line_undo.rs, ../apps/tui/tests/filter_undo.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - "An i…<Esc> insert session is a single undo step, not one step per keystroke."
       - Formatter/LSP edits group as separate undo units from user edits.
@@ -567,7 +573,7 @@ features:
     trace:
       parity: [nvim.termmode.synchronizedoutput]
       design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#6]
-      verify: [../tests/unit/render-diff, ../tests/integration/render-profile-pin]
+      verify: [../apps/tui/src/ui/render.rs, ../apps/tui/tests/screen_lines.rs, ../apps/tui/tests/screen_scroll.rs, ../apps/tui/tests/pty_wrap.rs]
     acceptance:
       - Only changed cells are emitted (no full-screen redraw).
       - Render profile/tier is pinned per session and not flipped on probe noise.
@@ -614,7 +620,7 @@ features:
       # F-002/005/008). Chain closes via parity_na (gov implementable F-007 = READY).
       parity: []
       design: [../docs/design/view-window-workspace.md, ../docs/architecture/architecture.md#7, ../docs/design/render-and-frontends.md]
-      verify: [../tests/integration/split-independent-cursors, ../tests/unit/view-local-state]
+      verify: [../crates/core/src/workspace.rs, ../apps/tui/src/ui/window_view.rs, ../apps/tui/tests/session_intercepts.rs, ../apps/tui/tests/scenarios.rs]
     acceptance:
       - Splitting shows two views of one document with independent cursors and scroll.
       - View-local state (cursor, folds, selection) stays in the view, not the buffer.
@@ -692,7 +698,7 @@ features:
       # statefulness) is a vim.md prose bullet, never a catalog row — demoted to this annotation.
       parity: []
       design: [../docs/design/persistence-and-recovery.md]
-      verify: [../tests/fault-injection/truncated-journal, ../tests/unit/save-atomic]
+      verify: [../apps/tui/tests/journal_torn_write.rs, ../apps/tui/tests/journal_roundtrip.rs, ../apps/tui/tests/fs_faults.rs, ../apps/tui/src/persist/atomic.rs, ../apps/tui/tests/pty_recovery.rs]
     acceptance:
       - 'The "Saved" UI reflects a durable write (fsync), not just a successful syscall.'
       - Save preserves the file's original encoding and line-ending style.
@@ -731,7 +737,7 @@ features:
       # as F-003/F-025 shipped done.
       parity: []
       design: [../docs/design/vim-regex.md]
-      verify: [../tests/parity/vim/search-substitute.yaml]
+      verify: [../crates/core/src/editor/search.rs, ../crates/core/tests/pattern_oracle.rs, ../tests/parity/vim/fixtures/corpus.yaml, ../apps/tui/tests/parity_compare.rs]
     acceptance:
       - Incremental highlight of matches with smartcase (case-smart) search.
       - "Range :s///[flags] substitutes with g/c/i flags and honors gdefault inversion."
@@ -769,7 +775,7 @@ features:
                nvim.termmode.mouseanyevent, nvim.termmode.synchronizedoutput, nvim.termmode.resizeevents,
                nvim.keyenc.kitty, nvim.keyenc.xterm, nvim.keyenc.legacy]
       design: [../docs/architecture/architecture.md#6]
-      verify: [../tests/unit/capability-ledger, ../tests/integration/da1-probe]
+      verify: [../apps/tui/src/caps/ledger.rs, ../apps/tui/src/caps/probe.rs, ../apps/tui/tests/caps_probe.rs]
     acceptance:
       - Capabilities are probed via queries fenced by DA1 (no arbitrary timeouts), not judged by TERM alone.
       - Each ledger entry carries {value, source, confidence}; a user override always wins.

@@ -234,9 +234,10 @@ counterexample. The four load-bearing invariants (from [ci-cd-and-release.md §2
 guarding [anti-patterns](../anti-patterns/anti-patterns.md) TEST-5/6/7):
 
 - **Undo round-trip** — for any edit sequence, `apply` then `undo` restores the exact prior document
-  (bytes + revision relationship). Anchors valid before are valid after. (`tests/property/undo-roundtrip`.)
+  (bytes + revision relationship). Anchors valid before are valid after. (`crates/core/tests/properties.rs`.)
 - **Anchor-transform invariants** — for any edit and any anchor set, transformed anchors respect affinity
-  and never point outside the document; cost is not O(anchors × edits). (`tests/property/anchor-stability`.)
+  and never point outside the document; cost is not O(anchors × edits). (`crates/core/tests/properties.rs`,
+  `crates/core/src/anchor.rs`.)
 - **Transaction atomicity** — a transaction applies fully or not at all; a failed transaction leaves no
   partial mutation and does not advance the revision (guards CMD-16, upholds INV-TXN).
 - **Serialization round-trip** — `decode(encode(x)) == x` for every serializable contract (document,
@@ -610,8 +611,9 @@ the failure mode this contract exists to forbid. Fuzz-counterexample-as-fixture 
 ## 2. `tests/` directory layout & traceability
 
 `tests/` holds only `tests/parity/{vim,emacs}/fixtures/corpus.yaml` today; other tests live next to the code
-(table above). The tree below is the target layout. `trace.verify` in `spec/PRD.yaml` points into it, and most
-of those paths do not resolve yet (#886).
+(table above). The tree below is the target layout. A `planned` feature's `trace.verify` in `spec/PRD.yaml`
+may point into it; a `status: done` feature's `trace.verify` names the real test files that prove it (crate
+tests, inline test modules, the parity corpus), and `spec-validate` fails when one does not resolve (#886).
 
 ```
 tests/
@@ -677,9 +679,10 @@ test *kind* that is its evidence. **A feature is not Proven until these fixtures
 | F-031 Rich in-buffer rendering | Property + Unit |
 | F-032 Multi-buffer arena | Unit + Property |
 
-> `spec-validate` should grow to check that each `trace.verify` path **resolves to a real fixture** (today it
-> checks `trace.design` resolves; #886). That closes the loop: a `must` feature with a
-> dangling `verify` path fails CI — the machine-checkable form of "no evidence, not Proven."
+> `spec-validate` checks that every `trace.verify` and `trace.contract` path of a `status: done` feature
+> **resolves to a real file**, and that a done feature's `trace.verify` is not empty (#886). A done feature
+> with a dangling `verify` path fails CI — the machine-checkable form of "no evidence, not Proven." Paths of
+> `planned` features name where the proof will live and are not checked.
 
 ---
 
@@ -813,8 +816,8 @@ behavior always keeps an explicit `expected` (guards SPEC-6, PAR-6).
 1. **Oracle availability.** Versions are pinned in [spec/parity/upstreams.yaml](../../spec/parity/upstreams.yaml).
    How are the oracles provided in CI, and how do we handle oracle behavior that is itself a bug we intentionally diverge from?
    (A per-fixture `oracle.compare` allowlist is the current escape hatch — is that enough?)
-2. **`spec-validate` `trace.verify` resolution.** Should `spec-validate` hard-fail on a
-   dangling `verify` path for `mvp`/`must` features, and warn for others — or gate all? (§2.)
+2. **`spec-validate` `trace.verify` resolution.** Decided (#886): it hard-fails a dangling `verify` or
+   `contract` path of any `status: done` feature, whatever its stage; `planned` paths are not checked. (§2.)
 3. **Golden snapshot format & churn.** Cell-grid text vs a structured (grapheme,width,style) record — which
    minimizes noisy diffs while still catching width/combining bugs? How are intentional golden updates
    reviewed so they aren't rubber-stamped (guards TERMOUT-2)?
