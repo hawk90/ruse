@@ -18,11 +18,11 @@ fn user_config(dir: &Scratch, text: &str) {
     std::fs::write(dir.path("home/ruse/config.toml"), text).unwrap();
 }
 
-/// Shift the first line once more, write, and return the file.
-fn shift_and_read(ed: &mut Editor, file: &Path) -> String {
+/// Shift the first line once more, write, and return the file once it holds `want` (or the deadline
+/// passed): an earlier `written` is still on the screen, so the screen cannot tell when this write landed.
+fn shift_and_read(ed: &mut Editor, file: &Path, want: &str) -> String {
     ed.keys(&format!("{ESC}gg0>>:w\r"));
-    ed.wait_for("written");
-    String::from_utf8(std::fs::read(file).unwrap()).unwrap()
+    String::from_utf8(support::wait_for_file(file, want.as_bytes())).unwrap()
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn safe_mode_flag_ignores_the_user_config() {
     let mut ed = Editor::start(&dir, &[Path::new("--safe-mode"), Path::new("f.txt")]);
     ed.wait_for("Config: safe-mode (--safe-mode)");
     assert_eq!(
-        shift_and_read(&mut ed, &file),
+        shift_and_read(&mut ed, &file, "    x\n"),
         "    x\n",
         "ruse's default 4"
     );
@@ -60,7 +60,7 @@ fn a_crash_loop_escalates_to_safe_mode_until_config_reload() {
     let file = dir.file("f.txt", b"x\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.wait_for("Config: safe-mode (after 3 crashed starts)");
-    assert_eq!(shift_and_read(&mut ed, &file), "    x\n");
+    assert_eq!(shift_and_read(&mut ed, &file, "    x\n"), "    x\n");
     assert_eq!(
         std::fs::read_to_string(dir.path("home/ruse/config-boot")).unwrap(),
         "3\n",
@@ -69,7 +69,7 @@ fn a_crash_loop_escalates_to_safe_mode_until_config_reload() {
     ed.keys(":config-reload\r");
     ed.wait_for("safe mode off");
     assert_eq!(
-        shift_and_read(&mut ed, &file),
+        shift_and_read(&mut ed, &file, "      x\n"),
         "      x\n",
         "4 + the user's 2"
     );
@@ -89,7 +89,7 @@ fn a_start_that_draws_clears_the_count() {
     let file = dir.file("f.txt", b"x\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     assert_eq!(
-        shift_and_read(&mut ed, &file),
+        shift_and_read(&mut ed, &file, "  x\n"),
         "  x\n",
         "not safe: the user's 2"
     );
@@ -119,7 +119,7 @@ fn three_crashed_starts_escalate_to_safe_mode() {
     }
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.wait_for("Config: safe-mode (after 3 crashed starts): no user or workspace config");
-    assert_eq!(shift_and_read(&mut ed, &file), "    x\n");
+    assert_eq!(shift_and_read(&mut ed, &file, "    x\n"), "    x\n");
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
 }
@@ -144,19 +144,27 @@ fn a_changed_user_config_reloads_and_a_broken_one_keeps_the_last() {
     user_config(&dir, "editor.shift_width = 2\n");
     let file = dir.file("f.txt", b"x\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    assert_eq!(shift_and_read(&mut ed, &file), "  x\n");
+    assert_eq!(shift_and_read(&mut ed, &file, "  x\n"), "  x\n");
     // `:checktime` looks at the files now instead of after the idle wait.
     user_config(&dir, "# three\neditor.shift_width = 3\n");
     ed.keys(":checktime\r");
     ed.wait_for("config reloaded: 1 key(s) changed (editor.shift_width)");
-    assert_eq!(shift_and_read(&mut ed, &file), "     x\n", "2 + 3");
+    assert_eq!(
+        shift_and_read(&mut ed, &file, "     x\n"),
+        "     x\n",
+        "2 + 3"
+    );
     // A file that no longer parses keeps the previous config and says so.
     user_config(&dir, "[editor\nshift_width = 7\n");
     ed.keys(":checktime\r");
     // The message is longer than the line: it waits for ENTER, as nvim's does.
     ed.wait_for("config not reloaded, the previous one stays");
     ed.keys("\r");
-    assert_eq!(shift_and_read(&mut ed, &file), "        x\n", "still 3");
+    assert_eq!(
+        shift_and_read(&mut ed, &file, "        x\n"),
+        "        x\n",
+        "still 3"
+    );
     // A typed `:set` wins over a reload; `input.profile` waits for the next start.
     ed.keys(":set sw=1\r");
     user_config(&dir, "editor.shift_width = 6\ninput.profile = \"emacs\"\n");
@@ -164,7 +172,7 @@ fn a_changed_user_config_reloads_and_a_broken_one_keeps_the_last() {
     ed.wait_for("(editor.shift_width); at the next start: input");
     ed.keys("\r");
     assert_eq!(
-        shift_and_read(&mut ed, &file),
+        shift_and_read(&mut ed, &file, "         x\n"),
         "         x\n",
         "the typed 1"
     );
