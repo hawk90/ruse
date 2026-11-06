@@ -72,3 +72,15 @@ class TestLabeler(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLabelColors(unittest.TestCase):
+    def test_every_color_is_a_quoted_string(self):
+        # EndBug/label-sync parses YAML 1.2, where an unquoted `5319e7` is a number;
+        # PyYAML (YAML 1.1) reads it as a string, so loading the file cannot catch it.
+        path = os.path.join(repo.ROOT, ".github", "labels.yml")
+        with open(path, encoding="utf-8") as f:
+            for n, line in enumerate(f, 1):
+                m = re.search(r"\bcolor:\s*([^,}\s]+)", line)
+                if m:
+                    self.assertRegex(m.group(1), r'^"[0-9a-fA-F]{6}"$', f"labels.yml:{n} color must be a quoted hex string")
