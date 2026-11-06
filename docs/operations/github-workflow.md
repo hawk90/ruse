@@ -39,7 +39,9 @@ updates colors and descriptions, and it never deletes a label the file does not 
 | `community/` | Signposting | optional | `good-first-issue` `help-wanted` |
 | `needs/` | What blocks readiness | 0+ | `reproduction` `design` `benchmark` `decision` |
 
-Who applies them: the path labeler ([`.github/labeler.yml`](../../.github/labeler.yml)) adds `area/*` to PRs;
+Who applies them: the path labeler ([`.github/labeler.yml`](../../.github/labeler.yml)) adds `area/*` to PRs from
+the `crates/core` and `apps/tui/src` paths each area owns (`area/plugin` and `area/debug` have no rule until that
+code exists; `tools/tests/test_labeler.py` checks every glob matches a tracked file);
 a maintainer may add `type/*`, `impact/*`, `community/*` and `needs/*` to issues by hand. Nothing applies `type/*`
 to PRs: a PR's type is the conventional prefix of its title (§8), which `tools/lint-commit-msg.py` enforces.
 

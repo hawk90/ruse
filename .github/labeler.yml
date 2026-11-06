@@ -1,9 +1,65 @@
 # Auto-applies area labels to PRs by changed path. Advisory only — humans may correct. No type/* rules: a path
-# does not tell the change type (a feature PR that amends an RFC is not an RFC).
-'area/core':   [{ changed-files: [{ any-glob-to-any-file: 'crates/core/**' }] }]
-'area/render': [{ changed-files: [{ any-glob-to-any-file: 'crates/render-model/**' }] }]
-'area/terminal': [{ changed-files: [{ any-glob-to-any-file: 'crates/terminal-platform/**' }] }]
-'area/remote': [{ changed-files: [{ any-glob-to-any-file: ['crates/workspace-runtime/**', 'apps/remote-agent/**'] }] }]
-'area/plugin': [{ changed-files: [{ any-glob-to-any-file: 'crates/plugin-protocol/**' }] }]
-'area/infra':  [{ changed-files: [{ any-glob-to-any-file: ['.github/**', 'tools/**'] }] }]
-'area/docs':   [{ changed-files: [{ any-glob-to-any-file: ['docs/**', 'spec/**'] }] }]
+# does not tell the change type (a feature PR that amends an RFC is not an RFC). Every glob must match a tracked
+# file and every label must be in .github/labels.yml (tools/tests/test_labeler.py). area/plugin and area/debug
+# have no rule: there is no plugin host or debugger code yet.
+'area/core':
+  - changed-files: [{ any-glob-to-any-file: ['crates/core/**'] }]
+'area/document':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'crates/core/src/document.rs'
+          - 'crates/core/src/transaction.rs'
+          - 'crates/core/src/edit.rs'
+          - 'crates/core/src/anchor.rs'
+          - 'crates/core/src/pos.rs'
+          - 'crates/core/src/undo.rs'
+          - 'crates/core/src/undo_cursor.rs'
+          - 'crates/core/src/line_undo.rs'
+          - 'crates/core/src/snapshot.rs'
+          - 'crates/core/src/change_log.rs'
+          - 'apps/tui/src/persist/**'
+          - 'apps/tui/src/recover.rs'
+'area/input':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'apps/tui/src/input/**'
+          - 'apps/tui/src/keys.rs'
+          - 'crates/core/src/keymap.rs'
+          - 'crates/core/src/command.rs'
+          - 'crates/core/src/motion.rs'
+          - 'crates/core/src/textobj.rs'
+          - 'crates/core/src/register.rs'
+'area/render':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'apps/tui/src/ui/**'
+          - 'apps/tui/src/screen.rs'
+          - 'apps/tui/src/viewport.rs'
+          - 'apps/tui/src/scroll.rs'
+          - 'apps/tui/src/folds.rs'
+          - 'apps/tui/src/graphics.rs'
+          - 'apps/tui/src/org.rs'
+'area/terminal':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'apps/tui/src/terminal/**'
+          - 'apps/tui/src/caps/**'
+          - 'apps/tui/src/pty.rs'
+          - 'apps/tui/src/term_buffer.rs'
+          - 'apps/tui/src/term_grid.rs'
+          - 'apps/tui/src/shell.rs'
+          - 'apps/tui/src/signals.rs'
+          - 'apps/tui/src/clipboard.rs'
+'area/remote':
+  - changed-files: [{ any-glob-to-any-file: ['apps/tui/src/remote/**'] }]
+'area/language':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'apps/tui/src/lsp/**'
+          - 'apps/tui/src/indent/**'
+          - 'apps/tui/src/indent.rs'
+          - 'apps/tui/src/highlight.rs'
+'area/infra':
+  - changed-files: [{ any-glob-to-any-file: ['.github/**', 'tools/**', 'lefthook.yml', 'Cargo.toml', 'Cargo.lock'] }]
+'area/docs':
+  - changed-files: [{ any-glob-to-any-file: ['docs/**', 'spec/**'] }]
