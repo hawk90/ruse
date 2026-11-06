@@ -44,27 +44,224 @@ impl Fold {
     }
 }
 
-/// Index of the fold whose range contains `line`, or `None`. (Slice 1 folds are non-overlapping, so at most
-/// one matches.) Used by `za`/`zo`/`zc`/`zd` to act on the fold at the cursor.
+/// Index of the innermost fold whose range contains `line`, or `None`: the deepest one on [`path`].
 #[must_use]
 pub fn fold_at(folds: &[Fold], line: usize) -> Option<usize> {
-    folds.iter().position(|f| f.contains(line))
+    path(folds, line).last().copied()
+}
+
+/// The indices of the folds holding `line`, outermost first (nvim walks a fold tree from the top). Folds
+/// nest (a manual `zf` inside a fold, or `foldmethod=indent`), so each one on the path holds the next.
+#[must_use]
+pub fn path(folds: &[Fold], line: usize) -> Vec<usize> {
+    let mut on: Vec<usize> = (0..folds.len())
+        .filter(|&i| folds[i].contains(line))
+        .collect();
+    on.sort_by_key(|&i| {
+        (
+            folds[i].level,
+            folds[i].start,
+            std::cmp::Reverse(folds[i].end),
+        )
+    });
+    on
+}
+
+/// Whether fold `j` lies inside fold `i` (deeper and within its lines): one of `i`'s nested folds.
+fn nested_in(folds: &[Fold], i: usize, j: usize) -> bool {
+    let (a, b) = (&folds[i], &folds[j]);
+    i != j && b.level > a.level && a.start <= b.start && b.end <= a.end
+}
+
+/// Whether fold `j` is inside a closed fold, so it is not on the screen as a fold of its own: `zj`/`zk`
+/// count a closed fold as one.
+fn inside_closed(folds: &[Fold], j: usize) -> bool {
+    (0..folds.len()).any(|i| shows_closed(&folds[i]) && nested_in(folds, i, j))
+}
+
+/// Whether a fold's lines show as one summary line when it is closed: one of at least two lines (nvim's
+/// 'foldminlines' of 1). A one-line fold is kept, with its level, but never hides its line.
+fn shows_closed(f: &Fold) -> bool {
+    f.closed && f.end > f.start
+}
+
+/// `zo` (once) on `line`, nvim's `setManualFold` opening one level: open the outermost closed fold that
+/// holds it. `None` when no fold holds `line` (`E490`), else whether a fold was opened.
+pub fn open_one(folds: &mut [Fold], line: usize) -> Option<bool> {
+    let on = path(folds, line);
+    if on.is_empty() {
+        return None;
+    }
+    Some(on.into_iter().find(|&i| folds[i].closed).is_some_and(|i| {
+        folds[i].closed = false;
+        true
+    }))
+}
+
+/// `zO` on `line`: open the outermost closed fold that holds it and every fold nested in that one. `None`
+/// when no fold holds `line`.
+pub fn open_rec(folds: &mut [Fold], line: usize) -> Option<bool> {
+    let on = path(folds, line);
+    if on.is_empty() {
+        return None;
+    }
+    let Some(i) = on.into_iter().find(|&i| folds[i].closed) else {
+        return Some(false);
+    };
+    for j in 0..folds.len() {
+        if j == i || nested_in(folds, i, j) {
+            folds[j].closed = false;
+        }
+    }
+    Some(true)
+}
+
+/// `zc` (once) on `line`: close the innermost open fold above the first closed one that holds it (nvim
+/// closes "one more level"; with every fold there closed it does nothing). `None` when no fold holds
+/// `line`.
+pub fn close_one(folds: &mut [Fold], line: usize) -> Option<bool> {
+    let on = path(folds, line);
+    if on.is_empty() {
+        return None;
+    }
+    let deepest_open = on.into_iter().take_while(|&i| !folds[i].closed).last();
+    Some(deepest_open.is_some_and(|i| {
+        folds[i].closed = true;
+        true
+    }))
+}
+
+/// `zC` on `line`: close every fold that holds it. `None` when none does.
+pub fn close_rec(folds: &mut [Fold], line: usize) -> Option<bool> {
+    let on = path(folds, line);
+    if on.is_empty() {
+        return None;
+    }
+    let mut done = false;
+    for i in on {
+        done |= !folds[i].closed;
+        folds[i].closed = true;
+    }
+    Some(done)
+}
+
+/// `:{range}foldopen[!]` / `:{range}foldclose[!]` over the 0-based lines `first..=last`, nvim's
+/// `opFoldRange`: a `zo`/`zc` (`zO`/`zC` when `recursive`) on each line in turn, skipping past the closed
+/// fold a level-one open leaves (or a close made). Whether any fold held a line of the range (else
+/// `E490`).
+pub fn op_range(
+    folds: &mut [Fold],
+    first: usize,
+    last: usize,
+    opening: bool,
+    recursive: bool,
+) -> bool {
+    let mut found = false;
+    let mut line = first;
+    while line <= last {
+        let mut next = line;
+        if opening && !recursive {
+            next = closed_range(folds, line).map_or(line, |r| r.1);
+        }
+        let hit = match (opening, recursive) {
+            (true, false) => open_one(folds, line),
+            (true, true) => open_rec(folds, line),
+            (false, false) => close_one(folds, line),
+            (false, true) => close_rec(folds, line),
+        };
+        found |= hit.is_some();
+        if !opening && !recursive {
+            next = closed_range(folds, line).map_or(line, |r| r.1);
+        }
+        line = next + 1;
+    }
+    found
+}
+
+/// Whether a closed fold holds `line` (nvim's `foldClosed` ≥ 0 for `za`/`zA`: closed with its lines
+/// hidden, so a closed one-line fold does not count).
+#[must_use]
+pub fn is_closed_at(folds: &[Fold], line: usize) -> bool {
+    closed_range(folds, line).is_some()
+}
+
+/// The fold `zd`/`zD` act on at `line`: the innermost fold holding it, or the outermost closed one when a
+/// closed fold holds it (nvim's `deleteFold` does not look inside a closed fold).
+#[must_use]
+pub fn delete_target(folds: &[Fold], line: usize) -> Option<usize> {
+    let on = path(folds, line);
+    let first_closed = on.iter().position(|&i| shows_closed(&folds[i]));
+    match first_closed {
+        Some(k) => Some(on[k]),
+        None => on.last().copied(),
+    }
+}
+
+/// `zd` (`recursive` false) or `zD` on `line`: delete the fold [`delete_target`] picks. `zd` moves its
+/// nested folds one level up; `zD` deletes them too. Whether a fold held `line`.
+pub fn delete_at(folds: &mut Vec<Fold>, line: usize, recursive: bool) -> bool {
+    let Some(i) = delete_target(folds, line) else {
+        return false;
+    };
+    let inner: Vec<bool> = (0..folds.len()).map(|j| nested_in(folds, i, j)).collect();
+    let mut k = 0;
+    folds.retain_mut(|f| {
+        let j = k;
+        k += 1;
+        if j == i || (recursive && inner[j]) {
+            return false;
+        }
+        if inner[j] {
+            f.level -= 1;
+        }
+        true
+    });
+    true
 }
 
 /// The START line of the next fold strictly BELOW `line` (`zj`), or `None` if there is none. A fold whose
 /// start is at or above `line` is skipped — so a cursor already inside (or at the start of) a fold jumps to
-/// the FOLLOWING fold, matching Vim. Non-overlapping folds mean the answer is the smallest such `start`.
+/// the FOLLOWING fold, nested ones included, matching Vim. A fold inside a closed fold is not one of its
+/// own (a closed fold counts as one).
 #[must_use]
 pub fn next_fold_start(folds: &[Fold], line: usize) -> Option<usize> {
-    folds.iter().map(|f| f.start).filter(|&s| s > line).min()
+    (0..folds.len())
+        .filter(|&i| !inside_closed(folds, i))
+        .map(|i| folds[i].start)
+        .filter(|&s| s > line)
+        .min()
 }
 
 /// The END line of the previous fold strictly ABOVE `line` (`zk`), or `None` if there is none. A fold whose
 /// end is at or below `line` is skipped, so a cursor inside a fold jumps to the PRECEDING fold's end. The
-/// answer is the largest such `end`.
+/// answer is the largest such `end`, skipping the folds inside a closed fold.
 #[must_use]
 pub fn prev_fold_end(folds: &[Fold], line: usize) -> Option<usize> {
-    folds.iter().map(|f| f.end).filter(|&e| e < line).max()
+    (0..folds.len())
+        .filter(|&i| !inside_closed(folds, i))
+        .map(|i| folds[i].end)
+        .filter(|&e| e < line)
+        .max()
+}
+
+/// `[z` (`start`) or `]z` on `line`: the line of the start (or end) of the innermost open fold holding
+/// `line` that is not already at it, looking only at the folds above the first closed one (nvim's
+/// `foldMoveTo`). At the start of a nested fold `[z` goes to the start of the fold around it.
+#[must_use]
+pub fn open_fold_edge(folds: &[Fold], line: usize, start: bool) -> Option<usize> {
+    let mut found = None;
+    for i in path(folds, line) {
+        let f = &folds[i];
+        if shows_closed(f) {
+            break;
+        }
+        if start && f.start < line {
+            found = Some(f.start);
+        } else if !start && f.end > line {
+            found = Some(f.end);
+        }
+    }
+    found
 }
 
 /// The CLOSED fold that starts at buffer `line` (the row whose summary the renderer paints), or `None`.
@@ -75,7 +272,7 @@ pub fn prev_fold_end(folds: &[Fold], line: usize) -> Option<usize> {
 pub fn closed_starting_at(folds: &[Fold], line: usize) -> Option<&Fold> {
     folds
         .iter()
-        .filter(|f| f.closed && f.start == line)
+        .filter(|f| shows_closed(f) && f.start == line)
         .max_by_key(|f| f.end)
 }
 
@@ -93,12 +290,12 @@ pub fn hidden(folds: &[Fold], line: usize) -> bool {
 /// `hasFolding`.
 #[must_use]
 pub fn closed_range(folds: &[Fold], line: usize) -> Option<(usize, usize)> {
-    folds.iter().filter(|f| f.closed && f.contains(line)).fold(
-        None,
-        |acc: Option<(usize, usize)>, f| {
+    folds
+        .iter()
+        .filter(|f| shows_closed(f) && f.contains(line))
+        .fold(None, |acc: Option<(usize, usize)>, f| {
             Some(acc.map_or((f.start, f.end), |(s, e)| (s.min(f.start), e.max(f.end))))
-        },
-    )
+        })
 }
 
 /// The line `n` lines below `line`, a closed fold counting as one line, or `None` when the move fails
@@ -232,8 +429,8 @@ impl Anchored {
     /// it is. `line_of` maps a byte offset of `doc` to its line.
     ///
     /// A first line joined onto the line above (`J` there) is gone from the fold, which then starts on the
-    /// next line, as nvim deletes the joined line. Should two manual folds still meet, the later one goes,
-    /// so the set stays flat.
+    /// next line, as nvim deletes the joined line. Should two manual folds now overlap without one holding
+    /// the other, the later one goes, so the set still nests ([`renest`]).
     pub fn follow(&self, doc: &Document, folds: &mut Vec<Fold>, line_of: impl Fn(usize) -> usize) {
         if self.rev.is_none() || self.rev == Some(doc.revision()) {
             return;
@@ -261,15 +458,7 @@ impl Anchored {
             f.end = end;
             true
         });
-        if !folds.iter().any(|f| f.level > 1) {
-            let mut kept: Vec<Fold> = Vec::with_capacity(folds.len());
-            for f in folds.drain(..) {
-                if kept.iter().all(|k| k.end < f.start || f.end < k.start) {
-                    kept.push(f);
-                }
-            }
-            *folds = kept;
-        }
+        renest(folds);
     }
 
     /// Re-anchor `folds` in `doc` at its current revision, releasing the old anchors. `line_start` maps a
@@ -314,9 +503,10 @@ fn same_range(a: &Fold, b: &Fold) -> bool {
 }
 
 /// Panic unless `folds` is a well-formed fold set over a buffer of `lines` lines (the invariant walker,
-/// #906): every range is inside the buffer and ordered, a manual set is flat (no two folds overlap) and an
-/// indent set nests (two folds are disjoint or one holds the other).
-pub fn assert_invariants(folds: &[Fold], lines: usize, nested: bool) {
+/// #906): every range is inside the buffer and ordered, and two folds are disjoint or one holds the other.
+/// A `manual` set's levels are also its depths, as [`renest`] gives them, so nested folds of the same lines
+/// keep a strict order.
+pub fn assert_invariants(folds: &[Fold], lines: usize, manual: bool) {
     for f in folds {
         assert!(
             f.start <= f.end && f.end < lines.max(1),
@@ -329,31 +519,84 @@ pub fn assert_invariants(folds: &[Fold], lines: usize, nested: bool) {
             let disjoint = a.end < b.start || b.end < a.start;
             let nests =
                 (a.start <= b.start && b.end <= a.end) || (b.start <= a.start && a.end <= b.end);
-            assert!(
-                disjoint || (nested && nests),
-                "folds {a:?} and {b:?} overlap in a {} set",
-                if nested { "nested" } else { "manual" }
-            );
+            assert!(disjoint || nests, "folds {a:?} and {b:?} overlap");
         }
+    }
+    if manual {
+        let key = |f: &Fold| (f.start, std::cmp::Reverse(f.end), f.level);
+        let mut sorted = folds.to_vec();
+        sorted.sort_by_key(key);
+        let mut renested = sorted.clone();
+        renest(&mut renested);
+        assert_eq!(sorted, renested, "manual fold levels are not their depths");
     }
 }
 
-/// Insert a CLOSED fold over the inclusive 0-based line range `[start, end]`, keeping the slice-1
-/// non-overlapping invariant: any existing fold that overlaps the new range is dropped first (nesting is
-/// deferred — a `zf` over an existing fold REPLACES it rather than nesting). A degenerate `end < start`
-/// range is ignored. Used by both Normal `zf{motion}` and Visual `zf`.
+/// Create a CLOSED manual fold over the inclusive 0-based line range `[start, end]` (`zf`, `:fold`), as
+/// nvim's `foldCreate` nests it: inside the deepest fold that holds the whole range, and around the folds
+/// at that level that it meets. A fold it only partly covers is taken in whole, so the new fold starts at
+/// that fold's start or ends at its end. The folds it takes in go one level deeper. A reversed range is
+/// ignored.
 pub fn insert_closed_fold(folds: &mut Vec<Fold>, start: usize, end: usize) {
     if end < start {
         return;
     }
-    // Drop every fold that overlaps [start, end] (two ranges overlap iff neither is fully before the other).
-    folds.retain(|f| f.end < start || f.start > end);
+    // The deepest fold that holds the whole range (nvim goes one level deeper while the fold holding
+    // `start` reaches `end`). Its level + 1 is the new fold's.
+    let mut parent: Option<usize> = None;
+    loop {
+        let level = parent.map_or(1, |p| folds[p].level + 1);
+        let within =
+            |f: &Fold| parent.is_none_or(|p| folds[p].start <= f.start && f.end <= folds[p].end);
+        let holder = (0..folds.len())
+            .find(|&i| folds[i].level == level && within(&folds[i]) && folds[i].contains(start));
+        match holder {
+            Some(h) if folds[h].end >= end => parent = Some(h),
+            _ => break,
+        }
+    }
+    let level = parent.map_or(1, |p| folds[p].level + 1);
+    let (lo, hi) = parent.map_or((0, usize::MAX), |p| (folds[p].start, folds[p].end));
+    // The folds at that level the new one meets: the one holding `start`, and those starting up to `end`.
+    let (mut s, mut e) = (start, end);
+    for f in folds.iter() {
+        if f.level == level && lo <= f.start && f.end <= hi && f.end >= start && f.start <= end {
+            s = s.min(f.start);
+            e = e.max(f.end);
+        }
+    }
+    for f in folds.iter_mut() {
+        if f.level >= level && lo <= f.start && f.end <= hi && s <= f.start && f.end <= e {
+            f.level += 1;
+        }
+    }
     folds.push(Fold {
-        start,
-        end,
+        start: s,
+        end: e,
         closed: true,
-        level: 1, // manual folds are flat (level 1); nesting is an indent-method concept.
+        level,
     });
+}
+
+/// Restore the nesting of a manual fold set after its ranges moved with an edit: a fold that now only
+/// partly overlaps an earlier one is dropped, and each level is set again to the fold's depth. Folds that
+/// cover the same lines keep their order.
+pub fn renest(folds: &mut Vec<Fold>) {
+    folds.sort_by_key(|f| (f.start, std::cmp::Reverse(f.end), f.level));
+    let mut stack: Vec<usize> = Vec::new();
+    let mut kept: Vec<Fold> = Vec::with_capacity(folds.len());
+    for mut f in folds.drain(..) {
+        while stack.last().is_some_and(|&t| kept[t].end < f.start) {
+            stack.pop();
+        }
+        if stack.last().is_some_and(|&t| f.end > kept[t].end) {
+            continue;
+        }
+        f.level = stack.len() + 1;
+        stack.push(kept.len());
+        kept.push(f);
+    }
+    *folds = kept;
 }
 
 /// The parse result of feeding the keys typed after `zf` (Normal-mode fold-over-motion): the buffered
@@ -403,6 +646,14 @@ pub fn parse_fold_motion(keys: &str) -> FoldMotionParse {
         // Multi-key leads: await the second key.
         "g" | "i" | "a" => return FoldMotionParse::More,
         "gg" => Motion::GotoLine,
+        // A move within the line folds the cursor line alone, whatever its count (`zfl`, `zf$`).
+        "l" | "h" | "$" | "0" | "^" | " " => {
+            return FoldMotionParse::Ready {
+                motion: Motion::Line,
+                count: 1,
+            }
+        }
+        "_" => Motion::Line,
         "ip" => Motion::InnerParagraph,
         "ap" => Motion::AParagraph,
         _ => return FoldMotionParse::Cancel,
@@ -417,18 +668,15 @@ pub fn eliminate_all(folds: &mut Vec<Fold>) {
     folds.clear();
 }
 
-/// `zv` — "view cursor line": OPEN just enough folds to make `line` visible, without deleting any. For the
-/// non-nesting slice-1 model that means open the (single) fold containing `line` if it is closed; other
-/// folds keep their state (verified against nvim: `zv` on a line inside fold A opens A but leaves fold B
-/// closed). Returns whether a closed fold was opened (so the caller can skip a redundant repaint/no-op).
+/// `zv` — "view cursor line": open just enough folds to make `line` visible (nvim's `foldOpenCursor`
+/// repeats a `zo` until no closed fold holds it), without deleting any. Folds not holding `line` keep
+/// their state. Returns whether a fold was opened.
 pub fn open_cursor_fold(folds: &mut [Fold], line: usize) -> bool {
-    match fold_at(folds, line) {
-        Some(idx) if folds[idx].closed => {
-            folds[idx].closed = false;
-            true
-        }
-        _ => false,
+    let mut opened = false;
+    while open_one(folds, line) == Some(true) {
+        opened = true;
     }
+    opened
 }
 
 /// The one-line summary a closed fold paints on its start row: `▸ {N} lines: {first-line text}` (trimmed).
@@ -798,14 +1046,15 @@ mod tests {
 
     #[test]
     fn assert_invariants_accepts_flat_and_nested_sets() {
-        assert_invariants(&[f(0, 1, true), f(3, 4, false)], 5, false);
+        assert_invariants(&[f(0, 1, true), f(3, 4, false)], 5, true);
         assert_invariants(&[fl(0, 4, true, 1), fl(1, 2, true, 2)], 5, true);
+        assert_invariants(&[fl(0, 4, true, 1), fl(1, 2, true, 3)], 5, false);
     }
 
     #[test]
     #[should_panic(expected = "overlap")]
     fn assert_invariants_rejects_overlapping_manual_folds() {
-        assert_invariants(&[f(0, 2, true), f(2, 4, true)], 5, false);
+        assert_invariants(&[f(0, 2, true), f(2, 4, true)], 5, true);
     }
 
     #[test]
@@ -874,29 +1123,162 @@ mod tests {
         assert_eq!(next_fold_start(&folds, b), None);
     }
 
+    /// The folds as `(start, end, level)`, in order.
+    fn shape(folds: &[Fold]) -> Vec<(usize, usize, usize)> {
+        let mut v: Vec<_> = folds.iter().map(|f| (f.start, f.end, f.level)).collect();
+        v.sort_unstable();
+        v
+    }
+
     #[test]
-    fn insert_closed_fold_is_closed_and_replaces_overlaps() {
-        // A fresh fold is inserted closed over the inclusive range.
+    fn insert_closed_fold_nests_as_nvim_fold_create() {
+        // A fresh fold is inserted closed over the inclusive range; a disjoint one beside it.
         let mut folds = Vec::new();
         insert_closed_fold(&mut folds, 2, 5);
         assert_eq!(folds, vec![f(2, 5, true)]);
-
-        // A non-overlapping fold coexists (slice-1 non-overlapping set).
         insert_closed_fold(&mut folds, 7, 9);
-        assert_eq!(folds, vec![f(2, 5, true), f(7, 9, true)]);
-
-        // A new fold overlapping the FIRST replaces it (nesting deferred); the disjoint one survives.
-        insert_closed_fold(&mut folds, 1, 3);
-        assert_eq!(folds, vec![f(7, 9, true), f(1, 3, true)]);
-
-        // A new fold spanning BOTH remaining folds replaces both.
-        insert_closed_fold(&mut folds, 0, 10);
-        assert_eq!(folds, vec![f(0, 10, true)]);
-
-        // A degenerate reversed range is ignored (the caller also guards `end > start`).
+        assert_eq!(shape(&folds), [(2, 5, 1), (7, 9, 1)]);
+        // Inside a fold: one level deeper (nvim `jzf4jzojzfj`).
+        insert_closed_fold(&mut folds, 3, 4);
+        assert_eq!(shape(&folds), [(2, 5, 1), (3, 4, 2), (7, 9, 1)]);
+        // Partly over a fold: the new fold takes it in whole and starts at its start (`kzf3j`).
+        let mut folds = vec![f(1, 5, false)];
+        insert_closed_fold(&mut folds, 0, 3);
+        assert_eq!(shape(&folds), [(0, 5, 1), (1, 5, 2)]);
+        // Starting inside a fold and ending past it: the new fold starts at that fold's start.
+        let mut folds = vec![f(1, 5, false)];
+        insert_closed_fold(&mut folds, 3, 6);
+        assert_eq!(shape(&folds), [(1, 5, 2), (1, 6, 1)]);
+        // Around two folds and the fold inside one of them.
+        let mut folds = vec![f(1, 2, false), f(4, 5, false)];
+        insert_closed_fold(&mut folds, 4, 4);
+        insert_closed_fold(&mut folds, 0, 5);
+        assert_eq!(shape(&folds), [(0, 5, 1), (1, 2, 2), (4, 4, 3), (4, 5, 2)]);
+        // The same lines as a fold: inside it.
+        let mut folds = vec![f(2, 3, false)];
+        insert_closed_fold(&mut folds, 2, 3);
+        assert_eq!(shape(&folds), [(2, 3, 1), (2, 3, 2)]);
+        assert_invariants(&folds, 9, true);
+        // A reversed range is ignored.
         let before = folds.clone();
         insert_closed_fold(&mut folds, 5, 4);
         assert_eq!(folds, before);
+    }
+
+    #[test]
+    fn nested_open_close_follow_set_manual_fold() {
+        // Outer 1-5 open, inner 2-3 closed (nvim `jzf4jzojzfj`, cursor on line 2).
+        let fresh = || vec![fl(1, 5, false, 1), fl(2, 3, true, 2)];
+        let closed = |v: &[Fold]| v.iter().map(|f| f.closed).collect::<Vec<_>>();
+        // `zc` closes the innermost open fold above the closed one: the outer.
+        let mut v = fresh();
+        assert_eq!(close_one(&mut v, 2), Some(true));
+        assert_eq!(closed(&v), [true, true]);
+        // ... and with every fold there closed does nothing, without an error.
+        assert_eq!(close_one(&mut v, 2), Some(false));
+        // `zo` opens the outermost closed one only.
+        assert_eq!(open_one(&mut v, 2), Some(true));
+        assert_eq!(closed(&v), [false, true]);
+        // `zO` opens the outermost closed one and everything inside it.
+        let mut v = fresh();
+        v[0].closed = true;
+        assert_eq!(open_rec(&mut v, 2), Some(true));
+        assert_eq!(closed(&v), [false, false]);
+        // `zC` closes every fold holding the line.
+        assert_eq!(close_rec(&mut v, 2), Some(true));
+        assert_eq!(closed(&v), [true, true]);
+        // `zc` with every fold open closes the innermost.
+        let mut v = fresh();
+        v[1].closed = false;
+        assert_eq!(close_one(&mut v, 2), Some(true));
+        assert_eq!(closed(&v), [false, true]);
+        // Outside the inner fold, the outer is the innermost.
+        let mut v = fresh();
+        v[1].closed = false;
+        assert_eq!(close_one(&mut v, 5), Some(true));
+        assert_eq!(closed(&v), [true, false]);
+        // No fold at the line: `E490` for all of them.
+        let mut v = fresh();
+        assert_eq!(open_one(&mut v, 7), None);
+        assert_eq!(close_one(&mut v, 7), None);
+        assert_eq!(open_rec(&mut v, 7), None);
+        assert_eq!(close_rec(&mut v, 7), None);
+        // `zv` opens every fold holding the line.
+        let mut v = fresh();
+        v[0].closed = true;
+        assert!(open_cursor_fold(&mut v, 3));
+        assert_eq!(closed(&v), [false, false]);
+    }
+
+    #[test]
+    fn delete_at_moves_nested_folds_up_or_drops_them() {
+        let fresh = || vec![fl(1, 5, false, 1), fl(2, 3, true, 2), fl(2, 2, false, 3)];
+        // `zd` on the closed inner fold deletes it; the fold inside it goes up a level.
+        let mut v = fresh();
+        assert!(delete_at(&mut v, 2, false));
+        assert_eq!(shape(&v), [(1, 5, 1), (2, 2, 2)]);
+        // `zD` there deletes it and the fold inside it.
+        let mut v = fresh();
+        assert!(delete_at(&mut v, 2, true));
+        assert_eq!(shape(&v), [(1, 5, 1)]);
+        // `zD` on the open outer fold (a line outside the inner one) deletes all three.
+        let mut v = fresh();
+        assert!(delete_at(&mut v, 4, true));
+        assert!(v.is_empty());
+        // With every fold open, `zd` deletes the innermost.
+        let mut v = fresh();
+        v[1].closed = false;
+        assert!(delete_at(&mut v, 2, false));
+        assert_eq!(shape(&v), [(1, 5, 1), (2, 3, 2)]);
+        // A closed outer fold is the one deleted, whatever is inside it.
+        let mut v = fresh();
+        v[0].closed = true;
+        assert!(delete_at(&mut v, 2, false));
+        assert_eq!(shape(&v), [(2, 2, 2), (2, 3, 1)]);
+        assert!(!delete_at(&mut v, 7, false));
+    }
+
+    #[test]
+    fn open_fold_edge_steps_out_of_a_nested_fold() {
+        // Outer 1-5 and inner 2-3, both open (nvim `zR[z` on line 2 goes to line 1).
+        let v = vec![fl(1, 5, false, 1), fl(2, 3, false, 2)];
+        assert_eq!(open_fold_edge(&v, 2, true), Some(1));
+        assert_eq!(open_fold_edge(&v, 2, false), Some(3));
+        assert_eq!(open_fold_edge(&v, 3, true), Some(2));
+        assert_eq!(open_fold_edge(&v, 3, false), Some(5));
+        assert_eq!(open_fold_edge(&v, 1, true), None);
+        // A closed fold stops the walk: only the open folds around it count.
+        let v = vec![fl(1, 5, false, 1), fl(2, 3, true, 2)];
+        assert_eq!(open_fold_edge(&v, 3, false), Some(5));
+        let v = vec![fl(1, 5, true, 1)];
+        assert_eq!(open_fold_edge(&v, 3, true), None);
+    }
+
+    #[test]
+    fn zj_zk_skip_the_folds_inside_a_closed_fold() {
+        let mut v = vec![fl(1, 5, false, 1), fl(2, 3, false, 2), fl(7, 8, false, 1)];
+        assert_eq!(next_fold_start(&v, 1), Some(2));
+        assert_eq!(prev_fold_end(&v, 7), Some(5));
+        assert_eq!(prev_fold_end(&v, 5), Some(3));
+        v[0].closed = true;
+        assert_eq!(next_fold_start(&v, 1), Some(7));
+        assert_eq!(prev_fold_end(&v, 5), None);
+    }
+
+    #[test]
+    fn a_one_line_fold_never_shows_closed() {
+        let v = vec![f(2, 2, true)];
+        assert_eq!(closed_range(&v, 2), None);
+        assert!(closed_starting_at(&v, 2).is_none());
+        assert!(!is_closed_at(&v, 2));
+        assert_eq!(fold_at(&v, 2), Some(0));
+    }
+
+    #[test]
+    fn renest_drops_partial_overlaps_and_resets_levels() {
+        let mut v = vec![fl(0, 3, true, 1), fl(2, 5, true, 1), fl(1, 2, false, 1)];
+        renest(&mut v);
+        assert_eq!(shape(&v), [(0, 3, 1), (1, 2, 2)]);
     }
 
     #[test]
@@ -1024,8 +1406,14 @@ mod tests {
     #[test]
     fn parse_fold_motion_cancels_unsupported() {
         use FoldMotionParse::Cancel;
-        // A leading `0` is the column-0 motion, not a count — unsupported for folds.
-        assert_eq!(parse_fold_motion("0"), Cancel);
+        // A leading `0` is the column-0 motion, not a count: it folds the cursor line (`zf0`).
+        assert_eq!(
+            parse_fold_motion("0"),
+            FoldMotionParse::Ready {
+                motion: Motion::Line,
+                count: 1
+            }
+        );
         // Unknown / non-fold motions abandon the pending zf.
         assert_eq!(parse_fold_motion("x"), Cancel);
         assert_eq!(parse_fold_motion("w"), Cancel);

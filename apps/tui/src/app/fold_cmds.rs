@@ -306,18 +306,6 @@ pub(crate) fn prepare(
     }
 }
 
-/// The open fold `[z`/`]z` move to the ends of: the innermost open fold holding the cursor `line`, a
-/// closed fold there counting as one line (so a closed fold is not "the current open fold"; nvim stays).
-#[must_use]
-pub(crate) fn current_open_fold(folds: &[Fold], line: usize) -> Option<(usize, usize)> {
-    let (lo, hi) = folds::closed_range(folds, line).unwrap_or((line, line));
-    folds
-        .iter()
-        .filter(|f| !f.closed && f.start <= lo && hi <= f.end && (f.start, f.end) != (lo, hi))
-        .min_by_key(|f| f.end - f.start)
-        .map(|f| (f.start, f.end))
-}
-
 /// Whether nvim opens the closed fold the cursor lands in after `cmd`, at the default 'foldopen'
 /// (`block,hor,mark,percent,quickfix,search,tag,undo`): a horizontal move (`l`, `$`, `w`, `f`…), a search
 /// or `n`, a mark or jump, `%`, a block move (`}`, `)`, `]]`…) and undo or redo. A shift opens it too
