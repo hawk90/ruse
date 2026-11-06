@@ -150,6 +150,7 @@ impl Headless {
         self.s.recorded.clear();
         self.s.start_options = self.s.ws.focused().view.editing_options();
         self.s.start_registers = self.s.ws.registers().filled();
+        self.s.trace_watch = crate::app::trace_check::TraceWatch::new(&self.s.ws, &self.s.files);
     }
 
     /// Apply `edits` (`(start, end, text)` byte edits) to the focused buffer the way a language server's

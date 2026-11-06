@@ -332,6 +332,34 @@ cursor and undo grouping, with no IO and no re-resolution):
   - Not recorded: the journal-recovery `apply_edits` when `:e` opens a file with a crash journal (a buffer
     switch, which a trace does not follow), and the `"=` register (its value comes from a recorded command).
 
+## Implementation notes (#690)
+
+A re-check of #690's cases against the code after #1105/#1134/#1245 found the Ex edits, `&`/`g&`, the
+starting `smartcase`/`ignorecase`, the picker jump and the Emacs caret gravity replaying exactly. Three gaps
+remained, fixed without a format change (no new verb or header field):
+
+- **CRLF and BOM files.** The recorder hashes the start buffer (BOM dropped, CRLF as LF); `ruse --replay`
+  hashed the raw file, so a trace never replayed onto its own CRLF or BOM file (`HashMismatch`). `--replay`
+  now reads the file as the editor opens it (`FileFormat::detect` + `to_buffer`) and prints the result as
+  `:w` writes it (`dispatch::disk_image`: final newline, BOM, line endings). An LF file without a BOM hashes
+  the same either way, so earlier traces of those still replay.
+- **Window switches.** A switch to another window on the start buffer moved the cursor without a record;
+  it now records the new window's cursor as `ex_place` (`trace_check::TraceWatch::after_input`).
+- **What a trace cannot follow** is refused, not written. `:trace save` replays the trace onto the start
+  text first (`trace_check::check`) and refuses when the result is not the start buffer's text, naming
+  what it saw: the file re-read by `:e`/`:e!` (new text from disk, a fresh undo history), commands typed in
+  another buffer (a trace follows one document; they were recorded into it), or the start buffer closed.
+  The replay is the backstop for anything else the session did outside the recorder (an LSP edit to the
+  start buffer while another was focused, a window's own wanted column): the save is refused as "an edit
+  the trace cannot record" rather than written wrong.
+
+Not done, because it changes the format: a replay that reaches a different document than the session did
+cannot be detected by `--replay` itself, since the trace holds no result hash. Within one binary the
+save-time replay makes that impossible; across binaries (a trace replayed by a later build whose commands
+behave differently) it needs a recorded result, for example an additive `result_hash=` header token that
+older readers ignore. The *Reference Invariants* above say the format "grows by verbs only", so that needs
+an amendment to this RFC first.
+
 ## Open questions
 
 1. ~~Whether registers filled *before* the trace starts (and the clipboard registers `"+`/`"*`) should be

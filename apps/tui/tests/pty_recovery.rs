@@ -328,7 +328,13 @@ fn recovers_undoably(disk: &[u8], rec: &[u8]) {
         std::process::Stdio::piped(),
     );
     assert_eq!(out.status, 0, "replay: {}", out.stderr);
-    assert_eq!(out.stdout, rec);
+    // The replay prints what `:w` writes (#690): a file read with a final newline keeps `'endofline'`, so
+    // a recovered text without one is written with it.
+    let mut written = rec.to_vec();
+    if !rec.is_empty() && !rec.ends_with(b"\n") && (disk.is_empty() || disk.ends_with(b"\n")) {
+        written.push(b'\n');
+    }
+    assert_eq!(out.stdout, written);
     ed.keys("u:q\r");
     assert_eq!(
         ed.exit_status(),

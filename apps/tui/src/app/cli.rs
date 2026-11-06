@@ -16,7 +16,9 @@ use crate::remote::agent;
 use crate::remote::client::AgentClient;
 use crate::remote::transport;
 
+use crate::app::dispatch::disk_image;
 use crate::app::session::run as session_run;
+use crate::persist::encoding::FileFormat;
 
 /// `ruse --help` text. Paths are the only arguments the interactive editor takes today.
 const USAGE: &str = "\
@@ -257,7 +259,7 @@ fn replay(args: &[String]) -> ExitCode {
         eprintln!("usage: ruse --replay <trace> <file>");
         return ExitCode::FAILURE;
     };
-    let (text, bytes) = match (fs::read_to_string(tp), fs::read(fp)) {
+    let (text, raw) = match (fs::read_to_string(tp), fs::read(fp)) {
         (Ok(t), Ok(b)) => (t, b),
         _ => {
             eprintln!("ruse: cannot read trace or file");
@@ -271,9 +273,12 @@ fn replay(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match trace.replay(&bytes) {
+    // The file is read as the editor opens it (F-008): the trace starts from the buffer, without the BOM
+    // and with LF line endings, and the result is printed as `:w` writes it back (#690).
+    let fmt = FileFormat::detect(&raw);
+    match trace.replay(&fmt.to_buffer(&raw)) {
         Ok(st) => {
-            let _ = io::stdout().write_all(st.bytes());
+            let _ = io::stdout().write_all(&disk_image(fmt, st.bytes(), false));
             ExitCode::SUCCESS
         }
         Err(e) => {

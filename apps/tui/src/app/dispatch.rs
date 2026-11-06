@@ -195,6 +195,7 @@ pub(crate) fn attach_file(
             path,
             fmt,
             read_only: false,
+            reloads: 0,
         },
     );
 }
@@ -216,6 +217,9 @@ pub(crate) struct BufferFile {
     /// Opened read-only from the recovery prompt while another session edits the file (Vim's
     /// `'readonly'`): a write to it without `!` is `E45`.
     pub(crate) read_only: bool,
+    /// How many times `:e`/`:e!` re-read the file into the buffer: a re-read is new text from disk and a
+    /// fresh undo history, which a trace cannot record (#690, [`crate::app::trace_check`]).
+    pub(crate) reloads: u32,
 }
 
 /// Neovim's message for a write to a `'readonly'` buffer without `!`.
@@ -865,6 +869,26 @@ fn needs_final_newline(buf: &[u8], add: bool) -> bool {
     add && !buf.is_empty() && buf.last() != Some(&b'\n')
 }
 
+/// The bytes a write of `buffer` puts on disk for a file read as `fmt`: the final newline a buffer with
+/// `'endofline'` (or `:set fixeol`) always gets (#1107), then the file's BOM and line endings (F-008 #2).
+/// `ruse --replay` prints the same image of the replayed buffer, so it equals what `:w` wrote (#690).
+pub(crate) fn disk_image(
+    fmt: persist::encoding::FileFormat,
+    buffer: &[u8],
+    fixeol: bool,
+) -> Vec<u8> {
+    fmt.to_disk(&disk_source(fmt, buffer, fixeol))
+}
+
+/// The buffer text a write encodes: `buffer`, plus the final newline it gets on a write (#1107).
+fn disk_source(fmt: persist::encoding::FileFormat, buffer: &[u8], fixeol: bool) -> Vec<u8> {
+    let mut source = buffer.to_vec();
+    if needs_final_newline(&source, fixeol || fmt.final_newline) {
+        source.push(b'\n');
+    }
+    source
+}
+
 /// Returns whether the focused buffer reached disk.
 pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeol: bool) -> bool {
     // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
@@ -880,13 +904,9 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
     // `:set fixeol` (opt-in) ADDS a trailing `\n` when the buffer lacks one. Append it to the SOURCE bytes
     // BEFORE `to_disk` so the encoding step (BOM/CRLF re-application) treats the newline like any other —
     // e.g. a CRLF file gets `\r\n`. Default (byte-preserve) leaves the bytes untouched.
-    let doc_bytes = ws.focused().doc.bytes();
-    let mut source = doc_bytes.to_vec();
-    // A buffer with `'endofline'` (a new file, or one read with a final newline) always gets it (#1107).
-    if needs_final_newline(&source, fixeol || bf.fmt.final_newline) {
-        source.push(b'\n');
-    }
     // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
+    // A buffer with `'endofline'` (a new file, or one read with a final newline) always gets it (#1107).
+    let source = disk_source(bf.fmt, ws.focused().doc.bytes(), fixeol);
     let bytes = bf.fmt.to_disk(&source);
     // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is, and a file
     // changed on disk since ruse read or saved it is not overwritten (RFC-0023 §8).

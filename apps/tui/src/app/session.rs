@@ -729,6 +729,9 @@ pub(crate) struct Session {
     /// The registers that held a value as the session began (RFC-0020 R6): a saved trace writes them after
     /// the starting options, so a `p` of one replays the same text. Read with the starting options.
     pub(crate) start_registers: Vec<(Option<char>, ruse_core::Register)>,
+    /// What the session did to the trace's document that the trace cannot record (#690): `:trace save`
+    /// refuses a trace that would not replay to it.
+    pub(crate) trace_watch: crate::app::trace_check::TraceWatch,
     /// The journal directory, when this session journals (`rescue`) and a state directory exists.
     journals: Option<&'static persist::journal::Journals>,
     /// Per-buffer journal writers (RFC-0023 §4): each drains its document's change log after every command
@@ -910,6 +913,7 @@ impl Session {
         }
         let start_options = ws.focused().view.editing_options();
         let start_registers = ws.registers().filled();
+        let trace_watch = crate::app::trace_check::TraceWatch::new(&ws, &files);
         Session {
             ws,
             files,
@@ -920,6 +924,7 @@ impl Session {
             recorded: Vec::new(),
             start_options,
             start_registers,
+            trace_watch,
             journals: if rescue {
                 persist::journal::current()
             } else {
@@ -1614,9 +1619,12 @@ impl Session {
             self.sync_undo_before_typed();
         }
         let ro_watch = self.readonly.watch(&self.ws, &self.files);
+        let trace_before = (self.recorded.len(), self.ws.focused_buffer());
         // A replayed key's edits are the macro's (INV-ORIGIN, #880).
         self.route_as(raw_key, from_replay, frame);
         self.readonly.warn(ro_watch, &self.ws, &mut self.status);
+        self.trace_watch
+            .after_input(trace_before, &mut self.ws, &mut self.recorded);
         if !from_replay && !self.emacs_profile {
             // A typed `@{reg}` (or `@:`, `Q`) queued its replay: one undo step for all of it (#939).
             if self.macros.replay_pending() && !self.ws.focused().doc.in_undo_block() {
@@ -1682,6 +1690,7 @@ impl Session {
         let visual_append = self.visual_paste_appends(mode, &frame.snapshot);
         let out = self.engine.paste(&text, mode, visual_append);
         let ro_watch = self.readonly.watch(&self.ws, &self.files);
+        let trace_before = (self.recorded.len(), self.ws.focused_buffer());
         let Session {
             ws,
             files,
@@ -1701,6 +1710,8 @@ impl Session {
             _ => {}
         }
         self.readonly.warn(ro_watch, &self.ws, &mut self.status);
+        self.trace_watch
+            .after_input(trace_before, &mut self.ws, &mut self.recorded);
         self.settle_interrupt();
         if self.quit {
             Flow::Quit
@@ -3396,6 +3407,7 @@ impl Session {
             initial,
             start_options,
             start_registers,
+            trace_watch,
             recorded,
             profile_name,
             emacs_profile,
@@ -4190,16 +4202,22 @@ impl Session {
                     start_registers,
                     recorded.to_vec(),
                 );
-                // The trace holds register contents and pasted clipboard text as well as the edits
-                // (RFC-0020 R6, Security impact), so the message says so.
-                match std::fs::write(&p, trace.to_text()) {
+                // A trace that would not replay to this document is not written (#690). The trace holds
+                // register contents and pasted clipboard text as well as the edits (RFC-0020 R6, Security
+                // impact), so the message says so.
+                let checked =
+                    crate::app::trace_check::check(&trace, initial, ws, files, trace_watch);
+                match checked.and_then(|()| {
+                    std::fs::write(&p, trace.to_text())
+                        .map_err(|e| format!("trace save failed: {e}"))
+                }) {
                     Ok(()) => {
                         *status = format!(
                             "trace saved: {p} ({} commands; includes registers and clipboard text)",
                             recorded.len()
                         )
                     }
-                    Err(e) => *status = format!("trace save failed: {e}"),
+                    Err(e) => *status = e,
                 }
             }
             // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.

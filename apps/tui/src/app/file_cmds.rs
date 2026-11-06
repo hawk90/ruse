@@ -483,6 +483,7 @@ pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: F
             // against the bytes it last saw, so it never shows the pre-reload text (#894).
             if let Some(bf) = files.get_mut(&id) {
                 bf.fmt = fmt;
+                bf.reloads = bf.reloads.saturating_add(1);
             }
             format!("\"{}\" reloaded", path.display())
         }

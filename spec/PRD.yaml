@@ -1146,12 +1146,14 @@ features:
     trace:
       parity: []
       design: [../docs/rfc/accepted/RFC-0012-collapse-to-two-crate-editor.md, ../docs/rfc/accepted/RFC-0020-ex-edits-in-the-trace.md]
-      verify: [../crates/core/tests/editor_spine.rs, ../crates/core/tests/properties.rs, ../apps/tui/tests/trace_replay_ex.rs]
+      verify: [../crates/core/tests/editor_spine.rs, ../crates/core/tests/properties.rs, ../apps/tui/tests/trace_replay_ex.rs, ../apps/tui/tests/trace_save_check.rs, ../apps/tui/tests/pty_trace_replay.rs]
     acceptance:
       - Same initial document + same command trace → byte-identical final state (determinism is the contract).
       - "`:trace save` writes the session's command list; `ruse --replay <trace> <file>` reproduces the edits."
       - "Ex edits (`:s` and its repeats `&`/`g&`/`:&&`, `:s///c` with its answers, `:g`, `:normal`, `:sort`, `:m`, `:t`, `:d`, `:r`, `:{range}!`) are recorded as resolved commands (D-061); replay reproduces them without reading a file or running a command."
       - "Core state the session writes outside a command is recorded too (RFC-0020 R6): a language server's edits as the resolved edit list (`ex_edits`), the `:keepjumps` switch (`ex_keepjumps`), and register values no recorded command produced (`ex_register`: the read-only `\"/ \": \". \"% \"#`, clipboard reads, a macro's keys, and the registers filled when the trace began); `:trace save` says registers and clipboard text are included."
+      - "`:trace save` writes a trace only if it replays to the buffer it follows (#690): it replays the trace first, and a session it cannot follow (the file re-read by `:e!`, commands run in another buffer, the start buffer closed) is refused with the reason and nothing is written. A switch to another window on the buffer records that window's cursor (`ex_place`)."
+      - "`ruse --replay <trace> <file>` reads the file as the editor opens it (BOM dropped, CRLF as LF) and prints the result as `:w` writes it back (BOM, line endings, final newline), so a trace saved on a CRLF or BOM file replays onto that file and prints the bytes the session wrote."
       - A trace round-trips through its text form (to_text/from_text) without changing what it replays to.
       - The trace records semantic Commands (not keystrokes), so it survives keymap changes.
 

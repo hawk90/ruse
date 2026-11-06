@@ -1055,6 +1055,7 @@ mod tests {
                 path: PathBuf::from("/nonexistent-ruse-trust/src/main.rs"),
                 fmt: Default::default(),
                 read_only: false,
+                reloads: 0,
             },
         );
         let bytes = ws.focused().doc.bytes().to_vec();
