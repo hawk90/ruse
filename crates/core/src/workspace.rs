@@ -1325,32 +1325,30 @@ impl Workspace {
     /// (the engine has no buffer). Returns `None` when there is no such line, or the adjacent line has no
     /// character at that column (a Vim no-op / bell — verified against nvim v0.12.4).
     ///
-    /// Column here is the count of CHARACTERS (Unicode scalar values, a byte that is not UTF-8 one char)
-    /// before the caret on the current line. This equals Vim's display/virtual column for plain single-width, TAB-free text — the cases
-    /// this slice targets and tests. TABs and wide (2-cell) characters are NOT virtual-column-mapped yet,
-    /// so a caret past a TAB (or a wide char on the adjacent line) can diverge from Vim; that refinement
-    /// is deferred (documented caveat).
+    /// The column is the caret's VIRTUAL column, as nvim's `ins_copychar` measures it: the char whose cells
+    /// cover it on the adjacent line (a tab, a wide char, a byte that is not UTF-8's `<ff>`, #1252). A byte
+    /// that is not UTF-8 there is copied as the Latin-1 char of its value, as nvim inserts it (`ÿ` for
+    /// 0xFF). A cluster gives its first char.
     #[must_use]
     pub fn adjacent_line_char(&self, above: bool) -> Option<char> {
         let pane = self.focused();
         let b = pane.doc.bytes();
-        let cur = pane.view.cursor().0;
-        // Char column of the caret on the current line.
-        // A byte that is not UTF-8 is one char (#1243).
-        let ls = crate::pos::raw::line_start(b, cur);
-        let col = crate::motion::col_of(b, ls, cur.min(b.len()));
+        let cur = pane.view.cursor().0.min(b.len());
+        let tabw = pane.view.tab_width();
+        let vcol = crate::editor::vcols_at(b, cur, tabw).0;
         // The adjacent row. `checked_sub` guards "no line above" on the first line; a row past the last
         // line resolves to an empty slice below, which yields no char (so "no line below" also → None).
         let row = crate::pos::raw::line_of(b, cur);
         let target = if above { row.checked_sub(1)? } else { row + 1 };
         let ts = crate::pos::raw::nth_line_start(b, target);
-        let at = crate::motion::at_col(b, ts, col);
+        let at = crate::editor::want_col(b, ts, vcol, tabw);
         if at >= crate::pos::raw::line_end(b, ts) {
             return None;
         }
-        // KNOWN GAP: a byte that is not UTF-8 there is not copied (nvim copies it); the engine takes a char.
-        let w = crate::motion::char_len_at(b, at)?;
-        std::str::from_utf8(&b[at..at + w]).ok()?.chars().next()
+        match crate::motion::char_len_at(b, at) {
+            Some(w) => std::str::from_utf8(&b[at..at + w]).ok()?.chars().next(),
+            None => Some(char::from(b[at])),
+        }
     }
 
     /// Insert-mode keyword completion source for `i_CTRL-N` / `i_CTRL-P` (F-003, current-buffer only).
@@ -1367,9 +1365,9 @@ impl Workspace {
         let cur = pane.view.cursor().0;
         let (_, base) = crate::motion::keyword_before_cursor(b, cur);
         let cands = crate::motion::keyword_completions(b, cur, base);
-        // A base holding a byte that is not UTF-8 has no candidates (as in nvim), so its lossy text is
-        // never replaced.
-        (String::from_utf8_lossy(base).into_owned(), cands)
+        // The base travels spelled like the candidates (a byte that is not UTF-8 as its escape char): its
+        // char count is what the first step deletes (#1252).
+        (crate::pattern::spell(base).into_owned(), cands)
     }
 
     /// Insert-mode WHOLE-LINE completion source for `i_CTRL-X CTRL-L` (F-003, current-buffer only).
@@ -2291,6 +2289,29 @@ mod tests {
 
     /// `line_completion` backs `i_CTRL-X CTRL-L`: the post-indent prefix before the caret plus the other
     /// buffer lines' post-indent content that start with it, in Vim's backward-from-caret-with-wrap order,
+    /// #1252: a line or keyword holding a byte that is not UTF-8 is a candidate, spelled (nvim 0.12.6
+    /// offers `x<ff>y` to `x` `CTRL-X CTRL-L`); `CTRL-Y`/`CTRL-E` read the char at the caret's virtual
+    /// column and give such a byte as its Latin-1 char, which nvim inserts as UTF-8.
+    #[test]
+    fn completion_and_copy_char_keep_an_invalid_byte() {
+        let spelled = |b: &[u8]| crate::pattern::spell(b).into_owned();
+        let mut w = Workspace::new(b"x\xffy\nxyz\nx".to_vec());
+        w.place_focused_cursor(BytePos(9));
+        assert_eq!(
+            w.line_completion(),
+            ("x".to_string(), vec!["xyz".to_string(), spelled(b"x\xffy")])
+        );
+        let mut w = Workspace::new(b"\xffabcdef\nx\n\tabc\nx\n\xe4\xb8\xadab\nx\n".to_vec());
+        // `x` then the caret at virtual column 1: inside `<ff>` (cells 0-3), the tab, the wide char.
+        for (at, want) in [(9, '\u{ff}'), (16, '\t'), (24, '中')] {
+            w.place_focused_cursor(BytePos(at));
+            assert_eq!(w.adjacent_line_char(true), Some(want), "caret at {at}");
+        }
+        let mut w = Workspace::new(b"\nab\xffcd\n".to_vec());
+        w.place_focused_cursor(BytePos(0));
+        assert_eq!(w.adjacent_line_char(false), Some('a'));
+    }
+
     /// deduped by content (indent ignored). Cases captured from nvim v0.12.4.
     #[test]
     fn line_completion_base_and_candidates() {

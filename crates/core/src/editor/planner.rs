@@ -3031,7 +3031,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 }
                 start = prev_boundary(b, start);
             }
-            let bytes = text.as_bytes().to_vec();
+            // A candidate holding a byte that is not UTF-8 spells it as its escape char (#1252).
+            let bytes = crate::pattern::unspell(text).into_owned();
             let n = bytes.len();
             edit(
                 one(Edit::replace(BytePos(start), cur - start, bytes)),

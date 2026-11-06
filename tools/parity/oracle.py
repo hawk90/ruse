@@ -4678,6 +4678,30 @@ FIXTURES: list[dict] = [
     {"name": "w_j_control", "lines": ["\x01\x01abc", "abcdefgh"], "keys": "3lj"},
     {"name": "w_j_zwsp", "lines": ["\u200babc", "abcdefgh"], "keys": "lj"},
     {"name": "w_j_c1", "lines": ["\x85abc", "abcdefgh"], "keys": "lj"},
+    # #1252: Insert-mode features keep a byte that is not UTF-8. Keyword completion offers a candidate that
+    # holds one; `CTRL-Y`/`CTRL-E` copy the char at the caret's virtual column and insert such a byte as the
+    # Latin-1 char of its value, in UTF-8 (`ÿ`), as nvim does; a collection compares it as that Latin-1 char
+    # (`[ð-ÿ]` and `[ÿ]` take byte 0xFF, `/ÿ` and `\%xff` do not); `:retab` measures `<ff>` as 4 cells.
+    {"name": "inv_i_ctrl_n", "lines": ["ab\xffcd", "x"], "keys": "Goa<C-n><Esc>", "bytes": True},
+    {"name": "inv_i_ctrl_n_twice", "lines": ["a\xffb", "a\xffc", "x"], "keys": "Goa<C-n><C-n><Esc>", "bytes": True},
+    {"name": "inv_i_ctrl_p", "lines": ["ab\xffcd", "x"], "keys": "Goa<C-p><Esc>", "bytes": True},
+    {"name": "inv_i_ctrl_y", "lines": ["\xffabcdef", "x"], "keys": "jA<C-y><C-y><Esc>", "bytes": True},
+    {"name": "inv_i_ctrl_e", "lines": ["x", "a\xffb"], "keys": "A<C-e><C-e><Esc>", "bytes": True},
+    {"name": "inv_i_ctrl_y_after_invalid", "lines": ["\xffabcdef", "x"], "keys": "jA<C-y><C-y><C-y><C-y><Esc>", "bytes": True},
+    {"name": "w_i_ctrl_y_tab", "lines": ["\tabc", "x"], "keys": ":set ts=8<CR>jA<C-y><Esc>"},
+    {"name": "w_i_ctrl_y_wide", "lines": ["中ab", "x"], "keys": "jA<C-y><C-y><Esc>"},
+    {"name": "inv_coll_range", "lines": ["zz\xff"], "keys": "/[\xf0-\xff]<CR>", "bytes": True},
+    {"name": "inv_coll_range_skips_below", "lines": ["zz\xe9 \xff"], "keys": "/[\xf0-\xff]<CR>", "bytes": True},
+    {"name": "inv_coll_item", "lines": ["zz\xff"], "keys": "/[\xff]<CR>", "bytes": True},
+    {"name": "inv_coll_hex_range", "lines": ["zz\x80"], "keys": "/[\\x80-\\xff]<CR>", "bytes": True},
+    {"name": "inv_coll_wide_range", "lines": ["zz\xff"], "keys": "/[\xff-ā]<CR>", "bytes": True},
+    {"name": "inv_coll_negated", "lines": ["a\xff\xffb"], "keys": "/[^\xffa]<CR>", "bytes": True},
+    {"name": "inv_coll_ignorecase", "lines": ["zz\xff"], "keys": "/[Ÿ]\\c<CR>", "bytes": True},
+    {"name": "inv_coll_not_outside", "lines": ["zz\xff \xc3\xbf"], "keys": "/\\%xff<CR>", "bytes": True},
+    {"name": "inv_retab_et", "lines": ["\xff \ta    b"], "keys": ":set et ts=4<CR>:retab<CR>", "bytes": True},
+    {"name": "inv_retab_bang", "lines": ["\xff        a \t"], "keys": ":set noet ts=4<CR>:retab!<CR>", "bytes": True},
+    {"name": "inv_retab_tab_after", "lines": ["\xff\ta"], "keys": ":set et ts=8<CR>:retab<CR>", "bytes": True},
+    {"name": "inv_cword_fallback", "lines": ["+\x80+ x"], "keys": ":s/<C-r><C-w>/Z/<CR>", "bytes": True},
 ]
 
 

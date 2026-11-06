@@ -967,11 +967,12 @@ pub(crate) fn cword_under_cursor(b: &[u8], cur: usize, big: bool) -> Option<(usi
         return first_nonblank(i).map(|k| inner_word_span(b, k, true));
     }
     // `<cword>`: prefer the next keyword char forward on the line (crossing blanks and punctuation).
+    // A char's class is its Vim class, a byte that is not UTF-8 the one of its Latin-1 char (#1243, #1252).
     let mut j = i;
-    while j < le && class(b[j]) != Class::Word {
-        j += 1;
+    while j < le && char_cls(b, j, false) < crate::charclass::WORD {
+        j = next_boundary(b, j);
     }
-    if j < le && class(b[j]) == Class::Word {
+    if j < le {
         return Some(inner_word_span(b, j, false));
     }
     // No keyword on the rest of the line: fall back to the non-blank (punctuation) run.
@@ -1081,12 +1082,10 @@ pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &[u8]) -> Vec<Stri
         if !t.starts_with(base) {
             continue;
         }
-        // KNOWN GAP: a keyword holding a byte that is not UTF-8 is not offered (nvim offers it); the
-        // candidates travel to the input engine as text.
-        if let Ok(text) = std::str::from_utf8(t) {
-            if seen.insert(t) {
-                out.push(text.to_string());
-            }
+        // The candidates travel to the input engine as text: a byte that is not UTF-8 is spelled as its
+        // escape char ([`crate::pattern::spell`]), which `CompleteWord` turns back into the byte (#1252).
+        if seen.insert(t) {
+            out.push(crate::pattern::spell(t).into_owned());
         }
     }
     out
@@ -1118,7 +1117,10 @@ pub(crate) fn line_completions(b: &[u8], cur: usize) -> (String, Vec<String>) {
     // `base`: the caret line's post-indent text up to the caret (empty when the caret sits within indent).
     let ls = crate::pos::raw::line_start(b, cur);
     let bi = indent_end(b, ls, cur);
-    let base = std::str::from_utf8(&b[bi..cur]).unwrap_or("").to_string();
+    // Text travels spelled ([`crate::pattern::spell`]): a byte that is not UTF-8 is its escape char, which
+    // `CompleteWord` turns back into the byte (#1252). Matching is on the bytes.
+    let base_bytes = &b[bi..cur];
+    let base = crate::pattern::spell(base_bytes).into_owned();
     // Line geometry: `n` rows total, the caret on row `cr`. Scan backward from `cr` with wraparound.
     // The slot after a final newline is a row only while the caret is on it (a line being typed); else it
     // is no line and offers no empty candidate (#677).
@@ -1136,14 +1138,13 @@ pub(crate) fn line_completions(b: &[u8], cur: usize) -> (String, Vec<String>) {
         let rs = crate::pos::raw::nth_line_start(b, row);
         let re = crate::pos::raw::line_end(b, rs);
         let ri = indent_end(b, rs, re);
-        let Ok(content) = std::str::from_utf8(&b[ri..re]) else {
-            continue;
-        };
-        if !content.starts_with(&base) {
+        let content = &b[ri..re];
+        if !content.starts_with(base_bytes) {
             continue;
         }
-        if seen.insert(content.to_string()) {
-            out.push(content.to_string());
+        let text = crate::pattern::spell(content).into_owned();
+        if seen.insert(text.clone()) {
+            out.push(text);
         }
     }
     (base, out)
@@ -3779,8 +3780,23 @@ mod invalid_byte_tests {
             (2, &b"foo\xffba"[..])
         );
         assert_eq!(keyword_before_cursor(b"foo\x80ba", 6), (4, &b"ba"[..]));
-        // Candidates split at 0x80; one holding a byte that is not UTF-8 is not offered (a known gap).
+        // Candidates split at 0x80; one holding a byte that is not UTF-8 is offered spelled, as nvim
+        // offers it (#1252).
         let b = b"foo\x80bar fo\xffx food\nfo";
-        assert_eq!(keyword_completions(b, b.len(), b"fo"), vec!["foo", "food"]);
+        let ff = crate::pattern::spell(b"fo\xffx").into_owned();
+        assert_eq!(
+            keyword_completions(b, b.len(), b"fo"),
+            vec!["foo", &ff, "food"]
+        );
+        assert_eq!(&*crate::pattern::unspell(&ff), b"fo\xffx");
+        // <cword> looks for a keyword with the Latin-1 class: 0x80 is punctuation, so `x` is found.
+        assert_eq!(
+            super::cword_under_cursor(b"+\x80+ x", 0, false),
+            Some((4, 5))
+        );
+        assert_eq!(
+            super::cword_under_cursor(b"+ \xffa", 0, false),
+            Some((2, 4))
+        );
     }
 }

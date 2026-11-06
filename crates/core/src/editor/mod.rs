@@ -3261,23 +3261,23 @@ pub struct SortOptions {
 }
 
 /// One line of [`EditorState::retab`] (nvim's `ex_retab` loop): columns are measured with `old_ts`, and a
-/// rewritten run is laid out with `new_ts` (`tabstop_fromto`).
+/// rewritten run is laid out with `new_ts` (`tabstop_fromto`). The line is walked by cluster with the cells
+/// the renderer paints ([`range::cluster_cells`]: `<ff>` for a byte that is not UTF-8 is 4, `^A` 2), so a
+/// line that is not UTF-8 is retabbed too (#1252).
 fn retab_line(line: &[u8], bang: bool, expand: bool, old_ts: usize, new_ts: usize) -> Vec<u8> {
-    use unicode_width::UnicodeWidthChar;
-    let text = String::from_utf8_lossy(line);
     let mut out = Vec::with_capacity(line.len());
     let (mut vcol, mut start_vcol, mut start) = (0usize, 0usize, 0usize);
     let (mut got_tab, mut num_spaces) = (false, 0usize);
-    let chars = text.char_indices().map(Some).chain(std::iter::once(None));
     let mut copied = 0usize;
-    for item in chars {
-        let (col, c) = item.unwrap_or((text.len(), '\0'));
-        if item.is_some() && (c == ' ' || c == '\t') {
+    let mut col = 0usize;
+    loop {
+        let c = line.get(col).copied();
+        if matches!(c, Some(b' ' | b'\t')) {
             if !got_tab && num_spaces == 0 {
                 start_vcol = vcol;
                 start = col;
             }
-            if c == ' ' {
+            if c == Some(b' ') {
                 num_spaces += 1;
             } else {
                 got_tab = true;
@@ -3296,7 +3296,7 @@ fn retab_line(line: &[u8], bang: bool, expand: bool, old_ts: usize, new_ts: usiz
                     spaces %= new_ts;
                 }
                 if expand || got_tab || tabs + spaces < len {
-                    out.extend_from_slice(&text.as_bytes()[copied..start]);
+                    out.extend_from_slice(&line[copied..start]);
                     out.extend(std::iter::repeat_n(b'\t', tabs));
                     out.extend(std::iter::repeat_n(b' ', spaces));
                     copied = col;
@@ -3305,23 +3305,14 @@ fn retab_line(line: &[u8], bang: bool, expand: bool, old_ts: usize, new_ts: usiz
             got_tab = false;
             num_spaces = 0;
         }
-        if item.is_none() {
+        if c.is_none() {
             break;
         }
-        vcol += if c == '\t' {
-            old_ts - vcol % old_ts
-        } else {
-            c.width().unwrap_or(0)
-        };
+        let (next, w) = range::cluster_cells(line, col, line.len(), vcol, old_ts);
+        vcol += w;
+        col = next;
     }
-    out.extend_from_slice(&text.as_bytes()[copied..]);
-    if out == text.as_bytes() {
-        // Unchanged: keep the original bytes (a line that is not UTF-8 is never rewritten).
-        return line.to_vec();
-    }
-    if std::str::from_utf8(line).is_err() {
-        return line.to_vec();
-    }
+    out.extend_from_slice(&line[copied..]);
     out
 }
 

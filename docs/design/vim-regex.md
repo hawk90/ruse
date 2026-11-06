@@ -119,9 +119,11 @@ today is the first half, and the amendment records it.
   keyword char, 0x80 is not). A pattern built from buffer text (`*`, `gd`, `[i`) spells such bytes the same way
   (`pattern::spell`); `"/` and a `:s` replacement turn them back into bytes. Every regex user (`/`, `?`, `n`,
   `*`, `gn`, `:s`, `:g`, `:sort`, `'formatlistpat'`) goes through it. Known differences: a real
-  U+10FF80-U+10FFFF char in the text is taken for the byte it spells; a collection range does not take the
-  byte (`[ð-ÿ]` takes byte 0xFF in nvim); `&` in a `:s` replacement keeps the byte where nvim writes its Latin-1
-  char as UTF-8.
+  U+10FF80-U+10FFFF char in the text is taken for the byte it spells; `&` in a `:s` replacement keeps the byte
+  where nvim writes its Latin-1 char as UTF-8. Inside a collection, as in nvim, the byte is compared as its
+  Latin-1 char (#1252): an item or range covering U+0080-U+00FF also takes the escape chars of those bytes, so
+  `[ð-ÿ]`, `[ÿ]`, `[\x80-\xff]` and `[Ÿ]\c` take byte 0xFF and `[^ÿ]` does not (`/ÿ` and `\%xff` still do not).
+  The `[:lower:]`/`[:upper:]` classes do not take such bytes yet (nvim's take 0xE9, 0xFF and 0xC9).
 - **Owned engine: still the plan, scheduled later (#1128, v0.3.2).** The Pike VM and bounded backtracker of §3 are for the
   residual: lookaround, backrefs, position atoms, mid-pattern `\<`/`\>`, `\&` and `~`. When it lands, the IR and
   router of §1 and §7 arrive with it, and the oracle classes above become the router's allow-list for

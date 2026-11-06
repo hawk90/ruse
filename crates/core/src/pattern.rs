@@ -1705,11 +1705,29 @@ impl CollSet {
     fn fold_items(&mut self) {
         let inside = |x: u32| self.ranges.iter().any(|&(lo, hi)| lo <= x && x <= hi);
         let mut extra = String::new();
+        let mut folded = Vec::new();
         for class in crate::casemap::vim_fold_classes() {
             if class.iter().any(|&m| inside(m)) {
                 for &m in class.iter().filter(|&&m| !inside(m)) {
                     extra.push_str(&format!(r"\x{{{m:X}}}"));
+                    folded.push((m, m));
                 }
+            }
+        }
+        self.items.push_str(&extra);
+        self.ranges.extend(folded);
+    }
+
+    /// nvim compares a byte that is not UTF-8 with a collection's items as the Latin-1 char of its value
+    /// (`[ð-ÿ]` and `[ÿ]` take byte 0xFF, #1252), so every item in U+0080-U+00FF also takes the escape char
+    /// that spells that byte ([`escape_char`]).
+    fn add_latin1_bytes(&mut self) {
+        let mut extra = String::new();
+        for &(lo, hi) in &self.ranges {
+            let (lo, hi) = (lo.max(0x80), hi.min(0xFF));
+            if lo <= hi {
+                let (a, b) = (lo + ESCAPE_BASE, hi + ESCAPE_BASE);
+                extra.push_str(&format!(r"\x{{{a:X}}}-\x{{{b:X}}}"));
             }
         }
         self.items.push_str(&extra);
@@ -1727,6 +1745,7 @@ impl CollSet {
         if ci {
             self.fold_items();
         }
+        self.add_latin1_bytes();
         let split_exact = ci && !self.exact.is_empty();
         if negated {
             if split_exact {

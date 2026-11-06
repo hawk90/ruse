@@ -120645,6 +120645,565 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "inv_i_ctrl_n",
+      "lines": [
+        "abÿcd",
+        "x"
+      ],
+      "keys": "Goa<C-n><Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abÿcd",
+          "x",
+          "abÿcd"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_i_ctrl_n_twice",
+      "lines": [
+        "aÿb",
+        "aÿc",
+        "x"
+      ],
+      "keys": "Goa<C-n><C-n><Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿb",
+          "aÿc",
+          "x",
+          "aÿc"
+        ],
+        "cursor": [
+          4,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_i_ctrl_p",
+      "lines": [
+        "abÿcd",
+        "x"
+      ],
+      "keys": "Goa<C-p><Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abÿcd",
+          "x",
+          "abÿcd"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_i_ctrl_y",
+      "lines": [
+        "ÿabcdef",
+        "x"
+      ],
+      "keys": "jA<C-y><C-y><Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ÿabcdef",
+          "xÃ¿Ã¿"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_i_ctrl_e",
+      "lines": [
+        "x",
+        "aÿb"
+      ],
+      "keys": "A<C-e><C-e><Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "xÃ¿Ã¿",
+          "aÿb"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_i_ctrl_y_after_invalid",
+      "lines": [
+        "ÿabcdef",
+        "x"
+      ],
+      "keys": "jA<C-y><C-y><C-y><C-y><Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ÿabcdef",
+          "xÃ¿Ã¿Ã¿a"
+        ],
+        "cursor": [
+          2,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "w_i_ctrl_y_tab",
+      "lines": [
+        "\tabc",
+        "x"
+      ],
+      "keys": ":set ts=8<CR>jA<C-y><Esc>",
+      "expect": {
+        "text": [
+          "\tabc",
+          "x\t"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "w_i_ctrl_y_wide",
+      "lines": [
+        "中ab",
+        "x"
+      ],
+      "keys": "jA<C-y><C-y><Esc>",
+      "expect": {
+        "text": [
+          "中ab",
+          "x中b"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_range",
+      "lines": [
+        "zzÿ"
+      ],
+      "keys": "/[ð-ÿ]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "zzÿ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_range_skips_below",
+      "lines": [
+        "zzé ÿ"
+      ],
+      "keys": "/[ð-ÿ]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "zzé ÿ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_item",
+      "lines": [
+        "zzÿ"
+      ],
+      "keys": "/[ÿ]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "zzÿ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_hex_range",
+      "lines": [
+        "zz"
+      ],
+      "keys": "/[\\x80-\\xff]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "zz"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_wide_range",
+      "lines": [
+        "zzÿ"
+      ],
+      "keys": "/[ÿ-ā]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "zzÿ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_negated",
+      "lines": [
+        "aÿÿb"
+      ],
+      "keys": "/[^ÿa]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿÿb"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_ignorecase",
+      "lines": [
+        "zzÿ"
+      ],
+      "keys": "/[Ÿ]\\c<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "zzÿ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_coll_not_outside",
+      "lines": [
+        "zzÿ Ã¿"
+      ],
+      "keys": "/\\%xff<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "zzÿ Ã¿"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_retab_et",
+      "lines": [
+        "ÿ \ta    b"
+      ],
+      "keys": ":set et ts=4<CR>:retab<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ÿ    a    b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_retab_bang",
+      "lines": [
+        "ÿ        a \t"
+      ],
+      "keys": ":set noet ts=4<CR>:retab!<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ÿ\t\ta\t"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_retab_tab_after",
+      "lines": [
+        "ÿ\ta"
+      ],
+      "keys": ":set et ts=8<CR>:retab<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ÿ    a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "inv_cword_fallback",
+      "lines": [
+        "++ x"
+      ],
+      "keys": ":s/<C-r><C-w>/Z/<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "++ Z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

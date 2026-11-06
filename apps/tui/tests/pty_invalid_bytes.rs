@@ -35,3 +35,23 @@ fn an_invalid_byte_shows_as_hex_and_the_cursor_counts_its_four_cells() {
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
 }
+
+/// #1252: keyword completion keeps a byte that is not UTF-8 (nvim 0.12.6 offers `ab<ff>cd` for `a`
+/// `CTRL-N`), and `CTRL-Y` copies such a byte as the Latin-1 char of its value, which nvim inserts as
+/// UTF-8 (`ÿ`), at each virtual column its `<ff>` covers. (`CTRL-X CTRL-L` is swallowed in the binary,
+/// #602; its candidates are unit-tested.)
+#[test]
+fn insert_completion_and_ctrl_y_keep_an_invalid_byte() {
+    let dir = Scratch::new();
+    dir.file("c.txt", b"ab\xffcd\nx\xffy\n");
+    let mut ed = Editor::start(&dir, &[Path::new("c.txt")]);
+    ed.wait_for_row("ab<ff>cd");
+    // `z` CTRL-Y x3 under `x<ff>y` (cells 1-4 are `<ff>`), then `a` CTRL-N on a new last line.
+    ed.keys("joz\x19\x19\x19\x1bGoa\x0e\x1b:wq\r");
+    assert_eq!(ed.exit_status(), 0);
+    let text = std::fs::read(dir.path("c.txt")).unwrap();
+    assert_eq!(
+        text,
+        b"ab\xffcd\nx\xffy\nz\xc3\xbf\xc3\xbf\xc3\xbf\nab\xffcd\n".to_vec()
+    );
+}
