@@ -98,6 +98,62 @@ pub(super) fn parse(line: &str) -> Option<Ex> {
         .or_else(|| parse_start_insert(line))
         .or_else(|| parse_directory(line))
         .or_else(|| parse_file(line))
+        .or_else(|| parse_fold(line))
+}
+
+/// `:[range]fo[ld]`, `:[range]foldo[pen][!]`, `:[range]foldc[lose][!]` and `:[range]foldd[oopen]
+/// {cmd}` / `:[range]folddoc[losed] {cmd}` (#1141). The fold commands take the cursor's line by default,
+/// the `:folddo` ones the whole buffer.
+fn parse_fold(line: &str) -> Option<Ex> {
+    let (range_str, rest) = split_range(line);
+    let (verb, rest) = word(rest);
+    let range = |default: SubRange| {
+        if range_str.is_empty() {
+            Some(default)
+        } else {
+            parse_sub_range(range_str)
+        }
+    };
+    let (bang, after) = match rest.strip_prefix('!') {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
+    match verb {
+        "fold" | "foldopen" | "foldclose" => {
+            let range = range(SubRange::CurrentLine)?;
+            if bang && verb == "fold" {
+                return Some(Ex::Fail("E477: No ! allowed".into()));
+            }
+            let after = after.trim();
+            if !after.is_empty() {
+                return Some(trailing(after));
+            }
+            Some(match verb {
+                "fold" => Ex::Fold(range),
+                _ => Ex::FoldOpen {
+                    range,
+                    open: verb == "foldopen",
+                    recursive: bang,
+                },
+            })
+        }
+        "folddoopen" | "folddoclosed" => {
+            let range = range(SubRange::WholeFile)?;
+            if bang {
+                return Some(Ex::Fail("E477: No ! allowed".into()));
+            }
+            let cmd = after.trim_start();
+            if cmd.is_empty() {
+                return Some(Ex::Fail("E471: Argument required".into()));
+            }
+            Some(Ex::FoldDo {
+                range,
+                closed: verb == "folddoclosed",
+                cmd: cmd.to_string(),
+            })
+        }
+        _ => None,
+    }
 }
 
 /// `:[range]p[rint] [flags]`, `:[range]l[ist] [flags]`, `:[range]nu[mber] [flags]` and `:[range]# [flags]`

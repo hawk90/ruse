@@ -108,6 +108,12 @@ const COMMANDS: &[ExCommand] = &[
     cmd("sfind", 2, "sfind"),
     cmd("drop", 2, "drop"),
     cmd("visual", 2, "visual"),
+    // #1141: the fold commands.
+    cmd("fold", 2, "fold"),
+    cmd("foldopen", 5, "foldopen"),
+    cmd("foldclose", 5, "foldclose"),
+    cmd("folddoopen", 5, "folddoopen"),
+    cmd("folddoclosed", 7, "folddoclosed"),
 ];
 
 /// ruse's own commands (no Vim counterpart). Matched by exact spelling and never abbreviated, so they
@@ -251,6 +257,12 @@ fn is_substitute_with_flags(word: &[u8]) -> bool {
             b'r' => at(2) != b'e',
             _ => false,
         }
+}
+
+/// Whether the command word `word` is `:s` with its flags glued on (`:sg`, `:sI`; see
+/// [`is_substitute_with_flags`]).
+pub(crate) fn is_substitute_word(word: &str) -> bool {
+    is_substitute_with_flags(word.as_bytes())
 }
 
 /// The full name of the command `word` abbreviates, among the implemented ones, with its canonical

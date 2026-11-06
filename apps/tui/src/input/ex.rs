@@ -248,6 +248,22 @@ pub enum Ex {
     },
     /// `:dr[op] [++opt] [+cmd] {file}` — go to the window that shows `{file}`, or edit it (#610).
     Drop(EditSpec),
+    /// `:[range]fo[ld]` — create a closed manual fold over the range, as `zf` does (#1141).
+    Fold(SubRange),
+    /// `:[range]foldo[pen][!]` / `:[range]foldc[lose][!]` — open (`open`) or close one level of the folds in
+    /// the range, every level with `!` (`recursive`) (#1141).
+    FoldOpen {
+        range: SubRange,
+        open: bool,
+        recursive: bool,
+    },
+    /// `:[range]foldd[oopen] {cmd}` / `:[range]folddoc[losed] {cmd}` — run `{cmd}` on each line of the
+    /// range that is not (or, `closed`, is) in a closed fold, as `:g` does on its marked lines (#1141).
+    FoldDo {
+        range: SubRange,
+        closed: bool,
+        cmd: String,
+    },
     /// A known command whose argument is wrong or missing (`:normal` with no keys, `:m` with no address,
     /// `:set nosuchoption`): the status is nvim's error, and nothing runs.
     Fail(String),
@@ -883,6 +899,8 @@ fn split_first_command(cmd: &str) -> (&str, Option<&str>) {
         || is_prefix("global", 1)
         || is_prefix("vglobal", 1)
         || is_prefix("normal", 4)
+        || is_prefix("folddoopen", 5)
+        || is_prefix("folddoclosed", 7)
         || (is_prefix("read", 1) && arg.trim_start().starts_with('!'))
         // `:w !cmd` / `:up !cmd` pipe to a shell command (the `!` after a blank; `:w!` is the bang).
         || ((is_prefix("write", 1) || is_prefix("update", 2))

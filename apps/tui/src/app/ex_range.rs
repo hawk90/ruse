@@ -92,12 +92,17 @@ impl std::fmt::Display for ExRangeError {
 /// `:<` also take a count after the command (`:d 3`, `:2y a 2`), which becomes the range of that many lines
 /// from the range's last line (`:help :d`); the line comes back in the canonical `N,Md x` form. A line
 /// without a range comes back unchanged.
-pub(crate) fn resolve_ex_range(line: &str, ws: &mut Workspace, pats: AddrPatterns<'_>) -> Resolved {
+pub(crate) fn resolve_ex_range(
+    line: &str,
+    ws: &mut Workspace,
+    pats: AddrPatterns<'_>,
+    folds: Option<&[crate::folds::Fold]>,
+) -> Resolved {
     let mut side = Side {
         search: None,
         cursor: None,
     };
-    let range = resolve(line, ws, pats, &mut side);
+    let range = resolve(line, ws, pats, folds, &mut side);
     Resolved {
         range,
         search: side.search,
@@ -115,6 +120,7 @@ fn resolve(
     line: &str,
     ws: &mut Workspace,
     pats: AddrPatterns<'_>,
+    folds: Option<&[crate::folds::Fold]>,
     side: &mut Side,
 ) -> Result<ExRange, ExRangeError> {
     let rest = line.trim_start_matches([' ', ':']);
@@ -233,6 +239,18 @@ fn resolve(
         let mut have = base.is_some();
         while let Some(&sign @ (b'+' | b'-')) = s.get(i) {
             i += 1;
+            // An offset in an address after the first counts from the end of the closed fold the line
+            // is in (nvim's `get_address`): `:2;+1d` on a fold of lines 2-4 reaches line 5.
+            if !addrs.is_empty() {
+                if let Some(fv) = folds {
+                    if let Some(r) = usize::try_from(v - 1)
+                        .ok()
+                        .and_then(|l| crate::folds::closed_range(fv, l))
+                    {
+                        v = r.1 as i64 + 1;
+                    }
+                }
+            }
             let n = digits(&mut i).unwrap_or(1);
             v = if sign == b'+' {
                 v.saturating_add(n)
@@ -283,6 +301,17 @@ fn resolve(
         }
     }
     let tail = rest[i..].trim_start();
+    // A closed fold the range starts or ends in is taken whole (nvim's `do_one_cmd`), for a range of two
+    // addresses or a command that acts on whole folds, which also widens its default line (#1141).
+    let fold_cmd = whole_fold_command(tail);
+    let closed = |l: i64| -> Option<(i64, i64)> {
+        let fv = folds?;
+        let r = crate::folds::closed_range(fv, usize::try_from(l - 1).ok()?)?;
+        Some((r.0 as i64 + 1, r.1 as i64 + 1))
+    };
+    if addrs.is_empty() && fold_cmd.is_some_and(|c| c.current_line) && closed(cur_line).is_some() {
+        addrs.push(cur_line);
+    }
     let Some(&last) = addrs.last() else {
         // No range, but a counted command still needs the cursor's line (`:d 3`).
         return Ok(match counted(tail, cur_line, nlines)? {
@@ -307,9 +336,27 @@ fn resolve(
             return Ok(ExRange::Backwards(format!("{b},{a}{tail}")));
         }
     }
-    let range = match used {
-        [1, b] if whole && *b == nlines => "%".to_string(),
-        [a, b] => format!("{a},{b}"),
+    let (mut first, mut last) = match *used {
+        [a, b] => (a, b),
+        _ => (last, last),
+    };
+    if used.len() >= 2 || fold_cmd.is_some() {
+        first = closed(first).map_or(first, |r| r.0);
+        last = closed(last).map_or(last, |r| r.1);
+    }
+    let range = match (used, fold_cmd) {
+        ([1, b], _) if whole && *b == nlines => "%".to_string(),
+        // `:put` and `:r` take one address: after the fold, or before it for `:put!`.
+        (_, Some(FoldCmd { single: true, .. }))
+            if tail.starts_with('p')
+                && tail
+                    .trim_start_matches(char::is_alphabetic)
+                    .starts_with('!') =>
+        {
+            first.to_string()
+        }
+        (_, Some(FoldCmd { single: true, .. })) => last.to_string(),
+        _ if first != last || used.len() == 2 => format!("{first},{last}"),
         _ => last.to_string(),
     };
     Ok(ExRange::Line(match counted(tail, last, nlines)? {
@@ -317,6 +364,81 @@ fn resolve(
         Some((Some((a, b)), t)) => format!("{a},{b}{t}"),
         Some((None, t)) => format!("{range}{t}"),
     }))
+}
+
+/// How a command takes a range over closed folds (nvim's `EX_WHOLEFOLD` commands).
+#[derive(Clone, Copy)]
+struct FoldCmd {
+    /// Its default range is the cursor's line (not the whole buffer), so that widens too.
+    current_line: bool,
+    /// It takes one address (`:put`, `:r`).
+    single: bool,
+}
+
+/// Whether the command `tail` starts with acts on closed folds whole (nvim's `EX_WHOLEFOLD`), and how; a
+/// command that is not (`:normal`, `:k`, `:=`, `:a`) widens only a range of two addresses.
+fn whole_fold_command(tail: &str) -> Option<FoldCmd> {
+    let cur = |single| {
+        Some(FoldCmd {
+            current_line: true,
+            single,
+        })
+    };
+    let all = Some(FoldCmd {
+        current_line: false,
+        single: false,
+    });
+    match tail.as_bytes().first()? {
+        b'>' | b'<' | b'&' | b'~' | b'#' => return cur(false),
+        b'!' => return all,
+        _ => {}
+    }
+    let word_len = tail
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(tail.len());
+    let word = &tail[..word_len];
+    if word.is_empty() {
+        return None;
+    }
+    if crate::input::is_substitute_word(word) {
+        return cur(false);
+    }
+    match crate::input::full_command_name(word) {
+        Some(
+            "delete" | "yank" | "join" | "substitute" | "copy" | "t" | "move" | "print" | "list"
+            | "number" | "z" | "fold" | "foldopen" | "foldclose",
+        ) => cur(false),
+        Some("put" | "read") => cur(true),
+        Some(
+            "global" | "vglobal" | "write" | "update" | "wq" | "xit" | "exit" | "sort" | "retab"
+            | "folddoopen" | "folddoclosed",
+        ) => all,
+        // Not implemented here, but nvim's: `:ce[nter]`, `:le[ft]`, `:ri[ght]`, `:c[hange]`.
+        _ if matches!(
+            word,
+            "ce" | "cen"
+                | "cent"
+                | "cente"
+                | "center"
+                | "le"
+                | "lef"
+                | "left"
+                | "ri"
+                | "rig"
+                | "righ"
+                | "right"
+                | "c"
+                | "ch"
+                | "cha"
+                | "chan"
+                | "chang"
+                | "change"
+        ) =>
+        {
+            cur(false)
+        }
+        _ => None,
+    }
 }
 
 /// The 1-based line of the mark named by the byte `c` after a `'`: `Some(None)` for a mark that is not set,
@@ -466,7 +588,7 @@ mod tests {
     use super::*;
 
     fn resolve_in(ws: &mut Workspace, line: &str) -> Result<ExRange, ExRangeError> {
-        resolve_ex_range(line, ws, AddrPatterns::default()).range
+        resolve_ex_range(line, ws, AddrPatterns::default(), None).range
     }
 
     /// #1079: the leading range resolves `.`, `$`, offsets and `;` to line numbers, and an address past the
@@ -568,7 +690,7 @@ mod tests {
             search: Some("a"),
             substitute: Some("b"),
         };
-        let r = |ws: &mut Workspace, l: &str| resolve_ex_range(l, ws, pats).range;
+        let r = |ws: &mut Workspace, l: &str| resolve_ex_range(l, ws, pats, None).range;
         assert_eq!(r(&mut ws, "\\/d"), line("3d"));
         assert_eq!(r(&mut ws, "\\?d"), line("5d"));
         assert_eq!(r(&mut ws, "\\&d"), line("2d"));
@@ -577,14 +699,14 @@ mod tests {
             line("3d"),
             "an empty pattern is the last search"
         );
-        let found = resolve_ex_range("?b?", &mut ws, pats);
+        let found = resolve_ex_range("?b?", &mut ws, pats, None);
         assert_eq!(found.search, Some(("b".to_string(), false)));
         assert_eq!(
             r(&mut ws, "/b/;//d"),
             line("2,4d"),
             "`//` is the pattern just searched"
         );
-        let semi = resolve_ex_range("5;-2d", &mut ws, pats);
+        let semi = resolve_ex_range("5;-2d", &mut ws, pats, None);
         assert_eq!(semi.range, Ok(ExRange::Backwards("3,5d".into())));
         assert_eq!(semi.cursor, Some(5), "`;` moves the cursor");
         // Marks.
@@ -671,5 +793,51 @@ mod tests {
             Err(ExRangeError::Trailing("y".into()))
         );
         assert_eq!(resolve(0, "co2"), line("co2"), "`:co` reads an address");
+    }
+
+    /// #1141: a range grows to the closed folds it starts or ends in, for two addresses or a command that
+    /// acts on whole folds (nvim v0.12.6, `fold_ex_*` fixtures), and not inside a `:g`.
+    #[test]
+    fn a_range_takes_closed_folds_whole() {
+        let fold = crate::folds::Fold {
+            start: 1,
+            end: 3,
+            closed: true,
+            level: 1,
+        };
+        let resolve = |cursor_line: usize, line: &str, folds: Option<&[crate::folds::Fold]>| {
+            let mut ws = Workspace::new(b"a\nb\nc\nd\ne\nf\n".to_vec());
+            ws.place_focused_cursor(BytePos(cursor_line * 2));
+            resolve_ex_range(line, &mut ws, AddrPatterns::default(), folds).range
+        };
+        let f = Some(&[fold][..]);
+        let line = |s: &str| Ok(ExRange::Line(s.to_string()));
+        assert_eq!(resolve(0, "3d", f), line("2,4d"));
+        assert_eq!(resolve(0, "1,3d", f), line("1,4d"));
+        assert_eq!(resolve(0, "3,5y", f), line("2,5y"));
+        assert_eq!(resolve(2, "d", f), line("2,4d"), "the default line widens");
+        assert_eq!(
+            resolve(1, "d 2", f),
+            line("4,5d"),
+            "a count counts from the fold's end"
+        );
+        assert_eq!(resolve(0, "3normal x", f), line("3normal x"));
+        assert_eq!(resolve(0, "3,3normal x", f), line("2,4normal x"));
+        assert_eq!(resolve(2, "normal x", f), line("normal x"));
+        assert_eq!(resolve(0, "3put", f), line("4put"));
+        assert_eq!(resolve(0, "3put!", f), line("2put!"));
+        assert_eq!(resolve(0, "3", f), Ok(ExRange::Goto(3)));
+        assert_eq!(resolve(0, "%d", f), line("%d"));
+        assert_eq!(
+            resolve(2, "g/x/d", f),
+            line("g/x/d"),
+            "`:g` defaults to the whole buffer"
+        );
+        assert_eq!(resolve(0, "3d", None), line("3d"), "no folds inside a `:g`");
+        let open = crate::folds::Fold {
+            closed: false,
+            ..fold
+        };
+        assert_eq!(resolve(0, "3d", Some(&[open][..])), line("3d"));
     }
 }

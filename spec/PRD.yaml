@@ -606,6 +606,12 @@ features:
     # keeps a hidden buffer's changes (nvim discards them) — the conservative side of #736.
     # #1068: `{count}C-w w` / `C-w {count}w` / `{count}C-w W` go to window `count` (the last one when there
     # are fewer); `C-w C-w` = `C-w w`, `C-w W` steps back.
+    # #1141 folds (view-local, frontend; apps/tui/src/folds.rs, nvim v0.12.6 `fold_*` fixtures): manual
+    # folds nest (`zf` inside a fold, or around one, as nvim's foldCreate), with one-line folds; `zo`/`zc`/
+    # `za`/`zO`/`zC`/`zA`/`zv`/`zx`/`zX`/`zr`/`zm` walk the nesting, `zd`/`zD`/`zE` delete over it,
+    # `[z`/`]z`/`zj`/`zk` move over it. An Ex range grows to the closed folds it starts or ends in (two
+    # addresses or a whole-fold command, not inside `:g`). `:[range]fo[ld]`, `:foldo[pen][!]`,
+    # `:foldc[lose][!]`, `:foldd[oopen] {cmd}` and `:folddoc[losed] {cmd}` (run per line as `:g` does).
     status: done
     depends_on: [C-VIEW, C-WORKSPACE]
     summary: Same buffer openable in multiple views; view-local state stays in the view.

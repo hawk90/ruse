@@ -423,12 +423,18 @@ impl OptionHost<'_> {
                 } else {
                     FoldMethod::Manual
                 };
+                // Folds an indent method made stay as manual ones, at their depths.
+                if m == FoldMethod::Manual {
+                    if let Some(fv) = self.folds.get_mut(&buf) {
+                        crate::folds::renest(fv);
+                    }
+                }
                 self.fold_method.insert(buf, m);
                 self.fold_rev.remove(&buf);
             }
             (Opt::FoldLevel, OptVal::Num(n)) => {
                 self.foldlevel.insert(buf, usize::try_from(n).unwrap_or(0));
-                self.reapply_folds(buf);
+                self.reapply_folds_for(buf, true);
             }
             (Opt::FoldEnable, _) => {
                 self.foldenable.insert(buf, on);
@@ -446,8 +452,15 @@ impl OptionHost<'_> {
         }
     }
 
+    /// Close the folds deeper than 'foldlevel' (all of them open with 'nofoldenable'). Manual folds take a
+    /// new 'foldlevel' too (nvim's `newFoldLevel`), but not a 'foldenable' change, which would lose the
+    /// state each one was left in.
     fn reapply_folds(&mut self, buf: DocumentId) {
-        if self.fold_method.get(&buf).copied() != Some(FoldMethod::Indent) {
+        self.reapply_folds_for(buf, false);
+    }
+
+    fn reapply_folds_for(&mut self, buf: DocumentId, level_changed: bool) {
+        if self.fold_method.get(&buf).copied() != Some(FoldMethod::Indent) && !level_changed {
             return;
         }
         if let Some(fv) = self.folds.get_mut(&buf) {

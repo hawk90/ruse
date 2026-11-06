@@ -4685,7 +4685,7 @@ mod ex_extra;
 mod nvim_options;
 pub(crate) mod set_cmd;
 pub(crate) use ex::{comment_free, delete_print_flags, reuse_last_search};
-pub(crate) use ex_cmd::full_command_name;
+pub(crate) use ex_cmd::{full_command_name, is_substitute_word};
 pub use ex_cmd::{strip_modifiers, ExModifiers};
 pub use ex_extra::{FileCmd, PrintFlags, StartKind, ZSpec};
 // `GlobalPayload` is referenced by the non-test dispatch/run-loop (routing `:g/pat/normal` vs `d`/`s`) and

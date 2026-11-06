@@ -1050,8 +1050,8 @@ impl Session {
         let buf = self.ws.focused_buffer();
         if let Some(fv) = self.folds.get(&buf) {
             let lines = crate::app::dispatch::line_count(self.ws.focused().doc.bytes());
-            let nested = self.fold_method.get(&buf) == Some(&crate::input::FoldMethod::Indent);
-            crate::folds::assert_invariants(fv, lines, nested);
+            let manual = self.fold_method.get(&buf) != Some(&crate::input::FoldMethod::Indent);
+            crate::folds::assert_invariants(fv, lines, manual);
         }
         for (id, a) in &self.fold_anchors {
             if let Some(doc) = self.ws.document(*id) {
@@ -2219,15 +2219,12 @@ impl Session {
                 }
                 crate::folds::FoldMotionParse::Cancel => {} // not a fold motion — drop it
                 crate::folds::FoldMotionParse::Ready { motion, count } => {
-                    // A closed fold needs ≥ 2 lines: `end > start` (nvim declines a single-line `zf`).
+                    // A one-line fold is a fold too (nvim): it never shows closed ('foldminlines').
                     if let Some((start, end)) = ws.reindent_range(motion, count) {
-                        if end > start {
-                            let buf_id = ws.focused_buffer();
-                            let fv = folds.entry(buf_id).or_default();
-                            crate::folds::insert_closed_fold(fv, start, end);
-                            place_cursor(ws, recorded, line_idx.nth_line_start(start));
-                            status.echo(format!("folded {} lines", end - start + 1));
-                        }
+                        let fv = folds.entry(ws.focused_buffer()).or_default();
+                        crate::folds::insert_closed_fold(fv, start, end);
+                        place_cursor(ws, recorded, line_idx.nth_line_start(start));
+                        status.echo(format!("folded {} lines", end - start + 1));
                     }
                 }
             }
@@ -2392,18 +2389,23 @@ impl Session {
                 // `zf` — create a CLOSED fold. From a Visual selection: fold the selection's lines. From
                 // Normal mode: arm the `zf{motion}` sub-state (handled at the top of the loop), which folds
                 // the range the following motion covers (slice 2).
+                // Under an indent 'foldmethod' `zf` is `E350` at once and no operator: the keys after it
+                // run as typed (nvim's `foldManualAllowed`), and Visual mode stays.
+                KeyCode::Char('f')
+                    if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent) =>
+                {
+                    status.error(E350);
+                }
                 KeyCode::Char('f') => {
                     if let Some((BytePos(s), BytePos(e))) =
                         ws.focused().view.selection_span(snapshot)
                     {
                         let (a, b) = (line_idx.line_of(s), line_idx.line_of(e.saturating_sub(1)));
                         let (start, end) = (a.min(b), a.max(b));
-                        if end > start {
-                            crate::folds::insert_closed_fold(fv, start, end);
-                            run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
-                            place_cursor(ws, recorded, line_idx.nth_line_start(start));
-                            status.echo(format!("folded {} lines", end - start + 1));
-                        }
+                        run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+                        crate::folds::insert_closed_fold(fv, start, end);
+                        place_cursor(ws, recorded, line_idx.nth_line_start(start));
+                        status.echo(format!("folded {} lines", end - start + 1));
                     } else {
                         // Normal mode: begin `zf{motion}`. Seed the buffer with any count typed before `z`
                         // (e.g. `3zfj`); further count digits typed after `f` are appended by the handler.
@@ -2414,22 +2416,39 @@ impl Session {
                         });
                     }
                 }
-                // `zo`/`zc`/`za` — open / close / toggle the fold containing the cursor line.
-                KeyCode::Char('o' | 'c' | 'a') => {
-                    if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
-                        fv[idx].closed = match key.code {
-                            KeyCode::Char('o') => false,
-                            KeyCode::Char('c') => true,
-                            _ => !fv[idx].closed,
-                        };
-                        // The cursor keeps its line inside a closed fold (nvim; #819).
+                // `zo`/`zc`/`za`, `zO`/`zC`/`zA`, `zv`, `zx`/`zX` over nested folds (#1141), as nvim's
+                // `setManualFold` walks the folds holding the cursor line from the outermost: `zo` opens
+                // the outermost closed one (`{count}` levels), `zc` closes the innermost open one above the
+                // first closed one, `zO` opens the outermost closed one and all inside it, `zC` closes
+                // every one, `za`/`zA` open when a closed fold hides the line and close otherwise. No fold
+                // at the line is `E490`. The cursor keeps its line inside a closed fold (nvim; #819).
+                KeyCode::Char(c @ ('o' | 'c' | 'a' | 'O' | 'C' | 'A')) => {
+                    let n = count.max(1);
+                    let closed = crate::folds::is_closed_at(fv, cur_line);
+                    let open = match c {
+                        'o' | 'O' => true,
+                        'c' | 'C' => false,
+                        _ => closed,
+                    };
+                    let found = match (open, c.is_ascii_uppercase()) {
+                        (true, true) => crate::folds::open_rec(fv, cur_line),
+                        (false, true) => crate::folds::close_rec(fv, cur_line),
+                        (true, false) => {
+                            (0..n).fold(None, |f, _| f.or(crate::folds::open_one(fv, cur_line)))
+                        }
+                        (false, false) => {
+                            (0..n).fold(None, |f, _| f.or(crate::folds::close_one(fv, cur_line)))
+                        }
+                    };
+                    if found.is_none() {
+                        status.error("E490: No fold found");
                     }
                 }
                 // `zj` / `zk` — move the cursor DOWN to the next fold's start / UP to the previous fold's
-                // end (`{count}` repeats; a closed fold counts as one, which is inherent since we step over
-                // whole folds, not lines). Cursor-only, column 0 — matching nvim, which ignores 'startofline'
-                // here (verified: `zj` lands at col 0 even with `startofline` on). Landing inside a closed
-                // fold keeps the cursor there; it paints on the summary row.
+                // end (`{count}` repeats). A closed fold counts as one: the folds inside it are not
+                // stepped to. Cursor-only, column 0 — matching nvim, which ignores 'startofline' here
+                // (verified: `zj` lands at col 0 even with `startofline` on). Landing inside a closed fold
+                // keeps the cursor there; it paints on the summary row.
                 KeyCode::Char('j') | KeyCode::Char('k') => {
                     let n = count.max(1);
                     let down = matches!(key.code, KeyCode::Char('j'));
@@ -2453,40 +2472,48 @@ impl Session {
                         place_cursor(ws, recorded, line_idx.nth_line_start(line));
                     }
                 }
-                // `zR`/`zM`/`zr`/`zm` — open/close all folds or step the foldlevel. Under
-                // `foldmethod=indent` these DRIVE the foldlevel value (Vim: zR=max, zM=0, zr=+1, zm=-1) and
-                // re-apply the closed rule to the derived folds; under `manual` they open/close the flat set
-                // directly (manual folds are a single level, so zr≡zR and zm≡zM there).
-                KeyCode::Char('R' | 'M' | 'r' | 'm') => {
-                    let is_indent =
+                // `zR`/`zM`/`zr`/`zm` set 'foldlevel' (the deepest nesting, 0, one more, one less; `{count}`
+                // levels for `zr`/`zm`) and `zx`/`zX` re-apply it: a fold deeper than the level is closed,
+                // the rest open (nvim's `newFoldLevel`, manual and indent folds alike). `zx` then opens the
+                // folds holding the cursor line, as `zv`.
+                KeyCode::Char(c @ ('R' | 'M' | 'r' | 'm' | 'x' | 'X')) => {
+                    let maxl = crate::folds::max_level(fv);
+                    let cur = foldlevel.get(&buf).copied().unwrap_or(0);
+                    let n = count.max(1) as usize;
+                    let new = match c {
+                        'R' => maxl,
+                        'M' => 0,
+                        'r' => cur.saturating_add(n).min(maxl),
+                        'm' => cur.saturating_sub(n),
+                        _ => cur,
+                    };
+                    foldlevel.insert(buf, new);
+                    let en = foldenable.get(&buf).copied().unwrap_or(true);
+                    crate::folds::apply_foldlevel(fv, if en { new } else { usize::MAX });
+                    if c == 'x' {
+                        crate::folds::open_cursor_fold(fv, cur_line);
+                    }
+                }
+                // `zd` deletes the innermost fold at the cursor line (or the closed one hiding it) and moves
+                // the folds inside it up a level; `zD` deletes those too. `zE` deletes every fold. Folds an
+                // indent 'foldmethod' makes cannot be deleted (`E351`/`E352`).
+                KeyCode::Char(c @ ('d' | 'D' | 'E')) => {
+                    let indent =
                         fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent);
-                    if is_indent {
-                        let maxl = crate::folds::max_level(fv);
-                        let cur = foldlevel.get(&buf).copied().unwrap_or(0);
-                        let new = match key.code {
-                            KeyCode::Char('R') => maxl,                // open all
-                            KeyCode::Char('M') => 0,                   // close all
-                            KeyCode::Char('r') => (cur + 1).min(maxl), // one level more open
-                            _ => cur.saturating_sub(1), // 'm' — one level more closed
-                        };
-                        foldlevel.insert(buf, new);
-                        let en = foldenable.get(&buf).copied().unwrap_or(true);
-                        crate::folds::apply_foldlevel(fv, if en { new } else { usize::MAX });
-                    } else {
-                        let close = matches!(key.code, KeyCode::Char('M' | 'm'));
-                        fv.iter_mut().for_each(|f| f.closed = close);
+                    if indent {
+                        status.error(if c == 'E' {
+                            "E352: Cannot erase folds with current 'foldmethod'"
+                        } else {
+                            "E351: Cannot delete fold with current 'foldmethod'"
+                        });
+                    } else if c == 'E' {
+                        crate::folds::eliminate_all(fv);
+                    } else if !crate::folds::delete_at(fv, cur_line, c == 'D') {
+                        status.error("E490: No fold found");
                     }
                 }
-                // `zd` — delete the fold at the cursor line.
-                KeyCode::Char('d') => {
-                    if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
-                        fv.remove(idx);
-                    }
-                }
-                // `zE` — eliminate ALL folds in the window (removes them, unlike `zR` which only opens).
-                KeyCode::Char('E') => crate::folds::eliminate_all(fv),
-                // `zv` — view cursor line: open just enough folds to reveal the cursor line (for the
-                // non-nesting slice-1 model, the single fold containing it). Keeps the fold, unlike `zd`.
+                // `zv` — view cursor line: open just enough folds to reveal the cursor line. Keeps the
+                // folds, unlike `zd`.
                 KeyCode::Char('v') => {
                     crate::folds::open_cursor_fold(fv, cur_line);
                 }
@@ -2542,9 +2569,9 @@ impl Session {
         let chord = normal && pending == Pending::Base;
         let cancels_op = normal && pending == Pending::Operator;
         // `[z` / `]z` — the engine holds `[`/`]` as a `BracketPrefix`; only the fold-nav second key `z` is a
-        // frontend view move, everything else (`]p`, `[M`, …) stays the engine's. `[z` → the current fold's
-        // START, `]z` → its END (Vim's "current open fold"); non-overlapping slice-1 folds make `fold_at` the
-        // innermost one. No fold at the cursor → no-op (Vim beeps). Count is ignored (Vim: `[z`/`]z` take
+        // frontend view move, everything else (`]p`, `[M`, …) stays the engine's. `[z` → the current open
+        // fold's START, `]z` → its END, or the fold around it when the cursor is already there
+        // ([`crate::folds::open_fold_edge`]). No open fold at the cursor → no-op (Vim beeps). Count is ignored (Vim: `[z`/`]z` take
         // none), so consume it via `take_count`, which also resets the engine's `BracketPrefix`.
         if let Pending::Bracket { open } = pending {
             if normal && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
@@ -2552,8 +2579,7 @@ impl Session {
                 let buf = ws.focused_buffer();
                 let cur_line = line_idx.line_of(ws.focused().view.cursor().0);
                 if let Some(fv) = folds.get(&buf) {
-                    if let Some((s, e)) = crate::app::fold_cmds::current_open_fold(fv, cur_line) {
-                        let target = if open { s } else { e };
+                    if let Some(target) = crate::folds::open_fold_edge(fv, cur_line, open) {
                         place_cursor(ws, recorded, line_idx.nth_line_start(target));
                     }
                 }
@@ -3538,7 +3564,11 @@ impl Session {
             search: engine.last_search(),
             substitute: last_substitute.as_ref().map(|(p, _, _)| p.as_str()),
         };
-        let resolved = crate::app::ex_range::resolve_ex_range(&text, ws, pats);
+        // Inside a `:g` a range does not grow to closed folds (nvim checks `global_busy`).
+        let range_folds = (!*global_busy)
+            .then(|| folds.get(&ws.focused_buffer()).map(Vec::as_slice))
+            .flatten();
+        let resolved = crate::app::ex_range::resolve_ex_range(&text, ws, pats, range_folds);
         // A `/pat/` or `?pat?` address becomes the last search, as in Vim (`:/foo/d` then `n`).
         if let Some((pat, forward)) = resolved.search {
             engine.set_last_search(pat.clone(), forward);
@@ -3892,6 +3922,45 @@ impl Session {
                         self.ex_global_normal(&marked, keys, frame);
                     }
                     crate::input::GlobalPayload::Ex(cmd) => self.ex_global_ex(&marked, cmd, frame),
+                }
+            }
+            // `:{range}fold` (#1141): a closed manual fold over the range, as `zf`; the cursor stays.
+            Ex::Fold(range) => {
+                let buf = ws.focused_buffer();
+                if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent) {
+                    status.error(E350);
+                    return;
+                }
+                let (a, b) = ws.resolve_range(range);
+                let fv = folds.entry(buf).or_default();
+                crate::folds::insert_closed_fold(fv, a.max(1) - 1, b.max(1) - 1);
+            }
+            // `:{range}foldopen[!]` / `:{range}foldclose[!]` (#1141): `zo`/`zc` (`zO`/`zC`) on each line of
+            // the range, past each closed fold; `E490` when no fold holds any of its lines.
+            Ex::FoldOpen {
+                range,
+                open,
+                recursive,
+            } => {
+                let (a, b) = ws.resolve_range(range);
+                let fv = folds.entry(ws.focused_buffer()).or_default();
+                if !crate::folds::op_range(fv, a.max(1) - 1, b.max(1) - 1, open, recursive) {
+                    status.error("E490: No fold found");
+                }
+            }
+            // `:{range}folddoopen {cmd}` / `:{range}folddoclosed {cmd}` (#1141): run `{cmd}` on each line of
+            // the range not in (or in) a closed fold, through the per-line dispatch `:g` uses (nvim's
+            // `ex_folddo` marks the lines, then runs `global_exe`).
+            Ex::FoldDo { range, closed, cmd } => {
+                let (a, b) = ws.resolve_range(range);
+                let fv = folds
+                    .get(&ws.focused_buffer())
+                    .map_or(&[][..], Vec::as_slice);
+                let marked: Vec<usize> = (a.max(1)..=b)
+                    .filter(|&l| crate::folds::closed_range(fv, l - 1).is_some() == closed)
+                    .collect();
+                if !marked.is_empty() {
+                    self.ex_global_ex(&marked, &cmd, frame);
                 }
             }
             // `:checkhealth` (F-030): gather the frontend snapshot (guard/profile/highlighter) and render
@@ -4380,6 +4449,14 @@ impl Session {
                 } else {
                     format!("{n} lines {}ed 1 time", if left { '<' } else { '>' })
                 });
+                // A shift opens the fold the cursor ends in (nvim's `op_shift`), as `>>` does.
+                if let Some(fv) = folds.get_mut(&ws.focused_buffer()) {
+                    let pane = ws.focused();
+                    crate::folds::open_at(
+                        fv,
+                        ruse_core::pos::line_of(pane.doc.bytes(), pane.view.cursor()),
+                    );
+                }
             }
             // `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed
             // line (a charwise register is still put as whole lines — the linewise-forcing rule).
@@ -4767,6 +4844,22 @@ impl Session {
 
     /// A frame for a key a `:normal` feeds: the buffer snapshot, line index and pane geometry as they are
     /// now (earlier keys of the same `:normal` may have edited, split or switched), with `frame`'s size.
+    /// Insert mode opens the folds holding the cursor line (nvim's `edit` calls `foldOpenCursor`), also
+    /// for keys run between frames (`:normal`, a `:g` of them).
+    fn open_folds_in_insert(&mut self) {
+        let pane = self.ws.focused();
+        if !matches!(
+            pane.view.mode(),
+            Mode::Insert | Mode::Replace | Mode::VirtualReplace
+        ) {
+            return;
+        }
+        let line = ruse_core::pos::line_of(pane.doc.bytes(), pane.view.cursor());
+        if let Some(fv) = self.folds.get_mut(&self.ws.focused_buffer()) {
+            crate::folds::open_at(fv, line);
+        }
+    }
+
     fn nested_frame(&mut self, frame: &FrameCtx) -> FrameCtx {
         let (revision, snapshot) = {
             let f = self.ws.focused();
@@ -4805,6 +4898,7 @@ impl Session {
         let f = self.nested_frame(frame);
         let status_before = self.status.serial();
         self.route(key, true, &f);
+        self.open_folds_in_insert();
         if self.failed_since(status_before) {
             self.macros.flush_replay();
             return true;
@@ -4827,6 +4921,7 @@ impl Session {
             let f = self.nested_frame(frame);
             let status_before = self.status.serial();
             self.route_as(k, true, &f);
+            self.open_folds_in_insert();
             if self.failed_since(status_before) {
                 self.macros.flush_replay();
                 return true;
@@ -5733,6 +5828,8 @@ fn note_word_search(
 }
 
 const E35: &str = "E35: No previous regular expression";
+/// `zf` or `:fold` while 'foldmethod' makes the folds (nvim's `e_cant_create_fold_with_current_foldmethod`).
+const E350: &str = "E350: Cannot create fold with current 'foldmethod'";
 
 /// Whether `cmd` is a search the engine issued with no previous pattern to repeat (an empty one, #1173),
 /// or a `gn`/`gN` with none to match (#1184).
