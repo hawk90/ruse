@@ -192,3 +192,28 @@ fn config_reload_reports_no_change() {
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
 }
+
+/// `render.conceal` follows the file live: turning it off shows a Markdown heading's `# `, turning it back
+/// on hides it again, with no restart.
+#[test]
+fn render_conceal_reloads_live() {
+    let dir = Scratch::new();
+    user_config(&dir, "render.conceal = true\n");
+    dir.file("n.md", b"top\n# Title\n");
+    let mut ed = Editor::start(&dir, &[Path::new("n.md")]);
+    assert_eq!(ed.wait_for_row("Title")[1], "Title");
+    user_config(&dir, "# off\nrender.conceal = false\n");
+    ed.keys(":checktime\r");
+    ed.wait_for("config reloaded: 1 key(s) changed (render.conceal)");
+    assert_eq!(ed.wait_for_row("# Title")[1], "# Title");
+    user_config(&dir, "render.conceal = true # on again\n");
+    let mark = ed.mark();
+    ed.keys(":checktime\r");
+    // The same report again: wait for it after the mark, then read the redrawn screen.
+    ed.wait_for_after(mark, "config reloaded: 1 key(s) changed (render.conceal)");
+    ed.sync();
+    let rows = ed.rows();
+    assert_eq!(rows[1], "Title", "{rows:?}");
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+}
