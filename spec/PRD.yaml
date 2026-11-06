@@ -426,6 +426,12 @@ features:
     # CFG-MIG-001 table (rename = auto-conversion with a config.migrated note, removal = manual warning, the
     # value inert; the file is never rewritten). The table is empty at schema version 1 (no key renamed yet).
     # render.conceal is read from the config (F-031).
+    # #1152: safe mode (CFG-SAFE-001): `ruse --safe-mode`, or after 3 starts in a row that read user config and
+    # died before their first frame (config/boot.rs record in the state dir), only the machine layer loads;
+    # `[Config: safe-mode]` on the status line, `:inspect config` and a `:checkhealth` config row say so, and
+    # `:config-reload` leaves it. Live reload: a changed layer file (polled with the [disk changed] checks) or
+    # `:config-reload` re-applies only the changed keys; a file that stops parsing keeps the previous config;
+    # input.profile and security-locked keys wait for the next start.
     # #1151: 'history' (both rings, 0..10000), 'showmode' (the status line's mode word) and 'verbose' (above 0,
     # `:set opt?` adds `Last set from`) are options; 'cpoptions' reads nvim's default aABceFs_ and 'verbosefile'
     # reads empty, and any other value is refused as not supported (documented divergence: ruse behaves as the

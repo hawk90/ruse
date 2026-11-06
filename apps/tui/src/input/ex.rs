@@ -56,6 +56,9 @@ pub enum Ex {
     Trust,
     /// `:untrust` (or nvim's `:trust ++remove`) — delete the trust record and take back the session grant.
     Untrust,
+    /// `:config-reload` (Helix's name) — read the config layers again and install what changed; it also
+    /// leaves safe mode (#1152).
+    ConfigReload,
     /// `:inspect config [key]` — the config layers, values with their sources, and diagnostics (#614).
     InspectConfig(Option<String>),
     /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
@@ -1215,6 +1218,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
         "trust" => Ex::Trust,
         "untrust" | "trust ++remove" => Ex::Untrust,
+        "config-reload" => Ex::ConfigReload,
         "inspect config" => Ex::InspectConfig(None),
         l if l.starts_with("inspect config ") => {
             Ex::InspectConfig(Some(l["inspect config ".len()..].trim().to_string()))

@@ -50,6 +50,9 @@ pub struct HealthInputs {
     pub trace_commands: usize,
     /// The recovery journals (RFC-0023 §8, #938).
     pub journaling: Journaling,
+    /// What is wrong with the config, `None` when every layer loaded cleanly
+    /// ([`crate::config::health_issue`]: `safe-mode (…)` or `degraded (…)`).
+    pub config: Option<String>,
 }
 
 /// Where the session's recovery journals stand, for the journal rows.
@@ -208,6 +211,10 @@ pub fn report(i: &HealthInputs) -> Vec<HealthRow> {
     ]
     .into_iter()
     .chain(journal_rows(&i.journaling))
+    .chain(std::iter::once(match &i.config {
+        None => row("config", Status::Ok, "ok".into()),
+        Some(issue) => row("config", Status::Warn, issue.clone()),
+    }))
     .collect()
 }
 
@@ -256,20 +263,36 @@ mod tests {
             buffers: 2,
             trace_commands: 7,
             journaling: Journaling::Off,
+            config: None,
         }
     }
 
     #[test]
     fn report_covers_every_check_and_all_ok_reads_clean() {
         let rows = report(&sample());
-        // profile, 4 term caps, grammar, buffers, trace, journal = 9 rows.
-        assert_eq!(rows.len(), 9);
+        // profile, 4 term caps, grammar, buffers, trace, journal, config = 10 rows.
+        assert_eq!(rows.len(), 10);
         assert!(rows[..8].iter().all(|r| r.status == Status::Ok));
         assert_eq!(rows[8].status, Status::Absent, "a headless session");
+        assert_eq!(rows[9].label, "config");
+        assert_eq!(rows[9].status, Status::Ok);
         assert_eq!(
             summary_line(&rows),
-            "checkhealth: 8 ok, 1 issue(s) — recovery journal n/a"
+            "checkhealth: 9 ok, 1 issue(s) — recovery journal n/a"
         );
+    }
+
+    /// The config row (`config-model.md` Observability): `ok`, else safe mode or degraded is a WARN.
+    #[test]
+    fn the_config_row_reports_safe_mode() {
+        let mut i = sample();
+        i.config = Some("safe-mode (--safe-mode)".into());
+        let l = lines(&report(&i));
+        assert!(
+            l.contains(&"WARN config: safe-mode (--safe-mode)".to_string()),
+            "{l:?}"
+        );
+        assert!(l.last().unwrap().contains("config WARN"));
     }
 
     #[test]
@@ -280,7 +303,7 @@ mod tests {
         i.grammar_ok = false; // -> Absent
         let rows = report(&i);
         let s = summary_line(&rows);
-        assert!(s.starts_with("checkhealth: 6 ok, 3 issue(s)"), "{s}");
+        assert!(s.starts_with("checkhealth: 7 ok, 3 issue(s)"), "{s}");
         assert!(s.contains("term: sgr-mouse WARN"), "{s}");
         assert!(s.contains("syntax grammar n/a"), "{s}");
     }
@@ -353,7 +376,7 @@ mod tests {
         assert_eq!(l[12], "OK   journal: h.txt: clean, no journal");
         assert_eq!(
             l.last().unwrap(),
-            "checkhealth: 12 ok, 1 issue(s) — journal: g.txt WARN"
+            "checkhealth: 13 ok, 1 issue(s) — journal: g.txt WARN"
         );
         i.journaling = Journaling::NoStateDir;
         assert!(summary_line(&report(&i)).contains("recovery journal WARN"));

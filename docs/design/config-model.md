@@ -353,6 +353,17 @@ mode" delivery contract). Safe mode is distinct from per-key degradation: a sing
 safe mode — it just falls back. The status line shows `Config: safe-mode` (INV-STATUS) and `:inspect config`
 still works so the user can find the offending key.
 
+As built (#1152, `apps/tui/src/config/boot.rs`): a start is **config-attributable** when it read a user or
+workspace layer and ended before its first frame was drawn (a panic, abort or signal between loading the
+config and painting; a crash later in the session is not counted). A small record under the state directory
+(`${XDG_STATE_HOME:-~/.local/state}/ruse/config-boot`) counts such starts in a row: a start that read user
+config writes `n + 1` before applying it, and its first frame removes the record. A start that finds `n >= 3`
+(Firefox's `max_resumed_crashes`) runs in safe mode and leaves the record, so safe mode holds until the user
+runs `:config-reload`, which loads every layer, installs it, and removes the record. `--safe-mode` neither
+counts nor clears. The status line carries `[Config: safe-mode]` for the session, the startup message names
+the reason, `:inspect config` lists the user and workspace layers as `safe-mode`, and `:checkhealth` has a
+`config` row (`ok` / `degraded (…)` / `safe-mode (…)`). There are no plugins yet to disable.
+
 ## Recovery behavior
 
 - Per-key fallback and layer quarantine are automatic and non-destructive: C-CONFIG **never rewrites a user
@@ -387,6 +398,14 @@ still works so the user can find the offending key.
   of authored config), not O(document).
 - Reload recomputes the merge and diffs the snapshot; consumers subscribe to change events rather than
   polling. No layer is re-parsed unless its file changed (watcher-driven, with a full-reparse fallback).
+- As built (#1152): the session stats the layer files, the `.ruse/` directory and the trust record (a few
+  `lstat`s: length, modification time, inode) when it looks at its files anyway (idle, focus gain, after an
+  Ex command, `:checktime`), and reloads when one moved; `:config-reload` reloads at once. A reload installs
+  only the keys whose effective value changed (an option typed with `:set` keeps its value), says which on the
+  status line, and is silent when none did. A layer that loaded before and now does not parse keeps the whole
+  previous config, with the error. `input.profile` and the `security_locked` keys keep their running value
+  until the next start (see Open questions). No file-watch dependency: the poll reuses the `[disk changed]`
+  rhythm (RFC-0023 §8).
 
 ## Compatibility impact
 
@@ -487,7 +506,9 @@ opt-in rewrite of the file is not built; the file is only ever read.
   itself be split (admin vs vendor). Deferred to the C-CONFIG implementation RFC.
 - **Negation syntax** — the concrete `!pattern` / removal form for `append`/`set-union` lists.
 - **Reload semantics for `security_locked` keys** — may a live reload change a locked value, or only at
-  restart? Leaning restart-only for trust/executable keys.
+  restart? Built restart-only (#1152): a reload leaves every `security_locked` key at its running value and
+  names it as taking effect at the next start, so a file edited behind a running session cannot loosen its
+  trust. Revisit if a locked key gains a runtime consumer that must follow edits.
 - **Per-language / per-filetype sub-scopes** (VSCode `[rust]` blocks) — modeled as `deep-merge` maps now;
   whether they warrant a first-class sub-scope is open.
 

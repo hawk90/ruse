@@ -135,6 +135,7 @@ const RUSE_COMMANDS: &[&str] = &[
     "trace",
     "untrust",
     "inspect",
+    "config-reload",
 ];
 
 /// A command modifier (`:help :command-modifiers`) ruse honours.

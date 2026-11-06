@@ -22,7 +22,7 @@ use crate::persist::encoding::FileFormat;
 
 /// `ruse --help` text. Paths are the only arguments the interactive editor takes today.
 const USAGE: &str = "\
-usage: ruse [-R] [--] [file]
+usage: ruse [-R] [--safe-mode] [--] [file]
        ruse --replay <trace> <file>
        ruse agent
        ruse ssh [host]
@@ -32,7 +32,9 @@ Open <file> in the editor, or an unnamed buffer with no file.
 Use `--` before a file name that starts with '-'.
 
 Options:
-  -R    read-only: every file opened is 'readonly' (:w gives E45, :w! writes)
+  -R           read-only: every file opened is 'readonly' (:w gives E45, :w! writes)
+  --safe-mode  read only the machine config: no user or workspace config (also after
+               3 starts in a row that crashed before drawing; :config-reload leaves it)
 
 Environment:
   RUSE_PROFILE=vim|emacs|native   key profile (default vim; overrides input.profile)
@@ -40,6 +42,7 @@ Environment:
 Config:
   /etc/ruse/config.toml, ${XDG_CONFIG_HOME:-~/.config}/ruse/config.toml, and the
   workspace's .ruse/config.toml once :trust recorded it (:inspect config lists them).
+  A changed file is reloaded on its own; :config-reload reloads at once.
 ";
 
 /// What the command line asks for (#896).
@@ -52,8 +55,17 @@ enum Invocation {
     Replay(Vec<String>),
     Agent,
     Ssh(Option<String>),
-    /// The interactive editor on one file, or on an unnamed buffer; `true` with `-R` (read-only mode).
-    Edit(Option<PathBuf>, bool),
+    /// The interactive editor on one file, or on an unnamed buffer.
+    Edit(Option<PathBuf>, Flags),
+}
+
+/// The interactive editor's options.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+struct Flags {
+    /// `-R`: read-only mode.
+    read_only: bool,
+    /// `--safe-mode`: the user and workspace config layers are not read (CFG-SAFE-001).
+    safe_mode: bool,
 }
 
 /// Parse argv (without the program name). A leading `-` word is an option; after `--` every word is a
@@ -87,12 +99,14 @@ fn parse(args: &[OsString]) -> Invocation {
     }
     let mut files: Vec<&OsString> = Vec::new();
     let mut options_done = false;
-    let mut read_only = false;
+    let mut flags = Flags::default();
     for arg in args {
         if !options_done && arg == "--" {
             options_done = true;
         } else if !options_done && arg == "-R" {
-            read_only = true;
+            flags.read_only = true;
+        } else if !options_done && arg == "--safe-mode" {
+            flags.safe_mode = true;
         } else if !options_done && arg.as_encoded_bytes().first() == Some(&b'-') {
             return Invocation::Usage(format!("unknown option: {}", arg.to_string_lossy()));
         } else {
@@ -100,8 +114,8 @@ fn parse(args: &[OsString]) -> Invocation {
         }
     }
     match files.as_slice() {
-        [] => Invocation::Edit(None, read_only),
-        [one] => Invocation::Edit(Some(PathBuf::from(one)), read_only),
+        [] => Invocation::Edit(None, flags),
+        [one] => Invocation::Edit(Some(PathBuf::from(one)), flags),
         // nvim opens every file into its argument list. ruse has no argument list yet, and opening only
         // the first would drop the rest without a word, so refuse until it does.
         _ => Invocation::Usage(format!(
@@ -118,7 +132,7 @@ pub fn run() -> ExitCode {
     crate::log::init();
     crate::recover::install_hook();
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
-    let (path, read_only) = match parse(&args) {
+    let (path, flags) = match parse(&args) {
         // Written, not `print!`ed: a closed stdout (`ruse --help | true`) must not panic.
         Invocation::Help => {
             let _ = io::stdout().write_all(USAGE.as_bytes());
@@ -141,7 +155,7 @@ pub fn run() -> ExitCode {
         // With a host → SSH stdio (`ssh host ruse agent`, slice 2a; requires `ruse` on the remote PATH until
         // agent bootstrap lands). No host → the local pipe proof (`ruse agent` subprocess, slice 1).
         Invocation::Ssh(host) => return ssh_connect(host.as_deref()),
-        Invocation::Edit(path, read_only) => (path, read_only),
+        Invocation::Edit(path, flags) => (path, flags),
     };
     // The editor draws on stdout and reads keys from stdin. Without a terminal on both it cannot run, and
     // the raw-mode call would fail with a bare OS error (#896); say which side is missing instead.
@@ -170,7 +184,7 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let result = session_run(path, raw, read_only);
+    let result = session_run(path, raw, flags.read_only, flags.safe_mode);
     // From here this thread ends the process; the signal watchdog stands down (#897).
     let _exiting = crate::signals::begin_exit();
     // The terminal guard has already restored the terminal. A fatal signal or an I/O error ended the session
@@ -297,6 +311,15 @@ mod tests {
         parse(&args)
     }
 
+    const NONE: Flags = Flags {
+        read_only: false,
+        safe_mode: false,
+    };
+    const RO: Flags = Flags {
+        read_only: true,
+        safe_mode: false,
+    };
+
     fn usage(inv: Invocation) -> String {
         match inv {
             Invocation::Usage(m) => m,
@@ -306,12 +329,12 @@ mod tests {
 
     #[test]
     fn no_arguments_opens_an_unnamed_buffer() {
-        assert_eq!(p(&[]), Invocation::Edit(None, false));
+        assert_eq!(p(&[]), Invocation::Edit(None, NONE));
     }
 
     #[test]
     fn one_word_is_a_file() {
-        assert_eq!(p(&["a.txt"]), Invocation::Edit(Some("a.txt".into()), false));
+        assert_eq!(p(&["a.txt"]), Invocation::Edit(Some("a.txt".into()), NONE));
     }
 
     #[test]
@@ -338,16 +361,16 @@ mod tests {
 
     #[test]
     fn double_dash_ends_options() {
-        assert_eq!(p(&["--", "-x"]), Invocation::Edit(Some("-x".into()), false));
-        assert_eq!(p(&["--", "--"]), Invocation::Edit(Some("--".into()), false));
-        assert_eq!(p(&["--"]), Invocation::Edit(None, false));
+        assert_eq!(p(&["--", "-x"]), Invocation::Edit(Some("-x".into()), NONE));
+        assert_eq!(p(&["--", "--"]), Invocation::Edit(Some("--".into()), NONE));
+        assert_eq!(p(&["--"]), Invocation::Edit(None, NONE));
         assert_eq!(
             p(&["--", "agent"]),
-            Invocation::Edit(Some("agent".into()), false)
+            Invocation::Edit(Some("agent".into()), NONE)
         );
         assert_eq!(
             p(&["a.txt", "--"]),
-            Invocation::Edit(Some("a.txt".into()), false)
+            Invocation::Edit(Some("a.txt".into()), NONE)
         );
     }
 
@@ -356,14 +379,38 @@ mod tests {
     fn dash_r_is_read_only_mode() {
         assert_eq!(
             p(&["-R", "a.txt"]),
-            Invocation::Edit(Some("a.txt".into()), true)
+            Invocation::Edit(Some("a.txt".into()), RO)
         );
         assert_eq!(
             p(&["a.txt", "-R"]),
-            Invocation::Edit(Some("a.txt".into()), true)
+            Invocation::Edit(Some("a.txt".into()), RO)
         );
-        assert_eq!(p(&["-R"]), Invocation::Edit(None, true));
-        assert_eq!(p(&["--", "-R"]), Invocation::Edit(Some("-R".into()), false));
+        assert_eq!(p(&["-R"]), Invocation::Edit(None, RO));
+        assert_eq!(p(&["--", "-R"]), Invocation::Edit(Some("-R".into()), NONE));
+    }
+
+    /// `--safe-mode` (CFG-SAFE-001), with or without a file and `-R`; after `--` it is a file name.
+    #[test]
+    fn safe_mode_flag() {
+        let safe = Flags {
+            read_only: false,
+            safe_mode: true,
+        };
+        assert_eq!(p(&["--safe-mode"]), Invocation::Edit(None, safe));
+        assert_eq!(
+            p(&["a.txt", "--safe-mode", "-R"]),
+            Invocation::Edit(
+                Some("a.txt".into()),
+                Flags {
+                    read_only: true,
+                    safe_mode: true
+                }
+            )
+        );
+        assert_eq!(
+            p(&["--", "--safe-mode"]),
+            Invocation::Edit(Some("--safe-mode".into()), NONE)
+        );
     }
 
     #[test]
@@ -391,7 +438,7 @@ mod tests {
         let raw = OsString::from_vec(b"caf\xe9.txt".to_vec());
         assert_eq!(
             parse(std::slice::from_ref(&raw)),
-            Invocation::Edit(Some(PathBuf::from(raw)), false)
+            Invocation::Edit(Some(PathBuf::from(raw)), NONE)
         );
     }
 
