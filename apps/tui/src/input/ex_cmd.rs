@@ -154,6 +154,8 @@ enum Modifier {
     /// adjusts marks; ruse does not honour it there yet.
     KeepMarks,
     Filter,
+    /// `:conf[irm]`: ask instead of failing on unsaved changes (#619).
+    Confirm,
 }
 
 /// The modifiers with nvim v0.12.6's minimal abbreviations.
@@ -167,6 +169,7 @@ const MODIFIERS: &[(&str, usize, Modifier)] = &[
     ("keepalt", 5, Modifier::KeepAlt),
     ("keepmarks", 3, Modifier::KeepMarks),
     ("filter", 4, Modifier::Filter),
+    ("confirm", 4, Modifier::Confirm),
 ];
 
 /// What the modifiers before a command asked for.
@@ -186,6 +189,8 @@ pub struct ExModifiers {
     pub keep_alt: bool,
     /// `:filt[er][!] {pat}` — the command lists only the lines that match `pat` (`!`: that do not).
     pub filter: Option<(String, bool)>,
+    /// `:conf[irm]` — unsaved changes ask (the `'confirm'` dialog) instead of failing.
+    pub confirm: bool,
 }
 
 /// Every command name `:` completion offers (`:help cmdline-completion`, #613): the implemented Vim
@@ -345,6 +350,7 @@ pub fn strip_modifiers(line: &str) -> (ExModifiers, &str) {
             Modifier::KeepJumps => mods.keep_jumps = true,
             Modifier::KeepPatterns => mods.keep_patterns = true,
             Modifier::KeepAlt => mods.keep_alt = true,
+            Modifier::Confirm => mods.confirm = true,
             Modifier::Filter => {
                 let (pattern, next) = filter_pattern(after.trim_start());
                 mods.filter = Some((pattern, bang));

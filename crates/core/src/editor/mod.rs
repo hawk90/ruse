@@ -4276,6 +4276,22 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         0
     };
     let mut p = plan(st, cmd);
+    // `'nomodifiable'` (#619): a command that would change the text or step the undo history does
+    // nothing but say E21 (nvim checks `MODIFIABLE` before each change), so no register, mark or mode
+    // change happens either.
+    if !st.doc.is_modifiable()
+        && matches!(
+            p.action,
+            Action::Txn { .. }
+                | Action::ReplaceTxn { .. }
+                | Action::Undo
+                | Action::Redo
+                | Action::LineUndo
+                | Action::UndoChrono { .. }
+        )
+    {
+        return vec![Effect::Status(crate::document::E21.to_string())];
+    }
     // A linewise change (`cc`, `S`, `Vc`) leaves its line with the kept indent and nothing typed: the
     // same autoindent cleanup an opened line gets applies (nvim's `op_change` sets `did_ai`).
     let linewise_change = entry_mode != Mode::Insert

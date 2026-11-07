@@ -66,7 +66,13 @@ pub struct Document {
     pinned: Vec<Tracked>,
     /// The applied changes a recovery journal drains ([`Document::drain_changes`], RFC-0023 §1).
     changes: ChangeLog,
+    /// Vim's `'modifiable'` (#619): when off, the editor refuses every command that would change the text
+    /// (`E21`, [`crate::editor`]). A reload from the file is not such a command.
+    modifiable: bool,
 }
+
+/// nvim's message for a change to a buffer with `'nomodifiable'`.
+pub const E21: &str = "E21: Cannot make changes, 'modifiable' is off";
 
 impl Document {
     /// Open a document with `initial` bytes at [`Revision::ZERO`]. It starts *unsaved*
@@ -100,6 +106,7 @@ impl Document {
             mark_undo: HashMap::new(),
             pinned: Vec::new(),
             changes: ChangeLog::default(),
+            modifiable: true,
         };
         d.rebuild_index();
         d
@@ -627,6 +634,33 @@ impl Document {
     pub fn mark_saved(&mut self) {
         self.saved_node = Some(self.undo.current_seq());
         self.undo.sync();
+    }
+
+    /// Re-read the text as `bytes` in ONE undo step of its own (the changed lines only), carrying `tracked`
+    /// through it, then mark the result saved: an `'autoread'` reload that `u` takes back (#619). Returns
+    /// whether it applied.
+    pub fn reload_tracked(&mut self, bytes: Vec<u8>, tracked: &mut [Tracked]) -> bool {
+        let edit = Edit::lines_changed(self.bytes(), bytes);
+        let Ok(edits) = EditList::new(vec![edit]) else {
+            return false;
+        };
+        let txn = Transaction::new(self.revision, edits, TransactionOrigin::UserInput);
+        self.sync_undo();
+        let ok = self.apply_tracked(txn, tracked).is_ok();
+        self.sync_undo();
+        self.mark_saved();
+        ok
+    }
+
+    /// Vim's `'modifiable'`: whether commands may change the text.
+    #[must_use]
+    pub fn is_modifiable(&self) -> bool {
+        self.modifiable
+    }
+
+    /// Set `'modifiable'`.
+    pub fn set_modifiable(&mut self, on: bool) {
+        self.modifiable = on;
     }
 
     /// Mark the buffer as differing from the file (nvim's `:set modified`, or a change to how it is written

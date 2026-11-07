@@ -183,12 +183,40 @@ pub enum ExOutcome {
     Applied(bool),
     /// A pattern that does not compile; nothing changed.
     Failed(RegexError),
+    /// The buffer is `'nomodifiable'` (`E21`, #619); nothing changed.
+    NotModifiable,
+}
+
+impl ExCmd {
+    /// Whether the command changes the text (every edit `'nomodifiable'` refuses).
+    #[must_use]
+    pub fn edits(&self) -> bool {
+        matches!(
+            self,
+            ExCmd::Substitute { .. }
+                | ExCmd::Global { .. }
+                | ExCmd::Delete { .. }
+                | ExCmd::Join { .. }
+                | ExCmd::Shift { .. }
+                | ExCmd::Move { .. }
+                | ExCmd::Copy { .. }
+                | ExCmd::Put { .. }
+                | ExCmd::Sort { .. }
+                | ExCmd::Retab { .. }
+                | ExCmd::ReadText { .. }
+                | ExCmd::FilterReplace { .. }
+                | ExCmd::Edits { .. }
+        )
+    }
 }
 
 impl EditorState {
     /// Run one resolved Ex edit (RFC-0020). The group markers are inert here: undo grouping across a group
     /// is the caller's ([`crate::trace::Trace::replay`] opens one undo block per outermost group).
     pub fn apply_ex(&mut self, ex: &ExCmd) -> ExOutcome {
+        if ex.edits() && !self.doc.is_modifiable() {
+            return ExOutcome::NotModifiable;
+        }
         let lines = |first: usize, last: usize| SubRange::Lines(first, last);
         match ex {
             ExCmd::Substitute {

@@ -738,6 +738,14 @@ features:
     # `:w` (they ignored `:set fixeol` before). Divergences: no Lisp make-backup-file-name-function, no prompt
     # inside a save (delete-old-versions nil keeps versions, require-final-newline ask adds none), no
     # M-x set-variable (config keys + :config-reload).
+    # v0.1.9 #619 buffer state and quit policy (app/abandon.rs, tests/buffer_state.rs, tests/pty_quit_policy.rs,
+    # tests/pty_disk_changed.rs): 'modifiable' (E21 for every change and undo, enforced at the editor's entry
+    # points), 'modified', 'hidden' (default on as nvim; off: E37 on :e/:enew/:b/:bn/:bp/:q/:close, E445 on
+    # :only), 'autowrite' (:b family, before :!/:r !/filters), 'autowriteall' (+ :e, :enew, :q, :qa),
+    # 'confirm' and :confirm (nvim's Yes/No/Save All/Discard All/Cancel dialog, then the command again),
+    # 'autoread' (default on as nvim: an unmodified buffer whose file changed is re-read as one undoable
+    # change; W11 only with noautoread). The Emacs-profile counterparts (view-read-only, confirm-kill-*,
+    # buffer-offer-save, revert-*, query-about-changed-file, save-some-buffers-default-predicate) come next.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.

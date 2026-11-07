@@ -36,6 +36,8 @@ fn an_external_write_flags_an_unmodified_buffer() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"one\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    // W11 is what nvim says without 'autoread' (#619).
+    ed.keys_then_wait_for(":set noar\r", "f.txt");
     ed.keys(":!touch f.txt\r\r");
     assert!(
         !bar(&mut ed).contains("[disk changed]"),
@@ -94,6 +96,8 @@ fn the_idle_timer_notices_a_change() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"one\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    // W11 is what nvim says without 'autoread' (#619).
+    ed.keys_then_wait_for(":set noar\r", "f.txt");
     let before = ed.mark();
     std::fs::write(&file, b"two, longer\n").unwrap();
     ed.wait_for_after(before, W11);
@@ -109,6 +113,8 @@ fn a_focus_gain_notices_a_change() {
     let dir = Scratch::new();
     let file = dir.file("f.txt", b"one\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    // W11 is what nvim says without 'autoread' (#619).
+    ed.keys_then_wait_for(":set noar\r", "f.txt");
     assert!(
         ed.screen_bytes().contains("\x1b[?1004h"),
         "focus reports are asked for"
@@ -177,5 +183,26 @@ fn an_append_to_the_own_file_is_not_a_change() {
     ed.keys(":w\r");
     support::wait_for_file(&file, b"ne\n");
     ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+}
+
+/// nvim v0.12.6 with `'autoread'` (its default): an unmodified buffer whose file changed is re-read
+/// silently on `:checktime`, and `u` takes the re-read back (#619); a modified one still gets W12.
+#[test]
+fn autoread_rereads_an_unmodified_buffer() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"one\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.keys_then_wait_for(":set ar?\r", "  autoread");
+    std::fs::write(&file, b"two, longer\n").unwrap();
+    ed.keys_then_wait_for(":checktime\r", "two, longer");
+    let b = bar(&mut ed);
+    assert!(!b.contains("[disk changed]") && !b.contains("[+]"), "{b:?}");
+    ed.keys_then_wait_for("u", "one");
+    ed.keys_then_wait_for(":e!\r", "two, longer");
+    ed.keys("x");
+    std::fs::write(&file, b"three\n").unwrap();
+    ed.keys_then_wait_for(":checktime\r", "W12");
+    ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
 }

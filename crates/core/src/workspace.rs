@@ -132,6 +132,9 @@ pub struct Workspace {
     /// An operator applied since the last [`Workspace::take_refused`] was refused by its register
     /// ([`Effect::RegisterRefused`], #1184).
     refused: bool,
+    /// An Ex edit applied since the last [`Workspace::take_not_modifiable`] was refused by
+    /// `'nomodifiable'` (#619).
+    not_modifiable: bool,
     /// The `"+`/`"*` value the last clipboard pull wrote, when the pull changed the slot, until the frontend
     /// takes it for the trace ([`Workspace::take_clipboard_read`], RFC-0020 R6).
     clipboard_read: Option<crate::register::Register>,
@@ -167,6 +170,7 @@ impl Workspace {
             window_defaults: crate::WindowOptions::default(),
             clipboard: Box::new(NoClipboard),
             beeped: false,
+            not_modifiable: false,
             refused: false,
             clipboard_read: None,
             registers: RegisterStore::new(),
@@ -265,6 +269,11 @@ impl Workspace {
         std::mem::take(&mut self.beeped)
     }
 
+    /// Whether an Ex edit was refused by `'nomodifiable'` since the last call (`E21`), clearing the flag.
+    pub fn take_not_modifiable(&mut self) -> bool {
+        std::mem::take(&mut self.not_modifiable)
+    }
+
     /// Whether an operator was refused by its register ([`Effect::RegisterRefused`]) since the last call,
     /// clearing the flag: the failure behind a beep that nvim saves for `.` (#1184).
     pub fn take_refused(&mut self) -> bool {
@@ -328,6 +337,15 @@ impl Workspace {
     #[must_use]
     pub fn window_count(&self) -> usize {
         self.windows.len()
+    }
+
+    /// The buffer each Window shows, in tile order (the focused one at [`Workspace::focus`]).
+    #[must_use]
+    pub fn window_buffers(&self) -> Vec<DocumentId> {
+        self.windows
+            .iter()
+            .filter_map(|w| self.views[w.view.0].as_ref().map(View::doc))
+            .collect()
     }
 
     /// The current split direction of the flat layout.
@@ -1080,8 +1098,10 @@ impl Workspace {
         let last = self.docs[slot]
             .as_ref()
             .map_or(crate::pos::Revision::ZERO, Document::revision);
+        let modifiable = self.docs[slot].as_ref().is_none_or(Document::is_modifiable);
         let mut doc = Document::replacing(id, bytes, last);
         doc.mark_saved();
+        doc.set_modifiable(modifiable);
         // Every other view of the buffer keeps its place, clamped into the new text (#686, #687).
         for v in self.views.iter_mut().flatten().filter(|v| v.doc() == id) {
             let c = crate::motion::snap(doc.bytes(), v.cursor().0);
@@ -1090,6 +1110,39 @@ impl Workspace {
         }
         self.docs[slot] = Some(doc);
         self.place_focused_cursor(BytePos(0));
+    }
+
+    /// Re-read buffer `id` from its file's new `bytes` as ONE undoable change (nvim's `'autoread'` reload,
+    /// which `u` takes back while the file is under `'undoreload'`), then mark it saved. Every view of it
+    /// keeps its place, clamped into the new text. `'nomodifiable'` does not stop a reload. Returns whether
+    /// the text changed.
+    pub fn reload_undoable(&mut self, id: DocumentId, bytes: Vec<u8>) -> bool {
+        let Some(doc) = self.document(id) else {
+            return false;
+        };
+        if doc.bytes() == bytes.as_slice() {
+            if let Some(d) = self.document_mut(id) {
+                d.mark_saved();
+            }
+            return false;
+        }
+        let ok = if id == self.focused_buffer() {
+            self.with_focused(|st| st.with_tracked(|d, t| d.reload_tracked(bytes, t)))
+        } else {
+            match self.document_mut(id) {
+                Some(d) => d.reload_tracked(bytes, &mut []),
+                None => false,
+            }
+        };
+        let slot = Self::doc_slot(id);
+        if let Some(doc) = self.docs[slot].as_ref() {
+            for v in self.views.iter_mut().flatten().filter(|v| v.doc() == id) {
+                let c = crate::motion::snap(doc.bytes(), v.cursor().0);
+                v.set_cursor(BytePos(c));
+                v.snap_offsets(doc.bytes());
+            }
+        }
+        ok
     }
 
     /// Add a new buffer over `bytes` with optional display `name`, plus a fresh View onto it (not shown
@@ -1428,6 +1481,7 @@ impl Workspace {
             (st.apply_ex(ex), pulled)
         });
         self.note_clipboard_read(pulled);
+        self.not_modifiable |= out == crate::ExOutcome::NotModifiable;
         out
     }
 

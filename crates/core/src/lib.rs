@@ -92,7 +92,7 @@ pub use command::{
     BlockInsertKind, Command, CommandParseError, ForcedWise, MarkOp, OpKind, OpenKind,
     SearchOffset, SearchOp, SelectKind, VisualOp, WordCase,
 };
-pub use document::{Document, DocumentId, TxnError};
+pub use document::{Document, DocumentId, TxnError, E21};
 pub use edit::{Edit, EditError, EditList};
 pub use editor::{
     apply_command, commit, plan, CaretGravity, CinKey, CinOptions, EditorOption, EditorState,

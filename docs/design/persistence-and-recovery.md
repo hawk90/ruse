@@ -492,6 +492,33 @@ using both the cheap hint and the authoritative hash:
 > off) and turns them off on every exit, the signal watchdog's included. nvim sets 1004 on every terminal; a
 > terminal that ignores the mode ignores the set. Inside tmux, focus reports reach ruse only with
 > `set -g focus-events on` in `tmux.conf`; without it a change is noticed by the other triggers.
+>
+> **`'autoread'` (v0.1.9, #619):** on by default, as nvim's. An unmodified buffer whose file changed is re-read
+> at the check, silently and as ONE undoable change (`Workspace::reload_undoable`; nvim keeps the reload in
+> undo while the file is under `'undoreload'`), with the file's new line endings and BOM. A modified buffer
+> keeps its text and gets W12; with `:set noar` an unmodified one gets W11 as before. A trace cannot record a
+> re-read, so a session that autoread refuses to save its trace, as after `:e!`.
+
+### 5a. Buffer state and leaving changed buffers (v0.1.9, #619)
+
+`'modifiable'` is buffer state on the `Document`; the editor's two entry points refuse a text change while it
+is off (`apply_command` for a planned edit or an undo step, `EditorState::apply_ex` for a resolved Ex edit)
+with nvim's `E21`, before any register, mark or mode change, so the Transaction layer never sees the edit. A
+reload is not such a command. `'modified'` reads the undo-saved state, `:set nomod` marks the buffer saved
+and `:set mod` marks it unsaved (`Document::mark_unsaved`, which `:set bomb` also uses).
+
+Leaving a changed buffer (`app/abandon.rs`) follows nvim's `check_changed` / `can_abandon` /
+`dialog_changed`: with `'hidden'` (on, as nvim) a buffer no window shows stays loaded with its changes; off,
+`:e {other}`, `:enew`, `:b`/`:bn`/`:bp` and `:q`/`:close` of a window are `E37` when no other window shows the
+buffer, and `:only` over another window's changes is `E445`. `'autowrite'` writes instead for the `:b`
+family and writes every changed buffer before `:!`, `:r !` and a filter; `'autowriteall'` adds `:e`,
+`:enew`, `:q` and `:qa`; neither writes a `'readonly'` buffer or one without a file. `'confirm'` (or
+`:confirm` on one command) asks with nvim's dialog on the status line (`[Y]es, (N)o, (C)ancel`, plus
+`Save (A)ll` / `(D)iscard All` when several buffers changed), then runs the command again, so `:qa` asks
+buffer by buffer. Divergences: the dialog is one status line (nvim's console dialog is two); `(N)o` marks the
+buffer unchanged and keeps it loaded (nvim may unload it, losing the text it kept); `(Y)es` on a buffer
+without a file is `E141` (nvim names it `Untitled` and writes that); the window keys (`CTRL-W q`, `CTRL-W c`)
+do not run the gate yet.
 
 ### 6. Undo grouping boundaries (resolves the open D-005 part)
 

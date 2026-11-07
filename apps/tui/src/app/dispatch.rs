@@ -475,6 +475,12 @@ pub(crate) fn run_cmd(
     quit: &mut bool,
 ) {
     if let Some(err) = put_error(&cmd, ws) {
+        // nvim checks 'modifiable' before the register (#619).
+        let err = if ws.focused().doc.is_modifiable() {
+            err
+        } else {
+            ruse_core::E21.to_string()
+        };
         // Nothing runs; a `"x` the command would have read is spent, as in Vim. Recorded, so a replay does
         // not hand that register to the next command.
         status.error(err);
