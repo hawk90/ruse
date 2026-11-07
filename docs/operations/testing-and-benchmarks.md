@@ -405,6 +405,20 @@ generalize to any oracle:
   against the E-number of the last error ruse put on the status line (`Headless::emsg`); `failed` is
   captured only, since ruse has no bell. Error fixtures assert the state after the failure too, usually by
   typing a key after it.
+- **Mode, marks, registers, the Visual area and undo (#900).** Every fixture records `mode`
+  (`nvim_get_mode()`); `nvim_feedkeys(.., 'x')` ends Insert mode and drops an armed operator once the keys run
+  out, so what it tells apart is Normal, Visual, Select and the command line. Four more are recorded only
+  where a fixture observes them, by its `observe` list or by its group (`OBSERVE_GROUPS` in `oracle.py`), so
+  the corpus stays reviewable:
+  - `marks`: a-z, `<`, `>`, `[`, `]`, `.`, `^` as `[line, col0]`, with `visualmode()`. Column -1 is MAXCOL, a
+    linewise end whose column is not compared. The `'.` that `nvim_buf_set_lines` sets is dropped when the
+    keys changed nothing.
+  - `regs`: `"1`-`"9` and `"-`.
+  - `visual`: in Visual mode, the kind and the fixed end (`getpos('v')`).
+  - `undo`: the text after each `:undo` back to where the keys started. Only fixtures under `UNDO_SETUP`
+    record it; its undo break makes the walk stop there. ruse walks `Command::Undo` the same way.
+
+  The existing fields regenerate byte-identically; only the new ones are added.
 - **Coverage by scenario class.** `python3 tools/parity/scenario_classes.py` tags each fixture with the
   classes its keys touch (motion, operator x motion, text object, Visual, Insert, Ex, register, macro, undo,
   marks, search, counts, error, multibyte, edge buffers, dot-repeat, config) and names the thin ones;

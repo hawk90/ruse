@@ -1003,6 +1003,13 @@ impl View {
         self.last_insert
     }
 
+    /// The fixed end of the Visual area being made (nvim's `getpos('v')`; the cursor is the other end), or
+    /// `None` outside Visual and Select mode. The parity comparator reads it (#900).
+    #[must_use]
+    pub fn visual_anchor(&self) -> Option<BytePos> {
+        self.anchor.map(BytePos)
+    }
+
     /// The byte offset of mark `c`, or `None` if unset or not a mark this resolves: a letter (`a`–`z`,
     /// `A`–`Z`), `^` (where Insert stopped) or `<`/`>` (the last Visual area's start / end; a linewise one
     /// from its first line's start to its last line's end). The marks a jump or an operator reads by name

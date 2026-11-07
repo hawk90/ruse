@@ -196,8 +196,10 @@ items:
       - DR-PAR-3
     source:
       - design-requirements.md §2 Parity Meaning
-    notes: Oracle captures text/cursor/reg_unnamed/reg0 (reg0 excluded from comparison); mode, selection shape, undo grouping
-      and error timing are not compared.
+    notes: Compared against the oracle (#900, #901) are text, cursor, reg_unnamed, reg0, emsg and mode for every fixture.
+      Marks with visualmode, the numbered and small-delete registers, the Visual area (selection shape) and the undo walk
+      (undo grouping) are compared where a fixture observes them. Still open is error timing beyond the last E-number:
+      `failed` is captured and not compared, since ruse has no bell.
   - id: PAR-004
     title: Vim Style vs Native Style differences documented
     area: par

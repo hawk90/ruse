@@ -78,6 +78,10 @@ if input.setup ~= nil and input.setup ~= '' then
   vim.cmd(input.setup)
 end
 vim.v.errmsg = ''
+-- Where the undo walk (#900) stops: the state the keys started from.
+local base_seq = vim.fn.undotree().seq_cur
+-- `nvim_buf_set_lines` sets `'.`; with no change since, that mark is the oracle's, not the keys'.
+local base_tick = vim.b.changedtick
 local tc = vim.api.nvim_replace_termcodes(input.keys, true, false, true)
 if input.probe_failed then
   -- Fed NOT as typed, the keys after a failed command are flushed (Vim's beep_flush and the flush on an
@@ -91,7 +95,28 @@ if input.probe_failed then
 end
 -- 't': as typed, the way a user's keys arrive, so a failed command does not swallow the keys after it.
 vim.api.nvim_feedkeys(tc, 'xt', false)
-io.write(vim.json.encode({
+-- #900: a mark as {line, byte col}, or nil when unset.
+local function pos(m)
+  local p = vim.fn.getpos(m)
+  if p[2] == 0 then return nil end
+  return { p[2], p[3] - 1 }
+end
+local mode = vim.api.nvim_get_mode().mode
+local marks = vim.empty_dict()
+for m in ("abcdefghijklmnopqrstuvwxyz<>[].^"):gmatch(".") do
+  marks[m] = pos("'" .. m)
+end
+if vim.b.changedtick == base_tick then marks['.'] = nil end
+local regs = vim.empty_dict()
+for r in ("123456789-"):gmatch(".") do
+  regs[r] = { out(vim.fn.getreg(r)), vim.fn.getregtype(r) }
+end
+-- The Visual area being made: its mode and the end the cursor is not on (`getpos('v')`).
+local visual = vim.NIL
+if mode == 'v' or mode == 'V' or mode == '\22' then
+  visual = { mode, pos('v') }
+end
+local state = {
   text        = vim.tbl_map(out, vim.api.nvim_buf_get_lines(0, 0, -1, false)),
   cursor      = vim.api.nvim_win_get_cursor(0),
   reg_unnamed = { out(vim.fn.getreg('"')), vim.fn.getregtype('"') },
@@ -109,7 +134,26 @@ io.write(vim.json.encode({
   end)(),
   -- The first line in the window (`line('w0')`): recorded for the fixtures marked `topline` (#1141).
   topline     = vim.fn.line('w0'),
-}))
+  -- #900: what the fixtures that observe them record (see `_observes`).
+  marks       = marks,
+  vmode       = vim.fn.visualmode(),
+  regs        = regs,
+  visual      = visual,
+}
+-- The undo walk changes the buffer, so it comes last: the text after each `:undo` back to where the keys
+-- started (at most 20 steps), for the fixtures that observe undo.
+if input.undo then
+  local undo = {}
+  for _ = 1, 20 do
+    local before = vim.fn.undotree().seq_cur
+    if before <= base_seq then break end
+    vim.cmd('silent! undo')
+    if vim.fn.undotree().seq_cur == before then break end
+    table.insert(undo, vim.tbl_map(out, vim.api.nvim_buf_get_lines(0, 0, -1, false)))
+  end
+  state.undo = undo
+end
+io.write(vim.json.encode(state))
 """
 
 
@@ -230,8 +274,24 @@ def _from_latin1_hex(s: str) -> str:
     return bytes.fromhex(s).decode("latin-1")
 
 
+# A mark's column nvim leaves at MAXCOL: the end of a linewise area (`'>` after `V`, `']` after `yj`).
+MAXCOL = 2147483647
+
+
+def _mark(p: list[int] | None) -> list[int] | None:
+    """A probe mark `[line, col0]` with MAXCOL as -1: a linewise end, whose column Vim leaves unset."""
+    if p is None:
+        return None
+    return [p[0], -1 if p[1] >= MAXCOL - 1 else p[1]]
+
+
 def run_neovim(
-    lines: list[str], keys: str, setup: str = "", file: str = "", raw: bool = False
+    lines: list[str],
+    keys: str,
+    setup: str = "",
+    file: str = "",
+    raw: bool = False,
+    undo: bool = False,
 ) -> dict:
     """Run the pinned Neovim on `lines`, feed `keys` in Normal mode, and return the settled state.
 
@@ -248,8 +308,13 @@ def run_neovim(
     E-number of the last error message the keys raised (`v:errmsg`, cleared first), or ""; `failed` is
     whether any command failed, an error or a Normal-mode beep, observed in a second fresh process as
     Vim flushing the keys queued after the failure (see the probe).
+
+    #900 adds `mode` (`nvim_get_mode()`), `marks` (a-z, `<`, `>`, `[`, `]`, `.`, `^` as `[line, col0]`,
+    the set ones only, col -1 for MAXCOL), `vmode` (`visualmode()`), `regs` (`"1`-`"9` and `"-`), `visual`
+    (in Visual mode, `[mode, [line, col0]]` of the end the cursor is not on) and, when `undo` is asked
+    for, `undo`: the text after each `:undo` back to where the keys started.
     """
-    payload = {"lines": lines, "keys": keys, "setup": setup, "file": file}
+    payload = {"lines": lines, "keys": keys, "setup": setup, "file": file, "undo": undo}
     if raw:
         # `raw`: the lines are Latin-1 spellings of bytes (a `bytes` fixture, #1232); they travel as hex.
         payload = {**payload, "lines": _latin1_lines(lines), "hex": True}
@@ -258,9 +323,17 @@ def run_neovim(
     ru_text, ru_type = got["reg_unnamed"]
     r0_text, r0_type = got["reg0"]
     text = got["text"]
+    unhex = _from_latin1_hex if raw else (lambda t: t)
     if raw:
         text = [_from_latin1_hex(t) for t in text]
         ru_text, r0_text = _from_latin1_hex(ru_text), _from_latin1_hex(r0_text)
+    regs = {
+        name: {"text": unhex(t), "type": _regtype(rt)} for name, (t, rt) in got["regs"].items()
+    }
+    marks = {name: _mark(p) for name, p in got["marks"].items() if p is not None}
+    visual = got["visual"]
+    if visual is not None:
+        visual = [_regtype(visual[0]), _mark(visual[1])]
     return {
         "text": text,
         "cursor": got["cursor"],
@@ -271,6 +344,11 @@ def run_neovim(
         "failed": failed,
         "folds": got["folds"],
         "topline": got["topline"],
+        "marks": marks,
+        "vmode": _regtype(got["vmode"]),
+        "regs": regs,
+        "visual": visual,
+        "undo": [[unhex(t) for t in u] for u in got.get("undo", [])] if undo else None,
         "nvim_version": nvim_version(),
     }
 
@@ -5050,7 +5128,49 @@ FIXTURES: list[dict] = [
     {"name": "pct_lisp_comment_quote", "lines": ["(a ; \"", "b)"], "keys": ":set lisp<CR>%"},
     {"name": "pct_lisp_string_semicolon", "lines": ["(a \";\" )"], "keys": ":set lisp<CR>%"},
     {"name": "pct_lisp_back", "lines": ["(a", "; (", "b)"], "keys": ":set lisp<CR>G$%"},
+    # #900: fixtures that end in Visual mode (the area being made), or that are about the numbered and
+    # small-delete registers, the marks or the undo walk, each observing what it is about.
+    {"name": "obs_visual_charwise", "lines": ["abc def", "ghi"], "keys": "lvjl", "observe": ["visual", "marks"]},
+    {"name": "obs_visual_linewise", "lines": ["abc", "def", "ghi"], "keys": "jVj", "observe": ["visual", "marks"]},
+    {"name": "obs_visual_blockwise", "lines": ["abcd", "efgh"], "keys": "l<C-v>jl", "observe": ["visual", "marks"]},
+    {"name": "obs_visual_o_swaps", "lines": ["abcdef"], "keys": "lvllo", "observe": ["visual"]},
+    {"name": "obs_visual_gv_reselects", "lines": ["foo bar"], "keys": "wviw<Esc>0gv", "observe": ["visual", "marks"]},
+    {"name": "obs_visual_v_to_V", "lines": ["abc", "def"], "keys": "lvjV", "observe": ["visual"]},
+    {"name": "obs_regs_dd_shifts", "lines": ["a", "b", "c", "d"], "keys": "dddddd", "observe": ["regs"]},
+    {"name": "obs_regs_small_delete", "lines": ["foo bar baz"], "keys": "dwx", "observe": ["regs"]},
+    {"name": "obs_regs_multiline_delete_numbered", "lines": ["foo bar", "baz"], "keys": "wd/baz<CR>", "observe": ["regs"]},
+    {"name": "obs_regs_named_delete_shifts", "lines": ["a", "b", "c"], "keys": '"add"bdd', "observe": ["regs"]},
+    {"name": "obs_marks_set_and_moved", "lines": ["one", "two", "three"], "keys": "jmajmbggOx<Esc>", "observe": ["marks"]},
+    {"name": "obs_marks_yank_change_marks", "lines": ["foo bar baz"], "keys": "wyiw", "observe": ["marks"]},
+    {"name": "obs_marks_put_change_marks", "lines": ["foo", "bar"], "keys": "yyjp", "observe": ["marks"]},
+    {"name": "obs_undo_three_steps", "lines": ["abc"], "keys": "xxx", "setup": UNDO_SETUP},
+    {"name": "obs_undo_insert_break", "lines": ["abc"], "keys": "ia<C-g>ub<Esc>", "setup": UNDO_SETUP},
+    {"name": "obs_undo_after_redo", "lines": ["abc"], "keys": "xxuu<C-r>", "setup": UNDO_SETUP},
+    {"name": "obs_undo_dot_repeat", "lines": ["a b c"], "keys": "dw..", "setup": UNDO_SETUP},
 ]
+
+
+# #900: the observables beyond text, cursor, the two registers and the error that a fixture records. A
+# fixture asks with `observe`; whole groups ask by name prefix, so the existing fixtures about marks,
+# registers and Visual mode check them without each spelling it out. `undo` needs UNDO_SETUP's undo
+# break, so the walk back stops where the fixture's keys started.
+OBSERVE_GROUPS: dict[str, tuple[str, ...]] = {
+    "marks": ("mk_", "sc_mark_", "v_", "visual_", "vb_"),
+    "regs": ("rg_", "d_", "sc_reg"),
+    "visual": ("v_", "visual_", "vb_", "blk_", "block_"),
+}
+
+
+def _observes(spec: dict) -> set[str]:
+    """The #900 observables `spec` records: its own `observe` list, its groups', and `undo` under
+    UNDO_SETUP."""
+    got = set(spec.get("observe", ()))
+    for what, prefixes in OBSERVE_GROUPS.items():
+        if spec["name"].startswith(prefixes):
+            got.add(what)
+    if UNDO_SETUP in spec.get("setup", ""):
+        got.add("undo")
+    return got
 
 
 def generate(path: Path) -> int:
@@ -5070,7 +5190,8 @@ def generate(path: Path) -> int:
         setup = spec.get("setup", "")
         file = spec.get("file", "")
         raw = bool(spec.get("bytes"))
-        state = run_neovim(spec["lines"], spec["keys"], setup, file, raw)
+        observe = _observes(spec)
+        state = run_neovim(spec["lines"], spec["keys"], setup, file, raw, "undo" in observe)
         entry = {
             "name": spec["name"],
             "lines": spec["lines"],
@@ -5096,10 +5217,21 @@ def generate(path: Path) -> int:
                     "reg0": state["reg0"],
                     "emsg": state["emsg"],
                     "failed": state["failed"],
+                    # The mode the keys end in, for every fixture (#900).
+                    "mode": state["mode"],
                     # Only the fixtures about folds record them, so the rest stay byte-identical.
                     **({"folds": state["folds"]} if spec.get("folds") else {}),
                     # And only those about the view record its top line (#1141).
                     **({"topline": state["topline"]} if spec.get("topline") else {}),
+                    # And the #900 observables only for the fixtures that observe them (`_observes`).
+                    **(
+                        {"marks": state["marks"], "vmode": state["vmode"]}
+                        if "marks" in observe
+                        else {}
+                    ),
+                    **({"regs": state["regs"]} if "regs" in observe else {}),
+                    **({"visual": state["visual"]} if "visual" in observe else {}),
+                    **({"undo": state["undo"]} if "undo" in observe else {}),
                 },
             }
         )
@@ -5118,8 +5250,23 @@ def generate(path: Path) -> int:
             "nvim_version": version_line,
             "pin_version_label": pin["version_label"],
             "pin_revision": pin["revision"],
-            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "failed", "folds", "topline"],
-            "ruse_compare_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "folds", "topline"],
+            "captured_observables": [
+                "text", "cursor", "reg_unnamed", "reg0", "emsg", "failed", "mode", "folds", "topline",
+                "marks", "vmode", "regs", "visual", "undo",
+            ],
+            "ruse_compare_observables": [
+                "text", "cursor", "reg_unnamed", "reg0", "emsg", "mode", "folds", "topline",
+                "marks", "vmode", "regs", "visual", "undo",
+            ],
+            "mode_note": "mode is nvim_get_mode().mode after the keys, recorded for every fixture.",
+            "observe_note": (
+                "marks (with vmode), regs, visual and undo are recorded only for the fixtures that observe "
+                "them (a fixture's `observe`, or its group: see _observes in oracle.py). marks: a-z, <, >, "
+                "[, ], ., ^ as [line, col0], the set ones only; col -1 is MAXCOL, the end of a linewise area, "
+                "whose column is not compared. vmode: visualmode(). regs: \"1-\"9 and \"-. visual: in Visual "
+                "mode, [mode, [line, col0]] of the end the cursor is not on, else null. undo: the text after "
+                "each :undo back to where the keys started (at most 20), for fixtures run under UNDO_SETUP."
+            ),
             "topline_note": "topline is recorded only for fixtures about the view: line('w0').",
             "folds_note": (
                 "folds is recorded only for fixtures about folds: per line, "
@@ -5230,6 +5377,29 @@ def selftest() -> int:
         state = run_neovim(lines, keys)
         if not ok(state):
             _fail(f"known-op disagreement: {label} — got {state['text']} / reg0={state['reg0']}")
+            failures += 1
+
+    # 4. The #900 observables, each against an answer known without this harness.
+    observed = [
+        ("dd fills \"1 linewise", ["a", "b"], "dd", False,
+         lambda s: s["regs"]["1"] == {"text": "a\n", "type": "linewise"}),
+        ("dw fills \"- charwise", ["foo bar"], "dw", False,
+         lambda s: s["regs"]["-"] == {"text": "foo ", "type": "charwise"}),
+        ("ma sets 'a where the cursor is", ["abc", "def"], "jlma", False,
+         lambda s: s["marks"].get("a") == [2, 1]),
+        ("no change leaves '. unset (not the oracle's set_lines)", ["abc"], "l", False,
+         lambda s: "." not in s["marks"]),
+        ("Vj is linewise Visual, anchored on line 1", ["a", "b"], "Vj", False,
+         lambda s: s["mode"] == "V" and s["visual"] == ["linewise", [1, 0]]),
+        ("V<Esc> leaves Normal mode and visualmode() V", ["a"], "V<Esc>", False,
+         lambda s: s["mode"] == "n" and s["visual"] is None and s["vmode"] == "linewise"),
+        ("two undo steps walk back through two texts", ["abc"], "xx", True,
+         lambda s: s["undo"] == [["bc"], ["abc"]]),
+    ]
+    for label, lines, keys, undo, ok in observed:
+        state = run_neovim(lines, keys, UNDO_SETUP if undo else "", undo=undo)
+        if not ok(state):
+            _fail(f"observable disagreement: {label} — got {state}")
             failures += 1
 
     if failures:

@@ -9,8 +9,9 @@
 //! The corpus is `tests/parity/vim/fixtures/corpus.yaml` — JSON-in-YAML (a subset of YAML 1.2),
 //! captured by `tools/parity/oracle.py`. Run with `-- --nocapture` to see the tally.
 
+use ruse_core::{Command, Mode, SelectKind};
 use ruse_tui::headless::Headless;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 mod parity_ratchet;
 
@@ -89,6 +90,108 @@ fn ruse_reg(h: &mut Headless, name: char, raw: bool) -> (String, String) {
     (text, kind.to_string())
 }
 
+/// The name nvim's `nvim_get_mode().mode` gives ruse's mode after the keys (#900). The oracle feeds the
+/// keys with `nvim_feedkeys(.., 'x')`, which ends Insert mode and drops an armed operator once the keys run
+/// out, so those read as `n` here too: what is left to compare is Normal, Visual, Select and the command
+/// line.
+fn ruse_mode(h: &Headless) -> String {
+    let kind = |k: SelectKind, c: &str, l: &str, b: &str| match k {
+        SelectKind::Charwise => c.to_string(),
+        SelectKind::Linewise => l.to_string(),
+        SelectKind::Blockwise => b.to_string(),
+    };
+    match h.mode() {
+        Mode::Normal if h.engine().cmdline().is_some() => "c".into(),
+        Mode::Normal | Mode::Insert | Mode::Replace | Mode::VirtualReplace => "n".into(),
+        Mode::Visual { kind: k } => kind(k, "v", "V", "\u{16}"),
+        Mode::Select { kind: k } => kind(k, "s", "S", "\u{13}"),
+        Mode::Terminal => "t".into(),
+        Mode::TerminalNormal => "nt".into(),
+    }
+}
+
+/// The name `getregtype()` / `visualmode()` gives a selection kind, as the oracle records it.
+fn kind_name(k: SelectKind) -> &'static str {
+    match k {
+        SelectKind::Charwise => "charwise",
+        SelectKind::Linewise => "linewise",
+        SelectKind::Blockwise => "blockwise",
+    }
+}
+
+/// Byte offset `p` of ruse's buffer as the oracle's `[line, col0]`.
+fn line_col(bytes: &[u8], p: usize) -> Value {
+    let p = p.min(bytes.len());
+    let ls = bytes[..p]
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map_or(0, |i| i + 1);
+    let line = bytes[..p].iter().filter(|&&b| b == b'\n').count() + 1;
+    json!([line, p - ls])
+}
+
+/// ruse's marks as the oracle records them (#900): the set ones of a-z, `<`, `>`, `[`, `]`, `.`, `^`, and
+/// the last Visual mode. A linewise area's `'<` is its first line's start and its `'>` its last line at
+/// column -1 (nvim's MAXCOL).
+fn ruse_marks(h: &Headless) -> (Value, String) {
+    let ws = h.workspace();
+    let (bytes, view) = (ws.focused().doc.bytes(), &ws.focused().view);
+    let mut marks = serde_json::Map::new();
+    for c in 'a'..='z' {
+        if let Some(p) = view.named_mark(c) {
+            marks.insert(c.to_string(), line_col(bytes, p.0));
+        }
+    }
+    let mut vmode = String::new();
+    if let Some((s, e, kind)) = view.last_visual_bounds() {
+        vmode = kind_name(kind).to_string();
+        let (s, mut e) = (line_col(bytes, s.0), line_col(bytes, e.0));
+        let mut s = s;
+        if kind == SelectKind::Linewise {
+            s[1] = json!(0);
+            e[1] = json!(-1);
+        }
+        marks.insert("<".into(), s);
+        marks.insert(">".into(), e);
+    }
+    let rest = [
+        ('[', view.change_mark_start()),
+        (']', view.change_mark_end()),
+        ('.', view.last_change()),
+        ('^', view.named_mark('^')),
+    ];
+    for (c, p) in rest {
+        if let Some(p) = p {
+            marks.insert(c.to_string(), line_col(bytes, p.0));
+        }
+    }
+    (Value::Object(marks), vmode)
+}
+
+/// Whether ruse's mark `got` is the oracle's `want`: the same line, and the same column unless the oracle's
+/// is -1 (MAXCOL, a linewise end whose column Vim leaves unset).
+fn mark_matches(got: Option<&Value>, want: &Value) -> bool {
+    got.is_some_and(|g| g[0] == want[0] && (want[1] == -1 || g[1] == want[1]))
+}
+
+/// ruse's text after each undo back to the buffer it opened with, at most 20 (#900), as the oracle walks
+/// `:undo` back to where the keys started. Changes the session, so it is read last.
+fn ruse_undo_walk(h: &mut Headless, terminated: bool, raw: bool) -> Vec<Vec<String>> {
+    let mut out = Vec::new();
+    for _ in 0..20 {
+        if !h.workspace().focused().doc.can_undo() {
+            break;
+        }
+        let before = h.workspace().focused().doc.revision();
+        h.workspace_mut().apply(&Command::Undo);
+        if h.workspace().focused().doc.revision() == before {
+            break;
+        }
+        out.push(ruse_text(h, terminated, raw));
+    }
+    out
+}
+
 fn as_str_vec(v: &Value) -> Vec<String> {
     v.as_array()
         .expect("array")
@@ -150,6 +253,66 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     if r_emsg != e_emsg {
         diffs.push(format!("emsg {r_emsg:?} != {e_emsg:?}"));
     }
+    // The mode the keys end in (#900), recorded for every fixture.
+    if let Some(e_mode) = expect.get("mode").and_then(Value::as_str) {
+        let r_mode = ruse_mode(&h);
+        if r_mode != e_mode {
+            diffs.push(format!("mode {r_mode:?} != {e_mode:?}"));
+        }
+    }
+    // The #900 observables, recorded only for the fixtures that observe them.
+    if let Some(e_marks) = expect.get("marks").and_then(Value::as_object) {
+        let (r_marks, r_vmode) = ruse_marks(&h);
+        let r_marks = r_marks.as_object().expect("marks");
+        let mut names: Vec<&String> = e_marks.keys().chain(r_marks.keys()).collect();
+        names.sort();
+        names.dedup();
+        for m in names {
+            let ok = match e_marks.get(m) {
+                Some(want) => mark_matches(r_marks.get(m), want),
+                None => false,
+            };
+            if !ok {
+                diffs.push(format!(
+                    "mark '{m} {} != {}",
+                    r_marks.get(m).map_or("unset".into(), Value::to_string),
+                    e_marks.get(m).map_or("unset".into(), Value::to_string)
+                ));
+            }
+        }
+        let e_vmode = expect["vmode"].as_str().unwrap_or("");
+        if r_vmode != e_vmode {
+            diffs.push(format!("visualmode {r_vmode:?} != {e_vmode:?}"));
+        }
+    }
+    if let Some(e_regs) = expect.get("regs").and_then(Value::as_object) {
+        for (name, want) in e_regs {
+            let c = name.chars().next().expect("register name");
+            let (text, kind) = ruse_reg(&mut h, c, raw);
+            let (wt, wk) = (
+                want["text"].as_str().unwrap_or(""),
+                want["type"].as_str().unwrap_or(""),
+            );
+            if (text.as_str(), kind.as_str()) != (wt, wk) {
+                diffs.push(format!("reg{name} {text:?}/{kind} != {wt:?}/{wk}"));
+            }
+        }
+    }
+    if let Some(e_visual) = expect.get("visual") {
+        let view = &h.workspace().focused().view;
+        let r_visual = match (view.mode(), view.visual_anchor()) {
+            (Mode::Visual { kind }, Some(a)) => {
+                json!([
+                    kind_name(kind),
+                    line_col(h.workspace().focused().doc.bytes(), a.0)
+                ])
+            }
+            _ => Value::Null,
+        };
+        if &r_visual != e_visual {
+            diffs.push(format!("visual {r_visual} != {e_visual}"));
+        }
+    }
     // Per-line fold state, recorded only for the fixtures about folds (#903).
     if let Some(e_folds) = expect.get("folds") {
         let e_folds: Vec<Vec<i64>> = e_folds
@@ -176,6 +339,14 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
             diffs.push(format!("topline {r_top} != {e_top}"));
         }
     }
+    // The undo walk changes the session, so it is compared last (#900).
+    if let Some(e_undo) = expect.get("undo").and_then(Value::as_array) {
+        let e_undo: Vec<Vec<String>> = e_undo.iter().map(as_str_vec).collect();
+        let r_undo = ruse_undo_walk(&mut h, terminated(&lines), raw);
+        if r_undo != e_undo {
+            diffs.push(format!("undo {r_undo:?} != {e_undo:?}"));
+        }
+    }
     diffs
 }
 
@@ -200,7 +371,8 @@ fn parity_ruse_vs_neovim_oracle() {
     println!("\n=== ruse vs neovim parity ({oracle_version}) ===");
     println!(
         "compared observables: text, cursor, reg_unnamed, reg0 (the yank register), emsg (the last E-number), \
-         folds (per line, where recorded), topline (where recorded)\n"
+         mode, and where recorded folds (per line), topline, marks with visualmode, regs (\"1-\"9, \"-), \
+         the Visual area and the undo walk\n"
     );
 
     let mut verified = 0usize;
@@ -286,6 +458,60 @@ fn comparator_detects_a_planted_mismatch() {
     assert!(
         !fixture_diffs(&emsg).is_empty(),
         "a wrong error went unnoticed"
+    );
+
+    // #900: the mode, a mark, a numbered register, the Visual area and the undo walk.
+    let verified = |has: &str| {
+        corpus["fixtures"]
+            .as_array()
+            .expect("fixtures array")
+            .iter()
+            .find(|fx| {
+                let e = &fx["expect"];
+                !e[has].is_null()
+                    && e[has].as_object().is_none_or(|o| !o.is_empty())
+                    && e[has].as_array().is_none_or(|a| !a.is_empty())
+                    && fixture_diffs(fx).is_empty()
+            })
+            .unwrap_or_else(|| panic!("a verified fixture records {has}"))
+            .clone()
+    };
+    let mut mode = verified("mode");
+    mode["expect"]["mode"] = Value::from("R");
+    assert!(
+        !fixture_diffs(&mode).is_empty(),
+        "a wrong mode went unnoticed"
+    );
+    let mut mark = verified("marks");
+    let first = mark["expect"]["marks"]
+        .as_object()
+        .expect("marks")
+        .keys()
+        .next()
+        .expect("a mark")
+        .clone();
+    mark["expect"]["marks"][&first][0] = Value::from(999);
+    assert!(
+        !fixture_diffs(&mark).is_empty(),
+        "a wrong mark went unnoticed"
+    );
+    let mut regs = verified("regs");
+    regs["expect"]["regs"]["9"]["text"] = Value::from("planted mismatch");
+    assert!(
+        !fixture_diffs(&regs).is_empty(),
+        "a wrong numbered register went unnoticed"
+    );
+    let mut visual = verified("visual");
+    visual["expect"]["visual"] = json!(["linewise", [999, 0]]);
+    assert!(
+        !fixture_diffs(&visual).is_empty(),
+        "a wrong Visual area went unnoticed"
+    );
+    let mut undo = verified("undo");
+    undo["expect"]["undo"][0][0] = Value::from("planted mismatch");
+    assert!(
+        !fixture_diffs(&undo).is_empty(),
+        "a wrong undo walk went unnoticed"
     );
 }
 
