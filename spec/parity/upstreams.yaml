@@ -251,6 +251,10 @@ oracles:
   neovim:
     binary: nvim
     invoke: "nvim --headless -u NONE -i NONE -S <script>"
+    # The binary the scheduled recapture installs (.github/workflows/oracle.yml, #904): the official release
+    # tarball of version_label, checked against this sha256 (the release's own published digest) before use.
+    install_url: https://github.com/neovim/neovim/releases/download/v0.12.6/nvim-linux-x86_64.tar.gz
+    install_sha256: 474430d53e6264f6d6dd18db42d6dc9df3a1b56ca9e88a325bbf860e1a811d87
     status: usable
     observable: [text, cursor, mode, selection, registers, register_type, marks, undo_tree, errmsg, jumplist]
   vim:
@@ -265,7 +269,13 @@ oracles:
   emacs:
     binary: emacs
     invoke: "emacs -Q --batch -l <script>"        # tools/parity/emacs_oracle.py
-    status: prototyped                              # harness proven by --selftest; fixture corpus follows (see resolution)
+    # The source the scheduled recapture builds (.github/workflows/oracle.yml, #904): the GNU release tarball
+    # of version_label, checked against this sha256 before use. GNU publishes no checksum; the digest was
+    # taken from a tarball whose detached signature (`.sig`) verified against gnu-keyring.gpg (signer
+    # 9B917007AE030E36E4FC248B695B7AE4BF066240, Sean Whitton).
+    install_url: https://ftp.gnu.org/gnu/emacs/emacs-31.1.tar.xz
+    install_sha256: 1da5790d9580c81932b5bf700633114468da7b3412d69faa767daebf974f4586
+    status: prototyped                             # harness proven by --selftest; fixture corpus follows (see resolution)
     observable: [text, point, mark, kill_ring]      # NOT undo: see below
     hazards:
       - "`--batch` + execute-kbd-macro SILENTLY produces wrong buffer state: `M-d` on \"hello world\" leaves the buffer EMPTY while kill-ring is correctly \"hello\". Calling kill-word directly is correct. The batch command loop is not the interactive one."

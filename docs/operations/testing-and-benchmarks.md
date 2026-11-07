@@ -392,7 +392,10 @@ generalize to any oracle:
   failed command, never reach a `q` recording, and an untyped `<Esc>` runs a command line instead of
   abandoning it, so an untyped oracle records behaviour no user sees. `oracle.py --selftest` (identity + determinism + hand-verified known ops) GATES
   the corpus; `gov parity_oracle` runs it when a pinned nvim is present and otherwise verifies corpus
-  integrity only (nvim-optional, so CI without nvim stays green).
+  integrity only (nvim-optional, so CI without nvim stays green). The weekly `oracle.yml` workflow (#904)
+  closes that gap. It installs the nvim and Emacs pinned in `spec/parity/upstreams.yaml` (release URL and
+  sha256), runs both selftests, recaptures both corpora and fails on any difference from the committed
+  ones. It is not a required check.
 - **Every `expect` is ORACLE-CAPTURED, never hand-written.** For v0 the corpus uses a compact JSON-in-YAML
   form (`{name, lines, keys, expect:{text,cursor,registers…}}`) rather than the full schema above.
 - **Config-dependent ops** (indent `>>`, etc.) carry a per-fixture `setup` ex-command so nvim runs under

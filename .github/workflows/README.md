@@ -14,6 +14,7 @@ verified artifact.
 | [`labels.yml`](labels.yml) | push to `main` changing [`.github/labels.yml`](../labels.yml) / manual | applies the label file (creates, updates color/description; never deletes unlisted labels) | — |
 | [`perf.yml`](perf.yml) | nightly / manual | benches vs `spec/perf-baseline.yaml`; trend + warn only, never fails on regressions (D-019) | — |
 | [`fuzz.yml`](fuzz.yml) | weekly / manual (**never on PRs**) | the deep tier (#920): the test suite with proptests at 16x cases (new regression lines uploaded on failure), and each cargo-fuzz target in `fuzz/` for 15 minutes on nightly (crash inputs uploaded) | — |
+| [`oracle.yml`](oracle.yml) | weekly / manual / PRs changing it or `tools/parity/install_pin.py` | the oracle recapture (#904): installs the nvim and Emacs pinned in `spec/parity/upstreams.yaml` (URL + sha256), runs each oracle's `--selftest` and `--generate`, and fails when a recaptured corpus differs from the committed one (the diff is uploaded) | — |
 | [`release.yml`](release.yml) | tag `v*` | **placeholder that fails on purpose** (#887) — build-once release (binaries + SHA256SUMS + SBOM + provenance) not implemented yet | — |
 
 Not yet as workflows (planned — see the ci-cd doc): `ci-full` (3-OS/integration/benchmarks), `compatibility`

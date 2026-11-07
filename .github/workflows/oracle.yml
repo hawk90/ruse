@@ -1,0 +1,94 @@
+# Scheduled oracle recapture (#904). Installs the pinned Neovim and Emacs that spec/parity/upstreams.yaml names
+# (`oracles.<editor>.install_url`, checked against `install_sha256`; `tools/parity/install_pin.py`), runs each
+# oracle's `--selftest`, recaptures its corpus with `--generate`, and fails when the result differs from the
+# committed corpus: the corpus is then no longer what the pinned editor does on a clean Linux machine (a
+# fixture that depends on the developer's machine, or a hand edit). The diff is uploaded.
+#   neovim — the official release tarball of the pinned version.
+#   emacs  — the GNU release tarball, built without X or optional libraries (the oracle runs `emacs -Q --batch`).
+# Never a required check. It runs weekly and by hand, and on a pull request only when this workflow or the pin
+# reader changes, so an edit to it is tried before it lands.
+# Security (docs/operations/ci-cd-and-release.md §11): actions pinned by SHA, read-only token.
+name: oracle
+on:
+  schedule:
+    - cron: "0 4 * * 0"   # weekly, Sunday ~04:00 UTC (after fuzz.yml)
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - .github/workflows/oracle.yml
+      - tools/parity/install_pin.py
+permissions: { contents: read }
+concurrency:
+  group: oracle-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  neovim:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install the pinned nvim
+        run: |
+          python3 tools/parity/install_pin.py neovim > pin.env
+          . ./pin.env
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/nvim.tar.gz" "$ORACLE_URL"
+          echo "$ORACLE_SHA256  $RUNNER_TEMP/nvim.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/nvim.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+          rm pin.env
+      - name: nvim version
+        run: nvim --version | head -1
+      - name: oracle selftest
+        run: python3 tools/parity/oracle.py --selftest
+      - name: recapture the corpus
+        run: python3 tools/parity/oracle.py --generate
+      - name: the corpus is unchanged
+        run: git diff --exit-code --stat -- tests/parity/vim/fixtures/corpus.yaml
+      - name: keep the difference
+        if: failure()
+        run: git diff -- tests/parity/vim/fixtures/corpus.yaml > corpus.diff
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: neovim-corpus-diff
+          path: corpus.diff
+          if-no-files-found: ignore
+
+  emacs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: build the pinned emacs
+        run: |
+          python3 tools/parity/install_pin.py emacs > pin.env
+          . ./pin.env
+          rm pin.env
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends libncurses-dev
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/emacs.tar.xz" "$ORACLE_URL"
+          echo "$ORACLE_SHA256  $RUNNER_TEMP/emacs.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/emacs.tar.xz" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/emacs-$ORACLE_VERSION"
+          ./configure --prefix="$RUNNER_TEMP/emacs" --without-all --without-x \
+            --with-native-compilation=no > configure.log
+          make -j"$(nproc)" > make.log
+          make install > install.log
+          echo "$RUNNER_TEMP/emacs/bin" >> "$GITHUB_PATH"
+      - name: emacs version
+        run: emacs --version | head -1
+      - name: oracle selftest
+        run: python3 tools/parity/emacs_oracle.py --selftest
+      - name: recapture the corpus
+        run: python3 tools/parity/emacs_oracle.py --generate
+      - name: the corpus is unchanged
+        run: git diff --exit-code --stat -- tests/parity/emacs/fixtures/corpus.yaml
+      - name: keep the difference
+        if: failure()
+        run: git diff -- tests/parity/emacs/fixtures/corpus.yaml > corpus.diff
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: emacs-corpus-diff
+          path: corpus.diff
+          if-no-files-found: ignore
