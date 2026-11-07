@@ -184,6 +184,22 @@ impl Regex {
         })
     }
 
+    /// The first match in `hay` and its Vim groups, `\0` (the whole match) then `\1`..: each group's byte
+    /// span, `None` for one that did not take part. For a caller that expands `\N` itself (Emacs's
+    /// `find-sibling-rules`, #619). The `\zs`/`\ze` markers are not groups; `\<`/`\>` are not checked.
+    #[must_use]
+    pub fn groups(&self, hay: &str) -> Option<Vec<Option<(usize, usize)>>> {
+        let caps = self.inner.captures(hay)?;
+        let span = |i: usize| caps.get(i).map(|m| (m.start(), m.end()));
+        let mut out = vec![span(0)];
+        for i in 1..caps.len() {
+            if !self.zs.contains(&i) && !self.ze.contains(&i) {
+                out.push(span(i));
+            }
+        }
+        Some(out)
+    }
+
     /// Whether the pattern can match a line break (Vim's `re_multiline`), so a match may span lines.
     #[must_use]
     pub fn multiline(&self) -> bool {
@@ -2348,5 +2364,19 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod group_tests {
+    use super::*;
+
+    /// #619: the Vim groups of a match, the `\\zs` marker skipped.
+    #[test]
+    fn groups_are_the_vim_groups() {
+        let re = Regex::compile(r"\([a-z]\+\)\.\zs\(c\)$", Options::default()).unwrap();
+        let g = re.groups("dir/foo.c").unwrap();
+        assert_eq!(g, vec![Some((4, 9)), Some((4, 7)), Some((8, 9))]);
+        assert!(re.groups("foo.h").is_none());
     }
 }

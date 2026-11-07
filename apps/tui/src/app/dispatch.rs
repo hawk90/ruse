@@ -183,11 +183,19 @@ pub(crate) fn attach_file(
     path: PathBuf,
     fmt: persist::encoding::FileFormat,
 ) {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
+    // Emacs's `auto-mode-case-fold` (#619): an extension no mode knows is tried again in lower case.
+    let fold = files
+        .write
+        .emacs
+        .as_ref()
+        .is_some_and(|e| e.auto_mode_case_fold);
+    let ext = path.extension().and_then(|e| e.to_str());
+    match ext
         .and_then(highlight::CachedHighlight::for_ext)
-    {
+        .or_else(|| {
+            ext.filter(|_| fold)
+                .and_then(|e| highlight::CachedHighlight::for_ext(&e.to_ascii_lowercase()))
+        }) {
         Some(h) => {
             highlighters.insert(id, h);
         }
@@ -1076,6 +1084,20 @@ mod dispatch_tests {
             KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE),
             ']'
         ));
+    }
+
+    /// #619: Emacs's `auto-mode-case-fold` tries an unknown extension again in lower case; the Vim profile
+    /// does not.
+    #[test]
+    fn auto_mode_case_fold_lowers_the_extension() {
+        let (mut files, mut hl): (Files, Highlighters) = (Files::new(), HashMap::new());
+        let id = DocumentId(1);
+        let fmt = persist::encoding::FileFormat::detect(b"");
+        attach_file(&mut files, &mut hl, id, PathBuf::from("A.RS"), fmt);
+        assert!(!hl.contains_key(&id), "Vim: .RS is no Rust file");
+        files.write = crate::app::write_opts::WriteOptions::new(true);
+        attach_file(&mut files, &mut hl, id, PathBuf::from("A.RS"), fmt);
+        assert!(hl.contains_key(&id), "Emacs: .RS is tried as .rs");
     }
 
     /// #619: a file past the large-file threshold loses its highlighter and is marked degraded.

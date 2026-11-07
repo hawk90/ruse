@@ -92,6 +92,18 @@ pub(crate) struct EmacsFiles {
     pub large_file_warning_threshold: Option<u64>,
     /// `out-of-memory-warning-percentage`, `None` for nil.
     pub out_of_memory_warning_percentage: Option<u64>,
+    /// The visiting variables (#619, `app/session/emacs_files.rs`).
+    pub find_file_wildcards: bool,
+    pub find_file_visit_truename: bool,
+    pub find_file_suppress_same_file_warnings: bool,
+    /// `confirm-nonexistent-file-or-buffer`: `after-completion`, `nil` or `t`.
+    pub confirm_nonexistent_file_or_buffer: String,
+    /// `find-sibling-rules`: `(MATCH, EXPANSION)` pairs.
+    pub find_sibling_rules: Vec<(String, String)>,
+    /// `directory-abbrev-alist`: `(FROM, TO)` pairs.
+    pub directory_abbrev_alist: Vec<(String, String)>,
+    pub auto_mode_case_fold: bool,
+    pub change_major_mode_with_file_name: bool,
 }
 
 impl Default for EmacsFiles {
@@ -124,6 +136,14 @@ impl Default for EmacsFiles {
             auto_save_visited_interval: 5,
             large_file_warning_threshold: Some(10_000_000),
             out_of_memory_warning_percentage: None,
+            find_file_wildcards: true,
+            find_file_visit_truename: false,
+            find_file_suppress_same_file_warnings: false,
+            confirm_nonexistent_file_or_buffer: "after-completion".into(),
+            find_sibling_rules: Vec::new(),
+            directory_abbrev_alist: Vec::new(),
+            auto_mode_case_fold: true,
+            change_major_mode_with_file_name: true,
         }
     }
 }
@@ -235,6 +255,32 @@ impl EmacsFiles {
         if let Some(Value::Int(n)) = get("out_of_memory_warning_percentage") {
             e.out_of_memory_warning_percentage = u64::try_from(*n).ok();
         }
+        e.find_file_wildcards = flag("find_file_wildcards", e.find_file_wildcards);
+        e.find_file_visit_truename = flag("find_file_visit_truename", e.find_file_visit_truename);
+        e.find_file_suppress_same_file_warnings = flag(
+            "find_file_suppress_same_file_warnings",
+            e.find_file_suppress_same_file_warnings,
+        );
+        if let Some(v) = text("confirm_nonexistent_file_or_buffer") {
+            e.confirm_nonexistent_file_or_buffer = v;
+        }
+        let pairs = |k: &str| match get(k) {
+            Some(Value::Map(m)) => m
+                .iter()
+                .filter_map(|(a, b)| match b {
+                    Value::Str(b) => Some((a.clone(), b.clone())),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        e.find_sibling_rules = pairs("find_sibling_rules");
+        e.directory_abbrev_alist = pairs("directory_abbrev_alist");
+        e.auto_mode_case_fold = flag("auto_mode_case_fold", e.auto_mode_case_fold);
+        e.change_major_mode_with_file_name = flag(
+            "change_major_mode_with_file_name",
+            e.change_major_mode_with_file_name,
+        );
         e.save_some_buffers_default_predicate_root = text("save_some_buffers_default_predicate")
             .is_some_and(|v| v == "save-some-buffers-root");
         e

@@ -30,6 +30,8 @@ pub(crate) enum Then {
     Revert,
     /// Re-read buffer `id` (find-file's changed-on-disk question).
     RevertBuffer(DocumentId),
+    /// `write-file` to the existing file named here, now confirmed.
+    WriteFile(String),
     /// Nothing more (save-some-buffers on its own).
     Done,
 }
@@ -65,7 +67,10 @@ pub(crate) enum EmacsPrompt {
 /// What a file name is read for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ReadFor {
-    FindFile,
+    /// `find-file`; `confirmed`: a new file's name was entered once under `confirm-nonexistent-file-or-buffer`.
+    FindFile { confirmed: bool },
+    /// `write-file`.
+    WriteFile,
     /// Saving buffer `buf` (no file) inside save-some-buffers, then going on with the queue.
     SaveAs {
         buf: DocumentId,
@@ -170,6 +175,15 @@ impl Session {
             EmacsAction::RevertBuffer => self.revert_buffer(false),
             EmacsAction::RevertBufferQuick => self.revert_buffer(true),
             EmacsAction::ReadOnlyMode => self.read_only_mode(),
+            EmacsAction::FindSiblingFile => self.find_sibling_file(),
+            EmacsAction::WriteFile => {
+                let prompt = EmacsPrompt::ReadFile {
+                    prompt: "Write file: ".into(),
+                    typed: default_dir(),
+                    purpose: ReadFor::WriteFile,
+                };
+                self.ask(prompt);
+            }
             EmacsAction::FindFile => {
                 let dir = std::env::current_dir()
                     .map(|d| format!("{}/", d.display()))
@@ -182,7 +196,7 @@ impl Session {
                 self.ask(EmacsPrompt::ReadFile {
                     prompt: "Find file: ".into(),
                     typed: shown,
-                    purpose: ReadFor::FindFile,
+                    purpose: ReadFor::FindFile { confirmed: false },
                 });
             }
         }
@@ -276,6 +290,7 @@ impl Session {
                 self.revert_now(id);
             }
             Then::RevertBuffer(id) => self.revert_now(id),
+            Then::WriteFile(name) => self.write_file(&name),
             Then::Kill { stage, asked } => self.kill_stage(stage, asked),
         }
     }
@@ -477,11 +492,40 @@ impl Session {
         true
     }
 
-    /// `find-file` of `name`: past `large-file-warning-threshold` ask first (`abort-if-file-too-large`).
+    /// `find-file` of `name`: wildcards visit every match (`find-file-wildcards`), `directory-abbrev-alist`
+    /// and `find-file-visit-truename` shape the name, and past `large-file-warning-threshold` ask first
+    /// (`abort-if-file-too-large`).
     fn find_file(&mut self, name: &str) {
         let name = crate::persist::backup::expand(name.trim());
         if name.is_empty() {
             return;
+        }
+        let vars = self.emacs_vars();
+        if vars.find_file_wildcards && !std::path::Path::new(&name).exists() {
+            let matches = expand_wildcards(&name);
+            if !matches.is_empty() {
+                // Emacs visits them all and shows the first.
+                for m in matches.iter().rev() {
+                    self.find_file_one(m);
+                }
+                return;
+            }
+        }
+        self.find_file_one(&name);
+    }
+
+    fn find_file_one(&mut self, name: &str) {
+        let vars = self.emacs_vars();
+        let mut name = name.to_string();
+        for (from, to) in &vars.directory_abbrev_alist {
+            if let Some(end) = emacs_match_end_at_start(from, &name) {
+                name = format!("{to}{}", &name[end..]);
+            }
+        }
+        if vars.find_file_visit_truename {
+            if let Ok(t) = std::fs::canonicalize(&name) {
+                name = t.display().to_string();
+            }
         }
         let path = std::path::PathBuf::from(&name);
         let size = std::fs::metadata(&path).map_or(0, |m| m.len());
@@ -512,6 +556,15 @@ impl Session {
         let path = std::path::PathBuf::from(name);
         let existing = crate::app::dispatch::buffer_for_path(&self.files, &path);
         let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+        let new = std::fs::symlink_metadata(&path).is_err();
+        // `find-file-existing-other-name`: a buffer visiting the same file under another name is used, and
+        // Emacs says so unless `find-file-suppress-same-file-warnings`.
+        let same_file = existing.and_then(|id| {
+            let other = self.files.get(&id)?.path.clone();
+            let a = std::path::absolute(&path).ok()?;
+            let b = std::path::absolute(&other).ok()?;
+            (a != b).then(|| (a.display().to_string(), b.display().to_string()))
+        });
         {
             let Session {
                 ws,
@@ -540,12 +593,20 @@ impl Session {
         }
         let Some(id) = existing else {
             self.status.clear();
+            if new {
+                self.status.echo("(New file)");
+            }
             if let Some(warning) = out_of_memory_warning(size, &self.emacs_vars()) {
                 self.status.warn(warning);
             }
             return;
         };
         self.status.clear();
+        if let Some((a, b)) = same_file {
+            if !self.emacs_vars().find_file_suppress_same_file_warnings {
+                self.status.echo(format!("{a} and {b} are the same file"));
+            }
+        }
         let Some(bf) = self.files.get(&id) else {
             return;
         };
@@ -736,7 +797,48 @@ impl Session {
                 KeyCode::Enter => {
                     self.status.clear();
                     match purpose {
-                        ReadFor::FindFile => self.find_file(&typed),
+                        ReadFor::FindFile { confirmed } => {
+                            // `confirm-nonexistent-file-or-buffer` t: a new file's name needs a second
+                            // `RET` (`[Confirm]`); `after-completion` asks only after a completion, which
+                            // this minibuffer does not offer.
+                            let name = crate::persist::backup::expand(typed.trim());
+                            let fresh = !name.is_empty()
+                                && !std::path::Path::new(&name).exists()
+                                && expand_wildcards(&name).is_empty();
+                            if fresh
+                                && !confirmed
+                                && self.emacs_vars().confirm_nonexistent_file_or_buffer == "t"
+                            {
+                                let shown = format!("{prompt}{typed} [Confirm]");
+                                self.ask(EmacsPrompt::ReadFile {
+                                    prompt,
+                                    typed,
+                                    purpose: ReadFor::FindFile { confirmed: true },
+                                });
+                                self.status.echo(shown);
+                            } else {
+                                self.find_file(&typed);
+                            }
+                        }
+                        ReadFor::WriteFile => {
+                            let name = crate::persist::backup::expand(typed.trim());
+                            if name.is_empty() {
+                                return;
+                            }
+                            if std::path::Path::new(&name).exists() {
+                                let base = std::path::Path::new(&name)
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().into_owned())
+                                    .unwrap_or_default();
+                                self.ask_yes(
+                                    format!("File {base} exists; overwrite? "),
+                                    true,
+                                    Then::WriteFile(name),
+                                );
+                            } else {
+                                self.write_file(&name);
+                            }
+                        }
                         ReadFor::SaveAs { buf, rest } => {
                             let name = crate::persist::backup::expand(typed.trim());
                             self.write_new_file(buf, &name);
@@ -760,7 +862,7 @@ impl Session {
                     self.ask(EmacsPrompt::ReadFile {
                         prompt,
                         typed,
-                        purpose,
+                        purpose: unconfirmed(purpose),
                     });
                 }
                 KeyCode::Char(c)
@@ -772,7 +874,7 @@ impl Session {
                     self.ask(EmacsPrompt::ReadFile {
                         prompt,
                         typed,
-                        purpose,
+                        purpose: unconfirmed(purpose),
                     });
                 }
                 _ => self.ask(EmacsPrompt::ReadFile {
@@ -781,6 +883,61 @@ impl Session {
                     purpose,
                 }),
             },
+        }
+    }
+
+    /// `write-file` (`C-x C-w`): the focused buffer is written to `name`, which becomes its file. Under
+    /// `change-major-mode-with-file-name` nil it keeps its highlighting.
+    fn write_file(&mut self, name: &str) {
+        let id = self.ws.focused_buffer();
+        let keep = (!self.emacs_vars().change_major_mode_with_file_name)
+            .then(|| self.highlighters.remove(&id))
+            .flatten();
+        let Session {
+            ws,
+            files,
+            highlighters,
+            status,
+            ..
+        } = self;
+        crate::app::file_cmds::ex_saveas(
+            true,
+            name,
+            crate::input::FileOpts::default(),
+            ws,
+            files,
+            highlighters,
+            status,
+        );
+        if let Some(h) = keep {
+            self.highlighters.insert(id, h);
+        }
+    }
+
+    /// `find-sibling-file`: the first existing file a `find-sibling-rules` rule names from the visited one.
+    fn find_sibling_file(&mut self) {
+        let id = self.ws.focused_buffer();
+        let Some(path) = self.files.get(&id).map(|bf| bf.path.clone()) else {
+            self.status.error("Not visiting a file");
+            return;
+        };
+        let rules = self.emacs_vars().find_sibling_rules;
+        if rules.is_empty() {
+            self.status
+                .error("The `find-sibling-rules' variable has not been configured");
+            return;
+        }
+        let file = std::path::absolute(&path)
+            .unwrap_or(path)
+            .display()
+            .to_string();
+        let found = sibling_files(&file, &rules);
+        match found.first() {
+            Some(f) => {
+                let f = f.clone();
+                self.find_file(&f);
+            }
+            None => self.status.error("Couldn't find any sibling files"),
         }
     }
 
@@ -912,6 +1069,110 @@ fn sysctl_swap() -> Option<libc::xsw_usage> {
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn free_memory_kib() -> Option<u64> {
     None
+}
+
+/// The default directory a file prompt starts from, `~`-abbreviated as Emacs shows it.
+fn default_dir() -> String {
+    let dir = std::env::current_dir()
+        .map(|d| format!("{}/", d.display()))
+        .unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
+    match dir.strip_prefix(&home) {
+        Some(rest) if !home.is_empty() => format!("~{rest}"),
+        _ => dir,
+    }
+}
+
+/// A file prompt's purpose after an edit: a confirmed new name needs confirming again.
+fn unconfirmed(p: ReadFor) -> ReadFor {
+    match p {
+        ReadFor::FindFile { .. } => ReadFor::FindFile { confirmed: false },
+        other => other,
+    }
+}
+
+/// `file-expand-wildcards` for `find-file-wildcards`: the files matching a name whose last component has
+/// `*`, `?` or `[...]`, sorted; empty for a name without wildcards or with no match.
+fn expand_wildcards(name: &str) -> Vec<String> {
+    let path = std::path::Path::new(name);
+    let Some(base) = path.file_name().map(|b| b.to_string_lossy().into_owned()) else {
+        return Vec::new();
+    };
+    if !base.contains(['*', '?', '[']) {
+        return Vec::new();
+    }
+    let dir = path
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let mut out: Vec<String> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let n = e.file_name().to_string_lossy().into_owned();
+            // A wildcard does not match a leading dot, as the shell's.
+            let hidden = n.starts_with('.') && !base.starts_with('.');
+            (!hidden && crate::persist::backup::glob_match(base.as_bytes(), n.as_bytes()))
+                .then(|| dir.join(n).display().to_string())
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// `find-sibling-file-search`: for each rule whose MATCH matches `file`, its EXPANSION with `\N` and `\&`
+/// replaced by the match's groups, read relative to the directory before the match; the existing ones,
+/// in rule order, without `file` itself. An EXPANSION is a file name here, not a regexp.
+fn sibling_files(file: &str, rules: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (pattern, expansion) in rules {
+        let Ok(re) =
+            ruse_core::pattern::Regex::compile(pattern, ruse_core::pattern::Options::default())
+        else {
+            continue;
+        };
+        let Some(groups) = re.groups(file) else {
+            continue;
+        };
+        let group = |i: usize| {
+            groups
+                .get(i)
+                .copied()
+                .flatten()
+                .map_or("", |(a, b)| &file[a..b])
+        };
+        let mut name = String::new();
+        let mut chars = expansion.chars().peekable();
+        while let Some(c) = chars.next() {
+            match (c, chars.peek()) {
+                ('\\', Some('&')) => {
+                    chars.next();
+                    name.push_str(group(0));
+                }
+                ('\\', Some(d)) if d.is_ascii_digit() => {
+                    let i = d.to_digit(10).unwrap_or(0) as usize;
+                    chars.next();
+                    name.push_str(group(i));
+                }
+                _ => name.push(c),
+            }
+        }
+        let start = groups[0].map_or(0, |(a, _)| a);
+        let candidate = std::path::Path::new(&file[..start]).join(&name);
+        let shown = candidate.display().to_string();
+        if shown != file && candidate.is_file() && !out.contains(&shown) {
+            out.push(shown);
+        }
+    }
+    out
+}
+
+/// Where a `directory-abbrev-alist` FROM matches at the start of `name`, its end.
+fn emacs_match_end_at_start(re: &str, name: &str) -> Option<usize> {
+    let re = ruse_core::pattern::Regex::compile(re, ruse_core::pattern::Options::default()).ok()?;
+    let m = re.find_at(name, ruse_core::BytePos(0))?;
+    (m.start.0 == 0).then_some(m.end.0)
 }
 
 /// `project-current`'s root for `save-some-buffers-root`: the nearest directory above the working one

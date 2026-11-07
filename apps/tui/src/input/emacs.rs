@@ -427,6 +427,10 @@ pub enum EmacsAction {
     ReadOnlyMode,
     /// `C-x C-f` `find-file`.
     FindFile,
+    /// `C-x C-w` `write-file`.
+    WriteFile,
+    /// `M-x find-sibling-file`.
+    FindSiblingFile,
 }
 
 /// The `C-x` keys that run an [`EmacsAction`]: `(key, ctrl held, action)`.
@@ -435,6 +439,7 @@ pub(crate) const EMACS_CX_ACTIONS: &[(char, bool, EmacsAction)] = &[
     ('s', false, EmacsAction::SaveSomeBuffers),
     ('q', true, EmacsAction::ReadOnlyMode),
     ('f', true, EmacsAction::FindFile),
+    ('w', true, EmacsAction::WriteFile),
 ];
 
 /// The `M-x` names of the [`EmacsAction`]s.
@@ -447,6 +452,8 @@ pub fn emacs_action_by_name(name: &str) -> Option<EmacsAction> {
         "revert-buffer-quick" => EmacsAction::RevertBufferQuick,
         "read-only-mode" => EmacsAction::ReadOnlyMode,
         "find-file" => EmacsAction::FindFile,
+        "write-file" => EmacsAction::WriteFile,
+        "find-sibling-file" => EmacsAction::FindSiblingFile,
         _ => return None,
     })
 }
