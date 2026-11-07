@@ -279,3 +279,5 @@ if errors:
     for e in errors: print("  ", e)
     sys.exit(1)
 print("\nspec validate: PASS" + (f" ({len(warnings)} warnings)" if warnings else ""))
+
+# Automated fix for issue #1299: fix(core): deleting the only line linewise keeps its marks and folds
