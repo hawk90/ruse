@@ -89,7 +89,7 @@ pub(crate) fn open_file_with(
             };
         }
     };
-    let f = format(persist::encoding::FileFormat::detect(&raw));
+    let f = format(files.write.read_format(&raw));
     let disk = f.to_buffer(&raw);
     // The same prompt as at startup (RFC-0023 §7); `q` cancels this open and keeps the journal.
     let offer =
@@ -135,6 +135,7 @@ pub(crate) fn open_file_with(
     });
     persist::disk::saw(&p, &raw);
     attach_file(files, highlighters, id, p, f);
+    mark_large(files, highlighters, id, raw.len());
     if let Some(bf) = files.get_mut(&id) {
         bf.read_only = read_only;
     }
@@ -202,8 +203,26 @@ pub(crate) fn attach_file(
             fmt,
             read_only: false,
             reloads: 0,
+            large: false,
         },
     );
+}
+
+/// The degraded large-file profile (#619, RFC-0008 §7, COM-12): a file read past the large-file threshold
+/// ([`persist::rj01::LARGE_FILE`], 32 MiB) gets no syntax highlighting, and the status line says
+/// `[large]`.
+pub(crate) fn mark_large(
+    files: &mut Files,
+    highlighters: &mut Highlighters,
+    id: DocumentId,
+    len: usize,
+) {
+    if len > persist::rj01::LARGE_FILE {
+        highlighters.remove(&id);
+        if let Some(bf) = files.get_mut(&id) {
+            bf.large = true;
+        }
+    }
 }
 
 /// Whether `key` is `CTRL-<c>`. Shared frontend key predicate. A C0 punctuation chord also matches the key
@@ -226,6 +245,8 @@ pub(crate) struct BufferFile {
     /// How many times `:e`/`:e!` re-read the file into the buffer: a re-read is new text from disk and a
     /// fresh undo history, which a trace cannot record (#690, [`crate::app::trace_check`]).
     pub(crate) reloads: u32,
+    /// Read past the large-file threshold: the degraded profile ([`mark_large`]).
+    pub(crate) large: bool,
 }
 
 /// Neovim's message for a write to a `'readonly'` buffer without `!`.
@@ -918,17 +939,6 @@ pub(crate) fn line_count(buf: &[u8]) -> usize {
     ruse_core::pos::count_newlines(buf) + usize::from(buf.last() != Some(&b'\n'))
 }
 
-/// The write-report suffix flagging a missing final newline: `" [noeol]"` when `buf` is non-empty and does
-/// not end in `\n`, else `""`. ruse preserves EOL presence exactly (no silent fixeol), so this makes the
-/// missing terminator visible on `:w` (as Vim does) rather than a silent surprise.
-fn noeol_marker(buf: &[u8]) -> &'static str {
-    if buf.is_empty() || buf.last() == Some(&b'\n') {
-        ""
-    } else {
-        " [noeol]"
-    }
-}
-
 /// The bytes a write of `buffer` puts on disk for a file read as `fmt`: the final newline a buffer with
 /// `'endofline'` (or `:set fixeol`) always gets (#1107), then the file's BOM and line endings (F-008 #2).
 /// `ruse --replay` prints the same image of the replayed buffer, so it equals what `:w` wrote (#690).
@@ -973,14 +983,16 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status) -> bo
             crate::log::save(&bf.path, bytes.len());
             // Vim-style write report: `"file" 42L, 1024B written` (L = buffer lines, B = bytes on disk), with
             // `[noeol]` when the text written has no final newline, and what was not proven.
-            status.echo(format!(
-                "\"{}\"{} {}L, {}B written{}",
-                bf.path.display(),
-                noeol_marker(&source),
-                line_count(&source),
-                bytes.len(),
-                written.note()
-            ));
+            status.echo(
+                crate::app::file_cmds::write_report(
+                    &bf.path.display().to_string(),
+                    false,
+                    &source,
+                    bytes.len(),
+                    "written",
+                    bf.fmt,
+                ) + &written.note(),
+            );
             true
         }
         Err(e) => {
@@ -1060,6 +1072,22 @@ mod dispatch_tests {
             KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE),
             ']'
         ));
+    }
+
+    /// #619: a file past the large-file threshold loses its highlighter and is marked degraded.
+    #[test]
+    fn a_large_file_is_degraded() {
+        let (mut files, mut hl): (Files, Highlighters) = (Files::new(), HashMap::new());
+        let id = DocumentId(1);
+        let fmt = persist::encoding::FileFormat::detect(b"");
+        attach_file(&mut files, &mut hl, id, PathBuf::from("a.rs"), fmt);
+        mark_large(&mut files, &mut hl, id, persist::rj01::LARGE_FILE);
+        assert!(
+            hl.contains_key(&id) && !files[&id].large,
+            "at the threshold: normal"
+        );
+        mark_large(&mut files, &mut hl, id, persist::rj01::LARGE_FILE + 1);
+        assert!(!hl.contains_key(&id) && files[&id].large);
     }
 
     /// #894: attaching a file records its identity and the highlighter its extension selects; a later file
@@ -1274,19 +1302,50 @@ mod dispatch_tests {
         assert_eq!(line_count(b"\n\n"), 2, "two blank lines");
     }
 
+    /// nvim v0.12.6's write report tags: `[New][noeol][dos]` after one blank, none for a unix file or a
+    /// binary write.
     #[test]
-    fn noeol_marker_flags_a_missing_final_newline() {
-        assert_eq!(noeol_marker(b"a\n"), "", "trailing newline → no marker");
-        assert_eq!(noeol_marker(b""), "", "empty buffer → no marker");
+    fn write_report_tags_follow_nvim() {
+        use crate::app::file_cmds::write_report;
+        use persist::encoding::{Eol, FileFormat};
+        let unix = FileFormat::default();
+        let dos = FileFormat {
+            eol: Eol::Crlf,
+            ..unix
+        };
         assert_eq!(
-            noeol_marker(b"a"),
-            " [noeol]",
-            "no trailing newline → marker"
+            write_report("f", false, b"a\n", 2, "written", unix),
+            "\"f\" 1L, 2B written"
         );
         assert_eq!(
-            noeol_marker(b"a\nb"),
-            " [noeol]",
-            "missing final newline → marker"
+            write_report("f", false, b"a", 1, "written", unix),
+            "\"f\" [noeol] 1L, 1B written"
+        );
+        assert_eq!(
+            write_report("f", true, b"a\n", 3, "written", dos),
+            "\"f\" [New][dos] 1L, 3B written"
+        );
+        assert_eq!(
+            write_report(
+                "f",
+                false,
+                b"a",
+                1,
+                "written",
+                FileFormat {
+                    eol: Eol::Cr,
+                    ..unix
+                }
+            ),
+            "\"f\" [noeol][mac] 1L, 1B written"
+        );
+        let bin = FileFormat {
+            binary: true,
+            ..dos
+        };
+        assert_eq!(
+            write_report("f", false, b"a\n", 2, "written", bin),
+            "\"f\" 1L, 2B written"
         );
     }
 

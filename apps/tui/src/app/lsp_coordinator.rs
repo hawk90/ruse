@@ -1063,6 +1063,7 @@ mod tests {
                 fmt: Default::default(),
                 read_only: false,
                 reloads: 0,
+                large: false,
             },
         );
         let bytes = ws.focused().doc.bytes().to_vec();

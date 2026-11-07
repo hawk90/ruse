@@ -52,6 +52,8 @@ pub(crate) enum EmacsPrompt {
         saved: usize,
         then: Then,
     },
+    /// `abort-if-file-too-large`: open the large file `name`, or not, or literally (`'binary'`).
+    LargeFile { name: String, question: String },
     /// A file name read in the minibuffer: `find-file`, or `write-file` for a buffer without one.
     ReadFile {
         prompt: String,
@@ -124,6 +126,7 @@ impl Session {
             EmacsPrompt::YOrN { question, .. } => format!("{question}(y or n) "),
             EmacsPrompt::SaveSome { queue, at, .. } => save_question(self, queue[*at]),
             EmacsPrompt::ReadFile { prompt, typed, .. } => format!("{prompt}{typed}"),
+            EmacsPrompt::LargeFile { question, .. } => question.clone(),
         };
         self.status.echo(text);
         self.emacs_prompt = Some(p);
@@ -375,7 +378,7 @@ impl Session {
             Ok(raw) => {
                 persist::disk::saw(&path, &raw);
                 persist::backup::visited(&path);
-                let fmt = persist::encoding::FileFormat::detect(&raw);
+                let fmt = self.files.write.read_format(&raw);
                 self.ws.reload_undoable(id, fmt.to_buffer(&raw));
                 if let Some(bf) = self.files.get_mut(&id) {
                     bf.fmt = fmt;
@@ -474,14 +477,41 @@ impl Session {
         true
     }
 
-    /// `find-file` of `name`: switch to its buffer, asking or telling about a file changed on disk.
+    /// `find-file` of `name`: past `large-file-warning-threshold` ask first (`abort-if-file-too-large`).
     fn find_file(&mut self, name: &str) {
         let name = crate::persist::backup::expand(name.trim());
         if name.is_empty() {
             return;
         }
         let path = std::path::PathBuf::from(&name);
+        let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+        let vars = self.emacs_vars();
+        let visited = crate::app::dispatch::buffer_for_path(&self.files, &path).is_some();
+        if !visited
+            && vars
+                .large_file_warning_threshold
+                .is_some_and(|limit| size > limit)
+        {
+            let base = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let question = format!(
+                "File {base} is large ({}), really open? ([Y]es, [N]o, [L]iterally, [?]): ",
+                human_size(size as f64)
+            );
+            self.ask(EmacsPrompt::LargeFile { name, question });
+            return;
+        }
+        self.visit(&name, false);
+    }
+
+    /// Visit `name` (`literally`: `find-file-literally`, read with `'binary'`): switch to its buffer, asking
+    /// or telling about a file changed on disk, and warn past `out-of-memory-warning-percentage`.
+    fn visit(&mut self, name: &str, literally: bool) {
+        let path = std::path::PathBuf::from(name);
         let existing = crate::app::dispatch::buffer_for_path(&self.files, &path);
+        let size = std::fs::metadata(&path).map_or(0, |m| m.len());
         {
             let Session {
                 ws,
@@ -490,8 +520,19 @@ impl Session {
                 status,
                 ..
             } = self;
-            let opened =
-                crate::app::dispatch::open_file_with(&name, ws, files, highlighters, |f| f);
+            let opened = crate::app::dispatch::open_file_with(name, ws, files, highlighters, |f| {
+                if literally {
+                    crate::app::file_cmds::with_ff(
+                        f,
+                        crate::input::FileOpts {
+                            ff: None,
+                            bin: Some(true),
+                        },
+                    )
+                } else {
+                    f
+                }
+            });
             status.give(opened.status);
             if opened.id.is_none() {
                 return;
@@ -499,6 +540,9 @@ impl Session {
         }
         let Some(id) = existing else {
             self.status.clear();
+            if let Some(warning) = out_of_memory_warning(size, &self.emacs_vars()) {
+                self.status.warn(warning);
+            }
             return;
         };
         self.status.clear();
@@ -671,6 +715,19 @@ impl Session {
                     self.ask(here);
                 }
             }
+            EmacsPrompt::LargeFile { name, question } => {
+                if plain(key, 'y') || plain(key, 'Y') {
+                    self.status.clear();
+                    self.visit(&name, false);
+                } else if plain(key, 'l') || plain(key, 'L') {
+                    self.status.clear();
+                    self.visit(&name, true);
+                } else if plain(key, 'n') || plain(key, 'N') {
+                    self.status.error("Aborted");
+                } else {
+                    self.ask(EmacsPrompt::LargeFile { name, question });
+                }
+            }
             EmacsPrompt::ReadFile {
                 prompt,
                 mut typed,
@@ -756,6 +813,105 @@ impl Session {
             self.ws.focus_buffer(focus);
         }
     }
+}
+
+/// Emacs's `file-size-human-readable-iec`: powers of 1024, one decimal below 10 when it is not whole
+/// (`1.5 KiB`, `10 MiB`, `500 B`).
+pub(crate) fn human_size(mut size: f64) -> String {
+    let units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
+    let mut i = 0;
+    while size >= 1024.0 && i + 1 < units.len() {
+        size /= 1024.0;
+        i += 1;
+    }
+    let frac = size % 1.0;
+    if size < 10.0 && (0.05..0.95).contains(&frac) {
+        format!("{size:.1} {}", units[i])
+    } else {
+        format!("{size:.0} {}", units[i])
+    }
+}
+
+/// Emacs's `warn-maybe-out-of-memory`: the warning when a file of `size` bytes is over
+/// `out-of-memory-warning-percentage` of the free memory (RAM and swap), `None` otherwise or when the free
+/// memory cannot be read.
+fn out_of_memory_warning(size: u64, vars: &EmacsFiles) -> Option<String> {
+    let pct = vars.out_of_memory_warning_percentage?;
+    if size == 0 {
+        return None;
+    }
+    let free_kib = free_memory_kib()? as f64;
+    if (size as f64 / 1024.0) <= free_kib * pct as f64 / 100.0 {
+        return None;
+    }
+    Some(format!(
+        "Warning (emacs): You are trying to open a file whose size ({})\nexceeds the {pct}% of currently \
+         available free memory ({}).\nIf that fails, try to open it with `find-file-literally'\n(but note \
+         that some characters might be displayed incorrectly).",
+        human_size(size as f64),
+        human_size(free_kib * 1024.0)
+    ))
+}
+
+/// Free RAM plus free swap in KiB, as Emacs's `memory-info` counts it.
+#[cfg(target_os = "linux")]
+fn free_memory_kib() -> Option<u64> {
+    // SAFETY: `sysinfo` fills the zeroed struct it is given.
+    let mut info: libc::sysinfo = unsafe { std::mem::zeroed() };
+    if unsafe { libc::sysinfo(&mut info) } != 0 {
+        return None;
+    }
+    let unit = u64::from(info.mem_unit.max(1));
+    Some((info.freeram as u64 + info.freeswap as u64) * unit / 1024)
+}
+
+#[cfg(target_os = "macos")]
+fn free_memory_kib() -> Option<u64> {
+    fn sysctl<T: Default>(name: &str) -> Option<T> {
+        let name = std::ffi::CString::new(name).ok()?;
+        let mut out = T::default();
+        let mut len = std::mem::size_of::<T>();
+        // SAFETY: `out` is `len` bytes, and the name is NUL-terminated.
+        let rc = unsafe {
+            libc::sysctlbyname(
+                name.as_ptr(),
+                (&mut out as *mut T).cast(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        (rc == 0).then_some(out)
+    }
+    let pages: u32 = sysctl("vm.page_free_count")?;
+    // SAFETY: `sysconf` has no preconditions.
+    let page = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok()?;
+    let swap: libc::xsw_usage = sysctl_swap()?;
+    Some((u64::from(pages) * page + swap.xsu_avail) / 1024)
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_swap() -> Option<libc::xsw_usage> {
+    let name = std::ffi::CString::new("vm.swapusage").ok()?;
+    // SAFETY: zeroed is a valid `xsw_usage`.
+    let mut out: libc::xsw_usage = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::xsw_usage>();
+    // SAFETY: `out` is `len` bytes, and the name is NUL-terminated.
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            (&mut out as *mut libc::xsw_usage).cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    (rc == 0).then_some(out)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn free_memory_kib() -> Option<u64> {
+    None
 }
 
 /// `project-current`'s root for `save-some-buffers-root`: the nearest directory above the working one

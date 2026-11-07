@@ -22,7 +22,7 @@ use crate::persist::encoding::FileFormat;
 
 /// `ruse --help` text. Paths are the only arguments the interactive editor takes today.
 const USAGE: &str = "\
-usage: ruse [-R] [--safe-mode] [--] [file]
+usage: ruse [-R] [-b] [--safe-mode] [--] [file]
        ruse --replay <trace> <file>
        ruse agent
        ruse ssh [host]
@@ -33,6 +33,7 @@ Use `--` before a file name that starts with '-'.
 
 Options:
   -R           read-only: every file opened is 'readonly' (:w gives E45, :w! writes)
+  -b           binary: every file is read and written with 'binary' (no line-ending or BOM conversion)
   --safe-mode  read only the machine config: no user or workspace config (also after
                3 starts in a row that crashed before drawing; :config-reload leaves it)
 
@@ -66,6 +67,8 @@ struct Flags {
     read_only: bool,
     /// `--safe-mode`: the user and workspace config layers are not read (CFG-SAFE-001).
     safe_mode: bool,
+    /// `-b`: binary mode (nvim's `-b`, #619).
+    binary: bool,
 }
 
 /// Parse argv (without the program name). A leading `-` word is an option; after `--` every word is a
@@ -105,6 +108,8 @@ fn parse(args: &[OsString]) -> Invocation {
             options_done = true;
         } else if !options_done && arg == "-R" {
             flags.read_only = true;
+        } else if !options_done && arg == "-b" {
+            flags.binary = true;
         } else if !options_done && arg == "--safe-mode" {
             flags.safe_mode = true;
         } else if !options_done && arg.as_encoded_bytes().first() == Some(&b'-') {
@@ -185,7 +190,7 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let result = session_run(path, raw, flags.read_only, flags.safe_mode);
+    let result = session_run(path, raw, flags.read_only, flags.safe_mode, flags.binary);
     // From here this thread ends the process; the signal watchdog stands down (#897).
     let _exiting = crate::signals::begin_exit();
     // The terminal guard has already restored the terminal. A fatal signal or an I/O error ended the session
@@ -315,10 +320,12 @@ mod tests {
     const NONE: Flags = Flags {
         read_only: false,
         safe_mode: false,
+        binary: false,
     };
     const RO: Flags = Flags {
         read_only: true,
         safe_mode: false,
+        binary: false,
     };
 
     fn usage(inv: Invocation) -> String {
@@ -396,6 +403,7 @@ mod tests {
         let safe = Flags {
             read_only: false,
             safe_mode: true,
+            binary: false,
         };
         assert_eq!(p(&["--safe-mode"]), Invocation::Edit(None, safe));
         assert_eq!(
@@ -404,7 +412,8 @@ mod tests {
                 Some("a.txt".into()),
                 Flags {
                     read_only: true,
-                    safe_mode: true
+                    safe_mode: true,
+                    binary: false,
                 }
             )
         );

@@ -754,6 +754,11 @@ features:
     # revert-buffer-quick (revert-without-query, revert-buffer-quick-short-answers), C-x C-f find-file with
     # query-about-changed-file, C-x C-q read-only-mode with view-read-only's View mode; yes-or-no-p /
     # y-or-n-p / C-g as Emacs. The Emacs profile drops nvim's W11/W12 announcements and 'autoread'.
+    # v0.1.9 #619 formats (persist/encoding.rs, tests/file_formats.rs, tests/pty_large_file.rs): 'fileformat'
+    # unix/dos/mac per buffer (modifies; [dos]/[mac] in the write report), 'fileformats' read detection as nvim,
+    # ++ff=mac, 'binary' (:set bin, ++bin, ruse -b: no conversion, tw/wm/et zeroed and restored); Emacs
+    # large-file-warning-threshold (y/n/l) and out-of-memory-warning-percentage; the degraded large-file
+    # profile past 32 MiB (no highlighting, [large]); bounded undo / streaming search still to come.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.

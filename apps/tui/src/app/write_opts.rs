@@ -83,6 +83,10 @@ pub(crate) struct EmacsFiles {
     pub revert_buffer_quick_short_answers: bool,
     /// `save-some-buffers-default-predicate` is `save-some-buffers-root`.
     pub save_some_buffers_default_predicate_root: bool,
+    /// `large-file-warning-threshold` in bytes, `None` for nil.
+    pub large_file_warning_threshold: Option<u64>,
+    /// `out-of-memory-warning-percentage`, `None` for nil.
+    pub out_of_memory_warning_percentage: Option<u64>,
 }
 
 impl Default for EmacsFiles {
@@ -110,6 +114,8 @@ impl Default for EmacsFiles {
             revert_without_query: Vec::new(),
             revert_buffer_quick_short_answers: false,
             save_some_buffers_default_predicate_root: false,
+            large_file_warning_threshold: Some(10_000_000),
+            out_of_memory_warning_percentage: None,
         }
     }
 }
@@ -210,6 +216,12 @@ impl EmacsFiles {
             "revert_buffer_quick_short_answers",
             e.revert_buffer_quick_short_answers,
         );
+        if let Some(Value::Int(n)) = get("large_file_warning_threshold") {
+            e.large_file_warning_threshold = u64::try_from(*n).ok();
+        }
+        if let Some(Value::Int(n)) = get("out_of_memory_warning_percentage") {
+            e.out_of_memory_warning_percentage = u64::try_from(*n).ok();
+        }
         e.save_some_buffers_default_predicate_root = text("save_some_buffers_default_predicate")
             .is_some_and(|v| v == "save-some-buffers-root");
         e
@@ -243,6 +255,14 @@ pub(crate) struct WriteOptions {
     pub emacs: Option<EmacsFiles>,
     /// `'endofline'` / `'endoffile'` / `'bomb'` of buffers without a file, for their first write.
     pub nofile_fmt: HashMap<DocumentId, FileFormat>,
+    /// `'fileformats'`: the line endings a read tries, in order (#619).
+    pub fileformats: String,
+    /// The global `'fileformat'`: a read under an empty `'fileformats'`, and a buffer without a file.
+    pub fileformat: crate::persist::encoding::Eol,
+    /// `ruse -b` (nvim's `-b`): every file is read with `'binary'`.
+    pub binary_mode: bool,
+    /// `'textwidth'`, `'wrapmargin'` and `'expandtab'` as they were before `:set binary` zeroed them.
+    pub bin_saved: Option<(i64, i64, bool)>,
 }
 
 impl Default for WriteOptions {
@@ -268,6 +288,10 @@ impl WriteOptions {
             fsync: true,
             emacs: emacs.then(EmacsFiles::default),
             nofile_fmt: HashMap::new(),
+            fileformats: "unix,dos".into(),
+            fileformat: crate::persist::encoding::Eol::Lf,
+            binary_mode: false,
+            bin_saved: None,
         }
     }
 
@@ -350,6 +374,10 @@ impl WriteOptions {
     /// Whether a write adds a final newline the buffer lacks: `'fixeol'` (Vim) or `require-final-newline`
     /// (Emacs), else the buffer's own `'endofline'`.
     pub(crate) fn add_final_newline(&self, fmt: FileFormat) -> bool {
+        // `'binary'` writes the final newline only as `'endofline'` says (nvim ignores `'fixeol'` then).
+        if fmt.binary {
+            return fmt.final_newline;
+        }
         match &self.emacs {
             Some(e) => e.final_newline().on_save() || fmt.final_newline,
             None => self.fixeol || fmt.final_newline,
@@ -374,6 +402,24 @@ impl WriteOptions {
         };
         let disk = fmt.to_disk(&source);
         (source, disk)
+    }
+
+    /// The shape of a file read now: `'binary'` under `ruse -b`, else by `'fileformats'`.
+    pub(crate) fn read_format(&self, raw: &[u8]) -> FileFormat {
+        if self.binary_mode {
+            FileFormat::binary(raw)
+        } else {
+            FileFormat::detect_with(raw, &self.fileformats, self.fileformat)
+        }
+    }
+
+    /// The shape a buffer without a file is written with: the global `'fileformat'`.
+    pub(crate) fn new_format(&self) -> FileFormat {
+        FileFormat {
+            eol: self.fileformat,
+            binary: self.binary_mode,
+            ..FileFormat::default()
+        }
     }
 
     /// `E142` when `'write'` is off.

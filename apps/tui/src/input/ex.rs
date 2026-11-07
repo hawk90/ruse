@@ -307,12 +307,16 @@ pub enum FileFormatOpt {
     Unix,
     /// `++ff=dos`: `\r\n`.
     Dos,
+    /// `++ff=mac`: `\r` (#619).
+    Mac,
 }
 
-/// The `++opt` arguments of a file command (`:help ++opt`). Only `++ff` is honoured.
+/// The `++opt` arguments of a file command (`:help ++opt`): `++ff` and `++bin` / `++nobin`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct FileOpts {
     pub ff: Option<FileFormatOpt>,
+    /// `++bin` (`Some(true)`) / `++nobin` (`Some(false)`): read or write with `'binary'` on or off (#619).
+    pub bin: Option<bool>,
 }
 
 /// A parsed `:e[dit][!] [++opt] [+cmd] [{file}]` (#610).
@@ -1677,22 +1681,36 @@ fn file_verb(verb: &str) -> Option<FileVerb> {
     })
 }
 
-/// nvim's error for an argument it cannot use (`++ff=mac`, an unknown `++opt`).
+/// nvim's error for an argument it cannot use (an unknown `++opt`).
 const INVALID_ARGUMENT: &str = "E474: Invalid argument";
 
-/// Read the leading `++opt` arguments of a file command (`:help ++opt`): `++ff=unix|dos` (or
-/// `++fileformat=`) is honoured; any other `++opt`, and `++ff=mac` (ruse has no `\r` line ending), is an
-/// [`Ex::Fail`]. Returns the options and the text after them.
+/// Read the leading `++opt` arguments of a file command (`:help ++opt`): `++ff=unix|dos|mac` (or
+/// `++fileformat=`) and `++bin` / `++binary` / `++nobin` / `++nobinary` are honoured; any other `++opt`
+/// is an [`Ex::Fail`]. Returns the options and the text after them.
 fn parse_file_opts(mut rest: &str) -> Result<(FileOpts, &str), Ex> {
     let mut opts = FileOpts::default();
     while let Some(opt) = rest.strip_prefix("++") {
         let end = opt.find(char::is_whitespace).unwrap_or(opt.len());
+        match &opt[..end] {
+            "bin" | "binary" => {
+                opts.bin = Some(true);
+                rest = opt[end..].trim_start();
+                continue;
+            }
+            "nobin" | "nobinary" => {
+                opts.bin = Some(false);
+                rest = opt[end..].trim_start();
+                continue;
+            }
+            _ => {}
+        }
         let ff = opt[..end]
             .strip_prefix("ff=")
             .or_else(|| opt[..end].strip_prefix("fileformat="));
         opts.ff = Some(match ff {
             Some("unix") => FileFormatOpt::Unix,
             Some("dos") => FileFormatOpt::Dos,
+            Some("mac") => FileFormatOpt::Mac,
             _ => return Err(Ex::Fail(INVALID_ARGUMENT.into())),
         });
         rest = opt[end..].trim_start();
@@ -1835,6 +1853,7 @@ fn parse_file_command(line: &str) -> Option<Ex> {
                 cmd,
                 opts: FileOpts {
                     ff: more.ff.or(opts.ff),
+                    bin: more.bin.or(opts.bin),
                 },
             };
             match verb {
@@ -2828,8 +2847,11 @@ mod file_command_tests {
             parse_ex("w a b"),
             Ex::Fail("E172: Only one file name allowed".into())
         );
+        assert_eq!(write("w ++ff=mac a").opts.ff, Some(FileFormatOpt::Mac));
+        assert_eq!(write("w ++bin a").opts.bin, Some(true));
+        assert_eq!(write("w ++nobin a").opts.bin, Some(false));
         assert_eq!(
-            parse_ex("w ++ff=mac a"),
+            parse_ex("w ++ff=foo a"),
             Ex::Fail("E474: Invalid argument".into())
         );
         // Other `w…` commands are not writes.
@@ -2863,7 +2885,8 @@ mod file_command_tests {
                 file: Some("f.txt".into()),
                 cmd: Some("/a b".into()),
                 opts: FileOpts {
-                    ff: Some(FileFormatOpt::Unix)
+                    ff: Some(FileFormatOpt::Unix),
+                    bin: None,
                 },
             })
         );

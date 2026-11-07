@@ -399,6 +399,25 @@ Cross-device / same-directory: the temp **must** be in the target's directory (a
 file is written in place as above (as Neovim does), and a new file fails cleanly; on a read-only mount both
 fail cleanly.
 
+**Line endings, `'binary'` and large files (v0.1.9, #619; `persist/encoding.rs`).** `'fileformat'` is per
+buffer (`unix`, `dos`, `mac`; `:set ff=` modifies the buffer and converts the file on the next write, whose
+report says `[dos]` / `[mac]` as nvim's `msg_add_fileformat`). `'fileformats'` decides a read as nvim v0.12.6:
+`dos` when listed and every line break is CRLF, else `unix` when listed and the file has a LF, else `mac` when
+listed and it has CR but no LF, else the first listed; one name forces it, an empty list takes the global
+`'fileformat'` (also the format of a buffer without a file). `++ff=unix|dos|mac` forces one read or write.
+`'binary'` (`:set bin`, `++bin`, `ruse -b`) reads and writes the bytes unconverted (no line endings, BOM or
+CTRL-Z, the final newline only as `'endofline'` says, whatever `'fixeol'`), and zeroes `'textwidth'` /
+`'wrapmargin'` and `'expandtab'` until it goes off. The Emacs profile asks before visiting a file over
+`large-file-warning-threshold` (`File f is large (10 MiB), really open? ([Y]es, [N]o, [L]iterally, [?])`,
+`l` reads it with `'binary'`) and warns past `out-of-memory-warning-percentage` of the free RAM and swap.
+
+A file read past the large-file threshold (32 MiB, `rj01::LARGE_FILE`, the incremental-journal one) enters
+the **degraded profile** (RFC-0008 §7): no syntax highlighting, and `[large]` on the status line. Still to
+come for the profile: bounded undo, streaming search and the long-line guard (the core has no undo-window
+bound yet). The journal's format byte carries neither `mac` nor `'binary'`: a recovered buffer of such a file
+comes back unix (with #1286's `'endoffile'`). The startup file is not asked about with the Emacs
+large-file question (the question needs the session, which starts after the file is read).
+
 ### 4. Three-way crash recovery
 
 > **Decided details (D-064, [RFC-0023](../rfc/accepted/RFC-0023-per-transaction-journal.md) §6-§9):** the prompt

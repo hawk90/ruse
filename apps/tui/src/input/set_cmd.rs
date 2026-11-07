@@ -143,6 +143,11 @@ pub enum Opt {
     /// Per buffer: whether commands may change the text, and whether it differs from the file.
     Modifiable,
     Modified,
+    /// Per buffer: the line ending a write uses, and `'binary'` (#619).
+    FileFormat,
+    Binary,
+    /// The line endings a read tries (#619).
+    FileFormats,
 }
 
 /// An option's value.
@@ -199,6 +204,8 @@ pub enum TextCheck {
     BackupCopy,
     /// `'backupext'` / `'patchmode'`: no `/` (`E474`).
     BackupExt,
+    /// `'fileformats'`: `unix`, `dos`, `mac`, comma-separated (`E474`).
+    FileFormats,
 }
 
 /// An option's type, with its value rules.
@@ -336,6 +343,9 @@ const LISTCHARS: &str = super::display_opts::LISTCHARS_DEFAULT;
 
 const FOLD_METHODS: &[&str] = &["manual", "expr", "marker", "syntax", "diff", "indent"];
 
+/// `'fileformat'`'s values.
+const FILE_FORMATS: &[&str] = &["unix", "dos", "mac"];
+
 const fn def(
     opt: Opt,
     name: &'static str,
@@ -434,6 +444,39 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(false),
         Locality::PerBuffer,
+    ),
+    def(
+        Opt::Binary,
+        "binary",
+        "bin",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::PerBuffer,
+    ),
+    def(
+        Opt::FileFormat,
+        "fileformat",
+        "ff",
+        OptKind::Str {
+            values: FILE_FORMATS,
+            supported: FILE_FORMATS,
+        },
+        OptVal::Str("unix"),
+        OptVal::Str("unix"),
+        Locality::PerBuffer,
+    ),
+    def(
+        Opt::FileFormats,
+        "fileformats",
+        "ffs",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::FileFormats,
+        },
+        OptVal::text("unix,dos"),
+        OptVal::text("unix,dos"),
+        Locality::Global,
     ),
     def(
         Opt::Backup,
@@ -1773,11 +1816,13 @@ pub fn assign_value(
                         .map(|_| OptVal::Text(Cow::Owned(new)))
                         .ok_or(ValueError::Invalid);
                 }
-                TextCheck::BackupCopy | TextCheck::BackupExt => {
-                    let ok = if check == TextCheck::BackupCopy {
-                        backupcopy_valid(&new)
-                    } else {
-                        !new.contains('/')
+                TextCheck::BackupCopy | TextCheck::BackupExt | TextCheck::FileFormats => {
+                    let ok = match check {
+                        TextCheck::BackupCopy => backupcopy_valid(&new),
+                        TextCheck::FileFormats => new
+                            .split(',')
+                            .all(|f| f.is_empty() || FILE_FORMATS.contains(&f)),
+                        _ => !new.contains('/'),
                     };
                     return if ok {
                         Ok(OptVal::Text(Cow::Owned(new)))

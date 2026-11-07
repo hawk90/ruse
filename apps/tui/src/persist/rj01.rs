@@ -176,6 +176,8 @@ fn format_from_bits(b: u8) -> FileFormat {
         // `'endoffile'` (#619) is not in the format byte: a recovered DOS file with a final CTRL-Z comes
         // back without it, until the next format version carries it.
         eof: false,
+        // Nor are `'fileformat'` mac and `'binary'` (#619): such a buffer comes back unix, not binary.
+        binary: false,
     }
 }
 
@@ -931,6 +933,7 @@ mod tests {
             bom: true,
             final_newline: false,
             eof: false,
+            binary: false,
         };
         let save = Meta::SavePoint {
             saved_node: 3,

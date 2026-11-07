@@ -823,6 +823,27 @@ pub const SCHEMA: &[KeyDef] = &[
         Merge::Replace,
         false,
     ),
+    key(
+        "files.fileformats",
+        Ty::Str,
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
+    key(
+        "emacs.large_file_warning_threshold",
+        int(-1, 9223372036854775807),
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
+    key(
+        "emacs.out_of_memory_warning_percentage",
+        int(-1, 100),
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
     key("ui.theme", Ty::Str, Scope::User, Merge::Replace, false),
     key(
         "update.channel",

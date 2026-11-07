@@ -921,6 +921,8 @@ impl Session {
         if let Some(p) = path.as_ref() {
             ws.set_focused_buffer_name(p.display().to_string());
             attach_file(&mut files, &mut highlighters, file_buf, p.clone(), fmt);
+            let len = ws.focused().doc.len();
+            crate::app::dispatch::mark_large(&mut files, &mut highlighters, file_buf, len);
         }
         // Profile selection (F-012 / F-013): `emacs` = Emacs, `native` = Native, else Vim.
         let emacs_profile = profile == "emacs";
@@ -1489,6 +1491,9 @@ impl Session {
         if self.disk_changed.contains(&id) {
             flags.push_str("[disk changed]");
         }
+        if self.files.get(&id).is_some_and(|bf| bf.large) {
+            flags.push_str("[large]");
+        }
         if self.config.safe_mode.is_some() {
             flags.push_str("[Config: safe-mode]");
         }
@@ -1570,7 +1575,7 @@ impl Session {
             return false;
         };
         persist::disk::saw(&path, &raw);
-        let fmt = persist::encoding::FileFormat::detect(&raw);
+        let fmt = self.files.write.read_format(&raw);
         self.ws.reload_undoable(id, fmt.to_buffer(&raw));
         if let Some(bf) = self.files.get_mut(&id) {
             bf.fmt = fmt;
@@ -5778,9 +5783,15 @@ pub(crate) fn run(
     raw: Vec<u8>,
     read_only_mode: bool,
     safe_mode: bool,
+    binary: bool,
 ) -> io::Result<()> {
-    // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
-    let fmt = persist::encoding::FileFormat::detect(&raw);
+    // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save. `-b` reads
+    // the bytes as they are (#619).
+    let fmt = if binary {
+        persist::encoding::FileFormat::binary(&raw)
+    } else {
+        persist::encoding::FileFormat::detect(&raw)
+    };
     let disk = fmt.to_buffer(&raw);
     // A crash may have left a journal of unsaved work; offer it, never auto-apply it. A journal that exists
     // but cannot be read or replayed is reported on the status line, never silently skipped (#897). The
@@ -5941,6 +5952,7 @@ pub(crate) fn run(
         }
     }
     s.readonly.mode = read_only_mode;
+    s.files.write.binary_mode = binary;
     // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
     // still works — `"+p` just pastes nothing.

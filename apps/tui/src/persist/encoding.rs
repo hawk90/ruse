@@ -19,6 +19,31 @@ pub enum Eol {
     Lf,
     /// DOS/Windows `\r\n`.
     Crlf,
+    /// Classic Mac `\r` (#619, Vim's `fileformat=mac`).
+    Cr,
+}
+
+impl Eol {
+    /// Vim's `'fileformat'` name.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Eol::Lf => "unix",
+            Eol::Crlf => "dos",
+            Eol::Cr => "mac",
+        }
+    }
+
+    /// The `'fileformat'` called `name`.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Eol> {
+        Some(match name {
+            "unix" => Eol::Lf,
+            "dos" => Eol::Crlf,
+            "mac" => Eol::Cr,
+            _ => return None,
+        })
+    }
 }
 
 /// The original on-disk shape to restore on save.
@@ -34,6 +59,9 @@ pub struct FileFormat {
     /// Vim's `'endoffile'` (#619): a DOS file ended with a CTRL-Z, which is not buffer text and is written
     /// back after the last line (unless `'fixeol'`, as nvim).
     pub eof: bool,
+    /// Vim's `'binary'` (#619): the bytes are the buffer as they are, with no line-ending, BOM or final
+    /// newline conversion either way.
+    pub binary: bool,
 }
 
 /// The DOS end-of-file byte `'endoffile'` stands for.
@@ -47,6 +75,7 @@ impl Default for FileFormat {
             bom: false,
             final_newline: true,
             eof: false,
+            binary: false,
         }
     }
 }
@@ -58,32 +87,74 @@ impl FileFormat {
     /// every line break is `\r\n`; one bare `\n` makes it LF, with each `\r` kept as buffer text, so a save
     /// without edits writes the same bytes (#849). A new/empty file is `Lf`.
     pub fn detect(raw: &[u8]) -> FileFormat {
+        FileFormat::detect_with(raw, "unix,dos", Eol::Lf)
+    }
+
+    /// [`FileFormat::detect`] under Vim's `'fileformats'` `ffs` (#619): an empty list reads every file as
+    /// `default` (`'fileformat'`), one name reads it as that format. With several: `dos` when listed and
+    /// every line break is `\r\n`; else `unix` when listed and the file has a `\n`; `mac` when listed and the
+    /// file has `\r` but no `\n`; else the first listed (a file with no line break at all), as nvim v0.12.6.
+    pub fn detect_with(raw: &[u8], ffs: &str, default: Eol) -> FileFormat {
         let bom = raw.starts_with(&BOM);
         let body = if bom { &raw[BOM.len()..] } else { raw };
         let crlf = body.windows(2).filter(|w| w == b"\r\n").count();
         // Bare `\n` = total `\n` minus those that are part of a `\r\n`.
         let lf_total = ruse_core::pos::count_newlines(body);
         let bare_lf = lf_total.saturating_sub(crlf);
-        let eol = if crlf > 0 && bare_lf == 0 {
-            Eol::Crlf
-        } else {
-            Eol::Lf
+        let listed: Vec<Eol> = ffs
+            .split(',')
+            .filter_map(|n| Eol::from_name(n.trim()))
+            .collect();
+        let eol = match listed.as_slice() {
+            [] => default,
+            [one] => *one,
+            many => {
+                let has = |e: Eol| many.contains(&e);
+                if has(Eol::Crlf) && crlf > 0 && bare_lf == 0 {
+                    Eol::Crlf
+                } else if lf_total > 0 && has(Eol::Lf) {
+                    Eol::Lf
+                } else if lf_total == 0 && has(Eol::Cr) && body.contains(&b'\r') {
+                    Eol::Cr
+                } else if lf_total > 0 && has(Eol::Crlf) {
+                    Eol::Crlf
+                } else {
+                    many[0]
+                }
+            }
         };
         // nvim: a DOS file's last byte CTRL-Z is `'endoffile'`, not text.
         let eof = eol == Eol::Crlf && body.last() == Some(&CTRL_Z);
         let body = if eof { &body[..body.len() - 1] } else { body };
-        let final_newline = body.is_empty() || body.ends_with(b"\n");
+        let last = if eol == Eol::Cr { b'\r' } else { b'\n' };
+        let final_newline = body.is_empty() || body.last() == Some(&last);
         FileFormat {
             eol,
             bom,
             final_newline,
             eof,
+            binary: false,
+        }
+    }
+
+    /// The shape of a file read with `'binary'` (`++bin`, `ruse -b`): no conversion at all, and
+    /// `'endofline'` as the file ends.
+    pub fn binary(raw: &[u8]) -> FileFormat {
+        FileFormat {
+            eol: Eol::Lf,
+            bom: false,
+            final_newline: raw.is_empty() || raw.ends_with(b"\n"),
+            eof: false,
+            binary: true,
         }
     }
 
     /// Normalise raw file bytes into clean editor bytes: drop the BOM, fold `\r\n` → `\n`. The
     /// editor never sees `^M` or a BOM char; the style is remembered in `self` for save.
     pub fn to_buffer(self, raw: &[u8]) -> Vec<u8> {
+        if self.binary {
+            return raw.to_vec();
+        }
         let body = if self.bom && raw.starts_with(&BOM) {
             &raw[BOM.len()..]
         } else {
@@ -106,6 +177,10 @@ impl FileFormat {
                 i += 1;
             }
             out
+        } else if self.eol == Eol::Cr {
+            body.iter()
+                .map(|&b| if b == b'\r' { b'\n' } else { b })
+                .collect()
         } else {
             body.to_vec()
         }
@@ -121,6 +196,9 @@ impl FileFormat {
     /// Restore the original style for writing to disk: re-expand `\n` → `\r\n` for a CRLF file and
     /// re-prepend the BOM. The inverse of [`to_buffer`].
     pub fn to_disk(self, buffer: &[u8]) -> Vec<u8> {
+        if self.binary {
+            return buffer.to_vec();
+        }
         let mut out = Vec::with_capacity(buffer.len() + if self.bom { 3 } else { 0 });
         if self.bom {
             out.extend_from_slice(&BOM);
@@ -132,6 +210,8 @@ impl FileFormat {
                 }
                 out.push(b);
             }
+        } else if self.eol == Eol::Cr {
+            out.extend(buffer.iter().map(|&b| if b == b'\n' { b'\r' } else { b }));
         } else {
             out.extend_from_slice(buffer);
         }
@@ -238,6 +318,46 @@ mod tests {
             assert_eq!(FileFormat::detect(raw).final_newline, want, "{raw:?}");
         }
         assert!(FileFormat::default().final_newline);
+    }
+
+    /// nvim v0.12.6 `'fileformats'`: the default `unix,dos` reads a CR-only file as unix (one line); with
+    /// `mac` listed it is mac; one name forces it; an empty list takes `'fileformat'`; a file with no line
+    /// break takes the first name.
+    #[test]
+    fn fileformats_decide_the_format_as_nvim() {
+        let m = b"a\rb\r";
+        assert_eq!(FileFormat::detect(m).eol, Eol::Lf);
+        let mac = FileFormat::detect_with(m, "unix,dos,mac", Eol::Lf);
+        assert_eq!(mac.eol, Eol::Cr);
+        assert!(mac.final_newline);
+        assert_eq!(mac.to_buffer(m), b"a\nb\n");
+        assert_eq!(mac.to_disk(&mac.to_buffer(m)), m);
+        assert_eq!(
+            FileFormat::detect_with(b"a\nb\n", "dos", Eol::Lf).eol,
+            Eol::Crlf
+        );
+        assert_eq!(
+            FileFormat::detect_with(b"a\r\n", "", Eol::Crlf).eol,
+            Eol::Crlf
+        );
+        assert_eq!(
+            FileFormat::detect_with(b"abc", "dos,unix", Eol::Lf).eol,
+            Eol::Crlf
+        );
+        assert_eq!(
+            FileFormat::detect_with(b"a\r\nb\n", "unix,dos", Eol::Lf).eol,
+            Eol::Lf
+        );
+    }
+
+    /// `'binary'`: the buffer is the file's bytes, BOM and CR included, and a write gives them back.
+    #[test]
+    fn binary_converts_nothing() {
+        let raw = b"\xEF\xBB\xBFa\r\nb";
+        let f = FileFormat::binary(raw);
+        assert!(!f.final_newline);
+        assert_eq!(f.to_buffer(raw), raw);
+        assert_eq!(f.to_disk(raw), raw);
     }
 
     /// nvim v0.12.6: a DOS file ending in CTRL-Z has `'endoffile'`; the byte is not text and comes back on
