@@ -799,6 +799,8 @@ pub(crate) struct Session {
     swap: Option<SwapPrompt>,
     /// A `'confirm'` / `:confirm` dialog over unsaved changes, waiting for its key (#619).
     changed_prompt: Option<crate::app::abandon::ChangedPrompt>,
+    /// The Ex command a window key stands for (`C-w q` is `:quit`, `C-w c` `:close`), run after routing.
+    window_ex: Option<&'static str>,
     /// `:confirm` on the Ex command running, and that command's line as typed (modifiers included).
     ex_confirm: bool,
     ex_line: String,
@@ -976,6 +978,7 @@ impl Session {
             confirm: None,
             swap: None,
             changed_prompt: None,
+            window_ex: None,
             ex_confirm: false,
             ex_line: String::new(),
             swap_answer: None,
@@ -1714,6 +1717,7 @@ impl Session {
                 self.answer_changed(prompt, key, frame);
             }
         }
+
         if self.failed_since(status_before) {
             self.macros.flush_replay();
         }
@@ -2060,6 +2064,16 @@ impl Session {
     }
 
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
+        self.route_key(raw_key, from_replay, frame);
+        // A window key that stands for an Ex command (`CTRL-W q` = `:quit`) runs it now, before the next
+        // key, through the Ex dispatch and its unsaved-changes gate (#619).
+        if let Some(line) = self.window_ex.take() {
+            self.status.clear();
+            self.run_ex_pieces(vec![line.to_string()], frame);
+        }
+    }
+
+    fn route_key(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
         let so = self.scrolloff_rows();
         let report = self.ui_opts.report;
         let overlay_open = self.overlay_open();
@@ -2082,6 +2096,7 @@ impl Session {
             swap,
             changed_prompt,
             swap_answer,
+            window_ex,
             search_hl,
             last_substitute,
             last_ex_line,
@@ -2744,7 +2759,7 @@ impl Session {
                 }
             }
             *prefix = Prefix::None;
-            dispatch_window(key, count, ws, quit, status);
+            dispatch_window(key, count, ws, window_ex);
             return;
         }
         // The command-line window (`q:`/`q/`/`q?`) owns the keystream while open, like the `:` line: suppress
@@ -6382,8 +6397,7 @@ fn dispatch_window(
     key: crossterm::event::KeyEvent,
     count: u32,
     ws: &mut Workspace,
-    quit: &mut bool,
-    status: &mut Status,
+    window_ex: &mut Option<&'static str>,
 ) {
     // `{count}C-w w` / `{count}C-w W` go to window `count`, the last one when there are fewer (nvim 0.12.6:
     // `9<C-w>w` with three windows lands in window 3); without a count they step to the next / previous.
@@ -6403,14 +6417,11 @@ fn dispatch_window(
         KeyCode::Char('v') => {
             ws.split(SplitDir::Vertical);
         }
-        KeyCode::Char('c') => {
-            if !ws.close_focused() {
-                status.error("E444: Cannot close last window");
-            }
-        }
-        // `C-w q` is `:quit`: close the focused window (its buffer stays loaded, hidden, as with nvim's
-        // default 'hidden'), or on the last window quit through the same unsaved-changes check (E37/E162).
-        KeyCode::Char('q') => crate::app::dispatch::quit_window(ws, status, quit, false),
+        // `C-w c` is `:close` and `C-w q` (`C-w C-q`) is `:quit` (`:help CTRL-W_c`): they run as those Ex
+        // commands once routing is done, so 'hidden', 'autowrite' and 'confirm' apply as they do (#619).
+        KeyCode::Char('c') if key.modifiers.is_empty() => *window_ex = Some("close"),
+        KeyCode::Char('q') if key.modifiers.is_empty() => *window_ex = Some("quit"),
+        _ if is_ctrl(key, 'q') => *window_ex = Some("quit"),
         _ => {}
     }
 }

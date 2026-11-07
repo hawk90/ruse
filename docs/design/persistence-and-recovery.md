@@ -517,8 +517,10 @@ family and writes every changed buffer before `:!`, `:r !` and a filter; `'autow
 `Save (A)ll` / `(D)iscard All` when several buffers changed), then runs the command again, so `:qa` asks
 buffer by buffer. Divergences: the dialog is one status line (nvim's console dialog is two); `(N)o` marks the
 buffer unchanged and keeps it loaded (nvim may unload it, losing the text it kept); `(Y)es` on a buffer
-without a file is `E141` (nvim names it `Untitled` and writes that); the window keys (`CTRL-W q`, `CTRL-W c`)
-do not run the gate yet.
+without a file is `E141` (nvim names it `Untitled` and writes that). The window keys run as the Ex commands
+they stand for (`CTRL-W q` / `CTRL-W CTRL-Q` = `:quit`, `CTRL-W c` = `:close`; `ZZ` / `ZQ` already were `:x` /
+`:q!`), so the gate covers them. `:set (no)ma` and `:set (no)mod` are recorded in the replay trace
+(`ex_modifiable`, `ex_modified`, RFC-0020), so a session with an `E21` refusal saves a trace that replays.
 
 ### 6. Undo grouping boundaries (resolves the open D-005 part)
 

@@ -114,3 +114,43 @@ fn confirm_qa_offers_save_all_and_discard_all() {
     h.keys("d");
     assert!(h.quit());
 }
+
+/// A trace saved after `:set noma` and an E21 refusal replays to the same text (#619): the buffer state
+/// is in the trace (`ex_modifiable`, `ex_modified`), so the replay refuses the same edits.
+#[test]
+fn modifiable_and_modified_replay_from_the_trace() {
+    for keys in [
+        "x:set noma<CR>x:s/n/N/<CR>dd:set ma<CR>x",
+        "x:set noma<CR>u:set ma<CR>u",
+        "x:set nomod<CR>x",
+    ] {
+        let mut h = Headless::vim("one\ntwo\n");
+        h.keys(keys);
+        let path = std::env::temp_dir().join(format!(
+            "ruse-bufstate-{}-{}.trace",
+            std::process::id(),
+            keys.len()
+        ));
+        h.keys(&format!("<Esc>:trace save {}<CR>", path.display()));
+        assert!(
+            h.status().starts_with("trace saved"),
+            "{keys}: {}",
+            h.status()
+        );
+        let saved = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            saved.contains("ex_modifiable") || saved.contains("ex_modified"),
+            "{saved}"
+        );
+        let st = ruse_core::Trace::from_text(&saved)
+            .unwrap()
+            .replay(b"one\ntwo\n")
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(st.bytes()),
+            h.text(),
+            "{keys}\n{saved}"
+        );
+    }
+}

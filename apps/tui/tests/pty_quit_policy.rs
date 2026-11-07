@@ -50,3 +50,26 @@ fn confirm_yes_writes_and_quits() {
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"ne\n");
 }
+
+/// nvim v0.12.6: `CTRL-W q` is `:quit` and `CTRL-W c` is `:close`, so with 'nohidden' neither closes the
+/// only window over a changed buffer (E37), `'confirm'` asks for them, and `'autowriteall'` writes first.
+#[test]
+fn window_keys_run_the_quit_policy() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"one\n");
+    dir.file("g.txt", b"two\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.keys(":set nohid\r:split\r:e g.txt\rx");
+    ed.keys_then_wait_for("\x17q", "E37: No write since last change");
+    ed.keys(":\x1b");
+    ed.keys_then_wait_for("\x17c", "E37: No write since last change");
+    ed.keys(":\x1b:set cf\r");
+    ed.keys_then_wait_for("\x17q", "Save changes to \"g.txt\"?");
+    ed.keys("\x1b:set nocf awa\r");
+    ed.keys("\x17q");
+    support::wait_for_file(&dir.path("g.txt"), b"wo\n");
+    // f.txt is left, unchanged; the last window quits.
+    ed.keys(":q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"one\n");
+}

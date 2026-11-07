@@ -163,6 +163,10 @@ live and replay). Three records cover the paths found:
 - **`ExCmd::KeepJumps(bool)`** (verb `ex_keepjumps 1|0`): the `Workspace::set_keep_jumps` toggle around a
   `:keepjumps` command, recorded where it is set and cleared. It is a state switch, not an R3 group, because
   live `:keepjumps` opens no undo block and a group would.
+- **`ExCmd::Modifiable(bool)` / `ExCmd::Modified(bool)`** (verbs `ex_modifiable 1|0`, `ex_modified 1|0`;
+  added with #619): the focused buffer's `'modifiable'` and `'modified'` as `:set` writes them, so a replay
+  refuses the same edits (`E21`) and saves at the same points the live session did. Buffer state, not a View
+  option, so they are not `ex_set` tokens.
 - **`ExCmd::Register { name, value }`** (verb `ex_register`): register contents the session writes that no
   recorded command produced. It covers the four read-only registers `"/ ": ". "%` synced by
   `set_special_registers`, a clipboard read (`"+`/`"*`, external input), and a macro's raw bytes written by

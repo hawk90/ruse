@@ -498,20 +498,13 @@ impl OptionHost<'_> {
             (Opt::AutoWriteAll, _) => self.ui.buffers.autowriteall = on,
             (Opt::Confirm, _) => self.ui.buffers.confirm = on,
             (Opt::Hidden, _) => self.ui.buffers.hidden = on,
+            // Buffer state of the focused buffer, recorded so a replay refuses the same edits (#619).
             (Opt::Modifiable, _) => {
-                if let Some(d) = self.ws.document_mut(buf) {
-                    d.set_modifiable(on);
-                }
+                crate::app::dispatch::run_ex(ExCmd::Modifiable(on), self.ws, self.recorded);
             }
             // `:set nomod` marks the buffer unchanged (its text stays); `:set mod` marks it changed.
             (Opt::Modified, _) => {
-                if let Some(d) = self.ws.document_mut(buf) {
-                    if on {
-                        d.mark_unsaved();
-                    } else {
-                        d.mark_saved();
-                    }
-                }
+                crate::app::dispatch::run_ex(ExCmd::Modified(on), self.ws, self.recorded);
             }
             (Opt::Backup, _) => self.files.write.backup = on,
             (Opt::WriteBackup, _) => self.files.write.writebackup = on,
