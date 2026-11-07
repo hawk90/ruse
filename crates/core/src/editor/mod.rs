@@ -3640,7 +3640,7 @@ mod indent;
 mod lisp;
 pub use lisp::DEFAULT_LISPWORDS;
 mod cindent;
-pub use cindent::{CinOptions, Key as CinKey, DEFAULT_CINKEYS, DEFAULT_CINSCOPEDECLS};
+pub use cindent::{CinKey, CinOptions, DEFAULT_CINKEYS, DEFAULT_CINSCOPEDECLS};
 mod planner;
 pub use planner::plan;
 pub(crate) use planner::word_search;

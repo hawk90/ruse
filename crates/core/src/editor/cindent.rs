@@ -2001,7 +2001,7 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
     /// `in_cinkeys` for the cursor line: whether `'cinkeys'` holds the key `keytyped` for the moment
     /// `when` (`*` before inserting, `!` instead of inserting, ` ` after inserting). `line_is_empty`
     /// accepts the keys with a `0` before them.
-    pub(crate) fn in_cinkeys(&mut self, keytyped: Key, when: u8, line_is_empty: bool) -> bool {
+    pub(crate) fn in_cinkeys(&mut self, keytyped: CinKey, when: u8, line_is_empty: bool) -> bool {
         let look = self.e.cinkeys.as_bytes();
         let mut i = 0;
         while i < look.len() {
@@ -2026,22 +2026,22 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
             let c = at(look, i);
             if c == b'^' && (b'?'..=b'_').contains(&at(look, i + 1)) {
                 let ctrl = at(look, i + 1) ^ 0x40;
-                if try_match && keytyped == Key::Char(ctrl) {
+                if try_match && keytyped == CinKey::Char(ctrl) {
                     return true;
                 }
                 i += 2;
             } else if c == b'o' {
-                if try_match && keytyped == Key::OpenForw {
+                if try_match && keytyped == CinKey::OpenForw {
                     return true;
                 }
                 i += 1;
             } else if c == b'O' {
-                if try_match && keytyped == Key::OpenBack {
+                if try_match && keytyped == CinKey::OpenBack {
                     return true;
                 }
                 i += 1;
             } else if c == b'e' {
-                if try_match && keytyped == Key::Char(b'e') && self.cur.col >= 4 {
+                if try_match && keytyped == CinKey::Char(b'e') && self.cur.col >= 4 {
                     let p = self.cur_line();
                     let c0 = self.cur.col - 4;
                     if skipwhite(p, 0) == c0 && starts(p, c0, b"else") {
@@ -2050,7 +2050,7 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
                 }
                 i += 1;
             } else if c == b':' {
-                if try_match && keytyped == Key::Char(b':') {
+                if try_match && keytyped == CinKey::Char(b':') {
                     let p = self.cur_line();
                     if self.cin_iscase(p, 0, false)
                         || self.cin_isscopedecl(p, 0)
@@ -2096,7 +2096,7 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
             } else if c == b'<' {
                 if try_match {
                     let n = at(look, i + 1);
-                    if b"<>!*oOe0:".contains(&n) && n != 0 && keytyped == Key::Char(n) {
+                    if b"<>!*oOe0:".contains(&n) && n != 0 && keytyped == CinKey::Char(n) {
                         return true;
                     }
                     if let Some(k) = special_key(&look[i..]) {
@@ -2133,7 +2133,7 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
                         }
                     };
                     let mut matched = false;
-                    if let Key::Char(k) = keytyped {
+                    if let CinKey::Char(k) = keytyped {
                         if eq(k, last) {
                             let line = self.cur_line();
                             let ws = col - word.len();
@@ -2157,7 +2157,7 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
                 }
                 i = end;
             } else {
-                if try_match && Key::Char(c) == keytyped {
+                if try_match && CinKey::Char(c) == keytyped {
                     return true;
                 }
                 if c != 0 {
@@ -2207,7 +2207,8 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
             }
         }
         // #defines and so on go at the left when in 'cinkeys'.
-        if t0 == b'#' && (at(&linecopy, 0) == b'#' || self.in_cinkeys(Key::Char(b'#'), b' ', true))
+        if t0 == b'#'
+            && (at(&linecopy, 0) == b'#' || self.in_cinkeys(CinKey::Char(b'#'), b' ', true))
         {
             let d = skipwhite(theline, 1);
             if o.pragma == 0 || !starts(theline, d, b"pragma") {
@@ -3387,7 +3388,7 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
 
 /// A key `'cinkeys'` can name: a typed byte, or the `o`/`O` opens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Key {
+pub enum CinKey {
     /// A typed byte (a control key as its byte, `^F` is 6).
     Char(u8),
     /// A line opened below (`o`, `<CR>`).
@@ -3397,7 +3398,7 @@ pub enum Key {
 }
 
 /// The key a `<name>` in `'cinkeys'` stands for, for the few names that are one byte.
-fn special_key(s: &[u8]) -> Option<Key> {
+fn special_key(s: &[u8]) -> Option<CinKey> {
     let end = s.iter().position(|&c| c == b'>')?;
     let name = &s[1..end];
     let k = match name.to_ascii_lowercase().as_slice() {
@@ -3412,7 +3413,7 @@ fn special_key(s: &[u8]) -> Option<Key> {
         [b'c', b'-', c] if c.is_ascii_alphabetic() => c.to_ascii_uppercase() ^ 0x40,
         _ => return None,
     };
-    Some(Key::Char(k))
+    Some(CinKey::Char(k))
 }
 
 /// The C indent of line `row` (0-based) of `lines`, as `get_c_indent` gives it with the cursor at byte
@@ -3475,7 +3476,7 @@ pub(crate) fn key_reindents<L: AsRef<[u8]>>(
     lines: &[L],
     row: usize,
     col: usize,
-    key: Key,
+    key: CinKey,
     line_is_empty: bool,
     e: &CEnv<'_>,
 ) -> bool {
