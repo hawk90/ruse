@@ -342,3 +342,32 @@ proptest! {
         prop_assert_eq!(ws.focused().doc.bytes(), edited.as_slice(), "full redo must restore the edited buffer");
     }
 }
+
+/// #1296, the fuzzer's minimal repro: a one-line fold on a last line with no newline, whose only char `x`
+/// deletes (`\nh` to `\n`). nvim v0.12.6 keeps the line, empty, with its fold (`['', '']`, `foldlevel(2)`
+/// 1). This buffer cannot hold an empty last line without a newline (the slot after a final newline is no
+/// line), so the fold goes with its line instead of pointing past the buffer.
+#[test]
+fn a_fold_on_a_last_line_emptied_by_x_goes_with_the_line() {
+    let mut h = Headless::vim("");
+    for k in ["h", "h", "h", "i", "<CR>", "h", "<Esc>", "z", "f", "0", "x"] {
+        h.keys(k);
+        h.assert_invariants();
+    }
+    assert_eq!(h.text(), "\n");
+    assert_eq!(h.folds(), &[]);
+}
+
+/// #1296, the regression the fuzzer then found (`session_fuzz.proptest-regressions`): a linewise `P` into
+/// the buffer emptied under a one-line fold. nvim v0.12.6 ends with `['¡', '']` and no fold; here too the
+/// fold goes, rather than landing on the slot after the put line's newline.
+#[test]
+fn a_fold_left_on_an_emptied_buffer_does_not_outlive_a_put_above() {
+    let mut h = Headless::vim("\u{a1}");
+    for k in ["z", "f", "0", "v", "h", ";", "X", ";", "P"] {
+        h.keys(k);
+        h.assert_invariants();
+    }
+    assert_eq!(h.text(), "\u{a1}\n");
+    assert_eq!(h.folds(), &[]);
+}

@@ -436,6 +436,12 @@ impl Anchored {
             return;
         }
         let b = doc.bytes();
+        // The slot after a final newline is no line (`dispatch::line_count`), though an anchor can land
+        // there: `x` on the only char of a last line with no newline (`\nh` to `\n`) leaves the fold's
+        // line nowhere (#1296). nvim keeps that line, empty; the buffer here cannot hold an empty last
+        // line without a newline, so the fold goes with its line, and one that ran onto it ends a line up.
+        let last =
+            (ruse_core::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'))).max(1) - 1;
         folds.retain_mut(|f| {
             let Some((_, ids)) = self.folds.iter().find(|(a, _)| same_range(a, f)) else {
                 return true;
@@ -450,7 +456,8 @@ impl Anchored {
                 e_up.offset.0
             } else {
                 e.offset.0
-            });
+            })
+            .min(last);
             if (s.invalidated && e.invalidated) || end < start {
                 return false;
             }
