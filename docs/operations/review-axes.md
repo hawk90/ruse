@@ -13,7 +13,8 @@ status: draft
 
 `spec/review-axes.yaml` is the durable catalog of **what a review of ruse should check** — 566 axes across 20
 domains plus a `RUSE` domain of 10 cross-cutting P0 priorities. It captures the *questions* (definitions),
-never the *answers*: a point-in-time assessment lives in a dated report under [`docs/reviews/`](../reviews/verification.md).
+never the *answers*: a point-in-time assessment lives in a dated report under `docs/reviews/`, one per
+milestone (see [Cadence](#cadence)).
 
 ## Model
 
@@ -52,6 +53,28 @@ dogfoods its own rules (`RA-LLM-013/014/015/016`) — the review system reviews 
    count to a ceiling (`review_machine_unwired`), so it can fall but not rise (#887).
 3. Record findings in a **dated report** under `docs/reviews/` (id + verdict + evidence), never back into
    the catalog. Keep the JSON view (`--json`) out of git — regenerate on demand to avoid drift.
+
+## Cadence
+
+One dated report per release milestone, written when the milestone closes (#989):
+
+- **Path:** `docs/reviews/YYYY-MM-DD-vX.Y.Z.md`: the close date and the milestone's version name.
+- **Scope:** every P0 axis, plus the axes of the domains the milestone touched most. The report states
+  its scope at the top.
+- **Content:** each axis gets a verdict (`pass` / `partial` / `fail` / `needs maintainer` /
+  `not assessable`) and one line of evidence (file:line, PR, test, or command output). The report also
+  has:
+  - a summary with counts and the top risks;
+  - a milestone summary: what shipped, and what moved to a later milestone and why;
+  - follow-ups: a proposed issue for each real gap.
+
+  Security-relevant findings go to a private advisory, not into the report.
+- **Lifecycle:** a report records one point in time and is never edited after it lands. The next
+  milestone writes a new one.
+
+Reports so far: [2026-11-08 v0.1.9](../reviews/2026-11-08-v0.1.9.md), the first. The undated
+[verification.md](../reviews/verification.md) is the design-verification report from before code was
+written; it stays as is.
 
 ## Extending
 

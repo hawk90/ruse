@@ -98,7 +98,7 @@ reviews are separate folders.
 | **Anti-patterns** | [anti-patterns/anti-patterns.md](anti-patterns/anti-patterns.md) |
 | **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, change-workflow, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate, review-axes, governance-model, adopting-governance, manual-test-checklist |
 | **Contributing** | [contributing/](contributing/README.md) — hub, change-paths, ai-assisted-development, quickstart (+ root CONTRIBUTING/SUPPORT/CODE_OF_CONDUCT/SECURITY) |
-| **Reviews** | [reviews/verification.md](reviews/verification.md) (point-in-time design-verification report) |
+| **Reviews** | [reviews/verification.md](reviews/verification.md) (point-in-time design-verification report) · one dated report per milestone, `reviews/YYYY-MM-DD-vX.Y.Z.md` ([cadence](operations/review-axes.md#cadence)): [2026-11-08 v0.1.9](reviews/2026-11-08-v0.1.9.md) |
 | **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/`, `accepted/`, `rejected/`; the index and lifecycle are there |
 
 > Convention for all docs here: English, LLM-agent-parseable (frontmatter, stable headings/IDs, tables,

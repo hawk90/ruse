@@ -2,7 +2,8 @@
 #
 # WHAT THIS IS: a machine-checkable catalog of the dimensions a review of ruse should cover. It captures the
 # *questions* (definitions), not the *answers*. A point-in-time assessment of these axes lives in a dated
-# report under docs/reviews/ (one fact, one home) — never inline here.
+# report under docs/reviews/ (one fact, one home) — never inline here. Cadence: one report per release
+# milestone, written at milestone close, as docs/reviews/YYYY-MM-DD-vX.Y.Z.md (docs/operations/review-axes.md).
 #
 # METHOD (how an axis is assessed — be honest about enforcement, per RA-RUSE-001):
 #   machine = a tool/test/CI gate can decide it        llm    = an LLM rubric can assess it from the repo
