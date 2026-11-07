@@ -725,6 +725,19 @@ features:
     # the 4000 ms idle timer, after a shell command, on `:checkt[ime]` and before a save; W11/W12 once
     # per change (no reload offer); a save without `!` into a changed file is refused. #1221: a deleted
     # file gives nvim's E211 once (no flag), and `:w >> %` is ruse's own write, not a disk change.
+    # v0.1.9 #619 write path (persist/backup.rs, app/write_opts.rs, tests/pty_backup.rs, tests/write_options.rs):
+    # one backup engine under both profiles. Vim/Native (nvim v0.12.6): 'backup', 'writebackup' (guards an
+    # in-place write; a rename needs none), 'backupdir' (`.`, `//` whole-path names, created 0700),
+    # 'backupext', 'backupskip' (temp dirs), 'patchmode', 'backupcopy' (auto/yes/no, breaksymlink,
+    # breakhardlink), 'write' (E142), 'writeany' (no E13), 'fsync', E509/E510/E589, and the per-buffer
+    # 'endofline'/'endoffile' (a DOS file's CTRL-Z)/'bomb' (`:set bomb` modifies). Emacs profile (Emacs 31.1,
+    # config keys emacs.*): make-backup-files (first save of a visit), backup-directory-alist, version-control,
+    # kept-new/old-versions, delete-old-versions, backup-by-copying(-when-linked/-mismatch/-privileged-mismatch),
+    # file-precious-flag, break-hardlink-on-save, file-preserve-symlinks-on-save, (mode-)require-final-newline,
+    # (small-)temporary-file-directory. Emacs C-x C-s and the palette's save now honour the same options as
+    # `:w` (they ignored `:set fixeol` before). Divergences: no Lisp make-backup-file-name-function, no prompt
+    # inside a save (delete-old-versions nil keeps versions, require-final-newline ask adds none), no
+    # M-x set-variable (config keys + :config-reload).
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.

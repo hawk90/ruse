@@ -41,7 +41,6 @@ pub(crate) struct OptionHost<'a> {
     pub hlsearch_on: &'a mut bool,
     pub search_hl: &'a mut Option<String>,
     pub incsearch_on: &'a mut bool,
-    pub fixeol_on: &'a mut bool,
     pub scrolloff: &'a mut i64,
     pub folds: &'a mut HashMap<DocumentId, Vec<crate::folds::Fold>>,
     pub fold_method: &'a mut HashMap<DocumentId, FoldMethod>,
@@ -302,7 +301,7 @@ impl OptionHost<'_> {
             Opt::ScrollJump => OptVal::Num(d.scrolljump),
             Opt::HlSearch => OptVal::Bool(*self.hlsearch_on),
             Opt::IncSearch => OptVal::Bool(*self.incsearch_on),
-            Opt::FixEol => OptVal::Bool(*self.fixeol_on),
+            Opt::FixEol => OptVal::Bool(self.files.write.fixeol),
             Opt::TildeOp => OptVal::Bool(self.engine.tildeop()),
             // The window's own value, else the global one (`:set so?` shows the value in force).
             Opt::ScrollOff if global => OptVal::Num(*self.scrolloff),
@@ -325,6 +324,19 @@ impl OptionHost<'_> {
             Opt::VerboseFile => OptVal::Text("".into()),
             Opt::FoldEnable => OptVal::Bool(self.foldenable.get(&buf).copied().unwrap_or(true)),
             Opt::ReadOnly => OptVal::Bool(self.readonly.get(self.files, buf)),
+            Opt::Backup => OptVal::Bool(self.files.write.backup),
+            Opt::WriteBackup => OptVal::Bool(self.files.write.writebackup),
+            Opt::Write => OptVal::Bool(self.files.write.write),
+            Opt::WriteAny => OptVal::Bool(self.files.write.writeany),
+            Opt::Fsync => OptVal::Bool(self.files.write.fsync),
+            Opt::BackupDir => OptVal::Text(self.files.write.backupdir().into()),
+            Opt::BackupSkip => OptVal::Text(self.files.write.backupskip().into()),
+            Opt::BackupExt => OptVal::Text(self.files.write.backupext.clone().into()),
+            Opt::BackupCopy => OptVal::Text(self.files.write.backupcopy.clone().into()),
+            Opt::PatchMode => OptVal::Text(self.files.write.patchmode.clone().into()),
+            Opt::EndOfLine => OptVal::Bool(self.file_format(buf).final_newline),
+            Opt::EndOfFile => OptVal::Bool(self.file_format(buf).eof),
+            Opt::Bomb => OptVal::Bool(self.file_format(buf).bom),
             Opt::FoldLevel => OptVal::Num(
                 i64::try_from(self.foldlevel.get(&buf).copied().unwrap_or(0)).unwrap_or(i64::MAX),
             ),
@@ -421,7 +433,7 @@ impl OptionHost<'_> {
                 }
             }
             (Opt::IncSearch, _) => *self.incsearch_on = on,
-            (Opt::FixEol, _) => *self.fixeol_on = on,
+            (Opt::FixEol, _) => self.files.write.fixeol = on,
             (Opt::TildeOp, _) => self.engine.set_tildeop(on),
             // Global-local: `:setlocal` gives the focused window its own value, `:set` sets the global
             // value and drops the window's (nvim), `:setglobal` leaves the window's alone.
@@ -466,6 +478,36 @@ impl OptionHost<'_> {
                 self.foldenable.insert(buf, on);
                 self.reapply_folds(buf);
             }
+            (Opt::Backup, _) => self.files.write.backup = on,
+            (Opt::WriteBackup, _) => self.files.write.writebackup = on,
+            (Opt::Write, _) => self.files.write.write = on,
+            (Opt::WriteAny, _) => self.files.write.writeany = on,
+            (Opt::Fsync, _) => self.files.write.fsync = on,
+            (Opt::BackupDir, _) => self.files.write.backupdir = Some(text),
+            (Opt::BackupSkip, _) => self.files.write.backupskip = Some(text),
+            (Opt::BackupExt, _) => self.files.write.backupext = text,
+            (Opt::BackupCopy, _) => self.files.write.backupcopy = text,
+            (Opt::PatchMode, _) => self.files.write.patchmode = text,
+            // The file's shape is the buffer's. Changing its BOM changes the file, so the buffer is modified
+            // (nvim); `'endofline'` and `'endoffile'` do not modify it.
+            (Opt::EndOfLine | Opt::EndOfFile | Opt::Bomb, _) => {
+                let mut fmt = self.file_format(buf);
+                let before = fmt.bom;
+                match opt {
+                    Opt::EndOfLine => fmt.final_newline = on,
+                    Opt::EndOfFile => fmt.eof = on,
+                    _ => fmt.bom = on,
+                }
+                match self.files.get_mut(&buf) {
+                    Some(bf) => bf.fmt = fmt,
+                    None => {
+                        self.files.write.nofile_fmt.insert(buf, fmt);
+                    }
+                }
+                if opt == Opt::Bomb && before != on {
+                    self.ws.focused_doc_mut().mark_unsaved();
+                }
+            }
             // `'readonly'` is the buffer's; a `:set noro` (not `:setlocal`) also ends `ruse -R`'s readonly
             // mode, as nvim's does.
             (Opt::ReadOnly, _) => {
@@ -476,6 +518,19 @@ impl OptionHost<'_> {
             }
             _ => {}
         }
+    }
+
+    /// The shape of `buf`'s file (`'endofline'`, `'endoffile'`, `'bomb'`): its file's, or the one a buffer
+    /// without a file will be written with.
+    fn file_format(&self, buf: DocumentId) -> crate::persist::encoding::FileFormat {
+        self.files.get(&buf).map(|bf| bf.fmt).unwrap_or_else(|| {
+            self.files
+                .write
+                .nofile_fmt
+                .get(&buf)
+                .copied()
+                .unwrap_or_default()
+        })
     }
 
     /// Close the folds deeper than 'foldlevel' (all of them open with 'nofoldenable'). Manual folds take a
@@ -534,7 +589,7 @@ pub(crate) fn run_set(
             .iter()
             .map(|d| (d, host.read(d.opt, line.scope)))
             // 'scroll' follows the window's height; it lists only as `:set all` shows it.
-            .filter(|(d, v)| *v != d.default && d.opt != Opt::Scroll)
+            .filter(|(d, v)| *v != default_of(d) && d.opt != Opt::Scroll)
             .collect();
         out.rows = listing(title(line.scope), &items, cols);
         return out;
@@ -564,9 +619,9 @@ pub(crate) fn run_set(
                     host,
                     *opt,
                     if *vim {
-                        def.vim_default.clone()
+                        vim_default_of(def)
                     } else {
-                        def.default.clone()
+                        default_of(def)
                     },
                 );
             }
@@ -594,6 +649,15 @@ pub(crate) fn run_set(
                             "E49: Invalid scroll size".into(),
                         ))
                     }
+                    // nvim: `'backupext'` and `'patchmode'` may not be equal (E589).
+                    Ok(OptVal::Text(t))
+                        if (*opt == Opt::BackupExt && *t == host.files.write.patchmode)
+                            || (*opt == Opt::PatchMode && *t == host.files.write.backupext) =>
+                    {
+                        Err(crate::input::set_cmd::ValueError::Message(
+                            "E589: 'backupext' and 'patchmode' are equal".into(),
+                        ))
+                    }
                     v => v,
                 };
                 match value {
@@ -619,7 +683,7 @@ pub(crate) fn run_set(
             }
             SetArg::ResetAll => {
                 for d in OPTIONS {
-                    write(host, d.opt, d.default.clone());
+                    write(host, d.opt, default_of(d));
                 }
             }
             SetArg::Unsupported(_) => {
@@ -633,6 +697,24 @@ pub(crate) fn run_set(
         out.rows.extend(notice);
     }
     out
+}
+
+/// ruse's default of `def`: the table's, except for the options whose default depends on the environment
+/// (`'backupdir'` names the state directory, `'backupskip'` the temp directories).
+fn default_of(def: &OptDef) -> OptVal {
+    match def.opt {
+        Opt::BackupDir => OptVal::Text(crate::persist::backup::default_backupdir().into()),
+        Opt::BackupSkip => OptVal::Text(crate::persist::backup::default_backupskip().into()),
+        _ => def.default.clone(),
+    }
+}
+
+/// nvim's default of `def` (`opt&vim`), environment-dependent as [`default_of`].
+fn vim_default_of(def: &OptDef) -> OptVal {
+    match def.opt {
+        Opt::BackupDir | Opt::BackupSkip => default_of(def),
+        _ => def.vim_default.clone(),
+    }
 }
 
 fn supported(def: &OptDef, value: &str) -> bool {
@@ -680,6 +762,16 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::IncSearch => "editor.incsearch",
         Opt::TildeOp => "editor.tildeop",
         Opt::FixEol => "editor.fixeol",
+        Opt::Backup => "files.backup",
+        Opt::WriteBackup => "files.writebackup",
+        Opt::BackupDir => "files.backupdir",
+        Opt::BackupExt => "files.backupext",
+        Opt::BackupCopy => "files.backupcopy",
+        Opt::BackupSkip => "files.backupskip",
+        Opt::PatchMode => "files.patchmode",
+        Opt::Write => "files.write",
+        Opt::WriteAny => "files.writeany",
+        Opt::Fsync => "files.fsync",
         Opt::AutoIndent => "editor.autoindent",
         Opt::SmartIndent => "editor.smartindent",
         Opt::CopyIndent => "editor.copyindent",
@@ -798,6 +890,12 @@ pub(crate) fn apply_config_keys(
     host: &mut OptionHost<'_>,
     only: Option<&[&'static str]>,
 ) {
+    // The Emacs profile's file variables are config keys alone (`emacs.*`): ruse has no `set-variable`.
+    if host.files.write.emacs.is_some()
+        && only.is_none_or(|keys| keys.iter().any(|k| k.starts_with("emacs.")))
+    {
+        host.files.write.emacs = Some(crate::app::write_opts::EmacsFiles::from_config(cfg));
+    }
     // `render.conceal` is no `:set` option: the config's value, else the schema default (on).
     if only.is_none_or(|keys| keys.contains(&"render.conceal")) {
         host.ui.conceal = !matches!(
@@ -832,7 +930,7 @@ pub(crate) fn apply_config_keys(
             }
             None => {
                 if host.sources.remove(&def.opt).is_some() {
-                    host.put(def.opt, OptionLevel::Both, def.default.clone());
+                    host.put(def.opt, OptionLevel::Both, default_of(def));
                 }
             }
         }

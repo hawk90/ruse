@@ -31,7 +31,13 @@ pub struct FileFormat {
     /// missing, empty, or ended in one; clear only for a file opened without one, which ruse keeps that way
     /// (byte-preserve, as nvim with `'nofixeol'`). So a new or emptied-and-retyped buffer saves as `a\n`.
     pub final_newline: bool,
+    /// Vim's `'endoffile'` (#619): a DOS file ended with a CTRL-Z, which is not buffer text and is written
+    /// back after the last line (unless `'fixeol'`, as nvim).
+    pub eof: bool,
 }
+
+/// The DOS end-of-file byte `'endoffile'` stands for.
+pub const CTRL_Z: u8 = 0x1A;
 
 /// A new buffer: LF, no BOM, and `'endofline'` set, as in Vim.
 impl Default for FileFormat {
@@ -40,6 +46,7 @@ impl Default for FileFormat {
             eol: Eol::Lf,
             bom: false,
             final_newline: true,
+            eof: false,
         }
     }
 }
@@ -62,11 +69,15 @@ impl FileFormat {
         } else {
             Eol::Lf
         };
+        // nvim: a DOS file's last byte CTRL-Z is `'endoffile'`, not text.
+        let eof = eol == Eol::Crlf && body.last() == Some(&CTRL_Z);
+        let body = if eof { &body[..body.len() - 1] } else { body };
         let final_newline = body.is_empty() || body.ends_with(b"\n");
         FileFormat {
             eol,
             bom,
             final_newline,
+            eof,
         }
     }
 
@@ -77,6 +88,10 @@ impl FileFormat {
             &raw[BOM.len()..]
         } else {
             raw
+        };
+        let body = match body.split_last() {
+            Some((&CTRL_Z, rest)) if self.eof => rest,
+            _ => body,
         };
         if self.eol == Eol::Crlf {
             // Strip only the `\r` that precedes a `\n`; leave lone `\r` (old-Mac data) untouched.
@@ -119,6 +134,9 @@ impl FileFormat {
             }
         } else {
             out.extend_from_slice(buffer);
+        }
+        if self.eof {
+            out.push(CTRL_Z);
         }
         out
     }
@@ -220,6 +238,20 @@ mod tests {
             assert_eq!(FileFormat::detect(raw).final_newline, want, "{raw:?}");
         }
         assert!(FileFormat::default().final_newline);
+    }
+
+    /// nvim v0.12.6: a DOS file ending in CTRL-Z has `'endoffile'`; the byte is not text and comes back on
+    /// a write. A Unix file's CTRL-Z is text.
+    #[test]
+    fn endoffile_is_a_dos_files_last_ctrl_z() {
+        let raw = b"one\r\ntwo\r\n\x1a";
+        let fmt = FileFormat::detect(raw);
+        assert!(fmt.eof && fmt.final_newline && fmt.eol == Eol::Crlf);
+        assert_eq!(fmt.to_buffer(raw), b"one\ntwo\n");
+        assert_eq!(fmt.to_disk(&fmt.to_buffer(raw)), raw);
+        let unix = FileFormat::detect(b"one\ntwo\n\x1a");
+        assert!(!unix.eof && !unix.final_newline);
+        assert_eq!(unix.to_buffer(b"one\ntwo\n\x1a"), b"one\ntwo\n\x1a");
     }
 
     /// #860: `:r` text is cleaned by its own format, so the target buffer's save adds exactly one `\r`.

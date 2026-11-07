@@ -24,8 +24,11 @@
 //! [`Method::RenamedDirSyncUnsupported`] and a report note that the rename's durability is not proven.
 //!
 //! Directory fsync, ownership and xattr handling are Unix-only; elsewhere the file fsync + rename still give
-//! atomic replacement. Known gaps: macOS ACLs (not exposed as xattrs) are not carried over by the rename path,
-//! and there is no backup copy (`'writebackup'`) protecting an in-place write against a crash (#619).
+//! atomic replacement. Known gap: macOS ACLs (not exposed as xattrs) are not carried over by the rename path.
+//!
+//! **Write policy** (#619, [`write_with`]): `'backupcopy'` picks the method (`yes` in place, `no` rename even
+//! over hard links, `breaksymlink`/`breakhardlink`), `'fsync'` the syncs, and [`super::backup`] makes the
+//! backups just before the file is replaced (a write backup guards an in-place write).
 //!
 //! **Symlinks**: a symlinked target is written THROUGH — the link is resolved and the file it points at is
 //! saved, so the symlink itself survives.
@@ -88,6 +91,10 @@ pub enum SaveError {
     Partial { path: PathBuf, err: io::Error },
     /// The new bytes are in the file, but an fsync that makes them durable failed (`E667`).
     NotDurable { path: PathBuf, err: io::Error },
+    /// The backup the write needs could not be made (`E509`/`E510`); nothing was written.
+    Backup(super::backup::BackupError),
+    /// The write failed and its write backup is kept: `note` names it.
+    Kept { err: Box<SaveError>, note: String },
 }
 
 impl std::fmt::Display for SaveError {
@@ -114,22 +121,32 @@ impl std::fmt::Display for SaveError {
                 "E667: Fsync failed: \"{}\": {err} (written but not proven durable)",
                 path.display()
             ),
+            SaveError::Backup(e) => write!(f, "{e}"),
+            SaveError::Kept { err, note } => write!(f, "{err}; {note}"),
         }
     }
 }
 
 impl std::error::Error for SaveError {}
 
-impl From<SaveError> for io::Error {
-    fn from(e: SaveError) -> io::Error {
-        let kind = match &e {
+impl SaveError {
+    /// The `io::ErrorKind` this failure is.
+    fn kind(&self) -> io::ErrorKind {
+        match self {
+            SaveError::Kept { err, .. } => err.kind(),
+            SaveError::Backup(b) => b.err.kind(),
             SaveError::ReadOnly(_) => io::ErrorKind::PermissionDenied,
             SaveError::NotRegular(_) => io::ErrorKind::InvalidInput,
             SaveError::Untouched(err)
             | SaveError::Partial { err, .. }
             | SaveError::NotDurable { err, .. } => err.kind(),
-        };
-        io::Error::new(kind, e.to_string())
+        }
+    }
+}
+
+impl From<SaveError> for io::Error {
+    fn from(e: SaveError) -> io::Error {
+        io::Error::new(e.kind(), e.to_string())
     }
 }
 
@@ -368,29 +385,166 @@ pub fn save(target: &Path, bytes: &[u8]) -> io::Result<()> {
 /// else in place. `force` (`:w!`) writes a file the user may not write (`E505` otherwise). Returns only after
 /// every fsync succeeded; see [`SaveError`] for what each failure leaves on disk.
 pub fn write(path: &Path, bytes: &[u8], force: bool) -> Result<Method, SaveError> {
-    let target = resolve_write_target(path).map_err(SaveError::Untouched)?;
+    write_with(path, bytes, &Opts::new(force)).map(|w| w.method)
+}
+
+/// How a write reaches the file (`'backupcopy'`): `Auto` renames a new file over it unless that would lose
+/// its identity (hard links, owner, xattrs) or the directory is not writable; `Yes` always overwrites it in
+/// place; `No` always renames, even over a hard-linked file (whose other names keep the old text).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Copy {
+    #[default]
+    Auto,
+    Yes,
+    No,
+}
+
+/// The write policy of one save: `'backupcopy'`, `'fsync'` and the backups to make (#619).
+#[derive(Debug, Clone, Copy)]
+pub struct Opts<'a> {
+    /// `:w!`: write a file the user may not write, and without the backup that could not be made.
+    pub force: bool,
+    pub copy: Copy,
+    /// `'backupcopy'` `breaksymlink`: replace a symlink with a regular file instead of writing through it.
+    pub break_symlink: bool,
+    /// `'backupcopy'` `breakhardlink`: rename even over a file with other hard links.
+    pub break_hardlink: bool,
+    /// `'fsync'`: sync the file and its directory before reporting the write.
+    pub fsync: bool,
+    pub backup: Option<&'a super::backup::Policy>,
+}
+
+impl Opts<'_> {
+    /// ruse's default write: `auto`, synced, no backups.
+    pub fn new(force: bool) -> Opts<'static> {
+        Opts {
+            force,
+            copy: Copy::Auto,
+            break_symlink: false,
+            break_hardlink: false,
+            fsync: true,
+            backup: None,
+        }
+    }
+}
+
+/// A successful write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Written {
+    pub method: Method,
+    /// The backup kept for the file (`'backup'`, `make-backup-files`).
+    pub backup: Option<PathBuf>,
+    /// Numbered Emacs backups over `kept-*-versions` that were kept (`delete-old-versions` nil).
+    pub excess: usize,
+}
+
+impl Written {
+    /// The suffix the write report carries: what was not proven, and backups left over.
+    pub fn note(&self) -> String {
+        let mut n = self.method.note().to_string();
+        if self.excess > 0 {
+            n.push_str(&format!(" ({} excess backup versions kept)", self.excess));
+        }
+        n
+    }
+}
+
+/// [`write`] under a write policy: the `'backupcopy'` method, `'fsync'`, and the backups `opts.backup` asks
+/// for, made just before the file is replaced. A backup that cannot be made stops the write (`E509`/`E510`)
+/// unless it is forced; a write backup is removed after a successful write and kept (and named) after a
+/// failed one.
+pub fn write_with(path: &Path, bytes: &[u8], opts: &Opts<'_>) -> Result<Written, SaveError> {
+    let link =
+        opts.break_symlink && fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink());
+    let target = if link {
+        path.to_path_buf()
+    } else {
+        resolve_write_target(path).map_err(SaveError::Untouched)?
+    };
     sweep_stale_temps(&target);
     let existing = fs::metadata(&target).ok();
     // A rename would REPLACE a FIFO, socket or device node with a regular file (#907): refuse instead.
     if existing.as_ref().is_some_and(|m| !m.is_file()) {
         return Err(SaveError::NotRegular(target));
     }
+    let force = opts.force;
     if let Some(m) = &existing {
         if !force && !writable(&target, m) {
             return Err(SaveError::ReadOnly(path.to_path_buf()));
         }
-        if hard_linked(m) {
-            return in_place(&target, bytes, m, force);
+    }
+    let backup = opts.backup;
+    let mut copy = opts.copy;
+    if let (Some(m), Some(policy)) = (&existing, backup) {
+        // Emacs: the save that makes the backup copies or renames by `backup-by-copying*`.
+        if let Some(e) = policy.emacs() {
+            if policy.wanted(&target, false) {
+                copy = if e.copying.in_place(m) {
+                    Copy::Yes
+                } else {
+                    Copy::No
+                };
+            }
         }
     }
-    match replace(&target, bytes, existing.as_ref()) {
-        Ok(true) => Ok(Method::Renamed),
-        Ok(false) => Ok(Method::RenamedDirSyncUnsupported),
-        Err(Attempt::Fail(e)) => Err(e),
-        Err(Attempt::InPlace) => match &existing {
-            Some(m) => in_place(&target, bytes, m, force),
-            None => unreachable!("only an existing file falls back to an in-place write"),
+    // The method this write means to use. A rename may still fall back to an in-place write (the owner or
+    // an xattr cannot be reproduced, or the directory is not writable); its write backup is then made late.
+    let in_place = !link
+        && existing.as_ref().is_some_and(|m| match copy {
+            Copy::Yes => !(opts.break_hardlink && hard_linked(m)),
+            Copy::No => false,
+            Copy::Auto => hard_linked(m) && !opts.break_hardlink,
+        });
+    let mut made = super::backup::Made::default();
+    let make = |made: &mut super::backup::Made, in_place: bool| -> Result<(), SaveError> {
+        let Some(policy) = backup else {
+            return Ok(());
+        };
+        match super::backup::make(policy, &target, in_place) {
+            Ok(m) => *made = m,
+            Err(e) if force => crate::log::backup_failed(&target, &e.err),
+            Err(e) => return Err(SaveError::Backup(e)),
+        }
+        Ok(())
+    };
+    match (&existing, backup) {
+        (Some(_), Some(_)) => make(&mut made, in_place)?,
+        (None, Some(policy)) => super::backup::patch_new(policy, &target),
+        _ => {}
+    }
+    let result = match &existing {
+        Some(m) if in_place => in_place_write(&target, bytes, m, force, opts.fsync),
+        _ => match replace(&target, bytes, existing.as_ref(), opts.fsync) {
+            Ok(true) => Ok(Method::Renamed),
+            Ok(false) => Ok(Method::RenamedDirSyncUnsupported),
+            Err(Attempt::Fail(e)) => Err(e),
+            Err(Attempt::InPlace) => match &existing {
+                Some(m) => {
+                    // The rename became an in-place write, which a write backup must guard by a copy.
+                    if made.backup.is_none() {
+                        make(&mut made, true)?;
+                    }
+                    in_place_write(&target, bytes, m, force, opts.fsync)
+                }
+                None => unreachable!("only an existing file falls back to an in-place write"),
+            },
         },
+    };
+    let (backup_path, excess) = (made.backup.clone(), made.excess);
+    let keep_note = made.finish(result.is_ok());
+    match result {
+        Ok(method) => Ok(Written {
+            method,
+            backup: backup_path.filter(|p| p.exists()),
+            excess,
+        }),
+        Err(e) => Err(match keep_note {
+            Some(note) => SaveError::Kept {
+                err: Box::new(e),
+                note,
+            },
+            None => e,
+        }),
     }
 }
 
@@ -419,7 +573,12 @@ fn hard_linked(_: &fs::Metadata) -> bool {
 }
 
 /// Rename a filled temp over `target`; `Ok(false)` when the directory fsync is not supported here.
-fn replace(target: &Path, bytes: &[u8], existing: Option<&fs::Metadata>) -> Result<bool, Attempt> {
+fn replace(
+    target: &Path,
+    bytes: &[u8],
+    existing: Option<&fs::Metadata>,
+    sync: bool,
+) -> Result<bool, Attempt> {
     let (tmp, mut f) = match create_temp(target, existing.is_some()) {
         Ok(t) => t,
         // The directory is not writable (or read-only): the file itself may still be.
@@ -434,11 +593,14 @@ fn replace(target: &Path, bytes: &[u8], existing: Option<&fs::Metadata>) -> Resu
         }
         Err(e) => return Err(e.into()),
     };
-    let filled = fill_temp(&mut f, target, bytes, existing);
+    let filled = fill_temp(&mut f, target, bytes, existing, sync);
     drop(f);
     if let Err(e) = filled.and_then(|()| fs::rename(&tmp, target).map_err(Attempt::from)) {
         let _ = fs::remove_file(&tmp);
         return Err(e);
+    }
+    if !sync {
+        return Ok(true);
     }
     sync_dir(&containing_dir(target)).map_err(Attempt::Fail)
 }
@@ -449,6 +611,7 @@ fn fill_temp(
     target: &Path,
     bytes: &[u8],
     existing: Option<&fs::Metadata>,
+    sync: bool,
 ) -> Result<(), Attempt> {
     f.write_all(bytes)?;
     if let Some(m) = existing {
@@ -465,8 +628,10 @@ fn fill_temp(
     }
     #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos")))]
     let _ = target;
-    fault!(SyncFile);
-    f.sync_all()?; // the bytes are on stable storage before the rename makes them the file
+    if sync {
+        fault!(SyncFile);
+        f.sync_all()?; // the bytes are on stable storage before the rename makes them the file
+    }
     Ok(())
 }
 
@@ -531,11 +696,12 @@ fn sync_dir(dir: &Path) -> Result<bool, SaveError> {
 
 /// Overwrite the existing `target` in place and fsync it. `force` lets the owner write a file without write
 /// permission by adding it for the duration (as Vim's `:w!` does).
-fn in_place(
+fn in_place_write(
     target: &Path,
     bytes: &[u8],
     meta: &fs::Metadata,
     force: bool,
+    sync: bool,
 ) -> Result<Method, SaveError> {
     let mut restore = None;
     let open = |t: &Path| OpenOptions::new().write(true).open(t);
@@ -565,7 +731,7 @@ fn in_place(
         f.write_all(bytes)?;
         f.set_len(bytes.len() as u64)
     })();
-    let synced = written.as_ref().ok().map(|_| {
+    let synced = written.as_ref().ok().filter(|_| sync).map(|_| {
         fault!(SyncFile);
         f.sync_all()
     });
@@ -1217,5 +1383,138 @@ mod tests {
         assert!(save(&sub, b"x").is_err());
         assert!(sub.is_dir());
         assert!(temps(&dir).is_empty());
+    }
+
+    fn vim_backups(keep: bool, write: bool) -> super::super::backup::Policy {
+        super::super::backup::Policy {
+            keep,
+            write,
+            once_per_visit: false,
+            skip: String::new(),
+            patchmode: String::new(),
+            rules: super::super::backup::Rules::Vim {
+                dirs: ".".into(),
+                ext: "~".into(),
+            },
+        }
+    }
+
+    /// nvim v0.12.6 `'backupcopy'`: `yes` overwrites a hard-linked file in place (both names see the new
+    /// text, the backup is a copy); `no` renames, so the other name keeps the old text; `auto,breakhardlink`
+    /// renames too.
+    #[cfg(unix)]
+    #[test]
+    fn backupcopy_decides_the_write_method() {
+        for (copy, brk, linked_sees_new) in [
+            (Copy::Yes, false, true),
+            (Copy::No, false, false),
+            (Copy::Auto, true, false),
+            (Copy::Auto, false, true),
+        ] {
+            let dir = tmpdir();
+            let f = dir.join("h.txt");
+            let l = dir.join("l.txt");
+            fs::write(&f, b"one\n").unwrap();
+            fs::hard_link(&f, &l).unwrap();
+            let policy = vim_backups(true, true);
+            let opts = Opts {
+                copy,
+                break_hardlink: brk,
+                backup: Some(&policy),
+                ..Opts::new(false)
+            };
+            let w = write_with(&f, b"TWO\n", &opts).unwrap();
+            assert_eq!(read(&f), b"TWO\n");
+            let want: &[u8] = if linked_sees_new { b"TWO\n" } else { b"one\n" };
+            assert_eq!(read(&l), want, "{copy:?} breakhardlink={brk}");
+            assert_eq!(read(&dir.join("h.txt~")), b"one\n", "{copy:?}");
+            assert_eq!(w.backup.as_deref(), Some(dir.join("h.txt~").as_path()));
+            assert!(temps(&dir).is_empty());
+        }
+    }
+
+    /// `'backupcopy'` `breaksymlink`: the link becomes a regular file and its target keeps the old text.
+    #[cfg(unix)]
+    #[test]
+    fn breaksymlink_replaces_the_link() {
+        let dir = tmpdir();
+        let t = dir.join("t.txt");
+        let s = dir.join("s.txt");
+        fs::write(&t, b"one\n").unwrap();
+        std::os::unix::fs::symlink("t.txt", &s).unwrap();
+        let opts = Opts {
+            break_symlink: true,
+            ..Opts::new(false)
+        };
+        write_with(&s, b"TWO\n", &opts).unwrap();
+        assert!(fs::symlink_metadata(&s).unwrap().file_type().is_file());
+        assert_eq!(read(&s), b"TWO\n");
+        assert_eq!(read(&t), b"one\n");
+    }
+
+    /// A write backup guards an in-place write and is gone after it; with `'nowritebackup'` there is none.
+    #[cfg(unix)]
+    #[test]
+    fn writebackup_is_removed_after_an_in_place_write() {
+        let dir = tmpdir();
+        let f = dir.join("f.txt");
+        fs::write(&f, b"one\n").unwrap();
+        let policy = vim_backups(false, true);
+        let opts = Opts {
+            copy: Copy::Yes,
+            backup: Some(&policy),
+            ..Opts::new(false)
+        };
+        let w = write_with(&f, b"two\n", &opts).unwrap();
+        assert_eq!(w.backup, None);
+        assert!(!dir.join("f.txt~").exists());
+        assert_eq!(read(&f), b"two\n");
+    }
+
+    /// nvim: a backup that cannot be made stops the write (E510) and leaves the file alone; `:w!` writes
+    /// without it.
+    #[cfg(unix)]
+    #[test]
+    fn a_backup_that_cannot_be_made_needs_force() {
+        let dir = tmpdir();
+        let f = dir.join("f.txt");
+        fs::write(&f, b"one\n").unwrap();
+        let blocker = dir.join("file");
+        fs::write(&blocker, b"").unwrap();
+        let mut policy = vim_backups(true, true);
+        policy.rules = super::super::backup::Rules::Vim {
+            dirs: format!("{}/sub", blocker.display()),
+            ext: "~".into(),
+        };
+        let mut opts = Opts {
+            backup: Some(&policy),
+            ..Opts::new(false)
+        };
+        let e = write_with(&f, b"two\n", &opts).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "E510: Can't make backup file (add ! to override)"
+        );
+        assert_eq!(read(&f), b"one\n");
+        opts.force = true;
+        write_with(&f, b"two\n", &opts).unwrap();
+        assert_eq!(read(&f), b"two\n");
+    }
+
+    /// `'nofsync'`: the write still lands, without the file or directory sync.
+    #[cfg(unix)]
+    #[test]
+    fn nofsync_skips_the_syncs() {
+        let dir = tmpdir();
+        let f = dir.join("f.txt");
+        fs::write(&f, b"one\n").unwrap();
+        take_synced_dirs();
+        let opts = Opts {
+            fsync: false,
+            ..Opts::new(false)
+        };
+        write_with(&f, b"two\n", &opts).unwrap();
+        assert_eq!(read(&f), b"two\n");
+        assert!(take_synced_dirs().is_empty());
     }
 }

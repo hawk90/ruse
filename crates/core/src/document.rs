@@ -629,6 +629,12 @@ impl Document {
         self.undo.sync();
     }
 
+    /// Mark the buffer as differing from the file (nvim's `:set modified`, or a change to how it is written
+    /// such as `:set bomb`): it stays modified until the next save, even if undo returns to the text read.
+    pub fn mark_unsaved(&mut self) {
+        self.saved_node = None;
+    }
+
     /// Close the current undo group (Vim's `u_sync`): the next change starts a new undo step even when its
     /// transaction asks to continue the group. The frontend syncs before every typed command outside text
     /// entry, so each Normal or Ex command undoes on its own while an Insert session stays one step (#678).

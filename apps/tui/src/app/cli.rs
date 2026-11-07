@@ -293,7 +293,7 @@ fn replay(args: &[String]) -> ExitCode {
     let fmt = FileFormat::detect(&raw);
     match trace.replay(&fmt.to_buffer(&raw)) {
         Ok(st) => {
-            let _ = io::stdout().write_all(&disk_image(fmt, st.bytes(), false));
+            let _ = io::stdout().write_all(&disk_image(fmt, st.bytes(), &Default::default()));
             ExitCode::SUCCESS
         }
         Err(e) => {

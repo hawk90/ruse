@@ -15,3 +15,4 @@ pub(crate) mod report;
 pub(crate) mod session;
 pub(crate) mod set_exec;
 pub(crate) mod trace_check;
+pub(crate) mod write_opts;

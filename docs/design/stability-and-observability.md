@@ -72,7 +72,7 @@ all now would be exactly the "pattern names first" over-design warned against ab
   level per event. The v0 events: `message` (an error or warning shown to the user, at the `Status` setter),
   `panic` (`severity="fatal"`), `recover.found` / `recover.chosen` / `recover.failed` / `recover.written` /
   `recover.unreplayable`, `journal.failed`, `open.failed`, `save` / `save.failed` /
-  `save.stale_temp_removed`, `lsp.spawned` / `lsp.spawn_failed` / `lsp.exited` / `lsp.stopped` /
+  `save.backup_failed` / `save.stale_temp_removed`, `lsp.spawned` / `lsp.spawn_failed` / `lsp.exited` / `lsp.stopped` /
   `lsp.frame_dropped`, `degrade` (`component` `syntax`, `terminal` or `config` for safe mode, a fixed `reason`) and
   `config.diagnostic`. `tracing` has no `fatal` level: a fatal event is `error` with `severity="fatal"`.
   **Privacy (§10's default):** no field carries buffer text, a message's text (only its `E486`-style code),

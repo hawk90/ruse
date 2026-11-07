@@ -173,6 +173,9 @@ fn format_from_bits(b: u8) -> FileFormat {
         eol: if b & 1 != 0 { Eol::Crlf } else { Eol::Lf },
         bom: b & 2 != 0,
         final_newline: b & 4 != 0,
+        // `'endoffile'` (#619) is not in the format byte: a recovered DOS file with a final CTRL-Z comes
+        // back without it, until the next format version carries it.
+        eof: false,
     }
 }
 
@@ -927,6 +930,7 @@ mod tests {
             eol: Eol::Crlf,
             bom: true,
             final_newline: false,
+            eof: false,
         };
         let save = Meta::SavePoint {
             saved_node: 3,

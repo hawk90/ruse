@@ -119,6 +119,21 @@ pub enum Opt {
     FoldOpen,
     /// `'report'`: a command that changes, yanks or moves more lines than this says how many (#1276).
     Report,
+    /// The write options (#619): `app/write_opts.rs` holds their values.
+    Backup,
+    BackupCopy,
+    BackupDir,
+    BackupExt,
+    BackupSkip,
+    PatchMode,
+    WriteBackup,
+    Write,
+    WriteAny,
+    Fsync,
+    /// Per buffer, the file's own shape: a final newline, a DOS CTRL-Z, a BOM.
+    EndOfLine,
+    EndOfFile,
+    Bomb,
 }
 
 /// An option's value.
@@ -171,6 +186,10 @@ pub enum TextCheck {
     FoldOpen,
     /// `'vartabstop'` / `'varsofttabstop'`: positive widths separated by commas (`E474`, #1163).
     TabStops,
+    /// `'backupcopy'`: one of `yes` / `no` / `auto`, and `breaksymlink` / `breakhardlink` (`E474`).
+    BackupCopy,
+    /// `'backupext'` / `'patchmode'`: no `/` (`E474`).
+    BackupExt,
 }
 
 /// An option's type, with its value rules.
@@ -252,6 +271,21 @@ pub fn foldopen_valid(value: &str) -> bool {
         .all(|i| i.is_empty() || FOLDOPEN_ITEMS.contains(&i))
 }
 
+/// Whether `value` is a `'backupcopy'` nvim takes: exactly one of `yes`, `no`, `auto`, and any of
+/// `breaksymlink`, `breakhardlink`, comma-separated.
+#[must_use]
+pub fn backupcopy_valid(value: &str) -> bool {
+    let mut method = 0;
+    for item in value.split(',') {
+        match item {
+            "yes" | "no" | "auto" => method += 1,
+            "breaksymlink" | "breakhardlink" => {}
+            _ => return false,
+        }
+    }
+    method == 1
+}
+
 /// nvim's default `'messagesopt'`.
 pub const MESSAGESOPT: &str = "hit-enter,history:500,progress:c";
 
@@ -328,6 +362,72 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(true),
         OptVal::Bool(true),
         Locality::Local,
+    ),
+    def(
+        Opt::Backup,
+        "backup",
+        "bk",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Global,
+    ),
+    def(
+        Opt::BackupCopy,
+        "backupcopy",
+        "bkc",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::BackupCopy,
+        },
+        OptVal::text("auto"),
+        OptVal::text("auto"),
+        Locality::Global,
+    ),
+    def(
+        Opt::BackupDir,
+        "backupdir",
+        "bdir",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::None,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Global,
+    ),
+    def(
+        Opt::BackupExt,
+        "backupext",
+        "bex",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::BackupExt,
+        },
+        OptVal::text("~"),
+        OptVal::text("~"),
+        Locality::Global,
+    ),
+    def(
+        Opt::BackupSkip,
+        "backupskip",
+        "bsk",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::None,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Global,
+    ),
+    def(
+        Opt::Bomb,
+        "bomb",
+        "bomb",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::PerBuffer,
     ),
     def(
         Opt::BreakAt,
@@ -474,6 +574,24 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Global,
     ),
     def(
+        Opt::EndOfFile,
+        "endoffile",
+        "eof",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::PerBuffer,
+    ),
+    def(
+        Opt::EndOfLine,
+        "endofline",
+        "eol",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::PerBuffer,
+    ),
+    def(
         Opt::EqualPrg,
         "equalprg",
         "ep",
@@ -591,6 +709,15 @@ pub const OPTIONS: &[OptDef] = &[
         },
         OptVal::text(""),
         OptVal::text(""),
+        Locality::Global,
+    ),
+    def(
+        Opt::Fsync,
+        "fsync",
+        "fs",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
         Locality::Global,
     ),
     def(
@@ -778,6 +905,18 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Num(4),
         OptVal::Num(4),
         Locality::Local,
+    ),
+    def(
+        Opt::PatchMode,
+        "patchmode",
+        "pm",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::BackupExt,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Global,
     ),
     def(
         Opt::PreserveIndent,
@@ -1063,6 +1202,33 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Num(0),
         OptVal::Num(0),
         Locality::Local,
+    ),
+    def(
+        Opt::Write,
+        "write",
+        "write",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::Global,
+    ),
+    def(
+        Opt::WriteAny,
+        "writeany",
+        "wa",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Global,
+    ),
+    def(
+        Opt::WriteBackup,
+        "writebackup",
+        "wb",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::Global,
     ),
 ];
 
@@ -1534,6 +1700,18 @@ pub fn assign_value(
                     return ruse_core::VarStops::parse(&new)
                         .map(|_| OptVal::Text(Cow::Owned(new)))
                         .ok_or(ValueError::Invalid);
+                }
+                TextCheck::BackupCopy | TextCheck::BackupExt => {
+                    let ok = if check == TextCheck::BackupCopy {
+                        backupcopy_valid(&new)
+                    } else {
+                        !new.contains('/')
+                    };
+                    return if ok {
+                        Ok(OptVal::Text(Cow::Owned(new)))
+                    } else {
+                        Err(ValueError::Invalid)
+                    };
                 }
                 TextCheck::FoldOpen => {
                     return if foldopen_valid(&new) {

@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use ruse_core::{BytePos, ExCmd, TransactionOrigin};
 
 pub mod atomic;
+pub mod backup;
 pub mod diff;
 pub mod disk;
 pub mod encoding;

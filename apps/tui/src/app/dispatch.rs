@@ -194,6 +194,7 @@ pub(crate) fn attach_file(
             highlighters.remove(&id);
         }
     }
+    persist::backup::visited(&path); // a new visit: Emacs makes its one backup again
     files.insert(
         id,
         BufferFile {
@@ -314,8 +315,33 @@ impl ReadOnly {
 }
 
 /// The per-buffer file registry: which buffers have a file on disk (a scratch `:enew` buffer has none, so
-/// `:w` on it declines). Replaces the old single `path`/`fmt`/`file_buf` triple (F-007 multi-buffer).
-pub(crate) type Files = HashMap<DocumentId, BufferFile>;
+/// `:w` on it declines). Replaces the old single `path`/`fmt`/`file_buf` triple (F-007 multi-buffer). It also
+/// carries how files are written ([`WriteOptions`], #619), so every write path reads one policy.
+#[derive(Default)]
+pub(crate) struct Files {
+    map: HashMap<DocumentId, BufferFile>,
+    /// The session's write options: `'backup'` and the rest, or the Emacs profile's variables.
+    pub(crate) write: crate::app::write_opts::WriteOptions,
+}
+
+impl Files {
+    pub(crate) fn new() -> Files {
+        Files::default()
+    }
+}
+
+impl std::ops::Deref for Files {
+    type Target = HashMap<DocumentId, BufferFile>;
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+impl std::ops::DerefMut for Files {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.map
+    }
+}
 
 /// `gq` under `'formatprg'` and `=` under `'equalprg'` (#617, #618): instead of formatting or reindenting,
 /// filter the operator's lines through that shell command, as nvim's `op_colon` runs `:{range}!{prg}`.
@@ -854,10 +880,9 @@ pub(crate) fn apply_effect(
     quit: &mut bool,
 ) {
     match eff {
-        // A command-driven write (e.g. `ZZ`) always byte-preserves; `:set fixeol` is honored only on the
-        // `:w`/`:wq` ex path (which threads the session flag), matching where the opt-in is documented.
+        // A command-driven write (Emacs `C-x C-s`, the palette) runs under the same write options as `:w`.
         Effect::Save => {
-            save(ws, files, status, false);
+            save(ws, files, status);
         }
         // The palette's Quit, Emacs `C-x C-c` and Native `q` end the whole editor, so any modified buffer
         // blocks them, as Vim's `:qa` does (E162).
@@ -898,35 +923,19 @@ fn noeol_marker(buf: &[u8]) -> &'static str {
     }
 }
 
-/// Whether `save` should append a final `\n` to the buffer before writing: only when `add` (the buffer's
-/// `'endofline'` or `:set fixeol`; a file opened without a final newline has neither by default), and only
-/// when the buffer is non-empty and lacks one. An empty buffer is left empty (Vim writes no newline into one).
-fn needs_final_newline(buf: &[u8], add: bool) -> bool {
-    add && !buf.is_empty() && buf.last() != Some(&b'\n')
-}
-
 /// The bytes a write of `buffer` puts on disk for a file read as `fmt`: the final newline a buffer with
 /// `'endofline'` (or `:set fixeol`) always gets (#1107), then the file's BOM and line endings (F-008 #2).
 /// `ruse --replay` prints the same image of the replayed buffer, so it equals what `:w` wrote (#690).
 pub(crate) fn disk_image(
     fmt: persist::encoding::FileFormat,
     buffer: &[u8],
-    fixeol: bool,
+    w: &crate::app::write_opts::WriteOptions,
 ) -> Vec<u8> {
-    fmt.to_disk(&disk_source(fmt, buffer, fixeol))
-}
-
-/// The buffer text a write encodes: `buffer`, plus the final newline it gets on a write (#1107).
-fn disk_source(fmt: persist::encoding::FileFormat, buffer: &[u8], fixeol: bool) -> Vec<u8> {
-    let mut source = buffer.to_vec();
-    if needs_final_newline(&source, fixeol || fmt.final_newline) {
-        source.push(b'\n');
-    }
-    source
+    w.encode(buffer, fmt).1
 }
 
 /// Returns whether the focused buffer reached disk.
-pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status, fixeol: bool) -> bool {
+pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status) -> bool {
     // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
     // registry entry, so `:w` declines rather than clobbering another buffer's file.
     let Some(bf) = files.get(&ws.focused_buffer()) else {
@@ -937,38 +946,34 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status, fixeo
         status.error(E45);
         return false;
     }
-    // `:set fixeol` (opt-in) ADDS a trailing `\n` when the buffer lacks one. Append it to the SOURCE bytes
-    // BEFORE `to_disk` so the encoding step (BOM/CRLF re-application) treats the newline like any other —
-    // e.g. a CRLF file gets `\r\n`. Default (byte-preserve) leaves the bytes untouched.
-    // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
-    // A buffer with `'endofline'` (a new file, or one read with a final newline) always gets it (#1107).
-    let source = disk_source(bf.fmt, ws.focused().doc.bytes(), fixeol);
-    let bytes = bf.fmt.to_disk(&source);
+    if let Err(e) = files.write.check_write() {
+        status.error(e);
+        return false;
+    }
+    // Restore the original encoding/line-endings (F-008 #2) with the final newline the write options add,
+    // then write durably (fsync + rename, #1) under the backup policy (#619).
+    let (source, bytes) = files.write.encode(ws.focused().doc.bytes(), bf.fmt);
     // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is, and a file
     // changed on disk since ruse read or saved it is not overwritten (RFC-0023 §8).
     if persist::disk::conflicts(&bf.path) {
         status.warn(persist::disk::CHANGED_SINCE_READ);
         return false;
     }
-    match persist::atomic::write(&bf.path, &bytes, false) {
-        Ok(method) => {
+    match crate::app::write_opts::write_file(&files.write, &bf.path, &bytes, false) {
+        Ok(written) => {
             persist::disk::saw(&bf.path, &bytes);
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             crate::log::save(&bf.path, bytes.len());
-            // Vim-style write report: `"file" 42L, 1024B written` (L = buffer lines, B = bytes on disk).
-            // ruse preserves final-newline presence exactly by default (no silent fixeol); when the file was
-            // written WITHOUT a trailing newline, surface `[noeol]` (as Vim does) so the missing EOL is never
-            // a silent surprise. The check is on the SOURCE bytes actually written (to_disk only re-applies
-            // BOM/CRLF, not EOL), so a successful `:set fixeol` write ends in `\n` and shows no marker.
-            // A filesystem without directory fsync is saved, but the report says what was not proven.
+            // Vim-style write report: `"file" 42L, 1024B written` (L = buffer lines, B = bytes on disk), with
+            // `[noeol]` when the text written has no final newline, and what was not proven.
             status.echo(format!(
                 "\"{}\"{} {}L, {}B written{}",
                 bf.path.display(),
                 noeol_marker(&source),
                 line_count(&source),
                 bytes.len(),
-                method.note()
+                written.note()
             ));
             true
         }
@@ -1055,7 +1060,7 @@ mod dispatch_tests {
     /// with no grammar drops the old highlighter instead of keeping the previous language's.
     #[test]
     fn attach_file_sets_identity_and_swaps_the_highlighter() {
-        let (mut files, mut hl): (Files, Highlighters) = (HashMap::new(), HashMap::new());
+        let (mut files, mut hl): (Files, Highlighters) = (Files::new(), HashMap::new());
         let id = DocumentId(1);
         let fmt = persist::encoding::FileFormat::detect(b"");
         attach_file(&mut files, &mut hl, id, PathBuf::from("a.rs"), fmt);
@@ -1415,33 +1420,6 @@ mod dispatch_tests {
         assert_eq!(out, "a\nb\nc\n");
     }
 
-    #[test]
-    fn needs_final_newline_only_when_fixeol_and_missing() {
-        // Default (byte-preserve): never append, whatever the buffer looks like.
-        assert!(
-            !needs_final_newline(b"a", false),
-            "fixeol off → never append"
-        );
-        assert!(!needs_final_newline(b"a\n", false));
-        // `:set fixeol`: append only for a non-empty buffer that lacks a trailing newline.
-        assert!(
-            needs_final_newline(b"a", true),
-            "fixeol on + missing newline → append"
-        );
-        assert!(
-            needs_final_newline(b"a\nb", true),
-            "fixeol on + missing final newline → append"
-        );
-        assert!(
-            !needs_final_newline(b"a\n", true),
-            "already ends in newline → no-op (idempotent)"
-        );
-        assert!(
-            !needs_final_newline(b"", true),
-            "empty buffer stays empty (Vim writes no newline into one)"
-        );
-    }
-
     /// A workspace whose focused buffer is the (new) file `name` in a fresh temp dir, edited once.
     fn ws_on_temp_file(name: &str, text: &[u8]) -> (Workspace, Files, PathBuf) {
         use std::sync::atomic::{AtomicU32, Ordering};
@@ -1458,7 +1436,7 @@ mod dispatch_tests {
         ws.apply(&Command::EnterInsert);
         ws.apply(&Command::InsertChar('x'));
         ws.apply(&Command::EnterNormal);
-        let (mut files, mut hl): (Files, Highlighters) = (HashMap::new(), HashMap::new());
+        let (mut files, mut hl): (Files, Highlighters) = (Files::new(), HashMap::new());
         let fmt = persist::encoding::FileFormat::detect(text);
         attach_file(&mut files, &mut hl, ws.focused_buffer(), path.clone(), fmt);
         (ws, files, path)
@@ -1472,7 +1450,7 @@ mod dispatch_tests {
         let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
         let mut status = crate::app::messages::Status::default();
         persist::atomic::inject(Some(persist::atomic::Step::SyncDir));
-        let ok = save(&mut ws, &files, &mut status, false);
+        let ok = save(&mut ws, &files, &mut status);
         persist::atomic::inject(None);
         assert!(!ok);
         assert!(status.starts_with("E667: Fsync failed"), "{status}");
@@ -1480,7 +1458,7 @@ mod dispatch_tests {
         assert!(ws.focused().doc.is_modified(), "not saved: still modified");
         assert_eq!(std::fs::read(&path).unwrap(), b"xa\n");
         // A later save that succeeds clears it.
-        assert!(save(&mut ws, &files, &mut status, false));
+        assert!(save(&mut ws, &files, &mut status));
         assert!(status.ends_with("written"), "{status}");
         assert!(!ws.focused().doc.is_modified());
     }
@@ -1493,7 +1471,7 @@ mod dispatch_tests {
         let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
         let mut status = crate::app::messages::Status::default();
         persist::atomic::inject_errno(persist::atomic::Step::SyncDir, libc::EINVAL);
-        let ok = save(&mut ws, &files, &mut status, false);
+        let ok = save(&mut ws, &files, &mut status);
         persist::atomic::inject(None);
         assert!(ok, "{status}");
         assert_eq!(
@@ -1512,9 +1490,10 @@ mod dispatch_tests {
     /// bytes play nvim's lines + `'eol'`, so a later `:set nofixeol` write omits the newline again, as nvim's.
     #[test]
     fn fixeol_writes_the_newline_without_changing_the_buffer() {
-        let (mut ws, files, path) = ws_on_temp_file("n.txt", b"a");
+        let (mut ws, mut files, path) = ws_on_temp_file("n.txt", b"a");
         let mut status = crate::app::messages::Status::default();
-        assert!(save(&mut ws, &files, &mut status, true));
+        files.write.fixeol = true;
+        assert!(save(&mut ws, &files, &mut status));
         assert_eq!(status, format!("\"{}\" 1L, 3B written", path.display()));
         assert_eq!(std::fs::read(&path).unwrap(), b"xa\n");
         assert_eq!(ws.focused().doc.bytes(), b"xa", "the buffer is not edited");
@@ -1522,7 +1501,8 @@ mod dispatch_tests {
         ws.apply(&Command::EnterInsert);
         ws.apply(&Command::InsertChar('y'));
         ws.apply(&Command::EnterNormal);
-        assert!(save(&mut ws, &files, &mut status, false));
+        files.write.fixeol = false;
+        assert!(save(&mut ws, &files, &mut status));
         assert_eq!(
             std::fs::read(&path).unwrap(),
             b"yxa",

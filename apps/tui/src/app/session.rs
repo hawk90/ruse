@@ -805,9 +805,6 @@ pub(crate) struct Session {
     /// which defaults hlsearch off — a slow-terminal-era default; matches are viewport-cached here).
     pub(crate) hlsearch_on: bool,
     pub(crate) incsearch_on: bool,
-    /// `:set (no)fixeol` write preference; OFF by default — byte-preserve (no silent fixeol) is the honest
-    /// default. When ON, `:w` ADDS a trailing `\n` if the buffer lacks one (Vim's fixendofline).
-    fixeol_on: bool,
     /// The global `'scrolloff'` as set (nvim keeps any number; a negative one keeps no context here). A
     /// window's own value (`:setlocal so`) is on its View and wins (#1151).
     scrolloff: i64,
@@ -906,7 +903,9 @@ impl Session {
         // adds more, `:enew` scratch buffers stay out (so `:w` on them declines). `:w` writes files[focused].
         // Syntax highlighting lives in the frontend (core stays dep-free): one highlighter PER file buffer,
         // keyed by DocumentId (F-007 multi-buffer).
-        let mut files: Files = HashMap::new();
+        let mut files = Files::new();
+        // Each profile writes by its own editor's rules (#619): nvim's backups, or Emacs's.
+        files.write = crate::app::write_opts::WriteOptions::new(profile == "emacs");
         let mut highlighters: Highlighters = HashMap::new();
         if let Some(p) = path.as_ref() {
             ws.set_focused_buffer_name(p.display().to_string());
@@ -975,7 +974,6 @@ impl Session {
             search_hl: None,
             hlsearch_on: true,
             incsearch_on: true,
-            fixeol_on: false,
             scrolloff: SCROLLOFF,
             ui_opts: crate::app::set_exec::UiOptions::default(),
             screen_want: None,
@@ -1811,7 +1809,6 @@ impl Session {
             hlsearch_on,
             search_hl,
             incsearch_on,
-            fixeol_on,
             scrolloff,
             folds,
             fold_method,
@@ -1832,7 +1829,6 @@ impl Session {
             hlsearch_on,
             search_hl,
             incsearch_on,
-            fixeol_on,
             scrolloff,
             folds,
             fold_method,
@@ -3676,7 +3672,6 @@ impl Session {
             search_hl,
             hlsearch_on,
             incsearch_on,
-            fixeol_on,
             scrolloff,
             ui_opts,
             opt_sources,
@@ -3843,7 +3838,6 @@ impl Session {
                     hlsearch_on,
                     search_hl,
                     incsearch_on,
-                    fixeol_on,
                     scrolloff,
                     folds,
                     fold_method,
@@ -4483,14 +4477,7 @@ impl Session {
             Ex::Write(spec) => {
                 let id = ws.focused_buffer();
                 let had_file = files.contains_key(&id);
-                let ok = crate::app::file_cmds::ex_write(
-                    &spec,
-                    ws,
-                    files,
-                    highlighters,
-                    *fixeol_on,
-                    status,
-                );
+                let ok = crate::app::file_cmds::ex_write(&spec, ws, files, highlighters, status);
                 // Writing a buffer that has a file to another name makes that name the alternate file
                 // (Vim's 'cpoptions' `A`, #610).
                 if let (true, true, WriteTarget::File(Some(name))) = (ok, had_file, &spec.target) {
@@ -4514,7 +4501,6 @@ impl Session {
                     ws,
                     files,
                     highlighters,
-                    *fixeol_on,
                     status,
                 );
                 // The buffer's old name becomes the alternate file (Vim's 'cpoptions' `A`, #610).
@@ -4529,7 +4515,7 @@ impl Session {
                 let skip = |id: DocumentId| terminals.contains_key(&id);
                 #[cfg(not(unix))]
                 let skip = |_: DocumentId| false;
-                let ok = crate::app::file_cmds::ex_write_all(ws, files, *fixeol_on, status, skip);
+                let ok = crate::app::file_cmds::ex_write_all(ws, files, status, skip);
                 if ok && then_quit {
                     *quit = may_quit(ws, status, false);
                 }

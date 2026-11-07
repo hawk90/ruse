@@ -249,7 +249,7 @@ pub(crate) fn save(doc: &Path, bytes: usize) {
 }
 
 /// `save.failed`: writing `doc` failed; the buffer stays modified. `failure` is how far the save got
-/// (`read_only`, `not_regular`, `untouched`, `partial`, `not_durable`).
+/// (`read_only`, `not_regular`, `untouched`, `partial`, `not_durable`, `backup`).
 pub(crate) fn save_failed(doc: &Path, e: &SaveError) {
     let (failure, io) = match e {
         SaveError::ReadOnly(_) => ("read_only", None),
@@ -257,6 +257,8 @@ pub(crate) fn save_failed(doc: &Path, e: &SaveError) {
         SaveError::Untouched(err) => ("untouched", Some(err)),
         SaveError::Partial { err, .. } => ("partial", Some(err)),
         SaveError::NotDurable { err, .. } => ("not_durable", Some(err)),
+        SaveError::Backup(b) => ("backup", Some(&b.err)),
+        SaveError::Kept { err, .. } => return save_failed(doc, err),
     };
     tracing::warn!(
         event = "save.failed",
@@ -264,6 +266,16 @@ pub(crate) fn save_failed(doc: &Path, e: &SaveError) {
         failure,
         error_kind = io.map_or_else(String::new, error_kind),
         os_error = io.map_or(0, os_error)
+    );
+}
+
+/// `save.backup_failed`: a forced write (`:w!`) of `doc` went ahead without the backup it could not make.
+pub(crate) fn backup_failed(doc: &Path, e: &io::Error) {
+    tracing::warn!(
+        event = "save.backup_failed",
+        doc = path_id(doc),
+        error_kind = error_kind(e),
+        os_error = os_error(e)
     );
 }
 

@@ -343,17 +343,44 @@ cannot be reproduced on a new inode — or the directory is not writable, the ex
 truncation, overwritten, truncated to the new length and fsynced. This keeps links, owner, ACLs and xattrs
 and is durable, but not atomic: an error after the first byte is reported as `E514` ("may be partly
 written"), never as "written", and the buffer stays modified. A crash during the write can leave a partial
-file; the recovery journal (when its directory is writable) is the safety net, and a `'writebackup'`-style
-backup copy is not implemented yet (#619). With `:w!`, a file the owner has made read-only gets owner write
-permission for the duration of an in-place write, then its mode back.
+file; the recovery journal (when its directory is writable) is one safety net and the `'writebackup'` copy
+(below) the other. With `:w!`, a file the owner has made read-only gets owner write permission for the
+duration of an in-place write, then its mode back.
+
+**Write policy and backups (#619; `persist/backup.rs`, `app/write_opts.rs`).** One engine serves both
+editors' option families; each profile reads its own editor's options with that editor's defaults (Vim and
+Native: nvim v0.12.6; Emacs: Emacs 31.1, config keys `emacs.*`):
+
+| Concern | Vim profile | Emacs profile |
+| --- | --- | --- |
+| Method | `'backupcopy'`: `auto` (above), `yes` in place, `no` rename even over hard links; `breakhardlink` / `breaksymlink` | `file-precious-flag` = `no`; `break-hardlink-on-save` = `breakhardlink`; precious without `file-preserve-symlinks-on-save` = `breaksymlink`; the save that makes the backup copies (in place) or renames by `backup-by-copying*` |
+| When a backup is made | every write with `'backup'`; a write backup for an in-place write with `'writebackup'` (removed after it, kept and named when the write fails) | the first save of a visit that finds the file on disk (`make-backup-files`; `buffer-backed-up`); a re-read (`:e!`) or a new name starts a new visit |
+| Name and place | `<name><'backupext'>` in the first `'backupdir'` entry that works (`.`, `./sub`, a `//` entry names it after the whole path with `%`); a missing directory is created 0700 | `<name>~`, or `<name>.~N~` under `version-control`; beside the file or in the `backup-directory-alist` directory (absolute: whole path with `!`) |
+| Exempt files | `'backupskip'` patterns (default: the temp directories) | under `temporary-file-directory` / `small-temporary-file-directory` |
+| Old versions | `'patchmode'`: `<name><pm>` beside the file, once (empty for a new file) | numbered versions pruned to `kept-old-versions` + `kept-new-versions` when `delete-old-versions` is `t` |
+
+A rename-path backup is a hard link to the file being replaced (exactly the old file), else a copy; an
+in-place write's backup is always a copy. A backup name never follows a symlink or replaces anything but a
+regular file. A backup that cannot be made stops the write (`E510`, or `E509` when copying) unless `:w!`
+forces it (event `save.backup_failed`). A write by rename needs no write backup: the original stays whole
+until the rename, so the temp file is the write backup. `'write'` off makes every write `E142`;
+`'writeany'` drops `E13` (not `E505`/`E45`/the changed-on-disk refusal, as nvim); `'nofsync'` skips steps 6
+and 8, so "written" no longer claims durability (the user's explicit choice). Divergences: Emacs's
+`make-backup-file-name-function` needs Lisp (the naming keys cover its default function); `delete-old-versions`
+`nil` and `require-final-newline` `ask` would prompt inside a save, so ruse keeps the versions (the report
+counts them) and adds no newline (`[noeol]` shows it); `visit` / `visit-save` add nothing at visit time
+(ruse never edits a buffer on open). There is no `M-x set-variable`: the Emacs variables are config keys
+(`:config-reload` applies a change).
 
 Known gap: macOS ACLs are not visible as xattrs, so the rename path does not carry them over.
 `com.apple.provenance` is attached by the kernel to every file a process creates, so it is neither copied
 nor a reason to write in place.
 
 **Preservation:** permissions, ownership (best-effort), ACL/xattr, encoding (`fileencoding`), line endings
-(`fileformat` unix/dos/mac), BOM (`bomb`), and trailing-newline policy are captured at open and re-applied on
-write — kept separate from document data ([TEXT-19 / VIM-STATE](../parity/vim.md)).
+(`fileformat` unix/dos/mac), BOM (`bomb`), a DOS file's final CTRL-Z (`endoffile`) and trailing-newline policy
+(`endofline`, `fixeol`, Emacs `require-final-newline`) are captured at open and re-applied on write — kept
+separate from document data ([TEXT-19 / VIM-STATE](../parity/vim.md)). `:set eol` / `eof` / `bomb` change them
+per buffer (a BOM change modifies the buffer, as nvim).
 
 **Per-platform notes:**
 
