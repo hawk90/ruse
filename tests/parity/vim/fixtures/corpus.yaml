@@ -146448,6 +146448,4187 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "cin_eq_basic",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "    int a = 1;",
+          "    if (a)",
+          "        a++;",
+          "    else if (a > 2)",
+          "    {",
+          "        a--;",
+          "    }",
+          "    else",
+          "        a = 0;",
+          "    for (i = 0; i < n; i++)",
+          "        x[i] = 0;",
+          "    while (a)",
+          "    {",
+          "        a--;",
+          "    }",
+          "    do",
+          "        a++;",
+          "    while (a < 10);",
+          "    return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_kr",
+      "lines": [
+        "int f() {",
+        "if (a) {",
+        "x();",
+        "} else {",
+        "y();",
+        "}",
+        "while (b) {",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x();",
+          "    } else {",
+          "        y();",
+          "    }",
+          "    while (b) {",
+          "        z();",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_switch",
+      "lines": [
+        "void f(int a)",
+        "{",
+        "switch (a)",
+        "{",
+        "case 1:",
+        "x();",
+        "break;",
+        "case 2: {",
+        "y();",
+        "}",
+        "break;",
+        "default:",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "void f(int a)",
+          "{",
+          "    switch (a)",
+          "    {",
+          "        case 1:",
+          "            x();",
+          "            break;",
+          "        case 2: {",
+          "                    y();",
+          "                }",
+          "                break;",
+          "        default:",
+          "                z();",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_cont",
+      "lines": [
+        "int f()",
+        "{",
+        "x = a +",
+        "b +",
+        "c;",
+        "y = g(a,",
+        "b,",
+        "c);",
+        "if (a &&",
+        "b)",
+        "z();",
+        "t = cond",
+        "? a",
+        ": b;",
+        "s = \"abc\\",
+        "def\";",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x = a +",
+          "        b +",
+          "        c;",
+          "    y = g(a,",
+          "            b,",
+          "            c);",
+          "    if (a &&",
+          "            b)",
+          "        z();",
+          "    t = cond",
+          "        ? a",
+          "        : b;",
+          "    s = \"abc\\",
+          "         def\";",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_init",
+      "lines": [
+        "struct s x = {",
+        "1,",
+        "2,",
+        "{ 3, 4 },",
+        "};",
+        "enum e {",
+        "A,",
+        "B = 2,",
+        "C",
+        "};",
+        "int a,",
+        "b,",
+        "c;",
+        "static int arr[] = {",
+        "1, 2,",
+        "3",
+        "};"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "struct s x = {",
+          "    1,",
+          "    2,",
+          "    { 3, 4 },",
+          "};",
+          "enum e {",
+          "    A,",
+          "    B = 2,",
+          "    C",
+          "};",
+          "int a,",
+          "    b,",
+          "    c;",
+          "static int arr[] = {",
+          "    1, 2,",
+          "    3",
+          "};"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_comment",
+      "lines": [
+        "int f()",
+        "{",
+        "/*",
+        "* a",
+        "* b",
+        "*/",
+        "/* one",
+        "two",
+        "*/",
+        "/*",
+        "text",
+        "*/",
+        "// line",
+        "// more",
+        "x = 1; // trail",
+        "// next",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    /*",
+          "     * a",
+          "     * b",
+          "     */",
+          "    /* one",
+          "       two",
+          "     */",
+          "    /*",
+          "       text",
+          "     */",
+          "    // line",
+          "    // more",
+          "    x = 1; // trail",
+          "           // next",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_preproc",
+      "lines": [
+        "#include <a.h>",
+        "int f()",
+        "{",
+        "#ifdef A",
+        "x();",
+        "#else",
+        "y();",
+        "#endif",
+        "#define M(a) \\",
+        "do { a; } \\",
+        "while (0)",
+        "return 0;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "#include <a.h>",
+          "int f()",
+          "{",
+          "#ifdef A",
+          "    x();",
+          "#else",
+          "    y();",
+          "#endif",
+          "#define M(a) \\",
+          "    do { a; } \\",
+          "    while (0)",
+          "    return 0;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_krparam",
+      "lines": [
+        "int",
+        "f(a, b)",
+        "int a;",
+        "char b;",
+        "{",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int",
+          "f(a, b)",
+          "    int a;",
+          "    char b;",
+          "{",
+          "    return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_label",
+      "lines": [
+        "int f()",
+        "{",
+        "x();",
+        "out:",
+        "y();",
+        "if (a)",
+        "goto out;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x();",
+          "out:",
+          "    y();",
+          "    if (a)",
+          "        goto out;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_cpp",
+      "lines": [
+        "namespace n {",
+        "class C : public B,",
+        "public D",
+        "{",
+        "public:",
+        "C();",
+        "private:",
+        "int x;",
+        "};",
+        "C::C()",
+        ": B(1),",
+        "D(2)",
+        "{",
+        "}",
+        "}",
+        "extern \"C\" {",
+        "int g();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "namespace n {",
+          "    class C : public B,",
+          "    public D",
+          "    {",
+          "        public:",
+          "            C();",
+          "        private:",
+          "            int x;",
+          "    };",
+          "    C::C()",
+          "        : B(1),",
+          "        D(2)",
+          "    {",
+          "    }",
+          "}",
+          "extern \"C\" {",
+          "    int g();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_paren",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a && (b ||",
+        "c))",
+        "x();",
+        "foo(",
+        "a,",
+        "b",
+        ");",
+        "bar(baz(1,",
+        "2), 3);",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a && (b ||",
+          "                c))",
+          "        x();",
+          "    foo(",
+          "            a,",
+          "            b",
+          "       );",
+          "    bar(baz(1,",
+          "                2), 3);",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_raw",
+      "lines": [
+        "int f()",
+        "{",
+        "s = R\"x(",
+        "  keep",
+        ")x\";",
+        "y();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    s = R\"x(",
+          "  keep",
+          ")x\";",
+          "    y();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_type",
+      "lines": [
+        "static",
+        "int",
+        "f(void)",
+        "{",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "static",
+          "    int",
+          "f(void)",
+          "{",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_dowhile",
+      "lines": [
+        "int f()",
+        "{",
+        "do {",
+        "x();",
+        "} while (a);",
+        "y();",
+        "do",
+        "z();",
+        "while (b &&",
+        "c);",
+        "w();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    do {",
+          "        x();",
+          "    } while (a);",
+          "    y();",
+          "    do",
+          "        z();",
+          "    while (b &&",
+          "            c);",
+          "    w();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_else",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a)",
+        "if (b)",
+        "x();",
+        "else",
+        "y();",
+        "else",
+        "z();",
+        "w();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a)",
+          "        if (b)",
+          "            x();",
+          "        else",
+          "            y();",
+          "    else",
+          "        z();",
+          "    w();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_basic_nofile",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "    int a = 1;",
+          "    if (a)",
+          "        a++;",
+          "    else if (a > 2)",
+          "    {",
+          "        a--;",
+          "    }",
+          "    else",
+          "        a = 0;",
+          "    for (i = 0; i < n; i++)",
+          "        x[i] = 0;",
+          "    while (a)",
+          "    {",
+          "        a--;",
+          "    }",
+          "    do",
+          "        a++;",
+          "    while (a < 10);",
+          "    return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_cont_nofile",
+      "lines": [
+        "int f()",
+        "{",
+        "x = a +",
+        "b +",
+        "c;",
+        "y = g(a,",
+        "b,",
+        "c);",
+        "if (a &&",
+        "b)",
+        "z();",
+        "t = cond",
+        "? a",
+        ": b;",
+        "s = \"abc\\",
+        "def\";",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>=G",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x = a +",
+          "        b +",
+          "        c;",
+          "    y = g(a,",
+          "            b,",
+          "            c);",
+          "    if (a &&",
+          "            b)",
+          "        z();",
+          "    t = cond",
+          "        ? a",
+          "        : b;",
+          "    s = \"abc\\",
+          "         def\";",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_eq_switch_nocin_nofile",
+      "lines": [
+        "void f(int a)",
+        "{",
+        "switch (a)",
+        "{",
+        "case 1:",
+        "x();",
+        "break;",
+        "case 2: {",
+        "y();",
+        "}",
+        "break;",
+        "default:",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et nocin<CR>=G",
+      "expect": {
+        "text": [
+          "void f(int a)",
+          "{",
+          "    switch (a)",
+          "    {",
+          "        case 1:",
+          "            x();",
+          "            break;",
+          "        case 2: {",
+          "                    y();",
+          "                }",
+          "                break;",
+          "        default:",
+          "                z();",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_gt_2s",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=>2s<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "        int a = 1;",
+          "        if (a)",
+          "                a++;",
+          "        else if (a > 2)",
+          "        {",
+          "                a--;",
+          "        }",
+          "        else",
+          "                a = 0;",
+          "        for (i = 0; i < n; i++)",
+          "                x[i] = 0;",
+          "        while (a)",
+          "        {",
+          "                a--;",
+          "        }",
+          "        do",
+          "                a++;",
+          "        while (a < 10);",
+          "        return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_e_2",
+      "lines": [
+        "int f() {",
+        "if (a) {",
+        "x();",
+        "} else {",
+        "y();",
+        "}",
+        "while (b) {",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=e2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "      if (a) {",
+          "            x();",
+          "      } else {",
+          "            y();",
+          "      }",
+          "      while (b) {",
+          "            z();",
+          "      }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_e_m2",
+      "lines": [
+        "int f() {",
+        "if (a) {",
+        "x();",
+        "} else {",
+        "y();",
+        "}",
+        "while (b) {",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=e-2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "  if (a) {",
+          "    x();",
+          "  } else {",
+          "    y();",
+          "  }",
+          "  while (b) {",
+          "    z();",
+          "  }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_n_2",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=n2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "    int a = 1;",
+          "    if (a)",
+          "          a++;",
+          "    else if (a > 2)",
+          "    {",
+          "        a--;",
+          "    }",
+          "    else",
+          "          a = 0;",
+          "    for (i = 0; i < n; i++)",
+          "          x[i] = 0;",
+          "    while (a)",
+          "    {",
+          "        a--;",
+          "    }",
+          "    do",
+          "          a++;",
+          "    while (a < 10);",
+          "    return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_f_2",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=f2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "  {",
+          "      int a = 1;",
+          "      if (a)",
+          "          a++;",
+          "      else if (a > 2)",
+          "      {",
+          "          a--;",
+          "      }",
+          "      else",
+          "          a = 0;",
+          "      for (i = 0; i < n; i++)",
+          "          x[i] = 0;",
+          "      while (a)",
+          "      {",
+          "          a--;",
+          "      }",
+          "      do",
+          "          a++;",
+          "      while (a < 10);",
+          "      return a;",
+          "  }"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_lbrace_2",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino={2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "    int a = 1;",
+          "    if (a)",
+          "        a++;",
+          "    else if (a > 2)",
+          "      {",
+          "        a--;",
+          "      }",
+          "    else",
+          "        a = 0;",
+          "    for (i = 0; i < n; i++)",
+          "        x[i] = 0;",
+          "    while (a)",
+          "      {",
+          "        a--;",
+          "      }",
+          "    do",
+          "        a++;",
+          "    while (a < 10);",
+          "    return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_rbrace_2",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=}2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "    int a = 1;",
+          "    if (a)",
+          "        a++;",
+          "    else if (a > 2)",
+          "    {",
+          "        a--;",
+          "      }",
+          "    else",
+          "        a = 0;",
+          "    for (i = 0; i < n; i++)",
+          "        x[i] = 0;",
+          "    while (a)",
+          "    {",
+          "        a--;",
+          "      }",
+          "    do",
+          "        a++;",
+          "    while (a < 10);",
+          "    return a;",
+          "  }"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_caret_m2",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=^-2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "  int a = 1;",
+          "  if (a)",
+          "      a++;",
+          "  else if (a > 2)",
+          "  {",
+          "      a--;",
+          "  }",
+          "  else",
+          "      a = 0;",
+          "  for (i = 0; i < n; i++)",
+          "      x[i] = 0;",
+          "  while (a)",
+          "  {",
+          "      a--;",
+          "  }",
+          "  do",
+          "      a++;",
+          "  while (a < 10);",
+          "  return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_LU_2",
+      "lines": [
+        "int f()",
+        "{",
+        "x();",
+        "out:",
+        "y();",
+        "if (a)",
+        "goto out;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=L2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x();",
+          "  out:",
+          "    y();",
+          "    if (a)",
+          "        goto out;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_LU_0",
+      "lines": [
+        "int f()",
+        "{",
+        "x();",
+        "out:",
+        "y();",
+        "if (a)",
+        "goto out;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=L0<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x();",
+          "    out:",
+          "    y();",
+          "    if (a)",
+          "        goto out;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_colon_0",
+      "lines": [
+        "void f(int a)",
+        "{",
+        "switch (a)",
+        "{",
+        "case 1:",
+        "x();",
+        "break;",
+        "case 2: {",
+        "y();",
+        "}",
+        "break;",
+        "default:",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=:0<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "void f(int a)",
+          "{",
+          "    switch (a)",
+          "    {",
+          "    case 1:",
+          "        x();",
+          "        break;",
+          "    case 2: {",
+          "                y();",
+          "            }",
+          "            break;",
+          "    default:",
+          "            z();",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_equal_10",
+      "lines": [
+        "void f(int a)",
+        "{",
+        "switch (a)",
+        "{",
+        "case 1:",
+        "x();",
+        "break;",
+        "case 2: {",
+        "y();",
+        "}",
+        "break;",
+        "default:",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino==10<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "void f(int a)",
+          "{",
+          "    switch (a)",
+          "    {",
+          "        case 1:",
+          "                  x();",
+          "                  break;",
+          "        case 2: {",
+          "                    y();",
+          "                }",
+          "                break;",
+          "        default:",
+          "                z();",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_l_1",
+      "lines": [
+        "void f(int a)",
+        "{",
+        "switch (a)",
+        "{",
+        "case 1:",
+        "x();",
+        "break;",
+        "case 2: {",
+        "y();",
+        "}",
+        "break;",
+        "default:",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=l1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "void f(int a)",
+          "{",
+          "    switch (a)",
+          "    {",
+          "        case 1:",
+          "            x();",
+          "            break;",
+          "        case 2: {",
+          "            y();",
+          "        }",
+          "            break;",
+          "        default:",
+          "            z();",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_b_1",
+      "lines": [
+        "void f(int a)",
+        "{",
+        "switch (a)",
+        "{",
+        "case 1:",
+        "x();",
+        "break;",
+        "case 2: {",
+        "y();",
+        "}",
+        "break;",
+        "default:",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=b1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "void f(int a)",
+          "{",
+          "    switch (a)",
+          "    {",
+          "        case 1:",
+          "            x();",
+          "        break;",
+          "        case 2: {",
+          "                    y();",
+          "                }",
+          "        break;",
+          "        default:",
+          "                z();",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_g_0",
+      "lines": [
+        "namespace n {",
+        "class C : public B,",
+        "public D",
+        "{",
+        "public:",
+        "C();",
+        "private:",
+        "int x;",
+        "};",
+        "C::C()",
+        ": B(1),",
+        "D(2)",
+        "{",
+        "}",
+        "}",
+        "extern \"C\" {",
+        "int g();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=g0<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "namespace n {",
+          "    class C : public B,",
+          "    public D",
+          "    {",
+          "    public:",
+          "        C();",
+          "    private:",
+          "        int x;",
+          "    };",
+          "    C::C()",
+          "        : B(1),",
+          "        D(2)",
+          "    {",
+          "    }",
+          "}",
+          "extern \"C\" {",
+          "    int g();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_h_2",
+      "lines": [
+        "namespace n {",
+        "class C : public B,",
+        "public D",
+        "{",
+        "public:",
+        "C();",
+        "private:",
+        "int x;",
+        "};",
+        "C::C()",
+        ": B(1),",
+        "D(2)",
+        "{",
+        "}",
+        "}",
+        "extern \"C\" {",
+        "int g();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=h2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "namespace n {",
+          "    class C : public B,",
+          "    public D",
+          "    {",
+          "        public:",
+          "          C();",
+          "        private:",
+          "          int x;",
+          "    };",
+          "    C::C()",
+          "        : B(1),",
+          "        D(2)",
+          "    {",
+          "    }",
+          "}",
+          "extern \"C\" {",
+          "    int g();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_NU_ms",
+      "lines": [
+        "namespace n {",
+        "class C : public B,",
+        "public D",
+        "{",
+        "public:",
+        "C();",
+        "private:",
+        "int x;",
+        "};",
+        "C::C()",
+        ": B(1),",
+        "D(2)",
+        "{",
+        "}",
+        "}",
+        "extern \"C\" {",
+        "int g();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=N-s<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "namespace n {",
+          "class C : public B,",
+          "    public D",
+          "{",
+          "    public:",
+          "        C();",
+          "    private:",
+          "        int x;",
+          "};",
+          "C::C()",
+          "    : B(1),",
+          "    D(2)",
+          "{",
+          "}",
+          "}",
+          "extern \"C\" {",
+          "    int g();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_EU_ms",
+      "lines": [
+        "namespace n {",
+        "class C : public B,",
+        "public D",
+        "{",
+        "public:",
+        "C();",
+        "private:",
+        "int x;",
+        "};",
+        "C::C()",
+        ": B(1),",
+        "D(2)",
+        "{",
+        "}",
+        "}",
+        "extern \"C\" {",
+        "int g();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=E-s<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "namespace n {",
+          "    class C : public B,",
+          "    public D",
+          "    {",
+          "        public:",
+          "            C();",
+          "        private:",
+          "            int x;",
+          "    };",
+          "    C::C()",
+          "        : B(1),",
+          "        D(2)",
+          "    {",
+          "    }",
+          "}",
+          "extern \"C\" {",
+          "int g();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_p_2",
+      "lines": [
+        "int",
+        "f(a, b)",
+        "int a;",
+        "char b;",
+        "{",
+        "return a;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=p2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int",
+          "f(a, b)",
+          "  int a;",
+          "  char b;",
+          "{",
+          "    return a;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_t_0",
+      "lines": [
+        "static",
+        "int",
+        "f(void)",
+        "{",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=t0<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "static",
+          "int",
+          "f(void)",
+          "{",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_i_8",
+      "lines": [
+        "namespace n {",
+        "class C : public B,",
+        "public D",
+        "{",
+        "public:",
+        "C();",
+        "private:",
+        "int x;",
+        "};",
+        "C::C()",
+        ": B(1),",
+        "D(2)",
+        "{",
+        "}",
+        "}",
+        "extern \"C\" {",
+        "int g();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=i8<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "namespace n {",
+          "    class C : public B,",
+          "        public D",
+          "    {",
+          "        public:",
+          "            C();",
+          "        private:",
+          "            int x;",
+          "    };",
+          "    C::C()",
+          "        : B(1),",
+          "        D(2)",
+          "    {",
+          "    }",
+          "}",
+          "extern \"C\" {",
+          "    int g();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_plus_2",
+      "lines": [
+        "int f()",
+        "{",
+        "x = a +",
+        "b +",
+        "c;",
+        "y = g(a,",
+        "b,",
+        "c);",
+        "if (a &&",
+        "b)",
+        "z();",
+        "t = cond",
+        "? a",
+        ": b;",
+        "s = \"abc\\",
+        "def\";",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=+2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x = a +",
+          "      b +",
+          "      c;",
+          "    y = g(a,",
+          "            b,",
+          "            c);",
+          "    if (a &&",
+          "            b)",
+          "        z();",
+          "    t = cond",
+          "      ? a",
+          "      : b;",
+          "    s = \"abc\\",
+          "         def\";",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_c_5",
+      "lines": [
+        "int f()",
+        "{",
+        "/*",
+        "* a",
+        "* b",
+        "*/",
+        "/* one",
+        "two",
+        "*/",
+        "/*",
+        "text",
+        "*/",
+        "// line",
+        "// more",
+        "x = 1; // trail",
+        "// next",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=c5<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    /*",
+          "     * a",
+          "     * b",
+          "     */",
+          "    /* one",
+          "       two",
+          "     */",
+          "    /*",
+          "         text",
+          "     */",
+          "    // line",
+          "    // more",
+          "    x = 1; // trail",
+          "           // next",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_c1_CU_1",
+      "lines": [
+        "int f()",
+        "{",
+        "/*",
+        "* a",
+        "* b",
+        "*/",
+        "/* one",
+        "two",
+        "*/",
+        "/*",
+        "text",
+        "*/",
+        "// line",
+        "// more",
+        "x = 1; // trail",
+        "// next",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=c1,C1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    /*",
+          "     * a",
+          "     * b",
+          "     */",
+          "    /* one",
+          "     two",
+          "     */",
+          "    /*",
+          "     text",
+          "     */",
+          "    // line",
+          "    // more",
+          "    x = 1; // trail",
+          "           // next",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_slash_4",
+      "lines": [
+        "int f()",
+        "{",
+        "/*",
+        "* a",
+        "* b",
+        "*/",
+        "/* one",
+        "two",
+        "*/",
+        "/*",
+        "text",
+        "*/",
+        "// line",
+        "// more",
+        "x = 1; // trail",
+        "// next",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=/4<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "        /*",
+          "         * a",
+          "         * b",
+          "         */",
+          "        /* one",
+          "           two",
+          "         */",
+          "        /*",
+          "           text",
+          "         */",
+          "        // line",
+          "        // more",
+          "    x = 1; // trail",
+          "           // next",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_lparen_0",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a && (b ||",
+        "c))",
+        "x();",
+        "foo(",
+        "a,",
+        "b",
+        ");",
+        "bar(baz(1,",
+        "2), 3);",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=(0<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a && (b ||",
+          "              c))",
+          "        x();",
+          "    foo(",
+          "        a,",
+          "        b",
+          "       );",
+          "    bar(baz(1,",
+          "            2), 3);",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_lparen_s",
+      "lines": [
+        "int f()",
+        "{",
+        "x = a +",
+        "b +",
+        "c;",
+        "y = g(a,",
+        "b,",
+        "c);",
+        "if (a &&",
+        "b)",
+        "z();",
+        "t = cond",
+        "? a",
+        ": b;",
+        "s = \"abc\\",
+        "def\";",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=(s<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x = a +",
+          "        b +",
+          "        c;",
+          "    y = g(a,",
+          "        b,",
+          "        c);",
+          "    if (a &&",
+          "        b)",
+          "        z();",
+          "    t = cond",
+          "        ? a",
+          "        : b;",
+          "    s = \"abc\\",
+          "         def\";",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_u_0",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a && (b ||",
+        "c))",
+        "x();",
+        "foo(",
+        "a,",
+        "b",
+        ");",
+        "bar(baz(1,",
+        "2), 3);",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=u0<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a && (b ||",
+          "            c))",
+          "        x();",
+          "    foo(",
+          "            a,",
+          "            b",
+          "       );",
+          "    bar(baz(1,",
+          "            2), 3);",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_lparen0_w_1",
+      "lines": [
+        "int f()",
+        "{",
+        "if ( a && (b ||",
+        "c))",
+        "x();",
+        "foo(",
+        "a,",
+        "b",
+        ");",
+        "bar(baz(1,",
+        "2), 3);",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=(0,w1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if ( a && (b ||",
+          "               c))",
+          "        x();",
+          "    foo(",
+          "        a,",
+          "        b",
+          "       );",
+          "    bar(baz(1,",
+          "            2), 3);",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_WU_4",
+      "lines": [
+        "int f()",
+        "{",
+        "foo(",
+        "a, b);",
+        "if (verylongcondition(",
+        "arg))",
+        "x();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=W4<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    foo(",
+          "            a, b);",
+          "    if (verylongcondition(",
+          "                arg))",
+          "        x();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_k_2s",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a",
+        "&& b)",
+        "x();",
+        "while (c",
+        "|| d)",
+        "y();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=k2s<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a",
+          "            && b)",
+          "        x();",
+          "    while (c",
+          "            || d)",
+          "        y();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_m_1",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a && (b ||",
+        "c))",
+        "x();",
+        "foo(",
+        "a,",
+        "b",
+        ");",
+        "bar(baz(1,",
+        "2), 3);",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=m1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a && (b ||",
+          "                c))",
+          "        x();",
+          "    foo(",
+          "            a,",
+          "            b",
+          "    );",
+          "    bar(baz(1,",
+          "                2), 3);",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_MU_1",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a && (b ||",
+        "c))",
+        "x();",
+        "foo(",
+        "a,",
+        "b",
+        ");",
+        "bar(baz(1,",
+        "2), 3);",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=M1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a && (b ||",
+          "                c))",
+          "        x();",
+          "    foo(",
+          "            a,",
+          "            b",
+          "            );",
+          "    bar(baz(1,",
+          "                2), 3);",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_j_1",
+      "lines": [
+        "class A {",
+        "void f() {",
+        "new Runnable() {",
+        "public void run() {",
+        "x();",
+        "}",
+        "};",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=j1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "class A {",
+          "    void f() {",
+          "        new Runnable() {",
+          "            public void run() {",
+          "                x();",
+          "            }",
+          "        };",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_JU_1",
+      "lines": [
+        "var o = {",
+        "a: 1,",
+        "b: {",
+        "c: 2",
+        "},",
+        "d: [",
+        "1,",
+        "2",
+        "]",
+        "};"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=J1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "var o = {",
+          "    a: 1,",
+          "    b: {",
+          "        c: 2",
+          "    },",
+          "    d: [",
+          "        1,",
+          "        2",
+          "    ]",
+          "};"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_rparen_3",
+      "lines": [
+        "int f()",
+        "{",
+        "foo(a,",
+        "b,",
+        "c,",
+        "d,",
+        "e,",
+        "f,",
+        "g);",
+        "x();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=)3<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    foo(a,",
+          "            b,",
+          "            c,",
+          "            d,",
+          "        e,",
+          "        f,",
+          "        g);",
+          "    x();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_star_3",
+      "lines": [
+        "int f()",
+        "{",
+        "/*",
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "*/",
+        "x();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=*3<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    /*",
+          "       a",
+          "       b",
+          "       c",
+          "    d",
+          "        e",
+          "        f",
+          "        */",
+          "        x();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_hash_1",
+      "lines": [
+        "int f()",
+        "{",
+        "x(); # c",
+        "# d",
+        "y();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=#1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    x(); # c",
+          " # d",
+          "    y();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_PU_1",
+      "lines": [
+        "int f()",
+        "{",
+        "#pragma omp parallel",
+        "x();",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=P1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    #pragma omp parallel",
+          "    x();",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_U1_with_lparen0",
+      "lines": [
+        "int f()",
+        "{",
+        "if (a && (b ||",
+        "c))",
+        "x();",
+        "foo(",
+        "a,",
+        "b",
+        ");",
+        "bar(baz(1,",
+        "2), 3);",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=(0,U1<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f()",
+          "{",
+          "    if (a && (b ||",
+          "              c))",
+          "        x();",
+          "    foo(",
+          "        a,",
+          "        b",
+          "       );",
+          "    bar(baz(1,",
+          "            2), 3);",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cino_combo",
+      "lines": [
+        "int main(void)",
+        "{",
+        "int a = 1;",
+        "if (a)",
+        "a++;",
+        "else if (a > 2)",
+        "{",
+        "a--;",
+        "}",
+        "else",
+        "a = 0;",
+        "for (i = 0; i < n; i++)",
+        "x[i] = 0;",
+        "while (a)",
+        "{",
+        "a--;",
+        "}",
+        "do",
+        "a++;",
+        "while (a < 10);",
+        "return a;",
+        "}",
+        "void f(int a)",
+        "{",
+        "switch (a)",
+        "{",
+        "case 1:",
+        "x();",
+        "break;",
+        "case 2: {",
+        "y();",
+        "}",
+        "break;",
+        "default:",
+        "z();",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cino=>2,n-1,{1,}1,:2,=2<CR>=G",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int main(void)",
+          "{",
+          "  int a = 1;",
+          "  if (a)",
+          "   a++;",
+          "  else if (a > 2)",
+          "   {",
+          "    a--;",
+          "    }",
+          "  else",
+          "   a = 0;",
+          "  for (i = 0; i < n; i++)",
+          "   x[i] = 0;",
+          "  while (a)",
+          "   {",
+          "    a--;",
+          "    }",
+          "  do",
+          "   a++;",
+          "  while (a < 10);",
+          "  return a;",
+          " }",
+          "void f(int a)",
+          "{",
+          "  switch (a)",
+          "   {",
+          "    case 1:",
+          "      x();",
+          "      break;",
+          "    case 2: {",
+          "              y();",
+          "             }",
+          "           break;",
+          "    default:",
+          "           z();",
+          "    }",
+          " }"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_after_if",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gox;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_after_stmt",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goy;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;",
+          "    y;"
+        ],
+        "cursor": [
+          4,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_O_before_close",
+      "lines": [
+        "int f() {",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GOx;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "}"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cr_in_args",
+      "lines": [
+        "int f() {",
+        "    foo(a, b);"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>G$Fbi<CR><Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    foo(a, ",
+          "            b);"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cr_before_paren",
+      "lines": [
+        "int f() {",
+        "    foo(a, b)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>G$i<CR><Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    foo(a, b",
+          "            )"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_close_brace",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_case_colon",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "        case 1:",
+        "            x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "        case 1:",
+          "            x;",
+          "        case 2:"
+        ],
+        "cursor": [
+          5,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_label_colon",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "out:"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_hash",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go#define A<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "#define A"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_else",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Goelse<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;",
+          "    else"
+        ],
+        "cursor": [
+          4,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_ctrl_f",
+      "lines": [
+        "int f() {",
+        "x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GA<C-f><Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cc",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "z;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gccy;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        y;"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "z;\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_S",
+      "lines": [
+        "int f() {",
+        "    while (a)",
+        "z;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>GSy;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    while (a)",
+          "        y;"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "z;\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_in_comment",
+      "lines": [
+        "int f() {",
+        "    /* a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gob<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    /* a",
+          "       b"
+        ],
+        "cursor": [
+          3,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_unclosed_paren",
+      "lines": [
+        "int f() {",
+        "    if (a &&"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gob)<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a &&",
+          "            b)"
+        ],
+        "cursor": [
+          3,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_ternary",
+      "lines": [
+        "int f() {",
+        "    x = a"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Go? b<CR>: c;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x = a",
+          "        ? b",
+          "        : c;"
+        ],
+        "cursor": [
+          4,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_scope_colon",
+      "lines": [
+        "class C {",
+        "    int x;"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gopublic:<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "class C {",
+          "    int x;",
+          "    public:"
+        ],
+        "cursor": [
+          3,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_noai",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et noai<CR>Gox;<Esc>",
+      "file": "fixture.c",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_after_if_setcin",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>Gox;<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_o_after_stmt_setcin",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>Goy;<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;",
+          "    y;"
+        ],
+        "cursor": [
+          4,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_O_before_close_setcin",
+      "lines": [
+        "int f() {",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>GOx;<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "}"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cr_in_args_setcin",
+      "lines": [
+        "int f() {",
+        "    foo(a, b);"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>G$Fbi<CR><Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    foo(a, ",
+          "            b);"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cr_before_paren_setcin",
+      "lines": [
+        "int f() {",
+        "    foo(a, b)"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>G$i<CR><Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    foo(a, b",
+          "            )"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_close_brace_setcin",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>Go}<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "    }"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_hash_setcin",
+      "lines": [
+        "int f() {",
+        "    x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>Go#define A<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;",
+          "#define A"
+        ],
+        "cursor": [
+          3,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_else_setcin",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>Goelse<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        x;",
+          "    else"
+        ],
+        "cursor": [
+          4,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_ctrl_f_setcin",
+      "lines": [
+        "int f() {",
+        "x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>GA<C-f><Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    x;"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cc_setcin",
+      "lines": [
+        "int f() {",
+        "    if (a)",
+        "z;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin<CR>Gccy;<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "        y;"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "z;\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_nocin_o_after_if",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>Gox;<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "    x;"
+        ],
+        "cursor": [
+          3,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cink_word",
+      "lines": [
+        "int f() {",
+        "    switch (a) {",
+        "    case 1:",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin cink+==break<CR>Gobreak<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    switch (a) {",
+          "    case 1:",
+          "        x;",
+          "        break"
+        ],
+        "cursor": [
+          5,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cink_no_brace",
+      "lines": [
+        "int f() {",
+        "    if (a) {",
+        "        x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin cink-=0}<CR>Go}<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a) {",
+          "        x;",
+          "        }"
+        ],
+        "cursor": [
+          4,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cink_no_o",
+      "lines": [
+        "int f() {",
+        "    if (a)"
+      ],
+      "keys": ":set ts=8 sw=4 et cin cink-=o noai<CR>Gox;<Esc>",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    if (a)",
+          "x;"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cinsd",
+      "lines": [
+        "class C {",
+        "    int x;"
+      ],
+      "keys": ":set ts=8 sw=4 et cin cinsd=signals<CR>Gosignals:<Esc>",
+      "expect": {
+        "text": [
+          "class C {",
+          "    int x;",
+          "    signals:"
+        ],
+        "cursor": [
+          3,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cin_cinw_eq",
+      "lines": [
+        "int f() {",
+        "unless (a)",
+        "x;",
+        "}"
+      ],
+      "keys": ":set ts=8 sw=4 et cinw=unless<CR>=G",
+      "expect": {
+        "text": [
+          "int f() {",
+          "    unless (a)",
+          "        x;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

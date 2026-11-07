@@ -2091,10 +2091,10 @@ mod tests {
         assert_eq!(w.focused().view.mode(), crate::Mode::Insert);
     }
 
-    /// `=` reindents lines to their bracket depth (net unclosed `([{` × shiftwidth; closer-first lines
-    /// dedent; blank lines stay empty), as one undo group.
+    /// `=` reindents lines by the C rules (nvim's `get_c_indent`, #1163: an unclosed `(` takes cino-`(`,
+    /// two shiftwidths; blank lines stay empty), as one undo group. nvim gives the same columns.
     #[test]
-    fn reindent_by_bracket_depth() {
+    fn reindent_by_the_c_rules() {
         let src = "fn main() {\nlet x = foo(\n1,\n2,\n);\n}\n";
         let mut w = Workspace::new(src.as_bytes().to_vec());
         // Default config: shiftwidth 4, spaces. `=G` reindents the whole buffer.
@@ -2102,7 +2102,8 @@ mod tests {
             count: 1,
             motion: Motion::LastLine,
         });
-        let expected = "fn main() {\n    let x = foo(\n        1,\n        2,\n    );\n}\n";
+        let expected =
+            "fn main() {\n    let x = foo(\n            1,\n            2,\n            );\n}\n";
         assert_eq!(w.focused().doc.bytes(), expected.as_bytes());
 
         // One undo restores the original in a single step.

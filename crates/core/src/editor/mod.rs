@@ -142,6 +142,15 @@ pub enum EditorOption {
     Lisp(bool),
     /// `'lispwords'` (`lw`) — the comma-separated words whose forms `'lisp'` indents as a body (#1163).
     LispWords(String),
+    /// `'cindent'` (`cin`) — `o`/`O`/`<CR>`, `cc`/`S` and the keys of `'cinkeys'` indent by the C rules
+    /// (`=` always does, as in nvim when no `'indentexpr'` is set, #1163).
+    CIndent(bool),
+    /// `'cinoptions'` (`cino`) — how the C indent lays out code (#1163).
+    CinOptions(String),
+    /// `'cinkeys'` (`cink`) — the keys that re-indent the line in Insert mode under `'cindent'` (#1163).
+    CinKeys(String),
+    /// `'cinscopedecls'` (`cinsd`) — the C++ scope declarations the C indent knows (#1163).
+    CinScopeDecls(String),
 }
 
 impl EditorOption {
@@ -237,6 +246,10 @@ pub(crate) struct FormatConfig {
     pub(crate) cinwords: Cow<'static, str>,
     pub(crate) lisp: bool,
     pub(crate) lispwords: Cow<'static, str>,
+    pub(crate) cindent: bool,
+    pub(crate) cinoptions: Cow<'static, str>,
+    pub(crate) cinkeys: Cow<'static, str>,
+    pub(crate) cinscopedecls: Cow<'static, str>,
     pub(crate) joinspaces: bool,
     pub(crate) wrapmargin: i64,
 }
@@ -287,6 +300,10 @@ impl ViewOptions {
             cinwords: Cow::Borrowed(indent::DEFAULT_CINWORDS),
             lisp: false,
             lispwords: Cow::Borrowed(lisp::DEFAULT_LISPWORDS),
+            cindent: false,
+            cinoptions: Cow::Borrowed(""),
+            cinkeys: Cow::Borrowed(cindent::DEFAULT_CINKEYS),
+            cinscopedecls: Cow::Borrowed(cindent::DEFAULT_CINSCOPEDECLS),
             joinspaces: false,
             wrapmargin: 0,
         },
@@ -334,6 +351,10 @@ impl ViewOptions {
             EditorOption::JoinSpaces(v) => self.format.joinspaces = v,
             EditorOption::Lisp(v) => self.format.lisp = v,
             EditorOption::LispWords(v) => self.format.lispwords = Cow::Owned(v),
+            EditorOption::CIndent(v) => self.format.cindent = v,
+            EditorOption::CinOptions(v) => self.format.cinoptions = Cow::Owned(v),
+            EditorOption::CinKeys(v) => self.format.cinkeys = Cow::Owned(v),
+            EditorOption::CinScopeDecls(v) => self.format.cinscopedecls = Cow::Owned(v),
             EditorOption::WrapMargin(n) => {
                 self.format.wrapmargin = n.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
             }
@@ -369,6 +390,10 @@ impl ViewOptions {
             EditorOption::WrapMargin(self.format.wrapmargin),
             EditorOption::Lisp(self.format.lisp),
             EditorOption::LispWords(self.format.lispwords.to_string()),
+            EditorOption::CIndent(self.format.cindent),
+            EditorOption::CinOptions(self.format.cinoptions.to_string()),
+            EditorOption::CinKeys(self.format.cinkeys.to_string()),
+            EditorOption::CinScopeDecls(self.format.cinscopedecls.to_string()),
         ]
     }
 
@@ -1293,6 +1318,58 @@ impl View {
     #[must_use]
     pub fn lisp(&self) -> bool {
         self.format.lisp
+    }
+
+    /// Whether `'cindent'` is on (#1163).
+    #[must_use]
+    pub fn cindent(&self) -> bool {
+        self.format.cindent
+    }
+
+    /// The C indent of line `row` of `bytes` under this View's options (nvim's `get_c_indent`, #1163),
+    /// the cursor at byte `col` of the line (in Insert mode a `)` there is cut off first). `None` keeps
+    /// the line as it is (inside a C++ raw string).
+    #[must_use]
+    pub fn c_indent(&self, bytes: &[u8], row: usize, col: usize, insert: bool) -> Option<usize> {
+        let lines: Vec<&[u8]> = bytes.split(|&c| c == b'\n').collect();
+        let cino = cindent::CinOptions::parse(&self.format.cinoptions, self.indent.shift_width());
+        let e = self.c_env(cino);
+        cindent::line_indent(&lines, row.min(lines.len() - 1), col, insert, &e)
+    }
+
+    /// Whether `'cinkeys'` re-indents line `row` of `bytes` after `key` (#1163), the cursor at byte `col`
+    /// of the line just after it; `line_is_empty`: only blanks before the key (it allows the `0` keys).
+    #[must_use]
+    pub fn c_key_reindents(
+        &self,
+        bytes: &[u8],
+        row: usize,
+        col: usize,
+        key: CinKey,
+        line_is_empty: bool,
+    ) -> bool {
+        let lines: Vec<&[u8]> = bytes.split(|&c| c == b'\n').collect();
+        let cino = cindent::CinOptions::parse(&self.format.cinoptions, self.indent.shift_width());
+        let e = self.c_env(cino);
+        cindent::key_reindents(
+            &lines,
+            row.min(lines.len() - 1),
+            col,
+            key,
+            line_is_empty,
+            &e,
+        )
+    }
+
+    fn c_env(&self, cino: cindent::CinOptions) -> cindent::CEnv<'_> {
+        cindent::CEnv {
+            ts: self.indent.tab_width,
+            cino,
+            cinwords: &self.format.cinwords,
+            cinscopedecls: &self.format.cinscopedecls,
+            cinkeys: &self.format.cinkeys,
+            comments: &self.format.comments,
+        }
     }
 
     /// This View's scroll position (first visible buffer row). Maintained by the frontend.
@@ -3562,6 +3639,8 @@ pub use format::OptionValueError;
 mod indent;
 mod lisp;
 pub use lisp::DEFAULT_LISPWORDS;
+mod cindent;
+pub use cindent::{CinOptions, Key as CinKey, DEFAULT_CINKEYS, DEFAULT_CINSCOPEDECLS};
 mod planner;
 pub use planner::plan;
 pub(crate) use planner::word_search;

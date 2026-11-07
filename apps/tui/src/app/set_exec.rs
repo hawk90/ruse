@@ -175,6 +175,10 @@ fn core_option(opt: Opt, val: &OptVal) -> Option<EditorOption> {
         Opt::CinWords => EditorOption::CinWords(s(val)),
         Opt::LispWords => EditorOption::LispWords(s(val)),
         Opt::Lisp => EditorOption::Lisp(b(val)),
+        Opt::CIndent => EditorOption::CIndent(b(val)),
+        Opt::CinOptions => EditorOption::CinOptions(s(val)),
+        Opt::CinKeys => EditorOption::CinKeys(s(val)),
+        Opt::CinScopeDecls => EditorOption::CinScopeDecls(s(val)),
         Opt::JoinSpaces => EditorOption::JoinSpaces(b(val)),
         Opt::WrapMargin => EditorOption::WrapMargin(match val {
             OptVal::Num(n) => *n,
@@ -209,10 +213,14 @@ fn core_value(opts: &[EditorOption], opt: Opt) -> Option<OptVal> {
         | (Opt::FormatPrg, EditorOption::FormatPrg(s))
         | (Opt::EqualPrg, EditorOption::EqualPrg(s))
         | (Opt::CinWords, EditorOption::CinWords(s))
-        | (Opt::LispWords, EditorOption::LispWords(s)) => Some(OptVal::Text(s.into())),
+        | (Opt::LispWords, EditorOption::LispWords(s))
+        | (Opt::CinOptions, EditorOption::CinOptions(s))
+        | (Opt::CinKeys, EditorOption::CinKeys(s))
+        | (Opt::CinScopeDecls, EditorOption::CinScopeDecls(s)) => Some(OptVal::Text(s.into())),
         (Opt::WrapMargin, EditorOption::WrapMargin(n)) => Some(OptVal::Num(n)),
         (Opt::JoinSpaces, EditorOption::JoinSpaces(v))
         | (Opt::Lisp, EditorOption::Lisp(v))
+        | (Opt::CIndent, EditorOption::CIndent(v))
         | (Opt::IgnoreCase, EditorOption::IgnoreCase(v))
         | (Opt::SmartCase, EditorOption::SmartCase(v))
         | (Opt::ExpandTab, EditorOption::ExpandTab(v))
@@ -685,6 +693,10 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::CinWords => "editor.cinwords",
         Opt::Lisp => "editor.lisp",
         Opt::LispWords => "editor.lispwords",
+        Opt::CIndent => "editor.cindent",
+        Opt::CinOptions => "editor.cinoptions",
+        Opt::CinKeys => "editor.cinkeys",
+        Opt::CinScopeDecls => "editor.cinscopedecls",
         Opt::JoinSpaces => "editor.joinspaces",
         Opt::SideScroll => "editor.sidescroll",
         Opt::SideScrollOff => "editor.sidescrolloff",

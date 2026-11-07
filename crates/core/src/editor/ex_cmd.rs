@@ -459,6 +459,10 @@ fn option_name(opt: &EditorOption) -> (&'static str, String) {
         EditorOption::WrapMargin(n) => ("wrapmargin", n.to_string()),
         EditorOption::Lisp(v) => ("lisp", flag(v)),
         EditorOption::LispWords(v) => ("lispwords", hex(v.as_bytes())),
+        EditorOption::CIndent(v) => ("cindent", flag(v)),
+        EditorOption::CinOptions(v) => ("cinoptions", hex(v.as_bytes())),
+        EditorOption::CinKeys(v) => ("cinkeys", hex(v.as_bytes())),
+        EditorOption::CinScopeDecls(v) => ("cinscopedecls", hex(v.as_bytes())),
     }
 }
 
@@ -493,6 +497,9 @@ fn string_option(name: &str) -> Option<fn(String) -> EditorOption> {
         "equalprg" => EditorOption::EqualPrg,
         "cinwords" => EditorOption::CinWords,
         "lispwords" => EditorOption::LispWords,
+        "cinoptions" => EditorOption::CinOptions,
+        "cinkeys" => EditorOption::CinKeys,
+        "cinscopedecls" => EditorOption::CinScopeDecls,
         _ => return None,
     })
 }
@@ -837,6 +844,7 @@ impl ExCmd {
                         }),
                         "joinspaces" => flag(value).map(EditorOption::JoinSpaces),
                         "lisp" => flag(value).map(EditorOption::Lisp),
+                        "cindent" => flag(value).map(EditorOption::CIndent),
                         _ => None,
                     };
                     ExCmd::Set(opt.ok_or_else(|| a.bad())?)
@@ -1219,6 +1227,10 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::SmartIndent(true)),
         ExCmd::Set(EditorOption::Lisp(true)),
         ExCmd::Set(EditorOption::LispWords("defun,let*".into())),
+        ExCmd::Set(EditorOption::CIndent(true)),
+        ExCmd::Set(EditorOption::CinOptions(">2s,(0".into())),
+        ExCmd::Set(EditorOption::CinKeys("0{,0},:".into())),
+        ExCmd::Set(EditorOption::CinScopeDecls("public,signals".into())),
         ExCmd::Set(EditorOption::CopyIndent(true)),
         ExCmd::Set(EditorOption::PreserveIndent(true)),
         ExCmd::Set(EditorOption::SmartTab(false)),

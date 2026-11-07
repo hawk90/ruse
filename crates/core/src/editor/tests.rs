@@ -2113,11 +2113,11 @@ mod single_key_edit_tests {
     #[test]
     fn reindent_to_mark() {
         use crate::command::MarkOp;
-        // `` =`a ``: reindent the spanned lines to bracket depth (ruse's `=` semantics; DELIBERATELY
-        // diverges from nvim `-u NONE`, whose `=` is plain autoindent — hence no oracle fixture). Mark on
-        // the opener line, cursor on the closer line; the interior lines get one indent level.
+        // `` =`a ``: reindent the spanned lines by the C rules, as nvim's `=` with no 'indentexpr' (#1163;
+        // the same buffer from nvim gives these columns). Mark on the opener line, cursor on the closer
+        // line; the statements get one indent level.
         let st = run(
-            "{\na\nb\n}",
+            "{\na;\nb;\n}",
             &[
                 Command::SetNamedMark('a'),
                 Command::Move(4, Motion::GotoLine),
@@ -2130,8 +2130,8 @@ mod single_key_edit_tests {
         );
         assert_eq!(
             text(&st),
-            "{\n    a\n    b\n}",
-            "=`a reindents to bracket depth"
+            "{\n    a;\n    b;\n}",
+            "=`a reindents by the C rules"
         );
     }
 

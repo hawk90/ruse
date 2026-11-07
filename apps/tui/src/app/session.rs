@@ -523,6 +523,13 @@ fn resolve_tree_aware(
     if ws.focused().view.lisp() {
         return cmd;
     }
+    // C indents by nvim's cindent after the edit (`indent_keys`), and `=` in the core (#1163).
+    if crate::app::indent_keys::is_cindent(ws, highlighters) {
+        return match cmd {
+            Command::InsertReindent => crate::app::indent_keys::c_reindent_caret_line(ws, snapshot),
+            other => other,
+        };
+    }
     // Python indents as nvim's indent script does, after the edit (`indent_keys`), in columns (#1205).
     let python = crate::app::indent_keys::is_python(ws, highlighters);
     if python {
@@ -594,18 +601,6 @@ fn resolve_tree_aware(
                     Command::OpenAbove => ls,
                     _ => cur,
                 };
-                // Under a C jump label (in column 0) the line takes the label's statement level (#1206).
-                if at == le && !matches!(cmd, Command::OpenAbove) {
-                    let fnb =
-                        ls + snapshot[ls..le].len() - snapshot[ls..le].trim_ascii_start().len();
-                    if let Some(level) = tree.after_label(fnb, row) {
-                        let kind = match cmd {
-                            Command::OpenBelow => OpenKind::Below,
-                            _ => OpenKind::Split,
-                        };
-                        return Command::OpenLineIndent { kind, level };
-                    }
-                }
                 if tree.broken_at(at) {
                     return cmd;
                 }

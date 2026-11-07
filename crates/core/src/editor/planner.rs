@@ -5000,86 +5000,32 @@ fn plan_comment(st: &EditorState, first: usize, last: usize, at: usize, hint: Gr
 
 fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: GroupHint) -> Plan {
     let b = st.bytes();
-    // `'lisp'`: the Lisp rules instead (#1163).
-    if st.view.format.lisp {
-        let ind = st.view.indent;
-        let cols = super::lisp::reindent(
+    let ind = st.view.indent;
+    // `'lisp'`: the Lisp rules (#1163).
+    let cols = if st.view.format.lisp {
+        super::lisp::reindent(
             b,
             first_line,
             last_line,
             ind.tab_width,
             &st.view.format.lispwords,
             |c| ind.whitespace(c),
-        );
-        return plan_set_indents(st, first_line, last_line, &cols, hint);
-    }
-    // Per-line start offset, and the net bracket depth AT each line's start.
-    let mut line_starts: Vec<usize> = Vec::new();
-    let mut depth_at: Vec<i32> = Vec::new();
-    let mut depth: i32 = 0;
-    let mut i = 0usize;
-    line_starts.push(0);
-    depth_at.push(0);
-    while i < b.len() {
-        match b[i] {
-            b'(' | b'[' | b'{' => depth += 1,
-            b')' | b']' | b'}' => depth = depth.max(1) - 1,
-            b'\n' => {
-                line_starts.push(i + 1);
-                depth_at.push(depth);
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    // Target indent LEVEL for line `li`, from depth (a closer-first line dedents one).
-    let indent_level = |li: usize, fnb: usize, ls: usize| -> usize {
-        let closer = ls < b.len() && fnb < b.len() && matches!(b[fnb], b')' | b']' | b'}');
-        (depth_at[li] - i32::from(closer)).max(0) as usize
-    };
-
-    let mut edits: Vec<Edit> = Vec::new();
-    let last = last_line.min(line_starts.len().saturating_sub(1));
-    let mut first_cursor = line_starts[first_line];
-    // `li` indexes the two parallel vecs (`line_starts` + `depth_at`) and marks the first line, so a
-    // range loop is the clear form here.
-    #[allow(clippy::needless_range_loop)]
-    for li in first_line..=last {
-        let ls = line_starts[li];
-        let le = line_end(b, ls);
-        let fnb = motion::first_non_blank(b, ls);
-        let want: Vec<u8> = if fnb >= le {
-            Vec::new() // blank line → no indent
-        } else {
-            // nvim's `set_indent`: under 'preserveindent' the line keeps its indent characters as far
-            // as they fit (#617).
-            let cols = indent_level(li, fnb, ls) * st.view.indent.shift_width();
-            st.view.indent.rebuilt(&b[ls..fnb], cols)
+        )
+    } else {
+        // Else the C rules, with or without 'cindent': nvim's `=` runs `get_c_indent` whenever no
+        // 'indentexpr' is set (#1163).
+        let fc = &st.view.format;
+        let e = super::cindent::CEnv {
+            ts: ind.tab_width,
+            cino: super::cindent::CinOptions::parse(&fc.cinoptions, ind.shift_width()),
+            cinwords: &fc.cinwords,
+            cinscopedecls: &fc.cinscopedecls,
+            cinkeys: &fc.cinkeys,
+            comments: &fc.comments,
         };
-        if li == first_line {
-            first_cursor = ls + reindented_cursor(st, &want, &b[fnb..le]);
-        }
-        if b[ls..fnb] != want[..] {
-            edits.push(Edit::replace(BytePos(ls), fnb - ls, want));
-        }
-    }
-
-    if edits.is_empty() {
-        return nop(first_cursor.min(b.len()), st.view.mode);
-    }
-    let edits =
-        EditList::new(edits).expect("reindent edits sit at distinct line starts, so disjoint");
-    Plan {
-        action: Action::Txn { edits, hint },
-        cursor: first_cursor,
-        mode: st.mode(),
-        is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    }
+        super::cindent::reindent(b, first_line, last_line, &e)
+    };
+    plan_set_indents(st, first_line, last_line, &cols, hint)
 }
 
 /// Where `=` leaves the cursor on its first line, reindented to `indent` before `text` (the line from its

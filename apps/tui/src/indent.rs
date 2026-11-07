@@ -147,32 +147,6 @@ impl<'a> IndentTree<'a> {
                 .then(|| header.start_position().row + self.base_row),
         )
     }
-
-    /// For a C `case`/`default` label whose line starts at buffer byte `at` (#1206): the buffer row of the
-    /// previous label of the same `switch`, which cindent lines a newly typed label up with.
-    pub fn previous_case_row(&self, at: usize) -> Option<usize> {
-        let mut node = self.node_at(at)?;
-        while node.kind() != "case_statement" {
-            node = node.parent()?;
-        }
-        let mut prev = node.prev_named_sibling();
-        while let Some(p) = prev {
-            if p.kind() == "case_statement" {
-                return Some(p.start_position().row + self.base_row);
-            }
-            prev = p.prev_named_sibling();
-        }
-        None
-    }
-
-    /// For `o` (or `<CR>` at the end) on a C jump-label line, whose first non-blank is at buffer byte
-    /// `at`: the level of the label's statement, the depth the label would have outside column 0 (#1206).
-    /// A label with nothing under it yet leaves the tree broken, so this is asked before
-    /// [`IndentTree::broken_at`].
-    pub fn after_label(&self, at: usize, row: usize) -> Option<usize> {
-        let node = self.node_at(at);
-        is_c_label(&self.tree, node).then(|| depth(node, row - self.base_row))
-    }
 }
 
 /// Where a window for the lines from the one starting at byte `ls` on starts: the start of the nearest
@@ -507,18 +481,10 @@ fn is_c_label(tree: &Tree, node: Option<Node<'_>>) -> bool {
 pub enum KeyReindent {
     /// The line takes the indent of its depth in the tree.
     Depth,
-    /// The line moves to column 0 (cindent's `0#`: a preprocessor line).
-    Column0,
     /// A `{` typed first on the line (`0{`): where it opens the body of a statement above (the Allman
     /// layout), it takes that statement's indent; a block standing as a statement takes its depth; any
     /// other `{` (an initializer, an object) is left alone. See [`IndentTree::brace_align`].
     Brace,
-    /// cindent's `:` after `case`/`default`: the label lines up with the previous label of its `switch`
-    /// where there is one, else takes its depth. See [`IndentTree::previous_case_row`].
-    Case,
-    /// cindent's `:` after a jump label (`out:`): column 0, when the line above ends a statement (else the
-    /// line continues it, and cindent leaves it to its continuation indent).
-    Label,
     /// Go's `:` after `case`/`default`: nvim's `GoIndent`, which reads the line above (its indent, one
     /// more after an opener or a label, one less for the label itself), not the tree.
     GoCase,
@@ -528,8 +494,6 @@ pub enum KeyReindent {
 /// nvim's 'indentkeys' for that file type: `before` is the line up to the caret after `ch` went in, and
 /// `white` whether only blanks preceded `ch` (`0` in the key list). The closers `0}`, `0)`, `0]` are
 /// [`ruse_core::Command::InsertCloser`]'s.
-/// - C (cindent's 'cinkeys' `0{,0},0),0],:,0#,!^F,o,O,e`): `0{`, `0#`, `e`, `:` ending a
-///   `case`/`default` or a jump label.
 /// - JavaScript (`indentkeys` default `+0],0)`): `0{`, `e`, and `:` after `case`/`default` (its `0#`
 ///   changes nothing, and it keeps a label at its statement's level).
 /// - Go (`+<:>,0=},0=)`): `:` after `case`/`default`, by the line above as `GoIndent` does.
@@ -548,31 +512,9 @@ pub fn key_reindent(lang: &str, ch: char, before: &[u8], white: bool) -> Option<
             .unwrap_or(b"");
         w == b"case" || w == b"default"
     };
-    // cindent's `cin_islabel`: a word of identifier characters, then `:` (not `::`), and not one of
-    // 'cinscopedecls' (`public`, `protected`, `private`).
-    let is_label = || {
-        let Some(name) = word.strip_suffix(b":") else {
-            return false;
-        };
-        let name = name.trim_ascii_end();
-        !name.is_empty()
-            && name.iter().all(|&c| c.is_ascii_alphanumeric() || c == b'_')
-            && !matches!(name, b"public" | b"protected" | b"private")
-    };
     match (lang, ch) {
-        ("c" | "javascript" | "bash" | "rust" | "css", '{') if white => Some(KeyReindent::Brace),
-        ("c", '#') if white => Some(KeyReindent::Column0),
-        ("c" | "javascript" | "bash", 'e') if word == b"else" => Some(KeyReindent::Depth),
-        ("c", ':') if starts_case() => Some(KeyReindent::Case),
-        ("c", ':') if is_label() => Some(KeyReindent::Label),
-        // The second `:` of `a::` undoes the label's column 0.
-        ("c", ':')
-            if word.strip_suffix(b"::").is_some_and(|w| {
-                !w.is_empty() && w.iter().all(|&c| c.is_ascii_alphanumeric() || c == b'_')
-            }) =>
-        {
-            Some(KeyReindent::Depth)
-        }
+        ("javascript" | "bash" | "rust" | "css", '{') if white => Some(KeyReindent::Brace),
+        ("javascript" | "bash", 'e') if word == b"else" => Some(KeyReindent::Depth),
         ("javascript", ':') if starts_case() => Some(KeyReindent::Depth),
         ("go", ':') if starts_case() => Some(KeyReindent::GoCase),
         ("bash", ')') => Some(KeyReindent::Depth),
@@ -605,7 +547,7 @@ pub fn key_reindent(lang: &str, ch: char, before: &[u8], white: bool) -> Option<
 /// `elif`), so the tree places the keyword's line; empty when there is none.
 pub fn key_placeholder(lang: &str, word: &[u8]) -> &'static [u8] {
     match (lang, word) {
-        ("c" | "javascript", b"else") => b" ;",
+        ("javascript", b"else") => b" ;",
         ("bash", b"else" | b"then" | b"do") => b" :",
         ("bash", b"elif") => b" :; then :",
         _ => b"",
@@ -870,12 +812,18 @@ mod tests {
     /// #1206: the keys of nvim's default 'indentkeys' / 'cinkeys' for the node-depth languages.
     #[test]
     fn indent_keys_of_the_node_depth_languages() {
-        use KeyReindent::{Column0, Depth};
-        assert_eq!(key_reindent("c", '#', b"    #", true), Some(Column0));
-        assert_eq!(key_reindent("c", '#', b"    x; #", false), None);
+        use KeyReindent::Depth;
         assert_eq!(key_reindent("javascript", '#', b"#", true), None);
-        assert_eq!(key_reindent("c", 'e', b"    else", false), Some(Depth));
-        assert_eq!(key_reindent("c", 'e', b"    x = else", false), None);
+        assert_eq!(
+            key_reindent("javascript", 'e', b"    else", false),
+            Some(Depth)
+        );
+        assert_eq!(
+            key_reindent("javascript", 'e', b"    x = else", false),
+            None
+        );
+        // C is cindent's (#1163), not a node-depth language.
+        assert_eq!(key_reindent("c", 'e', b"    else", false), None);
         assert_eq!(
             key_reindent("go", ':', b"\tcase 2:", false),
             Some(KeyReindent::GoCase)
@@ -884,7 +832,6 @@ mod tests {
             key_reindent("go", ':', b"\tdefault:", false),
             Some(KeyReindent::GoCase)
         );
-        assert_eq!(key_reindent("c", ':', b"    a::", false), Some(Depth));
         assert_eq!(key_reindent("go", ':', b"\tx := 1", false), None);
         assert_eq!(key_reindent("bash", ':', b"    case a:", false), None);
         for w in [
@@ -900,8 +847,8 @@ mod tests {
         }
         assert_eq!(key_reindent("bash", 'd', b"    find", false), None);
         assert_eq!(key_reindent("rust", 'e', b"    else", false), None);
-        use KeyReindent::{Brace, Case, Label};
-        for lang in ["c", "javascript", "bash", "rust", "css"] {
+        use KeyReindent::Brace;
+        for lang in ["javascript", "bash", "rust", "css"] {
             assert_eq!(
                 key_reindent(lang, '{', b"    {", true),
                 Some(Brace),
@@ -911,11 +858,6 @@ mod tests {
         }
         assert_eq!(key_reindent("go", '{', b"\t{", true), None);
         assert_eq!(key_reindent("json", '{', b"    {", true), None);
-        assert_eq!(key_reindent("c", ':', b"    case 2:", false), Some(Case));
-        assert_eq!(key_reindent("c", ':', b"    out:", false), Some(Label));
-        assert_eq!(key_reindent("c", ':', b"    out :", false), Some(Label));
-        assert_eq!(key_reindent("c", ':', b"    public:", false), None);
-        assert_eq!(key_reindent("c", ':', b"    int b:", false), None);
         assert_eq!(key_reindent("javascript", ':', b"    out:", false), None);
         assert_eq!(key_reindent("bash", ')', b"    c)", false), Some(Depth));
         assert_eq!(key_reindent("c", ')', b"    c)", false), None);
@@ -1064,7 +1006,7 @@ mod tests {
     }
 
     /// #1206: a C jump label sits in column 0 and its statement at the label's level; JavaScript keeps the
-    /// label at its statement's level. A typed `case` finds the previous label of its `switch`.
+    /// label at its statement's level.
     #[test]
     fn labels_and_case_alignment() {
         let src = b"int f() {\nx;\nout:\ny;\nif (a) {\nin:\nz;\n}\n}\n";
@@ -1073,20 +1015,9 @@ mod tests {
             indent_levels(&tree, src, 0, 8),
             vec![0, 1, 0, 1, 1, 0, 2, 1, 0]
         );
-        let starts = line_starts(src);
-        let it = IndentTree::new(&tree, src, 0, 0, src.len());
-        assert_eq!(it.after_label(starts[2], 2), Some(1));
-        assert_eq!(it.after_label(starts[5], 5), Some(2));
-        assert_eq!(it.after_label(starts[1], 1), None);
         let js = b"function f() {\nx;\nout:\nfor (;;) {}\n}\n";
         let tree = parse(tree_sitter_javascript::LANGUAGE.into(), js);
         assert_eq!(indent_levels(&tree, js, 0, 4), vec![0, 1, 1, 1, 0]);
-        let src = b"int f() {\n    switch (a) {\n    case 1:\n        x;\n    case 2:\n    }\n}\n";
-        let tree = parse(tree_sitter_c::LANGUAGE.into(), src);
-        let starts = line_starts(src);
-        let it = IndentTree::new(&tree, src, 0, 0, src.len());
-        assert_eq!(it.previous_case_row(starts[4] + 4), Some(2));
-        assert_eq!(it.previous_case_row(starts[2] + 4), None);
     }
 
     #[test]
