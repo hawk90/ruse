@@ -226,7 +226,7 @@ pub enum Ex {
     Retab {
         range: SubRange,
         bang: bool,
-        tabstop: Option<usize>,
+        tabstop: Option<Box<ruse_core::VarStops>>,
     },
     /// `:startinsert[!]` / `:startreplace[!]` / `:startgreplace[!]` — start Insert (or Replace) mode once
     /// the command line is done; `!` appends at the end of the line (#609).

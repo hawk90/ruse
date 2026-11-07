@@ -70,6 +70,17 @@ number; the core's `=` (`plan_reindent`) and the frontend's key path (`app/inden
 - The comment-leader continuation `open_line` adds for a `//` comment after code under `'cindent'`
   with `'formatoptions'` `r`/`o` (nvim's default `'formatoptions'` has neither).
 
+## Tab stops (#1163)
+
+`'tabstop'` and `'vartabstop'` are one model, `ruse_core::Tabs` (`crates/core/src/cells.rs`): a port of
+nvim's `tabstop_padding`, `tabstop_at`, `tabstop_start` and `tabstop_fromto`. Every width that meets a
+`<Tab>` goes through it: the renderer's line layout, cursor columns and the wanted column, blockwise
+Visual, `:retab`, the indents the engines build with tabs, `'list'` tabs. `'varsofttabstop'` steps an
+Insert `<Tab>`/`<BS>` the same way and wins over `'softtabstop'`; `'smarttab'` in the indent still steps
+by `'shiftwidth'`, as in nvim. With `sw=0`, `>>`/`<<` move from stop to stop (`get_new_vts_indent`), and
+the effective shiftwidth elsewhere is the first stop. A list holds at most 64 stops of at most 9999
+columns (nvim sets no count limit).
+
 ## The other engines
 
 - Lisp (`lisp.rs`, #1212): `get_lisp_indent` and its Lisp bracket search. `'lispoptions'` only

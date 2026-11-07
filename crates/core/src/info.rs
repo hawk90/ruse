@@ -10,6 +10,7 @@
 //! buffer stored WITHOUT a trailing newline (`noeol`) still counts a phantom EOL (`+1` byte and `+1` char),
 //! exactly as Vim's `g CTRL-G` reports.
 
+use crate::cells::Tabs;
 use crate::motion::{next_boundary, next_grapheme, vcol_of};
 use crate::pos::raw::{line_end, line_of, line_start};
 use crate::pos::BytePos;
@@ -215,7 +216,8 @@ fn col_print(col: usize, vcol: usize) -> String {
 /// four (`<ff>`), a control char two (`^A`). The cursor's is its char's first cell, a `<Tab>`'s last (nvim's
 /// `w_virtcol` in Normal mode). `tabstop` sizes `<Tab>` expansion.
 #[must_use]
-pub fn cursor_pos_info(bytes: &[u8], cursor: BytePos, tabstop: usize) -> String {
+pub fn cursor_pos_info(bytes: &[u8], cursor: BytePos, tabstop: impl Into<Tabs>) -> String {
+    let tabstop: Tabs = tabstop.into();
     let cursor = cursor.0;
     if line_count(bytes) == 0 {
         return "--No lines in buffer--".to_string();

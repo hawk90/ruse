@@ -236,8 +236,8 @@ fn atoi(s: &[u8], p: usize) -> i64 {
 /// What the cindent engine reads besides the buffer: the buffer's indent options.
 #[derive(Clone, Copy, Debug)]
 pub struct CEnv<'a> {
-    /// `'tabstop'`.
-    pub ts: usize,
+    /// `'tabstop'` and `'vartabstop'`.
+    pub ts: crate::cells::Tabs,
     /// `'cinoptions'`, parsed.
     pub cino: CinOptions,
     /// `'cinwords'`.
@@ -412,7 +412,7 @@ fn is_pos_in_string(line: &[u8], col: usize) -> bool {
 }
 
 /// `check_linecomment` (not `'lisp'`): the column of the line's `//` comment, if any.
-fn check_linecomment(line: &[u8]) -> Option<usize> {
+pub(crate) fn check_linecomment(line: &[u8]) -> Option<usize> {
     let end = strend(line, 0);
     let mut p = 0;
     while let Some(off) = line[p.min(end)..end].iter().position(|&c| c == b'/') {
@@ -566,12 +566,12 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
     /// `get_indent_lnum`: the indent of line `lnum` in columns.
     fn indent_of(&self, lnum: usize) -> i32 {
         let l = self.line(lnum);
-        let ts = self.e.ts.max(1);
+        let ts = self.e.ts;
         let mut v = 0usize;
         for &c in l {
             match c {
                 b' ' => v += 1,
-                b'\t' => v += ts - v % ts,
+                b'\t' => v += ts.padding(v),
                 _ => break,
             }
         }
@@ -3493,7 +3493,7 @@ mod tests {
     fn env(cino: &str) -> CEnv<'static> {
         let cino: &'static str = Box::leak(cino.to_string().into_boxed_str());
         CEnv {
-            ts: 8,
+            ts: crate::cells::Tabs::uniform(8),
             cino: CinOptions::parse(cino, 4),
             cinwords: "if,else,while,do,for,switch",
             cinscopedecls: DEFAULT_CINSCOPEDECLS,

@@ -176,6 +176,8 @@ fn core_option(opt: Opt, val: &OptVal) -> Option<EditorOption> {
         Opt::LispWords => EditorOption::LispWords(s(val)),
         Opt::Lisp => EditorOption::Lisp(b(val)),
         Opt::CIndent => EditorOption::CIndent(b(val)),
+        Opt::VarTabStop => EditorOption::VarTabStop(s(val)),
+        Opt::VarSoftTabStop => EditorOption::VarSoftTabStop(s(val)),
         Opt::CinOptions => EditorOption::CinOptions(s(val)),
         Opt::CinKeys => EditorOption::CinKeys(s(val)),
         Opt::CinScopeDecls => EditorOption::CinScopeDecls(s(val)),
@@ -216,6 +218,8 @@ fn core_value(opts: &[EditorOption], opt: Opt) -> Option<OptVal> {
         | (Opt::LispWords, EditorOption::LispWords(s))
         | (Opt::CinOptions, EditorOption::CinOptions(s))
         | (Opt::CinKeys, EditorOption::CinKeys(s))
+        | (Opt::VarTabStop, EditorOption::VarTabStop(s))
+        | (Opt::VarSoftTabStop, EditorOption::VarSoftTabStop(s))
         | (Opt::CinScopeDecls, EditorOption::CinScopeDecls(s)) => Some(OptVal::Text(s.into())),
         (Opt::WrapMargin, EditorOption::WrapMargin(n)) => Some(OptVal::Num(n)),
         (Opt::JoinSpaces, EditorOption::JoinSpaces(v))
@@ -694,6 +698,8 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::Lisp => "editor.lisp",
         Opt::LispWords => "editor.lispwords",
         Opt::CIndent => "editor.cindent",
+        Opt::VarTabStop => "editor.vartabstop",
+        Opt::VarSoftTabStop => "editor.varsofttabstop",
         Opt::CinOptions => "editor.cinoptions",
         Opt::CinKeys => "editor.cinkeys",
         Opt::CinScopeDecls => "editor.cinscopedecls",

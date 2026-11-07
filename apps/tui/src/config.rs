@@ -340,6 +340,20 @@ pub const SCHEMA: &[KeyDef] = &[
         false,
     ),
     key(
+        "editor.vartabstop",
+        Ty::Str,
+        Scope::Workspace,
+        Merge::Replace,
+        false,
+    ),
+    key(
+        "editor.varsofttabstop",
+        Ty::Str,
+        Scope::Workspace,
+        Merge::Replace,
+        false,
+    ),
+    key(
         "editor.cindent",
         Ty::Bool,
         Scope::Workspace,

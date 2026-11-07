@@ -256,8 +256,8 @@ fn parse_line_number(line: &str) -> Option<Ex> {
     }))
 }
 
-/// `:[range]ret[ab][!] [new_tabstop]` — the whole buffer without a range. Only a single number is accepted
-/// as the new tabstop (ruse has no `'vartabstop'`).
+/// `:[range]ret[ab][!] [new_tabstop]` — the whole buffer without a range. The new tab stops are one width
+/// or a comma list of widths (a `'vartabstop'`, #1163), parsed as nvim's `tabstop_set`.
 fn parse_retab(line: &str) -> Option<Ex> {
     let (range_str, rest) = split_range(line);
     let (verb, rest) = word(rest);
@@ -271,13 +271,20 @@ fn parse_retab(line: &str) -> Option<Ex> {
     let arg = rest.trim();
     let tabstop = if arg.is_empty() {
         None
-    } else if arg.bytes().all(|b| b.is_ascii_digit()) {
-        match arg.parse::<usize>() {
-            Ok(n) if n <= 9999 => Some(n),
-            _ => return Some(Ex::Fail("E475: Invalid argument: tabstop".into())),
-        }
     } else {
-        return Some(Ex::Fail(format!("E475: Invalid argument: {arg}")));
+        match ruse_core::VarStops::parse(arg) {
+            Some(v) => Some(v).filter(|v| !v.is_empty()).map(Box::new),
+            // nvim's `tabstop_set`: a stop that is 0 or negative is "must be positive".
+            None if arg.split(',').any(|p| {
+                !p.is_empty()
+                    && p.bytes().all(|b| b.is_ascii_digit())
+                    && p.parse::<u64>().is_ok_and(|n| n == 0)
+            }) =>
+            {
+                return Some(Ex::Fail("E487: Argument must be positive".into()));
+            }
+            None => return Some(Ex::Fail(format!("E475: Invalid argument: {arg}"))),
+        }
     };
     let range = if range_str.is_empty() {
         SubRange::WholeFile
@@ -455,7 +462,7 @@ mod tests {
             Ex::Retab {
                 range: lines(2, 3),
                 bang: true,
-                tabstop: Some(4)
+                tabstop: ruse_core::VarStops::parse("4").map(Box::new)
             }
         );
         assert!(matches!(parse_ex("retab x"), Ex::Fail(_)));

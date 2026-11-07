@@ -150629,6 +150629,2075 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "vts_bar_on_tab",
+      "lines": [
+        "\ta\tb\tc"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>10|",
+      "expect": {
+        "text": [
+          "\ta\tb\tc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_bar_past_b",
+      "lines": [
+        "\ta\tb\tc"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>14|",
+      "expect": {
+        "text": [
+          "\ta\tb\tc"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_bar_one_stop",
+      "lines": [
+        "\ta\tb"
+      ],
+      "keys": ":set ts=8 sw=8 vts=3<CR>8|",
+      "expect": {
+        "text": [
+          "\ta\tb"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_bar_repeat_last",
+      "lines": [
+        "\t\t\t\tx"
+      ],
+      "keys": ":set ts=8 sw=8 vts=2,3<CR>9|",
+      "expect": {
+        "text": [
+          "\t\t\t\tx"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_dollar_j",
+      "lines": [
+        "\t\t\tx",
+        "abcdefghijklmnopqrstuvwxyz"
+      ],
+      "keys": ":set ts=8 sw=8 vts=2,6<CR>$j",
+      "expect": {
+        "text": [
+          "\t\t\tx",
+          "abcdefghijklmnopqrstuvwxyz"
+        ],
+        "cursor": [
+          2,
+          25
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_j_wanted",
+      "lines": [
+        "abcdefghijklmnop",
+        "\t\tx"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>11|j",
+      "expect": {
+        "text": [
+          "abcdefghijklmnop",
+          "\t\tx"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_gM",
+      "lines": [
+        "\t\tabcdefghij"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>gM",
+      "expect": {
+        "text": [
+          "\t\tabcdefghij"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_ts_ignored",
+      "lines": [
+        "\ta\tb\tc"
+      ],
+      "keys": ":set sw=8 ts=2 vts=4,8<CR>14|",
+      "expect": {
+        "text": [
+          "\ta\tb\tc"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_unset",
+      "lines": [
+        "\ta\tb\tc"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>:set vts=<CR>10|",
+      "expect": {
+        "text": [
+          "\ta\tb\tc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_zero_unsets",
+      "lines": [
+        "\ta\tb\tc"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>:set vts=0<CR>10|",
+      "expect": {
+        "text": [
+          "\ta\tb\tc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_bad_zero",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,0<CR>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "vts_bad_word",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=a<CR>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "vts_bad_trailing",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,<CR>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "vts_blockwise",
+      "lines": [
+        "\tabcdef",
+        "abcdefghijklmn"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>j9|<C-v>k3ld",
+      "expect": {
+        "text": [
+          "\tabcd",
+          "abcdefghlmn"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "ef\nijk",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_retab_et",
+      "lines": [
+        "\ta\tb",
+        "\t\tc"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 et<CR>:retab<CR>",
+      "expect": {
+        "text": [
+          "    a       b",
+          "            c"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_retab_noet_bang",
+      "lines": [
+        "\ta\tb",
+        "        c"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 noet<CR>:retab!<CR>",
+      "expect": {
+        "text": [
+          "\ta\tb",
+          "\t    c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_retab_list",
+      "lines": [
+        "\ta\tb",
+        "        c"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>:retab! 4,8<CR>",
+      "expect": {
+        "text": [
+          "\t    a\t    b",
+          "\t    c"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_retab_list_sets_vts",
+      "lines": [
+        "\ta\tb"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>:retab 4,8<CR>10|",
+      "expect": {
+        "text": [
+          "\t    a\t    b"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_retab_one_sets_ts",
+      "lines": [
+        "\ta\tb"
+      ],
+      "keys": ":set ts=8 sw=8 noet<CR>:retab 3<CR>5|",
+      "expect": {
+        "text": [
+          "\t\t  a\t\t b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_retab_one_keeps_vts",
+      "lines": [
+        "\ta\tb"
+      ],
+      "keys": ":set ts=8 sw=8 noet vts=4,8<CR>:retab 3<CR>5|",
+      "expect": {
+        "text": [
+          "\t a\t\t\tb"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_retab_bad",
+      "lines": [
+        "\ta"
+      ],
+      "keys": ":set ts=8 sw=8<CR>:retab 4,0<CR>",
+      "expect": {
+        "text": [
+          "\ta"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E487",
+        "failed": true
+      }
+    },
+    {
+      "name": "vts_retab_bad_word",
+      "lines": [
+        "\ta"
+      ],
+      "keys": ":set ts=8 sw=8<CR>:retab 4,x<CR>",
+      "expect": {
+        "text": [
+          "\ta"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E475",
+        "failed": true
+      }
+    },
+    {
+      "name": "vts_ins_tab_et",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 et sts=0 nosta<CR>i<Tab>a<Tab>b<Tab>c<Esc>",
+      "expect": {
+        "text": [
+          "    a       b       cx"
+        ],
+        "cursor": [
+          1,
+          20
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_ins_tab_et_sta",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 et sts=0<CR>i<Tab>a<Tab>b<Tab>c<Esc>",
+      "expect": {
+        "text": [
+          "        a   b       cx"
+        ],
+        "cursor": [
+          1,
+          20
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_ins_tab_noet",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 noet sts=0<CR>i<Tab>a<Tab>b<Esc>",
+      "expect": {
+        "text": [
+          "\t    a\tbx"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_ins_tab_noet_nosta",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 noet nosta<CR>i<Tab><Tab>a<Esc>",
+      "expect": {
+        "text": [
+          "\t\tax"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_tab_noet",
+      "lines": [
+        ""
+      ],
+      "keys": ":set sw=8 ts=8 vsts=2,4 noet nosta<CR>i<Tab><Tab><Tab>a<Esc>",
+      "expect": {
+        "text": [
+          "\t  a"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_tab_et",
+      "lines": [
+        ""
+      ],
+      "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>i<Tab><Tab><Tab>a<Esc>",
+      "expect": {
+        "text": [
+          "          a"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_bs_noet",
+      "lines": [
+        ""
+      ],
+      "keys": ":set sw=8 ts=8 vsts=2,4 noet nosta<CR>i<Tab><Tab><Tab><BS>a<Esc>",
+      "expect": {
+        "text": [
+          "      a"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_bs_et",
+      "lines": [
+        ""
+      ],
+      "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>i<Tab><Tab><Tab><BS>a<Esc>",
+      "expect": {
+        "text": [
+          "      a"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_bs_twice",
+      "lines": [
+        ""
+      ],
+      "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>i<Tab><Tab><Tab><BS><BS>a<Esc>",
+      "expect": {
+        "text": [
+          "  a"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_mid_line",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>A<Tab>d<Tab>e<Esc>",
+      "expect": {
+        "text": [
+          "abc   d   e"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_with_vts",
+      "lines": [
+        ""
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 vsts=3 noet nosta<CR>i<Tab><Tab><Tab><Tab>a<Esc>",
+      "expect": {
+        "text": [
+          "\t\ta"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_vsts_wins_over_sts",
+      "lines": [
+        ""
+      ],
+      "keys": ":set sw=8 ts=8 sts=4 vsts=2 et nosta<CR>i<Tab><Tab>a<Esc>",
+      "expect": {
+        "text": [
+          "    a"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_sta_tab",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=4 sta noet<CR>i<Tab><Tab><Tab><Esc>",
+      "expect": {
+        "text": [
+          "\t\tx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_bs_tab_char",
+      "lines": [
+        "\t\tx"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 noet nosta sts=0<CR>A<Esc>0f\tla<BS><Esc>",
+      "expect": {
+        "text": [
+          "\t\t"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_shift_sw0",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=0 noet<CR>>>>>",
+      "expect": {
+        "text": [
+          "\t\tx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_shift_sw0_left",
+      "lines": [
+        "\t\t\tx"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=0 noet<CR><<",
+      "expect": {
+        "text": [
+          "\t\tx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_shift_sw0_offset",
+      "lines": [
+        "      x"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=0 et<CR>>>",
+      "expect": {
+        "text": [
+          "              x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_shift_sw0_round",
+      "lines": [
+        "      x"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=0 et sr<CR>>>",
+      "expect": {
+        "text": [
+          "            x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_shift_sw0_round_left",
+      "lines": [
+        "      x"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=0 et sr<CR><<",
+      "expect": {
+        "text": [
+          "    x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_shift_sw4",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 vts=3,8 sw=4 noet<CR>>>>>>>",
+      "expect": {
+        "text": [
+          "\t\t x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_shift_count",
+      "lines": [
+        "x",
+        "y"
+      ],
+      "keys": ":set ts=8 vts=2,6 sw=0 noet<CR>3>>",
+      "expect": {
+        "text": [
+          "\tx",
+          "\ty"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_ai_noet",
+      "lines": [
+        "            x"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8 noet ai<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "            x",
+          "\t\ty"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_ctrl_t",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=6 noet<CR>i<C-t><C-t><Esc>",
+      "expect": {
+        "text": [
+          "\t\tx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_eq_noet",
+      "lines": [
+        "int f() {",
+        "if (a)",
+        "x;",
+        "}"
+      ],
+      "keys": ":set ts=8 vts=4,8 sw=4 noet<CR>=G",
+      "expect": {
+        "text": [
+          "int f() {",
+          "\tif (a)",
+          "\t    x;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_list_tab",
+      "lines": [
+        "\tab"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>A<C-v><Tab>x<Esc>",
+      "expect": {
+        "text": [
+          "\tab\tx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "vts_insert_tab_char_col",
+      "lines": [
+        "\tab"
+      ],
+      "keys": ":set ts=8 sw=8 vts=4,8<CR>$i<C-v><Tab><Esc>",
+      "expect": {
+        "text": [
+          "\ta\tb"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_quote",
+      "lines": [
+        "(a \")\" b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a \")\" b)"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_quote_back",
+      "lines": [
+        "(a \"(\" b)"
+      ],
+      "keys": "$%",
+      "expect": {
+        "text": [
+          "(a \"(\" b)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_char_lit",
+      "lines": [
+        "(a ')' b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a ')' b)"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_char_lit_esc",
+      "lines": [
+        "(a '\\)' b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a '\\)' b)"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_odd_quotes",
+      "lines": [
+        "(a \" ) b"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a \" ) b"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_escaped",
+      "lines": [
+        "(a \\) b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a \\) b)"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_escaped_start",
+      "lines": [
+        "\\(a ( b) c\\)"
+      ],
+      "keys": "l%",
+      "expect": {
+        "text": [
+          "\\(a ( b) c\\)"
+        ],
+        "cursor": [
+          1,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_in_quotes_start",
+      "lines": [
+        "\"(a)\" (b)"
+      ],
+      "keys": "l%",
+      "expect": {
+        "text": [
+          "\"(a)\" (b)"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_cursor_before",
+      "lines": [
+        "x = f(a, b);"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "x = f(a, b);"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_multiline_quote",
+      "lines": [
+        "f(\"a)\",",
+        "b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "f(\"a)\",",
+          "b)"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_eol_backslash",
+      "lines": [
+        "f(\"a \\",
+        ")\")",
+        "x"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "f(\"a \\",
+          ")\")",
+          "x"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_nothing",
+      "lines": [
+        "abc"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "pct_brace_mix",
+      "lines": [
+        "{ ( } )"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "{ ( } )"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_op_d",
+      "lines": [
+        "(a \")\" b) c"
+      ],
+      "keys": "d%",
+      "expect": {
+        "text": [
+          " c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "(a \")\" b)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_comment_start",
+      "lines": [
+        "/* a",
+        "b */ x"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "/* a",
+          "b */ x"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_comment_end",
+      "lines": [
+        "/* a",
+        "b */ x"
+      ],
+      "keys": "j$hh%",
+      "expect": {
+        "text": [
+          "/* a",
+          "b */ x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_comment_star",
+      "lines": [
+        "/* a */"
+      ],
+      "keys": "l%",
+      "expect": {
+        "text": [
+          "/* a */"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_ifdef",
+      "lines": [
+        "#if A",
+        "x",
+        "#else",
+        "y",
+        "#endif"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "#if A",
+          "x",
+          "#else",
+          "y",
+          "#endif"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_ifdef_chain",
+      "lines": [
+        "#if A",
+        "x",
+        "#else",
+        "y",
+        "#endif"
+      ],
+      "keys": "%%%",
+      "expect": {
+        "text": [
+          "#if A",
+          "x",
+          "#else",
+          "y",
+          "#endif"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_ifdef_nested",
+      "lines": [
+        "#ifdef A",
+        "#if B",
+        "#endif",
+        "#endif"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "#ifdef A",
+          "#if B",
+          "#endif",
+          "#endif"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_ifdef_indented",
+      "lines": [
+        "  #  if A",
+        "x",
+        "  #endif"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "  #  if A",
+          "x",
+          "  #endif"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_hash_no_if",
+      "lines": [
+        "#define X (1)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "#define X (1)"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_lisp_comment",
+      "lines": [
+        "(a ; )",
+        "b)"
+      ],
+      "keys": ":set lisp<CR>%",
+      "expect": {
+        "text": [
+          "(a ; )",
+          "b)"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_nolisp_comment",
+      "lines": [
+        "(a ; )",
+        "b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a ; )",
+          "b)"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_lisp_hash_char",
+      "lines": [
+        "(a #\\) b)"
+      ],
+      "keys": ":set lisp<CR>%",
+      "expect": {
+        "text": [
+          "(a #\\) b)"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_lisp_in_comment",
+      "lines": [
+        "x ; (a)"
+      ],
+      "keys": ":set lisp<CR>f(%",
+      "expect": {
+        "text": [
+          "x ; (a)"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_lisp_comment_quote",
+      "lines": [
+        "(a ; \"",
+        "b)"
+      ],
+      "keys": ":set lisp<CR>%",
+      "expect": {
+        "text": [
+          "(a ; \"",
+          "b)"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_lisp_string_semicolon",
+      "lines": [
+        "(a \";\" )"
+      ],
+      "keys": ":set lisp<CR>%",
+      "expect": {
+        "text": [
+          "(a \";\" )"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pct_lisp_back",
+      "lines": [
+        "(a",
+        "; (",
+        "b)"
+      ],
+      "keys": ":set lisp<CR>G$%",
+      "expect": {
+        "text": [
+          "(a",
+          "; (",
+          "b)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

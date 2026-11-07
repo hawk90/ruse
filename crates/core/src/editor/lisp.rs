@@ -6,6 +6,7 @@
 //! A line's indent depends only on the lines above it, so the callers pass those lines.
 
 use super::range::cluster_cells;
+use crate::cells::Tabs;
 
 /// `'lispwords'` at its nvim default.
 pub const DEFAULT_LISPWORDS: &str = "defun,define,defmacro,set!,lambda,if,case,let,flet,let*,\
@@ -103,7 +104,7 @@ fn is_pos_in_string(line: &[u8], col: usize) -> bool {
 }
 
 /// `check_linecomment` under `'lisp'`: where the line's `;` comment starts.
-fn line_comment(line: &[u8]) -> Option<usize> {
+pub(crate) fn line_comment(line: &[u8]) -> Option<usize> {
     if !line.contains(&b';') {
         return None;
     }
@@ -268,12 +269,12 @@ fn lisp_match(p: &[u8], words: &str) -> bool {
 }
 
 /// The width of the character at `i` when it starts at virtual column `v`.
-fn width(line: &[u8], i: usize, v: usize, ts: usize) -> (usize, usize) {
+fn width(line: &[u8], i: usize, v: usize, ts: Tabs) -> (usize, usize) {
     cluster_cells(line, i, line.len(), v, ts)
 }
 
 /// `get_lisp_indent` for line `l` of `lines` (only the lines above it are read).
-pub(crate) fn lisp_indent<T: AsRef<[u8]>>(lines: &[T], l: usize, ts: usize, words: &str) -> usize {
+pub(crate) fn lisp_indent<T: AsRef<[u8]>>(lines: &[T], l: usize, ts: Tabs, words: &str) -> usize {
     let paren = find_open(lines, l, b'(', b')');
     let bracket = find_open(lines, l, b'[', b']');
     let pos = match (paren, bracket) {
@@ -328,13 +329,16 @@ pub(crate) fn lisp_indent<T: AsRef<[u8]>>(lines: &[T], l: usize, ts: usize, word
         }
         if parencount == 0 {
             let ind = line.iter().take_while(|&&c| is_white(c));
-            return ind.fold(0, |v, &c| {
-                if c == b'\t' {
-                    v + ts - v % ts.max(1)
-                } else {
-                    v + 1
-                }
-            });
+            return ind.fold(
+                0,
+                |v, &c| {
+                    if c == b'\t' {
+                        v + ts.padding(v)
+                    } else {
+                        v + 1
+                    }
+                },
+            );
         }
     }
     // Else from the open bracket: after it, lined up with the first argument, or two in for a body.
@@ -411,7 +415,7 @@ pub(crate) fn reindent(
     b: &[u8],
     first: usize,
     last: usize,
-    ts: usize,
+    ts: Tabs,
     words: &str,
     ws: impl Fn(usize) -> Vec<u8>,
 ) -> Vec<Option<usize>> {
@@ -438,7 +442,7 @@ pub(crate) fn reindent(
 }
 
 /// The Lisp indent of line `l` of `b`.
-pub(crate) fn line_indent(b: &[u8], l: usize, ts: usize, words: &str) -> usize {
+pub(crate) fn line_indent(b: &[u8], l: usize, ts: Tabs, words: &str) -> usize {
     let lines: Vec<&[u8]> = b.split(|&c| c == b'\n').take(l + 1).collect();
     lisp_indent(&lines, l.min(lines.len().saturating_sub(1)), ts, words)
 }
@@ -449,7 +453,7 @@ mod tests {
 
     fn ind(src: &str, l: usize) -> usize {
         let lines: Vec<&[u8]> = src.split('\n').map(str::as_bytes).collect();
-        lisp_indent(&lines, l, 8, DEFAULT_LISPWORDS)
+        lisp_indent(&lines, l, Tabs::uniform(8), DEFAULT_LISPWORDS)
     }
 
     #[test]

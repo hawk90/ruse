@@ -100,7 +100,7 @@ fn opts(ws: &Workspace) -> Opts {
     let view = ws.focused().view;
     Opts {
         shiftwidth: view.shift_width(),
-        tabstop: view.tab_width(),
+        tabstop: view.tabs(),
         expandtab: view
             .editing_options()
             .iter()
@@ -324,7 +324,7 @@ fn depth_key_reindent(
     let le = line_end(b, cur).0;
     let key = crate::indent::key_reindent(lang, ch, &b[ls..cur.0], white)?;
     let row = line_of(b, BytePos(ls));
-    let ts = pane.view.tab_width();
+    let ts = pane.view.tabs();
     let sw = pane.view.shift_width();
     // The cached tree is only shifted by the key's edit; the line's window is parsed afresh.
     let like = highlighters
@@ -373,7 +373,14 @@ fn key_window<'a>(
 /// `case`/`default` label (#1206): the indent of the last non-blank line above, one `sw` more when that
 /// line ends in `(` or `{` and one more when it is a label, one less when this line starts with a closer
 /// and one less for the label itself. `//` comments are dropped first. Saturates at column 0.
-fn go_case_indent(b: &[u8], ls: usize, le: usize, ts: usize, sw: usize) -> usize {
+fn go_case_indent(
+    b: &[u8],
+    ls: usize,
+    le: usize,
+    ts: impl Into<ruse_core::Tabs>,
+    sw: usize,
+) -> usize {
+    let ts: ruse_core::Tabs = ts.into();
     let strip = |l: &[u8]| -> Vec<u8> {
         let end = l.windows(2).position(|w| w == b"//").unwrap_or(l.len());
         l[..end].to_vec()
@@ -419,7 +426,8 @@ fn go_case_indent(b: &[u8], ls: usize, le: usize, ts: usize, sw: usize) -> usize
 }
 
 /// The indent in columns of buffer row `row`.
-fn line_indent(b: &[u8], row: usize, ts: usize) -> usize {
+fn line_indent(b: &[u8], row: usize, ts: impl Into<ruse_core::Tabs>) -> usize {
+    let ts: ruse_core::Tabs = ts.into();
     let mut ls = 0;
     for _ in 0..row {
         match b[ls..].iter().position(|&c| c == b'\n') {
@@ -431,7 +439,8 @@ fn line_indent(b: &[u8], row: usize, ts: usize) -> usize {
 }
 
 /// The indent in columns of the last non-blank line above the line starting at `ls`, or 0.
-fn prev_line_indent(b: &[u8], ls: usize, ts: usize) -> usize {
+fn prev_line_indent(b: &[u8], ls: usize, ts: impl Into<ruse_core::Tabs>) -> usize {
+    let ts: ruse_core::Tabs = ts.into();
     let mut end = ls;
     while end > 0 {
         let start = b[..end - 1]
@@ -448,11 +457,14 @@ fn prev_line_indent(b: &[u8], ls: usize, ts: usize) -> usize {
 }
 
 /// The columns the leading blanks of `line` take.
-fn indent_cols(line: &[u8], ts: usize) -> usize {
-    let ts = ts.max(1);
+fn indent_cols(line: &[u8], ts: impl Into<ruse_core::Tabs>) -> usize {
+    let ts: ruse_core::Tabs = ts.into();
     line.iter()
         .take_while(|&&c| c == b' ' || c == b'\t')
-        .fold(0, |c, &x| if x == b'\t' { c + ts - c % ts } else { c + 1 })
+        .fold(
+            0,
+            |c, &x| if x == b'\t' { c + ts.padding(c) } else { c + 1 },
+        )
 }
 
 /// A [`Command::SetIndentCols`] that gives line `row` of the focused buffer `cols` columns of indent, or
@@ -462,7 +474,7 @@ fn set_line_indent(ws: &Workspace, row: usize, cols: usize) -> Option<Command> {
     let b = pane.doc.bytes();
     let cur = pane.view.cursor();
     let line = &b[line_start(b, cur).0..line_end(b, cur).0];
-    (cols != indent_cols(line, pane.view.tab_width())).then(|| Command::SetIndentCols {
+    (cols != indent_cols(line, pane.view.tabs())).then(|| Command::SetIndentCols {
         first_line: row,
         last_line: row,
         cols: vec![Some(cols)],

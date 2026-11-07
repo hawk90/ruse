@@ -7,6 +7,8 @@
 //! (wcwidth via `unicode-width`, tab-aware). The four are distinct types and never interchanged as bare
 //! `usize`, per F-002 ("distinct types, not interchanged").
 
+use crate::cells::Tabs;
+
 /// A strictly-monotonic per-Document version stamp (**INV-TXN**, RFC-0007 §2).
 ///
 /// Opaque and comparable; it is **not** a wall clock and **not** a tree position. *Every* apply —
@@ -96,20 +98,20 @@ pub fn grapheme_to_byte(text: &str, g: GraphemePos) -> BytePos {
 
 /// The **display cell column** just before byte position `b` (F-002): the summed terminal width of
 /// `text[..b]`, where a wide/CJK glyph is 2 cells, a zero-width combining mark 0, and a tab advances
-/// to the next `tab_width` stop. This is the coordinate the renderer places the cursor at — distinct
+/// to its next stop (`'tabstop'`/`'vartabstop'`). This is the coordinate the renderer places the cursor at — distinct
 /// from the grapheme count (`宽` is one grapheme but two cells).
 #[must_use]
-pub fn byte_to_cell(text: &str, b: BytePos, tab_width: usize) -> CellCol {
+pub fn byte_to_cell(text: &str, b: BytePos, tab_width: impl Into<Tabs>) -> CellCol {
+    let tab_width: Tabs = tab_width.into();
     use unicode_width::UnicodeWidthChar;
     debug_assert!(
         b.0 <= text.len() && text.is_char_boundary(b.0),
         "byte pos not on a char boundary"
     );
-    let tab = tab_width.max(1);
     let mut col = 0usize;
     for ch in text[..b.0].chars() {
         col += match ch {
-            '\t' => tab - (col % tab),
+            '\t' => tab_width.padding(col),
             c => c.width().unwrap_or(0),
         };
     }

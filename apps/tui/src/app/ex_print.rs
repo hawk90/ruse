@@ -19,19 +19,19 @@ pub(crate) fn print_line(
     lnum: usize,
     flags: PrintFlags,
     width: usize,
-    ts: usize,
+    ts: impl Into<ruse_core::Tabs>,
 ) -> String {
+    let ts: ruse_core::Tabs = ts.into();
     let mut out = String::new();
     if flags.number {
         out.push_str(&format!("{lnum:>width$} "));
     }
-    let ts = ts.max(1);
     let trail = text.trim_end_matches([' ', '\t']).len();
     let mut vcol = 0usize;
     for (i, c) in text.char_indices() {
         match c {
             '\t' => {
-                let w = ts - vcol % ts;
+                let w = ts.padding(vcol);
                 if flags.list {
                     out.push('>');
                     out.extend(std::iter::repeat_n(' ', w - 1));
@@ -72,9 +72,10 @@ pub(crate) fn rows(
     first: usize,
     last: usize,
     flags: PrintFlags,
-    ts: usize,
+    ts: impl Into<ruse_core::Tabs>,
     keep: &dyn Fn(&str) -> bool,
 ) -> Vec<String> {
+    let ts: ruse_core::Tabs = ts.into();
     let text = String::from_utf8_lossy(bytes);
     let mut lines: Vec<&str> = text.split('\n').collect();
     if text.ends_with('\n') {

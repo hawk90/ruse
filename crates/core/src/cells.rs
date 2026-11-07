@@ -196,9 +196,302 @@ pub fn glyph_cells(g: Glyph<'_>, prev_invalid: bool, uhex: bool) -> usize {
     }
 }
 
+/// The most stops a `'vartabstop'` / `'varsofttabstop'` list holds in ruse (nvim sets no limit).
+pub const MAX_VAR_STOPS: usize = 64;
+/// The widest tab stop nvim accepts (`TABSTOP_MAX`).
+pub const MAX_STOP: usize = 9999;
+
+/// A `'vartabstop'` / `'varsofttabstop'` list (#1163): the widths of the successive tab stops, the last
+/// one repeating; empty when the option is unset. Parsed as nvim's `tabstop_set` does.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct VarStops {
+    n: u8,
+    stops: [u16; MAX_VAR_STOPS],
+}
+
+impl Default for VarStops {
+    fn default() -> Self {
+        VarStops::NONE
+    }
+}
+
+impl VarStops {
+    /// No stops (the option unset).
+    pub const NONE: VarStops = VarStops {
+        n: 0,
+        stops: [0; MAX_VAR_STOPS],
+    };
+
+    /// Parse an option value: comma-separated widths `1..=`[`MAX_STOP`] (`""` and `"0"` mean unset).
+    /// `None` for anything else, which nvim refuses with `E474`.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<VarStops> {
+        if s.is_empty() || s == "0" {
+            return Some(VarStops::NONE);
+        }
+        let mut out = VarStops::NONE;
+        for part in s.split(',') {
+            if part.is_empty() || !part.bytes().all(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            let n: usize = part.parse().ok()?;
+            if n == 0 || n > MAX_STOP || usize::from(out.n) == MAX_VAR_STOPS {
+                return None;
+            }
+            out.stops[usize::from(out.n)] = u16::try_from(n).ok()?;
+            out.n += 1;
+        }
+        Some(out)
+    }
+
+    /// The number of stops (`tabstop_count`).
+    #[must_use]
+    pub fn count(&self) -> usize {
+        usize::from(self.n)
+    }
+
+    /// Whether the list is empty (the option unset).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+
+    /// The stop widths.
+    #[must_use]
+    pub fn stops(&self) -> &[u16] {
+        &self.stops[..self.count()]
+    }
+
+    /// The sum of the first `k` stop widths (`get_vts_sum`).
+    #[must_use]
+    pub fn sum(&self, k: usize) -> usize {
+        let s = self.stops();
+        let inside: usize = s.iter().take(k).map(|&w| usize::from(w)).sum();
+        inside + k.saturating_sub(s.len()) * usize::from(*s.last().unwrap_or(&0))
+    }
+}
+
+/// The tab stops a line is laid out with (#1163): `'tabstop'` and, when set, `'vartabstop'`, which then
+/// wins. Every width and column computation that meets a `<Tab>` goes through this, as nvim's goes
+/// through `tabstop_padding` and friends (`indent.c`).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct Tabs {
+    ts: usize,
+    vts: VarStops,
+}
+
+impl From<usize> for Tabs {
+    fn from(ts: usize) -> Tabs {
+        Tabs::uniform(ts)
+    }
+}
+
+impl Tabs {
+    /// A stop every `ts` columns.
+    #[must_use]
+    pub const fn uniform(ts: usize) -> Tabs {
+        Tabs {
+            ts: if ts == 0 { 1 } else { ts },
+            vts: VarStops::NONE,
+        }
+    }
+
+    /// `'tabstop'` `ts` with `'vartabstop'` `vts`.
+    #[must_use]
+    pub fn new(ts: usize, vts: VarStops) -> Tabs {
+        Tabs { ts: ts.max(1), vts }
+    }
+
+    /// `'tabstop'`.
+    #[must_use]
+    pub fn tabstop(&self) -> usize {
+        self.ts
+    }
+
+    /// `'vartabstop'`.
+    #[must_use]
+    pub fn var(&self) -> &VarStops {
+        &self.vts
+    }
+
+    /// The cells a `<Tab>` starting at virtual column `col` takes (`tabstop_padding`).
+    #[must_use]
+    pub fn padding(&self, col: usize) -> usize {
+        padding(col, self.ts, &self.vts)
+    }
+
+    /// The width of the tab interval holding `col`, or (`left`) the one before it (`tabstop_at`).
+    #[must_use]
+    pub fn interval_width(&self, col: usize, left: bool) -> usize {
+        let s = self.vts.stops();
+        if s.is_empty() {
+            return self.ts;
+        }
+        let mut tabcol = 0usize;
+        for (t, &w) in s.iter().enumerate() {
+            tabcol += usize::from(w);
+            if tabcol > col {
+                return if left && t == 0 {
+                    col
+                } else if left {
+                    usize::from(s[t - 1])
+                } else {
+                    usize::from(w)
+                };
+            }
+        }
+        usize::from(s[s.len() - 1])
+    }
+
+    /// The column the tab interval holding `col` starts at (`tabstop_start`).
+    #[must_use]
+    pub fn start_col(&self, col: usize) -> usize {
+        start_col(col, self.ts, &self.vts)
+    }
+
+    /// The tabs and spaces that fill the columns `[from, to)` (`tabstop_fromto`).
+    #[must_use]
+    pub fn fromto(&self, from_col: usize, to_col: usize) -> (usize, usize) {
+        let (from, to) = (from_col, to_col);
+        let spaces = to.saturating_sub(from);
+        let s = self.vts.stops();
+        if s.is_empty() {
+            let ts = self.ts;
+            let initspc = ts - from % ts;
+            let (mut tabs, mut sp) = (0, spaces);
+            if sp >= initspc {
+                sp -= initspc;
+                tabs += 1;
+            }
+            return (tabs + sp / ts, sp % ts);
+        }
+        let mut tabcol = 0usize;
+        let mut t = 0usize;
+        let mut pad = None;
+        while t < s.len() {
+            tabcol += usize::from(s[t]);
+            if tabcol > from {
+                pad = Some(tabcol - from);
+                break;
+            }
+            t += 1;
+        }
+        let last = usize::from(s[s.len() - 1]);
+        let pad = pad.unwrap_or_else(|| last - (from - tabcol) % last);
+        if spaces < pad {
+            return (0, spaces);
+        }
+        let (mut tabs, mut sp) = (1usize, spaces - pad);
+        while sp != 0 {
+            t += 1;
+            if t >= s.len() {
+                break;
+            }
+            let w = usize::from(s[t]);
+            if sp < w {
+                return (tabs, sp);
+            }
+            tabs += 1;
+            sp -= w;
+        }
+        (tabs + sp / last, sp % last)
+    }
+
+    /// The leading whitespace that spans `cols` columns from column 0: tabs then spaces (`noexpandtab`).
+    #[must_use]
+    pub fn fill(&self, cols: usize) -> Vec<u8> {
+        let (t, s) = self.fromto(0, cols);
+        let mut v = vec![b'\t'; t];
+        v.extend(std::iter::repeat_n(b' ', s));
+        v
+    }
+}
+
+/// `tabstop_padding` for `'tabstop'` (or `'softtabstop'`) `ts` and the stops `vts`.
+#[must_use]
+pub fn padding(col: usize, ts: usize, vts: &VarStops) -> usize {
+    let s = vts.stops();
+    if s.is_empty() {
+        let ts = if ts == 0 { 8 } else { ts };
+        return ts - col % ts;
+    }
+    let mut tabcol = 0usize;
+    for &w in s {
+        tabcol += usize::from(w);
+        if tabcol > col {
+            return tabcol - col;
+        }
+    }
+    let last = usize::from(s[s.len() - 1]);
+    last - (col - tabcol) % last
+}
+
+/// `tabstop_start` for `ts` (or `'softtabstop'`) and the stops `vts`.
+#[must_use]
+pub fn start_col(col: usize, ts: usize, vts: &VarStops) -> usize {
+    let s = vts.stops();
+    if s.is_empty() {
+        let ts = ts.max(1);
+        return col - col % ts;
+    }
+    let mut tabcol = 0usize;
+    for &w in s {
+        tabcol += usize::from(w);
+        if tabcol > col {
+            return tabcol - usize::from(w);
+        }
+    }
+    let last = usize::from(s[s.len() - 1]);
+    let excess = tabcol % last;
+    col - (col - excess) % last
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tabs(s: &str) -> Tabs {
+        Tabs::new(8, VarStops::parse(s).expect("valid"))
+    }
+
+    /// #1163: nvim's `tabstop_padding`, `tabstop_at`, `tabstop_start`, `tabstop_fromto`.
+    #[test]
+    fn var_tab_stops_follow_nvim() {
+        let t = tabs("4,8");
+        assert_eq!(
+            (t.padding(0), t.padding(3), t.padding(4), t.padding(12)),
+            (4, 1, 8, 8)
+        );
+        assert_eq!((t.padding(13), t.padding(20)), (7, 8));
+        assert_eq!(
+            (
+                t.interval_width(0, false),
+                t.interval_width(4, false),
+                t.interval_width(30, false)
+            ),
+            (4, 8, 8)
+        );
+        assert_eq!(
+            (t.interval_width(4, true), t.interval_width(2, true)),
+            (4, 2)
+        );
+        assert_eq!(
+            (t.start_col(3), t.start_col(5), t.start_col(13)),
+            (0, 4, 12)
+        );
+        assert_eq!(t.fromto(0, 8), (1, 4));
+        assert_eq!(t.fromto(0, 12), (2, 0));
+        assert_eq!(t.fromto(5, 21), (2, 1));
+        assert_eq!(tabs("3,8").fill(12), b"\t\t ".to_vec());
+        assert_eq!(Tabs::uniform(4).fromto(2, 9), (2, 1));
+        let v = VarStops::parse("2,6").expect("valid");
+        assert_eq!((v.sum(0), v.sum(2), v.sum(4)), (0, 8, 20));
+        assert_eq!(VarStops::parse(""), Some(VarStops::NONE));
+        assert_eq!(VarStops::parse("0"), Some(VarStops::NONE));
+        for bad in ["4,0", "a", "4,", ",4", "4,,8", "-1", "10000"] {
+            assert_eq!(VarStops::parse(bad), None, "{bad}");
+        }
+    }
 
     #[test]
     fn widths_match_nvim() {

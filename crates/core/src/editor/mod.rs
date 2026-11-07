@@ -8,6 +8,7 @@
 use std::borrow::Cow;
 
 use crate::anchor::Tracked;
+use crate::cells::{Tabs, VarStops};
 use crate::command::{
     BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOffset, SearchOp,
     SelectKind, VisualOp, WordCase,
@@ -138,6 +139,12 @@ pub enum EditorOption {
     /// `'wrapmargin'` (`wm`) — with `'textwidth'` 0, wrap this many columns before the window's right edge
     /// (#618).
     WrapMargin(i64),
+    /// `'vartabstop'` (`vts`) — the comma-separated widths of the successive tab stops, the last one
+    /// repeating; empty is off, and then `'tabstop'` applies (#1163). An invalid list is ignored.
+    VarTabStop(String),
+    /// `'varsofttabstop'` (`vsts`) — the same for the soft tab stops an Insert `<Tab>`/`<BS>` steps by;
+    /// empty is off, and then `'softtabstop'` applies (#1163).
+    VarSoftTabStop(String),
     /// `'lisp'` — `=` and, under `'autoindent'`, `o`/`O`/`<CR>`/`cc` indent by the Lisp rules (#1163).
     Lisp(bool),
     /// `'lispwords'` (`lw`) — the comma-separated words whose forms `'lisp'` indents as a body (#1163).
@@ -210,6 +217,12 @@ struct IndentConfig {
     style: IndentStyle,
     /// `'softtabstop'`: `0` off, negative follows the effective shiftwidth (`editor.softtabstop`).
     soft_tab: i64,
+    /// `'vartabstop'` (`vts`): the widths of the successive tab stops; wins over `tab_width` when set
+    /// (#1163).
+    vts: VarStops,
+    /// `'varsofttabstop'` (`vsts`): the widths of the successive soft tab stops; wins over `soft_tab`
+    /// when set (#1163).
+    vsts: VarStops,
     /// `'autoindent'` (`editor.autoindent`, default on as in nvim).
     autoindent: bool,
     /// `'smartindent'` (`editor.smartindent`).
@@ -282,6 +295,8 @@ impl ViewOptions {
             shift_width: 4,
             style: IndentStyle::Space,
             soft_tab: 0,
+            vts: VarStops::NONE,
+            vsts: VarStops::NONE,
             autoindent: true,
             smartindent: false,
             copyindent: false,
@@ -331,6 +346,16 @@ impl ViewOptions {
                 }
             }
             EditorOption::TextWidth(n) => self.text_width = n.min(MAX_OPTION_INT),
+            EditorOption::VarTabStop(v) => {
+                if let Some(v) = VarStops::parse(&v) {
+                    self.indent.vts = v;
+                }
+            }
+            EditorOption::VarSoftTabStop(v) => {
+                if let Some(v) = VarStops::parse(&v) {
+                    self.indent.vsts = v;
+                }
+            }
             EditorOption::SoftTabStop(n) => {
                 self.indent.soft_tab = n.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
             }
@@ -372,6 +397,8 @@ impl ViewOptions {
             EditorOption::ExpandTab(self.indent.style == IndentStyle::Space),
             EditorOption::TextWidth(self.text_width),
             EditorOption::SoftTabStop(self.indent.soft_tab),
+            EditorOption::VarTabStop(stops_text(&self.indent.vts)),
+            EditorOption::VarSoftTabStop(stops_text(&self.indent.vsts)),
             EditorOption::AutoIndent(self.indent.autoindent),
             EditorOption::SmartIndent(self.indent.smartindent),
             EditorOption::CopyIndent(self.indent.copyindent),
@@ -419,27 +446,34 @@ impl ViewOptions {
     }
 }
 
+/// A stop list as its option value: the widths joined by `,`, empty when unset.
+pub(crate) fn stops_text(v: &VarStops) -> String {
+    let parts: Vec<String> = v.stops().iter().map(u16::to_string).collect();
+    parts.join(",")
+}
+
 impl IndentConfig {
-    /// The effective shiftwidth: `shift_width`, or the tabstop when it is `0` (Vim's `sw=0`).
+    /// The effective shiftwidth: `shift_width`, or when it is `0` the tabstop (Vim's `sw=0`), under
+    /// `'vartabstop'` its first stop (nvim's `get_sw_value`, #1163).
     fn shift_width(self) -> usize {
         if self.shift_width == 0 {
-            self.tab_width.max(1)
+            self.tabs().interval_width(0, false)
         } else {
             self.shift_width
         }
     }
 
+    /// The tab stops (`'tabstop'`, `'vartabstop'`) this config lays a line out with (#1163).
+    pub(crate) fn tabs(self) -> Tabs {
+        Tabs::new(self.tab_width, self.vts)
+    }
+
     /// The leading whitespace that spans `cols` columns in this style: `cols` spaces (`expandtab`), else as
-    /// many `\t` as fit at this tabstop plus a spaces remainder (Vim's `noexpandtab` indent).
+    /// many `\t` as fit at the tab stops plus a spaces remainder (Vim's `noexpandtab` indent).
     fn whitespace(self, cols: usize) -> Vec<u8> {
         match self.style {
             IndentStyle::Space => vec![b' '; cols],
-            IndentStyle::Tab => {
-                let ts = self.tab_width.max(1);
-                let mut v = vec![b'\t'; cols / ts];
-                v.extend(std::iter::repeat_n(b' ', cols % ts));
-                v
-            }
+            IndentStyle::Tab => self.tabs().fill(cols),
         }
     }
 }
@@ -494,7 +528,7 @@ enum WantKind {
     At {
         text: std::sync::Arc<Vec<u8>>,
         pos: usize,
-        ts: usize,
+        ts: Tabs,
         tab_end: bool,
         col: std::sync::OnceLock<usize>,
     },
@@ -1306,6 +1340,13 @@ impl View {
         self.indent.tab_width
     }
 
+    /// This View's tab stops: `'tabstop'` and `'vartabstop'` (#1163). Every width that meets a `<Tab>`
+    /// (rendering, cursor columns, indents) is measured with these.
+    #[must_use]
+    pub fn tabs(&self) -> Tabs {
+        self.indent.tabs()
+    }
+
     /// This View's effective `'shiftwidth'` in columns (`editor.shift_width`, `:set shiftwidth`): one indent
     /// level. A `shiftwidth` of `0` resolves to the tabstop (Vim's `sw=0`), so this is always `>= 1`.
     #[must_use]
@@ -1363,7 +1404,7 @@ impl View {
 
     fn c_env(&self, cino: cindent::CinOptions) -> cindent::CEnv<'_> {
         cindent::CEnv {
-            ts: self.indent.tab_width,
+            ts: self.indent.tabs(),
             cino,
             cinwords: &self.format.cinwords,
             cinscopedecls: &self.format.cinscopedecls,
@@ -1519,7 +1560,7 @@ impl View {
                     bytes,
                     self.anchor?,
                     self.cursor,
-                    self.indent.tab_width,
+                    self.indent.tabs(),
                     self.curswant == MAXCOL,
                 )
                 .spans()
@@ -1689,7 +1730,7 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
         (Some(kind), Some(anchor)) => {
             let (lo, hi) = (anchor.min(cur), anchor.max(cur));
             let lines = crate::pos::raw::line_of(b, hi) - crate::pos::raw::line_of(b, lo) + 1;
-            let ts = st.view.indent.tab_width;
+            let ts = st.view.indent.tabs();
             let cols = match kind {
                 SelectKind::Charwise if lines == 1 => {
                     vcols_at(b, hi, ts).1 + 1 - vcols_at(b, lo, ts).0
@@ -1709,7 +1750,7 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
             let Some(g) = st.view.last_visual_op else {
                 return;
             };
-            let ts = st.view.indent.tab_width;
+            let ts = st.view.indent.tabs();
             let ls = line_start(b, cur);
             let start_col = vcols_at(b, cur, ts).0;
             let end_ls =
@@ -2469,12 +2510,7 @@ impl EditorState {
         let cursor = if self.view.curswant == range::MAXCOL {
             motion::prev_grapheme(bytes, le).max(ls)
         } else {
-            range::want_col(
-                bytes,
-                ls,
-                self.view.curswant.get(),
-                self.view.indent.tab_width,
-            )
+            range::want_col(bytes, ls, self.view.curswant.get(), self.view.indent.tabs())
         };
         if cursor >= le && le > ls {
             motion::prev_grapheme(bytes, le)
@@ -2849,18 +2885,32 @@ impl EditorState {
     /// space that holds a `<Tab>` (with `bang`, also every run of two or more spaces) is rewritten for the
     /// same width — measured with the current `'tabstop'` — as tabs and spaces under `new_tabstop`, or as
     /// spaces only when `'expandtab'` is set. A run is left alone when the rewrite would not make it
-    /// shorter, except under `'expandtab'` or when it holds a tab. `'tabstop'` then becomes `new_tabstop`
-    /// (`0` or `None` keeps it). The changed lines are one undo group, and the cursor stays on its line at
-    /// the wanted column. Returns whether any line changed.
-    pub fn retab(&mut self, range: SubRange, bang: bool, new_tabstop: Option<usize>) -> bool {
-        let old_ts = self.view.indent.tab_width.max(1);
-        let new_ts = new_tabstop.filter(|&n| n > 0).unwrap_or(old_ts);
+    /// shorter, except under `'expandtab'` or when it holds a tab. The new stops are one width (a
+    /// `'tabstop'`) or a list (a `'vartabstop'`, #1163); `None` keeps the stops in force. Afterwards
+    /// `'vartabstop'` takes the new list when it was in use or the list has more than one stop, else
+    /// `'tabstop'` takes the one width. The changed lines are one undo group, and the cursor stays on
+    /// its line at the wanted column. Returns whether any line changed.
+    pub fn retab(&mut self, range: SubRange, bang: bool, new_tabstop: Option<VarStops>) -> bool {
+        let old = self.view.indent.tabs();
+        let new = match new_tabstop.filter(|v| !v.is_empty()) {
+            Some(v) => Tabs::new(old.tabstop(), v),
+            None => old,
+        };
         let expand = self.view.indent.style == IndentStyle::Space;
         let bytes = self.doc.bytes().to_vec();
         let hay: &[u8] = &bytes;
         let spans = line_spans(hay);
+        let set_new = |st: &mut Self| {
+            if let Some(v) = new_tabstop.filter(|v| !v.is_empty()) {
+                if !st.view.indent.vts.is_empty() || v.count() > 1 {
+                    st.view.indent.vts = v;
+                } else {
+                    st.view.indent.tab_width = usize::from(v.stops()[0]);
+                }
+            }
+        };
         if spans.is_empty() {
-            self.view.indent.tab_width = new_ts;
+            set_new(self);
             return false;
         }
         let cursor_line = crate::pos::raw::line_of(&bytes, self.view.cursor);
@@ -2876,7 +2926,7 @@ impl EditorState {
         let mut changed = false;
         for li in first..=last {
             let (ls, le) = spans[li];
-            let new_line = retab_line(&bytes[ls..le], bang, expand, old_ts, new_ts);
+            let new_line = retab_line(&bytes[ls..le], bang, expand, old, new);
             changed |= new_line != bytes[ls..le];
             out.extend_from_slice(&new_line);
             if li < last {
@@ -2884,7 +2934,7 @@ impl EditorState {
             }
         }
         out.extend_from_slice(&bytes[spans[last].1..]);
-        self.view.indent.tab_width = new_ts;
+        set_new(self);
         if !changed {
             return false;
         }
@@ -3263,7 +3313,7 @@ impl EditorState {
         Want(WantKind::At {
             text: self.doc.text_arc(),
             pos: self.view.cursor,
-            ts: self.view.indent.tab_width,
+            ts: self.view.indent.tabs(),
             tab_end,
             col: std::sync::OnceLock::new(),
         })
@@ -3323,11 +3373,11 @@ pub struct SortOptions {
     pub use_match: bool,
 }
 
-/// One line of [`EditorState::retab`] (nvim's `ex_retab` loop): columns are measured with `old_ts`, and a
-/// rewritten run is laid out with `new_ts` (`tabstop_fromto`). The line is walked by cluster with the cells
+/// One line of [`EditorState::retab`] (nvim's `ex_retab` loop): columns are measured with the `old` stops,
+/// and a rewritten run is laid out with the `new` ones (`tabstop_fromto`). The line is walked by cluster with the cells
 /// the renderer paints ([`range::cluster_cells`]: `<ff>` for a byte that is not UTF-8 is 4, `^A` 2), so a
 /// line that is not UTF-8 is retabbed too (#1252).
-fn retab_line(line: &[u8], bang: bool, expand: bool, old_ts: usize, new_ts: usize) -> Vec<u8> {
+fn retab_line(line: &[u8], bang: bool, expand: bool, old_ts: Tabs, new_ts: Tabs) -> Vec<u8> {
     let mut out = Vec::with_capacity(line.len());
     let (mut vcol, mut start_vcol, mut start) = (0usize, 0usize, 0usize);
     let (mut got_tab, mut num_spaces) = (false, 0usize);
@@ -3350,13 +3400,7 @@ fn retab_line(line: &[u8], bang: bool, expand: bool, old_ts: usize, new_ts: usiz
                 let len = vcol - start_vcol;
                 let (mut tabs, mut spaces) = (0, len);
                 if !expand {
-                    let initspc = new_ts - start_vcol % new_ts;
-                    if spaces >= initspc {
-                        spaces -= initspc;
-                        tabs += 1;
-                    }
-                    tabs += spaces / new_ts;
-                    spaces %= new_ts;
+                    (tabs, spaces) = new_ts.fromto(start_vcol, vcol);
                 }
                 if expand || got_tab || tabs + spaces < len {
                     out.extend_from_slice(&line[copied..start]);
@@ -3640,7 +3684,9 @@ mod indent;
 mod lisp;
 pub use lisp::DEFAULT_LISPWORDS;
 mod cindent;
+pub(crate) use cindent::check_linecomment as c_line_comment;
 pub use cindent::{CinKey, CinOptions, DEFAULT_CINKEYS, DEFAULT_CINSCOPEDECLS};
+pub(crate) use lisp::line_comment as lisp_line_comment;
 mod planner;
 pub use planner::plan;
 pub(crate) use planner::word_search;
@@ -3753,7 +3799,7 @@ fn undo_target(st: &EditorState, placed: crate::undo_cursor::UndoCursor, mode: M
     let le = line_end(b, ls);
     let at = match placed.col {
         Some(col) => snap(b, (ls + col).min(le)),
-        None => range::want_col(b, ls, st.view.curswant.get(), st.view.indent.tab_width),
+        None => range::want_col(b, ls, st.view.curswant.get(), st.view.indent.tabs()),
     };
     if at == le && ls < le && mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
         prev_grapheme(b, le)
@@ -4191,6 +4237,8 @@ fn is_jump(cmd: &Command) -> bool {
 
 /// Convenience: plan then commit one command, then maintain the sticky desired column (curswant).
 pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
+    // `%` follows the View's `'lisp'` rules while the command runs (#1163).
+    let _lisp = crate::findmatch::lisp_scope(st.view.format.lisp);
     // A resolved Ex edit (RFC-0020) runs the same `EditorState` method the live Ex command runs; it has no
     // plan of its own.
     if let Command::Ex(ex) = cmd {
@@ -4223,7 +4271,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         let b = st.doc.bytes();
         let ls = line_start(b, st.view.cursor);
         // The `^` is deleted first, by the `DeleteBack` before this command; the indent is the line's.
-        indent::indent_cols(&b[ls..line_end(b, ls)], st.view.indent.tab_width).0
+        indent::indent_cols(&b[ls..line_end(b, ls)], st.view.indent.tabs()).0
     } else {
         0
     };
@@ -4261,7 +4309,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     {
         let b = st.doc.bytes();
         let row = crate::pos::raw::line_of(b, st.view.cursor);
-        let cols = lisp::line_indent(b, row, st.view.indent.tab_width, &st.view.format.lispwords);
+        let cols = lisp::line_indent(b, row, st.view.indent.tabs(), &st.view.format.lispwords);
         let fix = planner::plan_set_indents(st, row, row, &[Some(cols)], GroupHint::Continue);
         effects.extend(commit(st, fix));
     }
@@ -4558,7 +4606,7 @@ fn track_insert_start(
         let ls = line_start(b, st.view.cursor);
         st.view.insstart_line = Some((
             crate::pos::raw::line_of(b, st.view.cursor),
-            range::line_cells(b, ls, st.view.indent.tab_width),
+            range::line_cells(b, ls, st.view.indent.tabs()),
         ));
         st.view.insert_jumped = false;
     } else if st.doc.revision() != entry_rev {

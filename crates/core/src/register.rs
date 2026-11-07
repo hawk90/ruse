@@ -73,7 +73,7 @@ impl Register {
     pub fn blockwise(text: Vec<u8>) -> Register {
         let width = text
             .split(|&c| c == b'\n')
-            .map(|row| crate::editor::text_cells(row, 8))
+            .map(|row| crate::editor::text_cells(row, crate::cells::Tabs::uniform(8)))
             .max()
             .unwrap_or(0);
         Register::blockwise_width(text, width)

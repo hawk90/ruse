@@ -51,7 +51,7 @@ impl Default for BreakAt {
 pub(crate) struct Layout<'a> {
     /// The text area's width in cells (the window less its gutter), at least 1.
     pub width: usize,
-    pub tabstop: usize,
+    pub tabstop: ruse_core::Tabs,
     pub wrap: bool,
     pub linebreak: bool,
     pub breakat: &'a BreakAt,
@@ -126,12 +126,18 @@ pub(crate) struct LineLayout<'t> {
 
 /// The `'breakindent'` indent of `line` (nvim's `get_breakindent_win`), less the `'showbreak'` width under
 /// `briopt` `sbr`, kept so that `briopt` `min` cells stay.
-fn breakindent(line: &[u8], o: &BriOpt, tabstop: usize, width: usize, sbr_w: usize) -> usize {
+fn breakindent(
+    line: &[u8],
+    o: &BriOpt,
+    tabstop: ruse_core::Tabs,
+    width: usize,
+    sbr_w: usize,
+) -> usize {
     let mut indent = 0usize;
     for &b in line {
         match b {
             b' ' => indent += 1,
-            b'\t' => indent += tabstop - indent % tabstop,
+            b'\t' => indent += tabstop.padding(indent),
             _ => break,
         }
     }
@@ -167,14 +173,14 @@ pub(crate) fn str_width(s: &str) -> usize {
 fn plain_size(
     g: Glyph<'_>,
     at: usize,
-    ts: usize,
+    ts: ruse_core::Tabs,
     list_tab: bool,
     uhex: bool,
     prev_invalid: bool,
 ) -> usize {
     if g == Glyph::Text("\t") {
         if list_tab {
-            ts - at % ts
+            ts.padding(at)
         } else {
             2
         }
@@ -213,7 +219,7 @@ impl<'t> LineBytes<'t> for &'t [u8] {
 struct Walk<'t, 'a> {
     lay: &'a Layout<'t>,
     width: usize,
-    ts: usize,
+    ts: ruse_core::Tabs,
     list_tab: bool,
     sbr: &'t str,
     bri: usize,
@@ -427,7 +433,7 @@ pub(crate) fn layout_upto<'t>(
     let line = line.line_bytes();
     let slack = 1024;
     let width = lay.width.max(1);
-    let ts = lay.tabstop.max(1);
+    let ts = lay.tabstop;
     let sbr = if lay.wrap { lay.showbreak } else { "" };
     let sbr_w = str_width(sbr);
     let bri = match (lay.wrap, &lay.breakindent) {

@@ -34,7 +34,7 @@ fn rows(l: &LineLayout<'_>, width: usize) -> Vec<String> {
 fn options(set: &str) -> (Layout<'static>, ListChars) {
     let mut lay = Layout {
         width: 0,
-        tabstop: 8,
+        tabstop: ruse_core::Tabs::uniform(8),
         wrap: true,
         linebreak: false,
         breakat: Box::leak(Box::new(BreakAt::default())),
@@ -55,7 +55,10 @@ fn options(set: &str) -> (Layout<'static>, ListChars) {
             Some(("showbreak", v)) => lay.showbreak = Box::leak(v.to_string().into_boxed_str()),
             Some(("briopt", v)) => briopt = parse_briopt(v).unwrap(),
             Some(("listchars", v)) => lcs = parse_listchars(v).unwrap(),
-            Some(("tabstop", v)) => lay.tabstop = v.parse().unwrap(),
+            Some(("tabstop", v)) => lay.tabstop = ruse_core::Tabs::uniform(v.parse().unwrap()),
+            Some(("vts", v)) => {
+                lay.tabstop = ruse_core::Tabs::new(8, ruse_core::VarStops::parse(v).unwrap());
+            }
             _ => panic!("unknown test option {arg}"),
         }
     }
@@ -63,6 +66,27 @@ fn options(set: &str) -> (Layout<'static>, ListChars) {
     let lcs_static: &'static ListChars = Box::leak(Box::new(lcs.clone()));
     lay.list = list.then_some(lcs_static);
     (lay, lcs)
+}
+
+/// #1163: tabs paint to the stops of 'vartabstop', with and without 'list' (screen rows captured from nvim
+/// v0.12.6 `--clean --headless`, a 40-column grid, read back with `screenstring()`).
+#[test]
+fn tabs_paint_at_vartabstop_stops() {
+    for (set, text, want) in [
+        ("vts=4,8", "\ta\tb\tc", "    a       b       c"),
+        (
+            "vts=4,8 list listchars=tab:>-",
+            "\ta\tb\tc",
+            ">---a>------b>------c",
+        ),
+        ("vts=2,6,3", "x\t\t\t\ty", "x             y"),
+        ("vts=4,8 list listchars=tab:>-,space:.", "ab\t c", "ab>-.c"),
+    ] {
+        let (mut lay, _) = options(set);
+        lay.width = 40;
+        let l = layout(text.as_bytes(), &lay, &[]);
+        assert_eq!(rows(&l, 40), [want], "[{set}] {text:?}");
+    }
 }
 
 #[test]

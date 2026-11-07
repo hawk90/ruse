@@ -1138,7 +1138,7 @@ impl Session {
                     let view = &ws.focused().view;
                     let mut computed = crate::folds::compute_indent_folds(
                         &snapshot,
-                        view.tab_width(),
+                        view.tabs(),
                         view.shift_width(),
                     );
                     let en = foldenable.get(&buf).copied().unwrap_or(true);
@@ -4143,7 +4143,7 @@ impl Session {
                         };
                         let pane = ws.focused();
                         let b = pane.doc.bytes();
-                        let ts = pane.view.tab_width();
+                        let ts = pane.view.tabs();
                         let rows: Vec<String> = marked
                             .iter()
                             .flat_map(|&n| crate::app::ex_print::rows(b, n, n, *flags, ts, &*keep))
@@ -4466,7 +4466,7 @@ impl Session {
                                     line,
                                     line,
                                     pflags,
-                                    pane.view.tab_width(),
+                                    pane.view.tabs(),
                                     &|_| true,
                                 )
                                 .pop()
@@ -4598,7 +4598,7 @@ impl Session {
                         let pane = ws.focused();
                         let b = pane.doc.bytes();
                         let line = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
-                        let tab_width = pane.view.tab_width();
+                        let tab_width = pane.view.tabs();
                         status.echo(
                             crate::app::ex_print::rows(b, line, line, flags, tab_width, &|_| true)
                                 .pop()
@@ -4816,7 +4816,7 @@ impl Session {
                     first,
                     last,
                     flags,
-                    pane.view.tab_width(),
+                    pane.view.tabs(),
                     &*keep,
                 );
                 goto_line(last, ws, files, recorded, status, quit);
@@ -4871,7 +4871,7 @@ impl Session {
                         n,
                         n,
                         spec.flags,
-                        pane.view.tab_width(),
+                        pane.view.tabs(),
                         &*keep,
                     ));
                     if mark {
@@ -4903,7 +4903,7 @@ impl Session {
                     first,
                     last,
                     bang,
-                    tabstop,
+                    tabstop: tabstop.map(|v| *v),
                 };
                 run_ex(ex, ws, recorded);
             }
@@ -6187,7 +6187,7 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<Msg> {
             Some(Msg::info(ruse_core::cursor_pos_info(
                 pane.doc.bytes(),
                 pane.view.cursor(),
-                pane.view.tab_width(),
+                pane.view.tabs(),
             )))
         }
         _ => None,

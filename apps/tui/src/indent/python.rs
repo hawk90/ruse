@@ -21,7 +21,7 @@ const MAX_OFF: usize = 50;
 #[derive(Clone, Copy, Debug)]
 pub struct Opts {
     pub shiftwidth: usize,
-    pub tabstop: usize,
+    pub tabstop: ruse_core::Tabs,
     pub expandtab: bool,
 }
 
@@ -46,14 +46,17 @@ pub struct Buf<'a> {
 }
 
 /// The columns and byte length of the leading blanks in `ws`.
-fn blank_cols(ws: &[u8], ts: usize) -> usize {
-    ws.iter().fold(0, |c, &b| {
-        if b == b'\t' {
-            c + ts.max(1) - c % ts.max(1)
-        } else {
-            c + 1
-        }
-    })
+fn blank_cols(ws: &[u8], ts: ruse_core::Tabs) -> usize {
+    ws.iter().fold(
+        0,
+        |c, &b| {
+            if b == b'\t' {
+                c + ts.padding(c)
+            } else {
+                c + 1
+            }
+        },
+    )
 }
 
 fn is_word(b: u8) -> bool {
@@ -122,11 +125,11 @@ impl<'a> Buf<'a> {
 
     /// The line `l`'s indent becomes `cols` (what `set_indent` writes: spaces, or tabs then spaces).
     pub fn set_indent(&mut self, l: usize, cols: usize) {
-        let ts = self.opts.tabstop.max(1);
         let ws_len = if self.opts.expandtab {
             cols
         } else {
-            cols / ts + cols % ts
+            let (tabs, spaces) = self.opts.tabstop.fromto(0, cols);
+            tabs + spaces
         };
         self.lines[l].cols = cols;
         self.lines[l].ws_len = ws_len;
@@ -398,7 +401,7 @@ mod tests {
 
     const OPTS: Opts = Opts {
         shiftwidth: 4,
-        tabstop: 8,
+        tabstop: ruse_core::Tabs::uniform(8),
         expandtab: true,
     };
 

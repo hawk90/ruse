@@ -9,7 +9,7 @@ mod lazy_wanted_column_tests {
         let mut st = EditorState::new(b"\tab\ncd\n".to_vec());
         st.set_cursor(BytePos(2)); // `b`, after a tab
         let want = st.view.curswant.clone();
-        let eager = range::wanted_vcol(st.bytes(), 2, st.view.indent.tab_width, true);
+        let eager = range::wanted_vcol(st.bytes(), 2, st.view.indent.tabs(), true);
         // Testing for MAXCOL does not measure.
         assert!(want != range::MAXCOL);
         assert!(matches!(&want.0, WantKind::At { col, .. } if col.get().is_none()));
@@ -21,7 +21,7 @@ mod lazy_wanted_column_tests {
         assert_eq!(want.get(), eager);
         assert_ne!(
             eager,
-            range::wanted_vcol(st.bytes(), 2, st.view.indent.tab_width, true)
+            range::wanted_vcol(st.bytes(), 2, st.view.indent.tabs(), true)
         );
     }
 

@@ -16,6 +16,7 @@
 use super::indent::indent_cols;
 use super::range::cluster_cells;
 use super::IndentConfig;
+use crate::cells::Tabs;
 
 /// nvim's default `'comments'`.
 pub(crate) const DEFAULT_COMMENTS: &str = "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-,fb:•";
@@ -328,7 +329,7 @@ pub(crate) fn open_leader(
     forward: bool,
     split: Option<usize>,
     indent_on: bool,
-    ts: usize,
+    ts: Tabs,
 ) -> OpenLeader {
     let mut out = OpenLeader::default();
     let (mut lead_len, k) = leader_len(saved, parts, !forward, true);
@@ -535,12 +536,12 @@ pub(crate) struct FmtBuf {
 }
 
 /// One step of a cluster walk over `line`: the byte after the cluster at `i` and its cells at `v`.
-fn step(line: &[u8], i: usize, v: usize, ts: usize) -> (usize, usize) {
+fn step(line: &[u8], i: usize, v: usize, ts: Tabs) -> (usize, usize) {
     cluster_cells(line, i, line.len(), v, ts)
 }
 
 /// The cells `line[..col]` spans.
-fn vcol(line: &[u8], col: usize, ts: usize) -> usize {
+fn vcol(line: &[u8], col: usize, ts: Tabs) -> usize {
     let (mut i, mut v) = (0, 0);
     while i < col.min(line.len()) {
         let (j, w) = step(line, i, v, ts);
@@ -556,7 +557,7 @@ fn prev_col(line: &[u8], col: usize) -> usize {
     let mut last = 0;
     while i < col {
         last = i;
-        i = step(line, i, 0, 8).0;
+        i = step(line, i, 0, Tabs::uniform(8)).0;
     }
     last
 }
@@ -566,12 +567,12 @@ fn next_col(line: &[u8], col: usize) -> usize {
     if col >= line.len() {
         col
     } else {
-        step(line, col, 0, 8).0
+        step(line, col, 0, Tabs::uniform(8)).0
     }
 }
 
 /// The byte of the cluster covering cell `want` (Insert-mode `coladvance`: past the end is the line end).
-fn col_at_cell(line: &[u8], want: usize, ts: usize) -> usize {
+fn col_at_cell(line: &[u8], want: usize, ts: Tabs) -> usize {
     let (mut i, mut v) = (0, 0);
     while i < line.len() {
         let (j, w) = step(line, i, v, ts);
@@ -610,13 +611,12 @@ impl FmtBuf {
     }
 
     fn get_indent(&self, l: usize, o: &FmtOpts<'_>) -> usize {
-        self.line(l)
-            .map_or(0, |s| indent_cols(s, o.ind.tab_width).0)
+        self.line(l).map_or(0, |s| indent_cols(s, o.ind.tabs()).0)
     }
 
     /// nvim's `set_indent(cols, SIN_CHANGED)` on line `l`, moving the cursor and the kept position.
     fn set_indent(&mut self, l: usize, cols: usize, o: &FmtOpts<'_>) {
-        let (_, old_len) = indent_cols(&self.lines[l], o.ind.tab_width);
+        let (_, old_len) = indent_cols(&self.lines[l], o.ind.tabs());
         let new = o.ind.rebuilt(&self.lines[l][..old_len], cols);
         if new[..] == self.lines[l][..old_len] {
             return;
@@ -709,7 +709,7 @@ impl FmtBuf {
         o: &FmtOpts<'_>,
     ) -> bool {
         let (l, col) = self.cur;
-        let ts = o.ind.tab_width;
+        let ts = o.ind.tabs();
         let indent_on = o.ind.autoindent || o.ind.smartindent;
         let saved = self.lines[l][..col].to_vec();
         let extra_full = self.lines[l][col..].to_vec();
@@ -791,14 +791,14 @@ impl FmtBuf {
         loop {
             let line = self.line(ll)?;
             if line[..end.min(line.len())].windows(2).any(|w| w == b"/*") {
-                return Some(indent_cols(line, o.ind.tab_width).0);
+                return Some(indent_cols(line, o.ind.tabs()).0);
             }
             if ll == 0 {
                 return self
                     .before
                     .as_deref()
                     .filter(|b| b.windows(2).any(|w| w == b"/*"))
-                    .map(|b| indent_cols(b, o.ind.tab_width).0);
+                    .map(|b| indent_cols(b, o.ind.tabs()).0);
             }
             ll -= 1;
             end = usize::MAX;
@@ -822,7 +822,7 @@ impl FmtBuf {
         if end >= line.len() {
             return None;
         }
-        Some(vcol(line, end, o.ind.tab_width))
+        Some(vcol(line, end, o.ind.tabs()))
     }
 
     /// Break the cursor line until it fits `tw` (nvim's `internal_format`). `c` is the character about to
@@ -840,7 +840,7 @@ impl FmtBuf {
         c: Option<char>,
         o: &FmtOpts<'_>,
     ) {
-        let ts = o.ind.tab_width;
+        let ts = o.ind.tabs();
         let mut first_line = true;
         let mut no_leader = false;
         // With 'noautoindent' a blank under the cursor is not a break point: mark it while breaking.

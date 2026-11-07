@@ -326,6 +326,14 @@ features:
     # the 'cinkeys' keys run it in a C buffer (nvim's indent/c.vim sets 'cindent') and, under 'cindent', in a
     # buffer without an indenter. Not built: `*`/`!` keys other than `!^F`, :set nocindent in a C buffer
     # (still C rules), 'indentkeys' as an option (docs/design/indent-engines.md).
+    # #1163 (oracle-verified vs nvim v0.12.6, `vts_*`, `pct_*`): 'vartabstop' and 'varsofttabstop' are built.
+    # One tab-stop model (`crates/core/src/cells.rs` Tabs: nvim's tabstop_padding/at/start/fromto) lays out
+    # rendering, cursor columns, blockwise Visual, indents built with tabs, `:retab [N,N...]` (which then
+    # sets 'vartabstop' or 'tabstop' as nvim does), Insert <Tab>/<BS> ('varsofttabstop' wins over
+    # 'softtabstop') and `>>`/`<<` with sw=0 (stop to stop). `%` follows nvim's findmatchlimit: brackets in
+    # quotes and 'x' literals are skipped, escapes count, `/* */` and `#if`/`#else`/`#endif` chains match,
+    # and under 'lisp' `;` comments and `#\(` characters are skipped. Not built: 'showmatch' (no option at
+    # all, so no Lisp rules for it), 'matchpairs' (the three ASCII pairs), more than 64 stops in a list.
     # #1206: no 'indentkeys'/'cinkeys' OPTION, but the keys nvim's defaults re-indent on are built in per
     # language (F-015): Python's `<:>`, `=elif`, `=except`, `e`, `0#`, `0{`/`0}`/`0)`/`0]`, `o`, `O`, the
     # C/JavaScript/Go/sh/Rust/CSS keys listed under F-015, and `i_CTRL-F` (`!^F`) re-indents the line from

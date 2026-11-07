@@ -9,6 +9,7 @@
 //!
 //! [`Command`]: crate::command::Command
 
+use crate::cells::VarStops;
 use std::fmt::Write as _;
 
 use super::{
@@ -105,12 +106,12 @@ pub enum ExCmd {
         last: usize,
         opts: SortOptions,
     },
-    /// `:retab[!] [N]`.
+    /// `:retab[!] [N[,N…]]`: the new tab stops, one (`'tabstop'`) or a list (`'vartabstop'`, #1163).
     Retab {
         first: usize,
         last: usize,
         bang: bool,
-        tabstop: Option<usize>,
+        tabstop: Option<VarStops>,
     },
     /// `:r {file}` / `:r !{cmd}`: the bytes read, inserted after line `dest`. `cursor_on_last` is the
     /// command read's landing line (the last inserted one).
@@ -287,10 +288,7 @@ impl EditorState {
                 last,
                 bang,
                 tabstop,
-            } => {
-                let tabstop = tabstop.map(|n| n.min(MAX_TABSTOP));
-                ExOutcome::Retabbed(self.retab(lines(*first, *last), *bang, tabstop))
-            }
+            } => ExOutcome::Retabbed(self.retab(lines(*first, *last), *bang, *tabstop)),
             ExCmd::ReadText {
                 dest,
                 cursor_on_last,
@@ -440,6 +438,8 @@ fn option_name(opt: &EditorOption) -> (&'static str, String) {
         EditorOption::ExpandTab(v) => ("expandtab", flag(v)),
         EditorOption::TextWidth(n) => ("textwidth", n.to_string()),
         EditorOption::SoftTabStop(n) => ("softtabstop", n.to_string()),
+        EditorOption::VarTabStop(v) => ("vartabstop", hex(v.as_bytes())),
+        EditorOption::VarSoftTabStop(v) => ("varsofttabstop", hex(v.as_bytes())),
         EditorOption::AutoIndent(v) => ("autoindent", flag(v)),
         EditorOption::SmartIndent(v) => ("smartindent", flag(v)),
         EditorOption::CopyIndent(v) => ("copyindent", flag(v)),
@@ -498,6 +498,8 @@ fn string_option(name: &str) -> Option<fn(String) -> EditorOption> {
         "cinwords" => EditorOption::CinWords,
         "lispwords" => EditorOption::LispWords,
         "cinoptions" => EditorOption::CinOptions,
+        "vartabstop" => EditorOption::VarTabStop,
+        "varsofttabstop" => EditorOption::VarSoftTabStop,
         "cinkeys" => EditorOption::CinKeys,
         "cinscopedecls" => EditorOption::CinScopeDecls,
         _ => return None,
@@ -599,7 +601,7 @@ impl ExCmd {
             } => format!(
                 "ex_retab {first} {last} {} {}",
                 bool_token(*bang),
-                tabstop.map_or_else(|| "-".into(), |n| n.to_string())
+                tabstop.map_or_else(|| "-".into(), |v| super::stops_text(&v))
             ),
             ExCmd::ReadText {
                 dest,
@@ -754,12 +756,12 @@ impl ExCmd {
             }
             "ex_retab" => {
                 let (first, last, bang) = (a.num()?, a.num()?, a.flag()?);
+                // One number (older traces) or a comma list of stops (#1163).
                 let tabstop = match a.tok()? {
                     "-" => None,
                     t => Some(
-                        t.parse::<usize>()
-                            .ok()
-                            .filter(|&n| n <= MAX_TABSTOP)
+                        VarStops::parse(t)
+                            .filter(|v| !v.is_empty())
                             .ok_or_else(|| a.bad())?,
                     ),
                 };
@@ -1182,7 +1184,7 @@ pub(crate) fn samples() -> Vec<ExCmd> {
             first: 1,
             last: 2,
             bang: true,
-            tabstop: Some(8),
+            tabstop: crate::cells::VarStops::parse("8"),
         },
         ExCmd::Retab {
             first: 1,
@@ -1223,6 +1225,9 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::TextWidth(79)),
         ExCmd::Set(EditorOption::SoftTabStop(-1)),
         ExCmd::Set(EditorOption::SoftTabStop(4)),
+        ExCmd::Set(EditorOption::VarTabStop("4,8".into())),
+        ExCmd::Set(EditorOption::VarTabStop(String::new())),
+        ExCmd::Set(EditorOption::VarSoftTabStop("2,4".into())),
         ExCmd::Set(EditorOption::AutoIndent(false)),
         ExCmd::Set(EditorOption::SmartIndent(true)),
         ExCmd::Set(EditorOption::Lisp(true)),

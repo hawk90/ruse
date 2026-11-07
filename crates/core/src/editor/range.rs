@@ -5,6 +5,7 @@
 //! `pub(crate)` (`planner.rs`'s `use super::*` and `View::{selection_span,block_spans}` resolve
 //! these names through that re-export).
 
+use crate::cells::Tabs;
 use crate::command::ForcedWise;
 use crate::motion::{self, line_end, line_start, next_boundary, prev_boundary, Motion};
 
@@ -225,7 +226,7 @@ pub(crate) fn op_landing(
     m: Motion,
     count: u32,
     curswant: &super::Want,
-    ts: usize,
+    ts: Tabs,
     yank: bool,
 ) -> usize {
     match m {
@@ -345,7 +346,7 @@ pub(crate) fn forced_span(
     count: u32,
     wise: ForcedWise,
     curswant: &super::Want,
-    ts: usize,
+    ts: Tabs,
 ) -> OpSpan {
     let plain = op_span_full(b, cur, m, count);
     let whole = |lo: usize, hi: usize| {
@@ -489,10 +490,9 @@ pub(crate) fn selection_range(
 /// `<Tab>` reaches the next multiple of `ts`; anything else takes the cells the renderer paints it in
 /// ([`crate::cells`], #1251): `<ff>` for a byte that is not UTF-8, `^A` for a control char, else its base
 /// char's terminal width, at least 1.
-pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: usize) -> (usize, usize) {
+pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: Tabs) -> (usize, usize) {
     if b[i] == b'\t' {
-        let ts = ts.max(1);
-        return (i + 1, ts - v % ts);
+        return (i + 1, ts.padding(v));
     }
     // A printable ASCII char not followed by a combining mark is one cell: skip the line-wide grapheme scan,
     // which made walking a long line quadratic (the wanted column is measured after every command, #1090).
@@ -549,7 +549,8 @@ fn grapheme_end(b: &[u8], i: usize, le: usize) -> usize {
 
 /// The virtual columns `[start, end]` (inclusive) the cluster at `pos` covers on its line; at the line end
 /// (no char there) both are the column just past the line's last cell, as Vim's `getvvcol` reports on NUL.
-pub(crate) fn vcols_at(b: &[u8], pos: usize, ts: usize) -> (usize, usize) {
+pub(crate) fn vcols_at(b: &[u8], pos: usize, ts: impl Into<Tabs>) -> (usize, usize) {
+    let ts: Tabs = ts.into();
     let ls = line_start(b, pos);
     let le = line_end(b, ls);
     let (mut i, mut v) = (ls, 0);
@@ -565,12 +566,14 @@ pub(crate) fn vcols_at(b: &[u8], pos: usize, ts: usize) -> (usize, usize) {
 }
 
 /// The cells a whole line (from `ls`) spans: the virtual column just past its last character.
-pub(crate) fn line_cells(b: &[u8], ls: usize, ts: usize) -> usize {
+pub(crate) fn line_cells(b: &[u8], ls: usize, ts: impl Into<Tabs>) -> usize {
+    let ts: Tabs = ts.into();
     vcols_at(b, line_end(b, ls), ts).0
 }
 
 /// The cells `text` spans when laid out from column 0 (a register row's width).
-pub(crate) fn text_cells(text: &[u8], ts: usize) -> usize {
+pub(crate) fn text_cells(text: &[u8], ts: impl Into<Tabs>) -> usize {
+    let ts: Tabs = ts.into();
     let (mut i, mut v) = (0, 0);
     while i < text.len() {
         let (j, w) = cluster_cells(text, i, text.len(), v, ts);
@@ -583,7 +586,8 @@ pub(crate) fn text_cells(text: &[u8], ts: usize) -> usize {
 /// The byte of the character covering virtual column `vcol` on the line starting at `ls` — Vim's
 /// `coladvance` in Normal/Visual: past the last character it stops ON that last character (an empty line
 /// gives its start).
-pub(crate) fn at_vcol(b: &[u8], ls: usize, vcol: usize, ts: usize) -> usize {
+pub(crate) fn at_vcol(b: &[u8], ls: usize, vcol: usize, ts: impl Into<Tabs>) -> usize {
+    let ts: Tabs = ts.into();
     let le = line_end(b, ls);
     let (mut i, mut v) = (ls, 0);
     let mut last = ls;
@@ -603,7 +607,8 @@ pub(crate) fn at_vcol(b: &[u8], ls: usize, vcol: usize, ts: usize) -> usize {
 /// `ls` — Vim's `coladvance`: the character covering that cell (a `<Tab>` or a wide char spans several), or
 /// the line end when the line is shorter or `want` is [`MAXCOL`]. The caller pulls a Normal-mode caret off
 /// the line end (#1090).
-pub(crate) fn want_col(b: &[u8], ls: usize, want: usize, ts: usize) -> usize {
+pub(crate) fn want_col(b: &[u8], ls: usize, want: usize, ts: impl Into<Tabs>) -> usize {
+    let ts: Tabs = ts.into();
     let le = line_end(b, ls);
     let (mut i, mut v) = (ls, 0);
     while i < le {
@@ -620,7 +625,8 @@ pub(crate) fn want_col(b: &[u8], ls: usize, want: usize, ts: usize) -> usize {
 /// The wanted column (`curswant`) a caret at `pos` sets: its virtual column. On a `<Tab>` an on-char caret
 /// (`tab_end`: Normal, or Visual at or past the anchor) stands on the tab's LAST cell, as Vim draws and
 /// counts it (`getvcol`'s cursor column); otherwise the first (#1090).
-pub(crate) fn wanted_vcol(b: &[u8], pos: usize, ts: usize, tab_end: bool) -> usize {
+pub(crate) fn wanted_vcol(b: &[u8], pos: usize, ts: impl Into<Tabs>, tab_end: bool) -> usize {
+    let ts: Tabs = ts.into();
     let (s, e) = vcols_at(b, pos, ts);
     if tab_end && b.get(pos) == Some(&b'\t') {
         e
@@ -714,7 +720,7 @@ impl Block {
 }
 
 /// The slice of the line at `ls` that the block `lo..=hi` covers (see [`BlockRow`]).
-pub(crate) fn block_row(b: &[u8], ls: usize, lo: usize, hi: usize, ts: usize) -> BlockRow {
+pub(crate) fn block_row(b: &[u8], ls: usize, lo: usize, hi: usize, ts: Tabs) -> BlockRow {
     let le = line_end(b, ls);
     let mut r = BlockRow {
         ls,
@@ -787,7 +793,14 @@ pub(crate) fn block_row(b: &[u8], ls: usize, lo: usize, hi: usize, ts: usize) ->
 /// The block a `CTRL-V` selection with corners `anchor` and `cursor` covers (Vim `do_pending_operator`):
 /// the left edge is the lower of the corners' first cells, the right edge the higher of their last cells
 /// (so a corner on a `<Tab>` or a wide char takes all of it), or [`MAXCOL`] when `to_eol` (`$`).
-pub(crate) fn block_geom(b: &[u8], anchor: usize, cursor: usize, ts: usize, to_eol: bool) -> Block {
+pub(crate) fn block_geom(
+    b: &[u8],
+    anchor: usize,
+    cursor: usize,
+    ts: impl Into<Tabs>,
+    to_eol: bool,
+) -> Block {
+    let ts: Tabs = ts.into();
     let (a0, a1) = vcols_at(b, anchor, ts);
     let (c0, c1) = vcols_at(b, cursor, ts);
     let hi = if to_eol { MAXCOL } else { a1.max(c1) };
@@ -809,7 +822,7 @@ pub(crate) fn block_at(
     cursor: usize,
     width: usize,
     height: usize,
-    ts: usize,
+    ts: Tabs,
     to_eol: bool,
 ) -> Block {
     let lo = vcols_at(b, cursor, ts).0;
@@ -825,7 +838,7 @@ pub(crate) fn block_at(
 }
 
 /// The rows of the block `lo..=hi` on every line from the one holding `top` down to the one holding `bot`.
-fn block_from(b: &[u8], top: usize, bot: usize, lo: usize, hi: usize, ts: usize) -> Block {
+fn block_from(b: &[u8], top: usize, bot: usize, lo: usize, hi: usize, ts: Tabs) -> Block {
     let bot_ls = line_start(b, bot);
     let mut rows = Vec::new();
     let mut rs = line_start(b, top);
@@ -879,6 +892,37 @@ pub(crate) fn advance_graphemes(b: &[u8], from: usize, count: u32, limit: usize)
 #[cfg(test)]
 mod grapheme_end_tests {
     use super::*;
+
+    /// #1163: measuring a long line with tabs under 'vartabstop' against plain 'tabstop':
+    /// `cargo test -p ruse-core vts_long_line_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "timing probe"]
+    #[allow(clippy::print_stdout)] // the timings are the output
+    fn vts_long_line_cost() {
+        let line = "ab\tcd\t".repeat(50_000); // 300k bytes, 100k tabs
+        let b = line.as_bytes();
+        let stops: Vec<String> = (1..=64).map(|n| (n % 7 + 2).to_string()).collect();
+        for (name, tabs) in [
+            ("ts=8", Tabs::uniform(8)),
+            (
+                "vts=4,8",
+                Tabs::new(8, crate::cells::VarStops::parse("4,8").unwrap()),
+            ),
+            (
+                "vts=64 stops",
+                Tabs::new(8, crate::cells::VarStops::parse(&stops.join(",")).unwrap()),
+            ),
+        ] {
+            let t = std::time::Instant::now();
+            let cells = line_cells(b, 0, tabs);
+            let mid = want_col(b, 0, cells / 2, tabs);
+            println!(
+                "{name}: line_cells + want_col over 300k bytes: {:?}",
+                t.elapsed()
+            );
+            assert!(mid > 0);
+        }
+    }
 
     /// #1109: the windowed segmentation agrees with whole-line segmentation on every cluster, including
     /// clusters longer than the first window and flag pairs that need the text before them.

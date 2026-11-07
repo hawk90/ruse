@@ -7,6 +7,7 @@
 //! WORD (`W`/`B`/`E`) split on blanks only. They step one grapheme cluster at a time, as nvim's `inc()` /
 //! `dec()` do, and a cluster takes the class of its first char. All positions land on char boundaries.
 
+use crate::cells::Tabs;
 use std::cell::Cell;
 
 use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
@@ -545,7 +546,7 @@ pub(crate) fn at_col(b: &[u8], start: usize, col: usize) -> usize {
 /// multiple of `tabstop` and every other cluster taking what the renderer paints it in (a wide char 2, an
 /// invalid byte's `<ff>` 4, #1251). `start` is the line start. Used by Virtual Replace (`gR`) to size a
 /// tab's on-screen width and by `g CTRL-G`; distinct from [`col_of`], which counts characters.
-pub(crate) fn vcol_of(b: &[u8], start: usize, pos: usize, tabstop: usize) -> usize {
+pub(crate) fn vcol_of(b: &[u8], start: usize, pos: usize, tabstop: Tabs) -> usize {
     let end = pos.min(b.len());
     let le = line_end(b, start);
     let mut v = 0;
@@ -1537,7 +1538,7 @@ pub(crate) fn vmove(
     count: u32,
     down: bool,
     want: usize,
-    ts: usize,
+    ts: Tabs,
 ) -> usize {
     let mut c = cursor.min(b.len());
     for _ in 0..count.max(1) {
@@ -1670,57 +1671,13 @@ pub(crate) fn last_line_start(b: &[u8]) -> usize {
     line_start(b, content_end(b))
 }
 
-/// The bracket pairs `%` matches (v0: the three ASCII pairs; `matchpairs` config is deferred).
-const BRACKET_PAIRS: [(u8, u8); 3] = [(b'(', b')'), (b'[', b']'), (b'{', b'}')];
-
 /// The matching-bracket position for `%`, or `None` if there is nothing to match. If the byte at `cursor`
 /// is a bracket, its pair is found (nesting-aware, possibly on another line); otherwise the first bracket
 /// forward on the current line is matched (Vim). Brackets are ASCII, so byte scanning stays on boundaries.
 fn match_bracket(b: &[u8], cursor: usize) -> Option<usize> {
-    // Pick the bracket to match: the one under the cursor, else the first forward on this line.
-    let mut bp = cursor.min(b.len());
-    if bp >= b.len() || !BRACKET_PAIRS.iter().any(|&(o, c)| b[bp] == o || b[bp] == c) {
-        let le = line_end(b, cursor);
-        bp = cursor.min(b.len());
-        while bp < le && !BRACKET_PAIRS.iter().any(|&(o, c)| b[bp] == o || b[bp] == c) {
-            bp += 1;
-        }
-        if bp >= le {
-            return None;
-        }
-    }
-    let ch = b[bp];
-    // Opener → scan forward for the matching closer; closer → scan backward for the opener. Depth counts
-    // only the same pair type, so `([)]` matches `(`↔`)` exactly as Vim does.
-    if let Some(&(open, close)) = BRACKET_PAIRS.iter().find(|&&(o, _)| o == ch) {
-        let mut depth = 0i32;
-        for (i, &byte) in b.iter().enumerate().skip(bp) {
-            if byte == open {
-                depth += 1;
-            } else if byte == close {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-        }
-        None
-    } else if let Some(&(open, close)) = BRACKET_PAIRS.iter().find(|&&(_, c)| c == ch) {
-        let mut depth = 0i32;
-        for i in (0..=bp).rev() {
-            if b[i] == close {
-                depth += 1;
-            } else if b[i] == open {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-        }
-        None
-    } else {
-        None
-    }
+    // nvim's `findmatchlimit` (#1163): quotes, character literals, escapes, comments, `#if` chains and
+    // the 'lisp' rules.
+    crate::findmatch::percent(b, cursor)
 }
 
 /// The `count`-th UNMATCHED bracket of one type from the cursor — Vim `[(`/`])` (parens) and `[{`/`]}`

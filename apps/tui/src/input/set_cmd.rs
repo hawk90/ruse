@@ -50,6 +50,8 @@ pub enum Opt {
     SmartIndent,
     SmartTab,
     SoftTabStop,
+    VarTabStop,
+    VarSoftTabStop,
     IgnoreCase,
     SmartCase,
     TabStop,
@@ -167,6 +169,8 @@ pub enum TextCheck {
     FoldColumn,
     MessagesOpt,
     FoldOpen,
+    /// `'vartabstop'` / `'varsofttabstop'`: positive widths separated by commas (`E474`, #1163).
+    TabStops,
 }
 
 /// An option's type, with its value rules.
@@ -950,6 +954,30 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Local,
     ),
     def(
+        Opt::VarTabStop,
+        "vartabstop",
+        "vts",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::TabStops,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Local,
+    ),
+    def(
+        Opt::VarSoftTabStop,
+        "varsofttabstop",
+        "vsts",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::TabStops,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Local,
+    ),
+    def(
         Opt::SoftTabStop,
         "softtabstop",
         "sts",
@@ -1501,6 +1529,11 @@ pub fn assign_value(
                     } else {
                         Err(ruse_core::editor::OptionValueError::NoPercentS)
                     }
+                }
+                TextCheck::TabStops => {
+                    return ruse_core::VarStops::parse(&new)
+                        .map(|_| OptVal::Text(Cow::Owned(new)))
+                        .ok_or(ValueError::Invalid);
                 }
                 TextCheck::FoldOpen => {
                     return if foldopen_valid(&new) {

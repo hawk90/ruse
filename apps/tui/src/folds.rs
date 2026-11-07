@@ -699,13 +699,13 @@ pub fn summary(fold: &Fold, first_line: &str) -> String {
 /// nvim-verified: 4-space indent at sw=4 → 1, 8-space → 2, a 2-space indent at sw=4 → 0 (floor); a single
 /// tab at ts=8/sw=4 → 8 cols → level 2.
 #[must_use]
-fn line_indent_level(line: &[u8], tabstop: usize, shiftwidth: usize) -> usize {
-    let tw = tabstop.max(1);
+fn line_indent_level(line: &[u8], tabstop: impl Into<ruse_core::Tabs>, shiftwidth: usize) -> usize {
+    let tabstop: ruse_core::Tabs = tabstop.into();
     let mut cols = 0usize;
     for &c in line {
         match c {
             b' ' => cols += 1,
-            b'\t' => cols += tw - (cols % tw),
+            b'\t' => cols += tabstop.padding(cols),
             _ => break,
         }
     }
@@ -736,7 +736,12 @@ fn is_ignored_line(line: &[u8]) -> bool {
 /// jump case emits the same run at several depths). Line indices are 0-based and match the frontend's line
 /// numbering (split on `\n`; a trailing `\n` does not add a phantom final line).
 #[must_use]
-pub fn compute_indent_folds(text: &[u8], tabstop: usize, shiftwidth: usize) -> Vec<Fold> {
+pub fn compute_indent_folds(
+    text: &[u8],
+    tabstop: impl Into<ruse_core::Tabs>,
+    shiftwidth: usize,
+) -> Vec<Fold> {
+    let tabstop: ruse_core::Tabs = tabstop.into();
     let mut lines: Vec<&[u8]> = text.split(|&b| b == b'\n').collect();
     // A trailing newline is the last real line's terminator, not a new empty line ("a\nb\n" = 2 lines).
     if lines.len() > 1 && lines.last() == Some(&&b""[..]) {

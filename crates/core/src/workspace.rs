@@ -810,7 +810,12 @@ impl Workspace {
 
     /// Run `:[range]retab[!] [N]` against the FOCUSED window (swap-trick; see [`EditorState::retab`]).
     /// Returns whether any line changed.
-    pub fn retab(&mut self, range: SubRange, bang: bool, new_tabstop: Option<usize>) -> bool {
+    pub fn retab(
+        &mut self,
+        range: SubRange,
+        bang: bool,
+        new_tabstop: Option<crate::cells::VarStops>,
+    ) -> bool {
         self.with_focused(|st| st.retab(range, bang, new_tabstop))
     }
 
@@ -1341,7 +1346,7 @@ impl Workspace {
         let pane = self.focused();
         let b = pane.doc.bytes();
         let cur = pane.view.cursor().0.min(b.len());
-        let tabw = pane.view.tab_width();
+        let tabw = pane.view.tabs();
         let vcol = crate::editor::vcols_at(b, cur, tabw).0;
         // The adjacent row. `checked_sub` guards "no line above" on the first line; a row past the last
         // line resolves to an empty slice below, which yields no char (so "no line below" also → None).

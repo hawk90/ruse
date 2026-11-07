@@ -69,7 +69,7 @@ pub(crate) struct WinView {
     pub list: Option<ListChars>,
     /// `'display'` `uhex` (#1181).
     pub uhex: bool,
-    pub tabstop: usize,
+    pub tabstop: ruse_core::Tabs,
     pub lastline: LastLine,
     pub number: bool,
     pub relativenumber: bool,
@@ -272,7 +272,7 @@ impl WinView {
                     .unwrap_or_default()
             }),
             uhex: has("uhex"),
-            tabstop: view.tab_width().max(1),
+            tabstop: view.tabs(),
             lastline: if has("truncate") {
                 LastLine::Truncate
             } else if has("lastline") {
@@ -323,7 +323,8 @@ impl WinView {
     /// A window `width` x `height` with no gutter that does not wrap: how the renderer drew every window
     /// before #615 (its tests paint through it).
     #[cfg(test)]
-    pub(crate) fn plain(width: usize, tabstop: usize) -> WinView {
+    pub(crate) fn plain(width: usize, tabstop: impl Into<ruse_core::Tabs>) -> WinView {
+        let tabstop = tabstop.into();
         WinView {
             wrap: false,
             linebreak: false,

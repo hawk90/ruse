@@ -9,6 +9,7 @@
 //! [`super::format::open_leader`] instead; the planner tries that first.
 
 use super::{IndentConfig, IndentStyle};
+use crate::cells::Tabs;
 use crate::pos::raw::{line_end, line_start};
 
 /// `'cinwords'` at its nvim default: the keywords after which `'smartindent'` indents the next line.
@@ -43,14 +44,13 @@ fn is_word(c: u8) -> bool {
 }
 
 /// Leading-whitespace measure of one line (no trailing `\n`): its indent in display COLUMNS (a tab runs
-/// to the next `tab_width` multiple) and the BYTE length of that whitespace.
-pub(super) fn indent_cols(line: &[u8], tab_width: usize) -> (usize, usize) {
-    let tw = tab_width.max(1);
+/// to its next stop) and the BYTE length of that whitespace.
+pub(super) fn indent_cols(line: &[u8], tabs: Tabs) -> (usize, usize) {
     let (mut cols, mut n) = (0usize, 0usize);
     for &c in line {
         match c {
             b' ' => cols += 1,
-            b'\t' => cols += tw - (cols % tw),
+            b'\t' => cols += tabs.padding(cols),
             _ => break,
         }
         n += 1;
@@ -107,16 +107,21 @@ impl IndentConfig {
         }
     }
 
+    /// Whether `'softtabstop'` or `'varsofttabstop'` is in use.
+    fn soft_tabs_on(self) -> bool {
+        !self.vsts.is_empty() || self.soft_tab != 0
+    }
+
     /// An indent of `cols` columns that keeps the characters of `old` (a line's leading whitespace) as far
     /// as they fit, then fills the rest: a tab to the next stop and further tabs under `noexpandtab`, then
     /// spaces (nvim's `copy_indent`, and `set_indent` under `'preserveindent'`).
     pub(super) fn keeping(self, old: &[u8], cols: usize) -> Vec<u8> {
-        let ts = self.tab_width.max(1);
+        let ts = self.tabs();
         let (mut out, mut done, mut todo) = (Vec::with_capacity(cols), 0usize, cols);
         for &c in old {
             match c {
                 b'\t' => {
-                    let pad = ts - done % ts;
+                    let pad = ts.padding(done);
                     if todo < pad {
                         break;
                     }
@@ -132,15 +137,9 @@ impl IndentConfig {
             out.push(c);
         }
         if self.style == IndentStyle::Tab {
-            let pad = ts - done % ts;
-            if todo >= pad {
-                out.push(b'\t');
-                todo -= pad;
-            }
-            while todo >= ts {
-                out.push(b'\t');
-                todo -= ts;
-            }
+            let (tabs, spaces) = ts.fromto(done, done + todo);
+            out.extend(std::iter::repeat_n(b'\t', tabs));
+            todo = spaces;
         }
         out.extend(std::iter::repeat_n(b' ', todo));
         out
@@ -159,6 +158,10 @@ impl IndentConfig {
     /// The indent `>`/`<` leave a line of `cols` columns at, `times` levels over (nvim's `shift_line`):
     /// under `'shiftround'` a multiple of the shiftwidth (a left shift first drops the extra columns).
     pub(super) fn shifted(self, cols: usize, times: usize, left: bool) -> usize {
+        // `sw=0` under 'vartabstop': shift from stop to stop (nvim's `get_new_vts_indent`, #1163).
+        if self.shift_width == 0 && !self.vts.is_empty() {
+            return self.vts_shifted(cols, times, left);
+        }
         let sw = self.shift_width();
         if !self.shiftround {
             return if left {
@@ -177,6 +180,34 @@ impl IndentConfig {
         i.saturating_mul(sw)
     }
 
+    /// nvim's `get_new_vts_indent`: a shift by `times` tab stops of 'vartabstop' from the indent `cols`,
+    /// keeping the columns past the stop at or before it (rounded off under 'shiftround').
+    fn vts_shifted(self, cols: usize, times: usize, left: bool) -> usize {
+        let v = self.vts;
+        // The stop at or before the indent: `vtsi` stops of 'vartabstop' fit in `cols`.
+        let mut vtsi = 0usize;
+        while v.sum(vtsi + 1) <= cols {
+            vtsi += 1;
+        }
+        let offset = cols - v.sum(vtsi);
+        if self.shiftround {
+            if left {
+                let back = if offset == 0 { times } else { times - 1 };
+                v.sum(vtsi.saturating_sub(back))
+            } else {
+                v.sum(vtsi + times)
+            }
+        } else if left {
+            if times > vtsi {
+                0
+            } else {
+                v.sum(vtsi - times) + offset
+            }
+        } else {
+            v.sum(vtsi + times) + offset
+        }
+    }
+
     /// The leading whitespace of a line opened from the line at `ls` (nvim's `open_line`), and the
     /// smartindent state it leaves. `end` cuts that line where the cursor splits it (`<CR>`), or is its end
     /// (`o`/`O`); `below` is `o`/`<CR>`. Called only under `'autoindent'` or `'smartindent'`.
@@ -188,7 +219,7 @@ impl IndentConfig {
         below: bool,
         cinwords: &str,
     ) -> (Vec<u8>, SiState) {
-        let ts = self.tab_width;
+        let ts = self.tabs();
         let saved = &b[ls..end];
         let mut newindent = indent_cols(saved, ts).0;
         let mut si = SiState::default();
@@ -287,7 +318,7 @@ impl IndentConfig {
         si: SiState,
         c: char,
     ) -> Option<Vec<u8>> {
-        let ts = self.tab_width;
+        let ts = self.tabs();
         let line = line_at(b, ls);
         let (cols, ws) = indent_cols(line, ts);
         let old = &line[..ws];
@@ -345,23 +376,28 @@ impl IndentConfig {
     /// unlike the tabstop) asks for columns; then spaces to the next stop, which `noexpandtab` turns back
     /// into tabs over the whitespace run before the caret.
     pub(super) fn tab(self, b: &[u8], ls: usize, cur: usize) -> (usize, Vec<u8>) {
-        let ts = self.tab_width.max(1);
+        let ts = self.tabs();
         let sw = self.shift_width();
-        let sts = self.soft_tab_width();
         let smart = self.smarttab && b[ls..cur].iter().all(|&c| is_white(c));
         let et = self.style == IndentStyle::Space;
-        if !et && !(smart && sw != ts) && sts == 0 {
+        // nvim's "'tabstop' != 'shiftwidth'", with 'vartabstop' (#1163).
+        let ts_ne_sw = match self.vts.count() {
+            0 => self.tab_width != sw,
+            1 => usize::from(self.vts.stops()[0]) != sw,
+            _ => true,
+        };
+        if !et && !(smart && ts_ne_sw) && !self.soft_tabs_on() {
             return (cur, vec![b'\t']);
         }
-        let stop = if smart {
-            sw
-        } else if sts != 0 {
-            sts
-        } else {
-            ts
-        };
         let vcol = crate::motion::vcol_of(b, ls, cur, ts);
-        let want = vcol + stop - vcol % stop;
+        let pad = if smart {
+            sw - vcol % sw
+        } else if self.soft_tabs_on() {
+            crate::cells::padding(vcol, self.soft_tab_width(), &self.vsts)
+        } else {
+            ts.padding(vcol)
+        };
+        let want = vcol + pad;
         if et {
             return (cur, vec![b' '; want - vcol]);
         }
@@ -371,9 +407,9 @@ impl IndentConfig {
         }
         let mut v = crate::motion::vcol_of(b, ls, from, ts);
         let mut run = Vec::new();
-        while v + (ts - v % ts) <= want {
+        while v + ts.padding(v) <= want {
             run.push(b'\t');
-            v += ts - v % ts;
+            v += ts.padding(v);
         }
         run.extend(std::iter::repeat_n(b' ', want - v));
         (from, run)
@@ -393,16 +429,20 @@ impl IndentConfig {
         if cur <= ls {
             return None;
         }
-        let ts = self.tab_width.max(1);
-        let sts = self.soft_tab_width();
+        let ts = self.tabs();
         let prev = b[cur - 1];
         let smart = self.smarttab && b[ls..cur].iter().all(|&c| is_white(c));
-        if !(smart || (sts != 0 && (prev == b'\t' || (prev == b' ' && !typed_space)))) {
+        let soft = self.soft_tabs_on();
+        if !(smart || (soft && (prev == b'\t' || (prev == b' ' && !typed_space)))) {
             return None;
         }
         let vcol = crate::motion::vcol_of(b, ls, cur, ts);
-        let stop = if smart { self.shift_width() } else { sts };
-        let want = (vcol - 1) / stop * stop;
+        let want = if smart {
+            let sw = self.shift_width();
+            (vcol - 1) / sw * sw
+        } else {
+            crate::cells::start_col(vcol - 1, self.soft_tab_width(), &self.vsts)
+        };
         let (mut from, mut v) = (cur, vcol);
         while v > want && from > ls && is_white(b[from - 1]) {
             from -= 1;

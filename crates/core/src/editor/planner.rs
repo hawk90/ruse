@@ -1,4 +1,5 @@
 use super::*;
+use crate::cells::Tabs;
 use crate::RegKind;
 
 /// The most bytes one counted repeat of text may produce (`{count}p`, `{count}gr`): 64 MiB is far beyond
@@ -21,7 +22,7 @@ fn plan_block_insert(
 ) -> Plan {
     let append = matches!(kind, BlockInsertKind::Append);
     let change = matches!(kind, BlockInsertKind::Change);
-    let ts = st.view.indent.tab_width;
+    let ts = st.view.indent.tabs();
     let block = if let Some(anchor) = st.view.anchor {
         // Live block insert from a Visual-block selection: the two corners are `anchor` and `cur`. `$`
         // (curswant at MAXCOL) makes the block ragged: `$A` appends at EACH row's own line end.
@@ -178,7 +179,7 @@ fn plan_selection_span(
             } else if e < b.len() {
                 (
                     s,
-                    want_col(b, e, st.view.curswant.get(), st.view.indent.tab_width) - (e - s),
+                    want_col(b, e, st.view.curswant.get(), st.view.indent.tabs()) - (e - s),
                 )
             } else if s > 0 {
                 (
@@ -187,7 +188,7 @@ fn plan_selection_span(
                         b,
                         line_start(b, s - 1),
                         st.view.curswant.get(),
-                        st.view.indent.tab_width,
+                        st.view.indent.tabs(),
                     ),
                 )
             } else {
@@ -227,7 +228,7 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
     );
     let lines = (last - first + 1) as u32;
     // The shared line planners keep the mode they were called in; a Visual operator ends the selection.
-    let ts = st.view.indent.tab_width;
+    let ts = st.view.indent.tabs();
     let normal = |p: Plan| Plan {
         mode: Mode::Normal,
         ..p
@@ -407,7 +408,7 @@ fn plan_change(
         *m,
         count,
         &st.view.curswant,
-        st.view.indent.tab_width,
+        st.view.indent.tabs(),
         false,
     );
     apply_op(st, b, cur, MarkOp::Change, sp, landing, hint)
@@ -954,7 +955,7 @@ fn apply_op(
             let at = if adjusted {
                 motion::first_non_blank(b, line)
             } else {
-                want_col(b, line, st.view.curswant.get(), st.view.indent.tab_width)
+                want_col(b, line, st.view.curswant.get(), st.view.indent.tabs())
             };
             edit_yank(
                 one(Edit::delete(BytePos(del_start), e - del_start)),
@@ -1282,8 +1283,8 @@ fn plan_virtual_replace_type(
         // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column, replace
         // the tab with the typed char (backspace restores the tab).
         let ls = line_start(b, cur);
-        let vcol = motion::vcol_of(b, ls, cur, st.view.indent.tab_width);
-        let w = st.view.indent.tab_width.max(1) - (vcol % st.view.indent.tab_width.max(1));
+        let vcol = motion::vcol_of(b, ls, cur, st.view.indent.tabs());
+        let w = st.view.indent.tabs().padding(vcol);
         if w > 1 {
             (one(Edit::insert(BytePos(cur), typed)), Some(None), cur + tn)
         } else {
@@ -1334,7 +1335,7 @@ fn plan_virtual_replace_char(
     c: char,
     hint: GroupHint,
 ) -> Plan {
-    let tabw = st.view.indent.tab_width.max(1);
+    let tabw = st.view.indent.tabs();
     let ls = line_start(b, cur);
     let le = line_end(b, cur);
     // Work on an owned copy of the whole line so tab virtual-column math sees the evolving text; positions
@@ -1360,7 +1361,7 @@ fn plan_virtual_replace_char(
             // Over a TAB spanning `w` virtual columns: insert before it (shrinking it) while more than one
             // column remains; on its last column replace the tab itself — preserving the next char's column.
             let vcol = motion::vcol_of(&line, 0, p, tabw);
-            let w = tabw - (vcol % tabw);
+            let w = tabw.padding(vcol);
             if w > 1 {
                 line.splice(p..p, typed.iter().copied());
             } else {
@@ -1643,7 +1644,7 @@ fn selection_block(st: &EditorState, b: &[u8], cur: usize) -> Option<Block> {
     }
     let anchor = st.view.anchor?;
     let to_eol = st.view.curswant == MAXCOL;
-    Some(block_geom(b, anchor, cur, st.view.indent.tab_width, to_eol))
+    Some(block_geom(b, anchor, cur, st.view.indent.tabs(), to_eol))
 }
 
 /// Block `r{char}` (Vim `op_replace`): every cell of the block on each row becomes `c` — a `<Tab>` or a
@@ -1702,7 +1703,7 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
     let (Some(kind), Some(anchor)) = (st.view.mode.selection(), st.view.anchor) else {
         return nop(cur, Mode::Normal);
     };
-    let ts = st.view.indent.tab_width;
+    let ts = st.view.indent.tabs();
     let reg = st.view.registers.get(st.view.pending_register).clone();
     // 1. The delete: its edits, the captured text, and where the cursor sits afterwards.
     let (dels, deleted, mut c2, block_lines) = match kind {
@@ -2255,9 +2256,9 @@ pub(crate) fn open_comment_line_in(
         forward,
         split.then(|| cur - ls),
         indent_on,
-        ind.tab_width,
+        ind.tabs(),
     );
-    let (old_cols, old_len) = indent_cols(saved, ind.tab_width);
+    let (old_cols, old_len) = indent_cols(saved, ind.tabs());
     let mut leader = lead.leader;
     let newindent = if leader.is_empty() {
         // A finished C comment: line up with the line holding its `/*`.
@@ -2267,7 +2268,7 @@ pub(crate) fn open_comment_line_in(
         }
         let open = b[..ls + ce].windows(2).rposition(|w| w == b"/*")?;
         let ols = line_start(b, open);
-        indent_cols(&b[ols..line_end(b, ols)], ind.tab_width).0
+        indent_cols(&b[ols..line_end(b, ols)], ind.tabs()).0
     } else if indent_on {
         lead.newindent.unwrap_or(old_cols)
     } else {
@@ -2499,7 +2500,7 @@ fn display_columns(st: &EditorState, cmd: &Command) -> Option<Command> {
         return None;
     }
     let b = st.bytes();
-    let ts = st.view.indent.tab_width;
+    let ts = st.view.indent.tabs();
     let ls = line_start(b, st.view.cursor);
     let n = count.max(1) as usize;
     let vcol = match m {
@@ -2598,7 +2599,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 1,
                 false,
                 st.view.curswant.get(),
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
             ),
             st.view.mode,
         ),
@@ -2609,7 +2610,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 1,
                 true,
                 st.view.curswant.get(),
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
             ),
             st.view.mode,
         ),
@@ -2707,7 +2708,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             // the block (see `block_replicate`); the session is cleared in `commit` as Insert is left.
             if st.view.mode == Mode::Insert {
                 if let Some(session) = st.view.block_insert {
-                    return block_replicate(b, cur, session, hint, st.view.indent.tab_width);
+                    return block_replicate(b, cur, session, hint, st.view.indent.tabs());
                 }
                 // Autoindent cleanup (Vim): if this Insert session opened a line with auto-indent and
                 // nothing non-blank was typed on it, leaving Insert removes the indent so no trailing
@@ -3047,7 +3048,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         Command::InsertIndent => {
             let ls = line_start(b, cur);
             let le = line_end(b, ls);
-            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
+            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tabs());
             let sw = st.shift_width();
             let want = st
                 .view
@@ -3066,7 +3067,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         Command::InsertDedent => {
             let ls = line_start(b, cur);
             let le = line_end(b, ls);
-            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
+            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tabs());
             if ws == 0 {
                 return nop(cur, Mode::Insert);
             }
@@ -3430,7 +3431,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             // Per selected line: (line_start, search_from).
             let lines: Vec<(usize, usize)> = match st.view.mode.selection() {
                 Some(SelectKind::Blockwise) => {
-                    block_geom(b, anchor, cur, st.view.indent.tab_width, false)
+                    block_geom(b, anchor, cur, st.view.indent.tabs(), false)
                         .rows
                         .iter()
                         .map(|r| (r.ls, r.ds))
@@ -3685,7 +3686,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             }
             // Vertical motions honour the sticky desired column (curswant) so `j`/`k` keep the wanted
             // column through shorter interior lines; every other motion computes its own landing.
-            let ts = st.view.indent.tab_width;
+            let ts = st.view.indent.tabs();
             let target = match m {
                 Motion::Up => motion::vmove(b, cur, *count, false, st.view.curswant.get(), ts),
                 Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant.get(), ts),
@@ -3767,7 +3768,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 *m,
                 *count,
                 &st.view.curswant,
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
                 false,
             );
             apply_op(st, b, cur, MarkOp::Delete, sp, landing, hint)
@@ -3781,7 +3782,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 *m,
                 *count,
                 &st.view.curswant,
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
                 true,
             );
             apply_op(st, b, cur, MarkOp::Yank, sp, landing, hint)
@@ -3798,7 +3799,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 *motion,
                 *count,
                 &st.view.curswant,
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
                 false,
             );
             apply_op(st, b, cur, MarkOp::Case(*case), sp, landing, hint)
@@ -3814,7 +3815,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             // Forced blockwise (`d<C-v>j`): the cursor and the motion target are the block's two corners.
             if *wise == ForcedWise::Blockwise {
                 let target = motion::target(b, cur, *motion, *count);
-                let block = block_geom(b, cur, target, st.view.indent.tab_width, false);
+                let block = block_geom(b, cur, target, st.view.indent.tabs(), false);
                 return block_op(b, &block, *op, hint);
             }
             let sp = forced_span(
@@ -3824,7 +3825,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 *count,
                 *wise,
                 &st.view.curswant,
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
             );
             if sp.s >= sp.e && *op == OpKind::Change && !sp.linewise {
                 // An empty charwise change still drops into Insert (Vim).
@@ -3836,7 +3837,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 *motion,
                 *count,
                 &st.view.curswant,
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
                 *op == OpKind::Yank,
             );
             apply_op(st, b, cur, mark_op(*op), sp, landing, hint)
@@ -3899,7 +3900,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     *motion,
                     *count,
                     &st.view.curswant,
-                    st.view.indent.tab_width,
+                    st.view.indent.tabs(),
                     true,
                 );
                 let at = if linewise { cur.min(landing) } else { s };
@@ -3939,7 +3940,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             st.view.caret,
             *move_after,
             true,
-            st.view.indent.tab_width,
+            st.view.indent.tabs(),
         ),
         // `zp` / `zP` — `p` / `P`, but a block's short rows get no trailing spaces (nvim `PUT_BLOCK_INNER`).
         Command::PasteBlockInner { after, count } => paste(
@@ -3952,7 +3953,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             st.view.caret,
             false,
             false,
-            st.view.indent.tab_width,
+            st.view.indent.tabs(),
         ),
         // `]p`/`[p` — indent-adjusting paste. For a linewise register, reindent its lines to the current
         // line's indent before pasting; a charwise/blockwise register pastes unchanged (Vim `]p` = `p`).
@@ -3961,12 +3962,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             if reg.is_linewise() {
                 let (target_cols, _) = indent_cols(
                     &b[line_start(b, cur)..line_end(b, cur)],
-                    st.view.indent.tab_width,
+                    st.view.indent.tabs(),
                 );
                 let adjusted = reindent_register(
                     reg.text(),
                     target_cols,
-                    st.view.indent.tab_width,
+                    st.view.indent.tabs(),
                     st.view.indent.style,
                 );
                 let tmp = Register::linewise(adjusted);
@@ -3980,7 +3981,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     st.view.caret,
                     false,
                     true,
-                    st.view.indent.tab_width,
+                    st.view.indent.tabs(),
                 )
             } else {
                 paste(
@@ -3993,7 +3994,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     st.view.caret,
                     false,
                     true,
-                    st.view.indent.tab_width,
+                    st.view.indent.tabs(),
                 )
             }
         }
@@ -4086,7 +4087,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     Command::ChangeSelection => OpKind::Change,
                     _ => OpKind::Delete,
                 };
-                let ts = st.view.indent.tab_width;
+                let ts = st.view.indent.tabs();
                 let block = block_geom(b, anchor, cur, ts, st.view.curswant == MAXCOL);
                 return block_op(b, &block, op, hint);
             }
@@ -4392,7 +4393,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 st.view.caret,
                 false, // Emacs yank is not `gp` — normal cursor placement
                 true,
-                st.view.indent.tab_width,
+                st.view.indent.tabs(),
             );
             if !matches!(p.action, Action::Nop) {
                 p.set_mark = Some(MarkWrite::Set(cur));
@@ -5007,7 +5008,7 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
             b,
             first_line,
             last_line,
-            ind.tab_width,
+            ind.tabs(),
             &st.view.format.lispwords,
             |c| ind.whitespace(c),
         )
@@ -5016,7 +5017,7 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
         // 'indentexpr' is set (#1163).
         let fc = &st.view.format;
         let e = super::cindent::CEnv {
-            ts: ind.tab_width,
+            ts: ind.tabs(),
             cino: super::cindent::CinOptions::parse(&fc.cinoptions, ind.shift_width()),
             cinwords: &fc.cinwords,
             cinscopedecls: &fc.cinscopedecls,
@@ -5038,13 +5039,13 @@ fn reindented_cursor(st: &EditorState, indent: &[u8], text: &[u8]) -> usize {
     }
     let mut line = indent.to_vec();
     line.extend_from_slice(text);
-    line_col_cursor(&line, st.view.curswant.get(), st.view.indent.tab_width)
+    line_col_cursor(&line, st.view.curswant.get(), st.view.indent.tabs())
 }
 
 /// The byte offset in `line` (one line's bytes, no newline) of a Normal-mode cursor at the wanted column
 /// `want` (Vim's `coladvance`): the char covering that virtual column, the last char past the end or at
 /// [`MAXCOL`], `0` on an empty line.
-fn line_col_cursor(line: &[u8], want: usize, ts: usize) -> usize {
+fn line_col_cursor(line: &[u8], want: usize, ts: Tabs) -> usize {
     let last = || motion::prev_grapheme(line, line.len());
     if line.is_empty() {
         0
@@ -5081,7 +5082,7 @@ pub(super) fn refused_linewise_cursor(
 ) -> Option<usize> {
     let b = st.bytes();
     let cur = st.view.cursor;
-    let ts = st.view.indent.tab_width;
+    let ts = st.view.indent.tabs();
     let start = if st.view.mode.selection().is_some() {
         line_start(b, st.view.anchor?.min(cur))
     } else {
@@ -5133,7 +5134,7 @@ fn plan_shift_times(
     let mut ls = first_ls;
     for i in 0..count.max(1) {
         let le = line_end(b, ls);
-        let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
+        let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tabs());
         // Vim indents a whitespace-only line but never a truly EMPTY one (`ls == le`).
         let ind = st.view.indent;
         let old = &b[ls..ls + ws];
@@ -5163,10 +5164,10 @@ fn plan_shift_times(
     let cursor = if right && first_ls >= first_le {
         first_ls
     } else {
-        let (_, old_ws) = indent_cols(&b[first_ls..first_le], st.view.indent.tab_width);
+        let (_, old_ws) = indent_cols(&b[first_ls..first_le], st.view.indent.tabs());
         let mut line = first_new_ws;
         line.extend_from_slice(&b[first_ls + old_ws..first_le]);
-        first_ls + line_col_cursor(&line, st.view.curswant.get(), st.view.indent.tab_width)
+        first_ls + line_col_cursor(&line, st.view.curswant.get(), st.view.indent.tabs())
     };
 
     if edits.is_empty() {
@@ -5217,7 +5218,7 @@ fn plan_block_shift(
     hint: GroupHint,
 ) -> Plan {
     let ind = st.view.indent;
-    let ts = ind.tab_width.max(1);
+    let ts = ind.tabs();
     let total = ind.shift_width().saturating_mul(count.max(1) as usize);
     let lo = block.lo;
     let is_white = |c: u8| c == b' ' || c == b'\t';
@@ -5255,9 +5256,9 @@ fn plan_block_shift(
             let mut out = Vec::new();
             let mut c = from;
             if ind.style == IndentStyle::Tab {
-                while (c / ts + 1) * ts <= to {
+                while c + ts.padding(c) <= to {
                     out.push(b'\t');
-                    c = (c / ts + 1) * ts;
+                    c += ts.padding(c);
                 }
             }
             out.extend(std::iter::repeat_n(b' ', to - c));
@@ -5429,7 +5430,7 @@ fn block_insert_point(
     b: &[u8],
     ls: usize,
     t: usize,
-    ts: usize,
+    ts: Tabs,
     pad: bool,
 ) -> (usize, usize, usize, usize) {
     let le = line_end(b, ls);
@@ -5460,7 +5461,7 @@ fn block_insert_point(
 /// replicate (Vim). For `I`/`A` the cursor returns to the block's top-left corner (`session.top_left`);
 /// for `c` (change) it rests one char left of the top row's typed text — the normal Insert-exit position,
 /// which Vim keeps for a block change (matters only when more than one char was typed).
-fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, ts: usize) -> Plan {
+fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, ts: Tabs) -> Plan {
     let nop = |cursor: usize| Plan {
         action: Action::Nop,
         cursor,
@@ -5556,7 +5557,7 @@ fn block_change_split(
     cur: usize,
     session: &BlockInsert,
     hint: GroupHint,
-    ts: usize,
+    ts: Tabs,
 ) -> Plan {
     let cur_ls = line_start(b, cur);
     let rest = motion::prev_boundary(b, cur).max(cur_ls);
@@ -5626,7 +5627,7 @@ fn paste_block(
     after: bool,
     count: usize,
     pad: bool,
-    ts: usize,
+    ts: Tabs,
 ) -> Plan {
     let units: Vec<&[u8]> = reg.text().split(|&c| c == b'\n').collect();
     let block_width = reg.block_width();
@@ -5770,21 +5771,17 @@ use super::indent::indent_cols;
 fn reindent_register(
     text: &[u8],
     target_cols: usize,
-    tab_width: usize,
+    tab_width: Tabs,
     style: IndentStyle,
 ) -> Vec<u8> {
-    let tw = tab_width.max(1);
+    let tw = tab_width;
     let first_end = text.iter().position(|&c| c == b'\n').unwrap_or(text.len());
     let (first_cols, _) = indent_cols(&text[..first_end], tw);
     let delta = target_cols as isize - first_cols as isize;
     let build = |cols: usize| -> Vec<u8> {
         match style {
             IndentStyle::Space => vec![b' '; cols],
-            IndentStyle::Tab => {
-                let mut v = vec![b'\t'; cols / tw];
-                v.extend(std::iter::repeat_n(b' ', cols % tw));
-                v
-            }
+            IndentStyle::Tab => tw.fill(cols),
         }
     };
     let mut out = Vec::with_capacity(text.len());
@@ -5818,7 +5815,7 @@ fn paste(
     gravity: CaretGravity,
     move_after: bool,
     pad_block: bool,
-    ts: usize,
+    ts: Tabs,
 ) -> Plan {
     let nop = Plan {
         action: Action::Nop,
