@@ -274,6 +274,9 @@ def _from_latin1_hex(s: str) -> str:
     return bytes.fromhex(s).decode("latin-1")
 
 
+# The marks and registers the probe reads (#900), in the order the corpus records them.
+MARK_NAMES = "abcdefghijklmnopqrstuvwxyz<>[].^"
+REG_NAMES = "123456789-"
 # A mark's column nvim leaves at MAXCOL: the end of a linewise area (`'>` after `V`, `']` after `yj`).
 MAXCOL = 2147483647
 
@@ -327,10 +330,13 @@ def run_neovim(
     if raw:
         text = [_from_latin1_hex(t) for t in text]
         ru_text, r0_text = _from_latin1_hex(ru_text), _from_latin1_hex(r0_text)
+    # In a fixed order: the probe's JSON objects come out in Lua's hash order, which differs between
+    # machines, so the corpus would not regenerate byte-identically (#904).
     regs = {
-        name: {"text": unhex(t), "type": _regtype(rt)} for name, (t, rt) in got["regs"].items()
+        name: {"text": unhex(got["regs"][name][0]), "type": _regtype(got["regs"][name][1])}
+        for name in REG_NAMES
     }
-    marks = {name: _mark(p) for name, p in got["marks"].items() if p is not None}
+    marks = {name: _mark(got["marks"][name]) for name in MARK_NAMES if got["marks"].get(name)}
     visual = got["visual"]
     if visual is not None:
         visual = [_regtype(visual[0]), _mark(visual[1])]
@@ -5334,6 +5340,11 @@ def selftest() -> int:
         if a[k] != b[k]:
             _fail(f"determinism: {k} differs across identical runs: {a[k]} != {b[k]}")
             failures += 1
+    # The corpus is compared as bytes, so the serialized state must not change either: key order included
+    # (two dicts with the same items compare equal in any order, #904).
+    if json.dumps(a) != json.dumps(b):
+        _fail("determinism: the serialized state differs across identical runs")
+        failures += 1
 
     # 3. KNOWN OPS — hand-verified expectations. If the oracle disagrees with these, it is LYING and
     #    no fixture recorded through it can be trusted.
