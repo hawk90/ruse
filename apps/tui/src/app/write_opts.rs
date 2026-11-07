@@ -83,6 +83,11 @@ pub(crate) struct EmacsFiles {
     pub revert_buffer_quick_short_answers: bool,
     /// `save-some-buffers-default-predicate` is `save-some-buffers-root`.
     pub save_some_buffers_default_predicate_root: bool,
+    /// `auto-save-default`: buffers keep a recovery journal (ruse's auto-save file, RFC-0023).
+    pub auto_save_default: bool,
+    /// `auto-save-visited-mode` and `auto-save-visited-interval` (seconds).
+    pub auto_save_visited_mode: bool,
+    pub auto_save_visited_interval: u64,
     /// `large-file-warning-threshold` in bytes, `None` for nil.
     pub large_file_warning_threshold: Option<u64>,
     /// `out-of-memory-warning-percentage`, `None` for nil.
@@ -114,6 +119,9 @@ impl Default for EmacsFiles {
             revert_without_query: Vec::new(),
             revert_buffer_quick_short_answers: false,
             save_some_buffers_default_predicate_root: false,
+            auto_save_default: true,
+            auto_save_visited_mode: false,
+            auto_save_visited_interval: 5,
             large_file_warning_threshold: Some(10_000_000),
             out_of_memory_warning_percentage: None,
         }
@@ -216,6 +224,11 @@ impl EmacsFiles {
             "revert_buffer_quick_short_answers",
             e.revert_buffer_quick_short_answers,
         );
+        e.auto_save_default = flag("auto_save_default", e.auto_save_default);
+        e.auto_save_visited_mode = flag("auto_save_visited_mode", e.auto_save_visited_mode);
+        if let Some(Value::Int(n)) = get("auto_save_visited_interval") {
+            e.auto_save_visited_interval = u64::try_from(*n).unwrap_or(5);
+        }
         if let Some(Value::Int(n)) = get("large_file_warning_threshold") {
             e.large_file_warning_threshold = u64::try_from(*n).ok();
         }
@@ -263,6 +276,10 @@ pub(crate) struct WriteOptions {
     pub binary_mode: bool,
     /// `'textwidth'`, `'wrapmargin'` and `'expandtab'` as they were before `:set binary` zeroed them.
     pub bin_saved: Option<(i64, i64, bool)>,
+    /// Vim's `'updatecount'` (#619): changes buffered before the journal syncs; 0 is no journal.
+    pub updatecount: usize,
+    /// The global `'swapfile'`: whether a buffer opened from now on keeps a journal.
+    pub swapfile: bool,
 }
 
 impl Default for WriteOptions {
@@ -292,6 +309,8 @@ impl WriteOptions {
             fileformat: crate::persist::encoding::Eol::Lf,
             binary_mode: false,
             bin_saved: None,
+            updatecount: crate::persist::journal::SYNC_EVERY,
+            swapfile: true,
         }
     }
 

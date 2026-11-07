@@ -196,6 +196,7 @@ pub(crate) fn attach_file(
         }
     }
     persist::backup::visited(&path); // a new visit: Emacs makes its one backup again
+    let swapfile = files.write.swapfile;
     files.insert(
         id,
         BufferFile {
@@ -204,6 +205,7 @@ pub(crate) fn attach_file(
             read_only: false,
             reloads: 0,
             large: false,
+            swapfile,
         },
     );
 }
@@ -247,6 +249,8 @@ pub(crate) struct BufferFile {
     pub(crate) reloads: u32,
     /// Read past the large-file threshold: the degraded profile ([`mark_large`]).
     pub(crate) large: bool,
+    /// Vim's `'swapfile'` (#619): the buffer keeps a recovery journal (ruse's swap file, RFC-0023).
+    pub(crate) swapfile: bool,
 }
 
 /// Neovim's message for a write to a `'readonly'` buffer without `!`.

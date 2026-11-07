@@ -1064,6 +1064,7 @@ mod tests {
                 read_only: false,
                 reloads: 0,
                 large: false,
+                swapfile: true,
             },
         );
         let bytes = ws.focused().doc.bytes().to_vec();

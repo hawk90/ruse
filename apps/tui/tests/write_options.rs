@@ -68,3 +68,19 @@ fn a_reset_restores_the_environment_defaults() {
         shown
     );
 }
+
+/// The journal as nvim's swap file (#619): `'swapfile'` and `'updatecount'` read and set; `'directory'`
+/// shows the journal directory and refuses another (the next session looks for unsaved work there).
+#[test]
+fn swap_options_map_onto_the_journal() {
+    assert_eq!(status(":set swf?<CR>"), "  swapfile");
+    assert_eq!(status(":set noswf<CR>:set swf?<CR>"), "noswapfile");
+    assert_eq!(status(":set uc?<CR>"), "  updatecount=200");
+    assert_eq!(status(":set uc=0<CR>:set uc?<CR>"), "  updatecount=0");
+    let dir = status(":set dir?<CR>");
+    assert!(
+        dir.starts_with("  directory=") && dir.ends_with("//"),
+        "{dir}"
+    );
+    assert_eq!(status(":set dir=/x<CR>"), "option not supported: dir=/x");
+}

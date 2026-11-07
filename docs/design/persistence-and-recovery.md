@@ -297,6 +297,20 @@ the long-line guard — tuned on real workloads, see Open questions). In this mo
 - Compaction rewrites the journal as `new base Checkpoint (= current text) + empty tail` via the same atomic
   temp+rename discipline as §3, never in place.
 
+**Swap files, auto-save files and locks (v0.1.9, #619).** The RJ01 journal is ruse's swap file (Vim) and
+auto-save file (Emacs); the options that steer those map onto it:
+
+| Option | Mapping |
+| --- | --- |
+| Vim `'swapfile'` (per buffer; `:set` also sets the default for buffers opened later), Emacs `auto-save-default` | off: the buffer keeps no journal, and an existing one is discarded |
+| Vim `'updatecount'` | the change count that syncs the journal (default 200, the old `SYNC_EVERY`); 0 keeps no journal, as nvim keeps no swap file |
+| Vim `'directory'` | read-only: `:set dir?` shows the journal directory with `//`; another value is "option not supported", since a moved journal would hide unsaved work from the next session's recovery |
+| Emacs `auto-save-file-name-transforms` | divergence: the journal's name and place are fixed (`<name>.<path hash>.rj`), for the same reason |
+| Emacs `lock-file-name-transforms` (and lock files) | divergence: no `.#name` lock file; a live journal's owner (pid + start time) is the lock, and a second session gets the in-use prompt (E325's choices, #1208) |
+| Emacs `auto-save-visited-mode` / `auto-save-visited-interval` | built: after the interval idle, every modified buffer visiting a writable file is saved to it, once per idle period; `auto-save-visited-predicate` (a Lisp function) is not offered |
+
+The idle sync time stays 4 s (`'updatetime'` is not an option yet).
+
 ### 3. Atomic save
 
 Save is **durable-or-nothing**. "Saved" in the UI reflects a durable write (fsync of data *and* the containing

@@ -1251,9 +1251,14 @@ impl Writer {
     /// A journal whose base hash is still running is not due yet; a risky operation's
     /// [`Writer::flush`] waits for it.
     pub fn due(&self, now: Instant) -> bool {
+        self.due_every(now, SYNC_EVERY)
+    }
+
+    /// [`Writer::due`] with `every` changes in place of [`SYNC_EVERY`] (Vim's `'updatecount'`, #619).
+    pub fn due_every(&self, now: Instant, every: usize) -> bool {
         self.unsynced()
             && !self.hash_running()
-            && (self.pending_changes >= SYNC_EVERY
+            && (self.pending_changes >= every.max(1)
                 || self
                     .last_change
                     .is_none_or(|t| now.saturating_duration_since(t) >= IDLE))

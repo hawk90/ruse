@@ -754,6 +754,8 @@ pub(crate) struct Session {
     /// The last key or paste, and the last disk check: the idle check runs [`persist::journal::IDLE`]
     /// after both.
     last_input: std::time::Instant,
+    /// `auto-save-visited-mode` saved since the last key (#619): once per idle period.
+    auto_saved_since_input: bool,
     disk_checked: std::time::Instant,
     /// `'readonly'` beyond a file buffer's own flag: W10, `ruse -R`, buffers without a file (#1211).
     pub(crate) readonly: crate::app::dispatch::ReadOnly,
@@ -961,6 +963,7 @@ impl Session {
             disk_changed: HashSet::new(),
             disk_warned: HashMap::new(),
             last_input: std::time::Instant::now(),
+            auto_saved_since_input: false,
             disk_checked: std::time::Instant::now(),
             readonly: crate::app::dispatch::ReadOnly::default(),
             unnamed_start: path.is_none().then_some(file_buf),
@@ -1204,10 +1207,26 @@ impl Session {
         if *rescue {
             let now = std::time::Instant::now();
             let mut entries = Vec::with_capacity(files.len() + 1);
+            // `'noswapfile'`, `'updatecount'` 0 or Emacs's `auto-save-default` nil: no journal (#619).
+            let journaling = |bf: &crate::app::dispatch::BufferFile| {
+                bf.swapfile
+                    && files.write.updatecount > 0
+                    && files
+                        .write
+                        .emacs
+                        .as_ref()
+                        .is_none_or(|e| e.auto_save_default)
+            };
             for (id, bf) in files.iter() {
                 let Some(doc) = ws.document_mut(*id) else {
                     continue;
                 };
+                if !journaling(bf) {
+                    if let Some(mut w) = journal_writers.remove(id) {
+                        w.discard();
+                    }
+                    continue;
+                }
                 let Some(j) = *journals else {
                     // No state directory: journaling is off, and the first modified buffer says so once.
                     if doc.is_modified() && journal_failed.insert(*id) {
@@ -1226,7 +1245,7 @@ impl Session {
                 // Drain the change log (and drop the journal of a buffer that became clean: undone back to
                 // the saved text, saved, or re-read with `:e!`, #862), then sync if the policy says so.
                 w.absorb(doc, bf.fmt, now);
-                if w.due(now) {
+                if w.due_every(now, files.write.updatecount) {
                     let r = w.flush(doc);
                     journal_outcome(r, *id, &bf.path, w.journal(), journal_failed, status);
                 }
@@ -1468,9 +1487,13 @@ impl Session {
         }
         // Wake for a journal sync that falls due while no key arrives (RFC-0023 §4's idle trigger), and
         // for the idle look at the files on disk (§8).
-        for ms in [self.journal_wake_ms(), self.disk_wake_ms()]
-            .into_iter()
-            .flatten()
+        for ms in [
+            self.journal_wake_ms(),
+            self.disk_wake_ms(),
+            self.auto_save_wake_ms(),
+        ]
+        .into_iter()
+        .flatten()
         {
             poll_ms = Some(poll_ms.map_or(ms, |p| p.min(ms)));
         }
@@ -1598,6 +1621,54 @@ impl Session {
         }
     }
 
+    /// Emacs's `auto-save-visited-mode` (#619): once `auto-save-visited-interval` seconds passed since the
+    /// last key, save every modified buffer that visits a file (`save-some-buffers` without asking), once per
+    /// idle period, as Emacs's repeating idle timer does. Not a read-only buffer, which Emacs cannot save.
+    pub(crate) fn idle_auto_save_visited(&mut self) {
+        let Some(interval) = self.auto_save_interval() else {
+            return;
+        };
+        if self.last_input.elapsed() < interval || self.auto_saved_since_input {
+            return;
+        }
+        self.auto_saved_since_input = true;
+        let skip: Vec<DocumentId> = self
+            .files
+            .iter()
+            .filter(|(id, bf)| {
+                bf.read_only || self.ws.document(**id).is_some_and(|d| !d.is_modifiable())
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        let Session {
+            ws, files, status, ..
+        } = self;
+        if ws
+            .buffers()
+            .iter()
+            .any(|b| b.modified && files.contains_key(&b.id) && !skip.contains(&b.id))
+        {
+            crate::app::file_cmds::ex_write_all(ws, files, status, |b| skip.contains(&b));
+        }
+    }
+
+    /// `auto-save-visited-interval` while `auto-save-visited-mode` is on (Emacs profile), else `None`.
+    fn auto_save_interval(&self) -> Option<std::time::Duration> {
+        let e = self.files.write.emacs.as_ref()?;
+        (e.auto_save_visited_mode && self.rescue)
+            .then(|| std::time::Duration::from_secs(e.auto_save_visited_interval.max(1)))
+    }
+
+    /// How long until [`Session::idle_auto_save_visited`] is due, for the poll timeout.
+    fn auto_save_wake_ms(&self) -> Option<u64> {
+        let interval = self.auto_save_interval()?;
+        if self.auto_saved_since_input {
+            return None;
+        }
+        let wait = interval.saturating_sub(self.last_input.elapsed());
+        Some((wait.as_millis() as u64).max(1))
+    }
+
     /// How long until [`Session::idle_disk_check`] is due, for the poll timeout.
     fn disk_wake_ms(&self) -> Option<u64> {
         if !self.rescue || (self.files.is_empty() && self.config_paths.is_none()) {
@@ -1708,6 +1779,7 @@ impl Session {
     ) -> Flow {
         let status_before = self.status.serial();
         self.last_input = std::time::Instant::now();
+        self.auto_saved_since_input = false;
         if !from_replay {
             // A typed key comes after any replay drained; a block left open would join this key's change.
             self.end_macro_undo();
@@ -1769,6 +1841,7 @@ impl Session {
     /// [`InputEngine::paste`]. A paste does not end a macro recording and is not recorded into it.
     pub(crate) fn on_paste(&mut self, raw: &str, frame: &FrameCtx) -> Flow {
         self.last_input = std::time::Instant::now();
+        self.auto_saved_since_input = false;
         let text = crate::input::paste_text(raw);
         if text.is_empty() {
             return Flow::Continue;
@@ -5988,6 +6061,7 @@ pub(crate) fn run(
         }
         let (cols, term_rows) = ct_terminal::size().unwrap_or((80, 24));
         s.idle_disk_check();
+        s.idle_auto_save_visited();
         let frame = s.pre_frame(cols, term_rows);
         // A macro replay repaints at most every `REPLAY_PAINT`, not once per replayed key: nvim does not
         // redraw while it executes typeahead, and a frame per key made a 100,000-key replay take half a

@@ -759,6 +759,11 @@ features:
     # ++ff=mac, 'binary' (:set bin, ++bin, ruse -b: no conversion, tw/wm/et zeroed and restored); Emacs
     # large-file-warning-threshold (y/n/l) and out-of-memory-warning-percentage; the degraded large-file
     # profile past 32 MiB (no highlighting, [large]); bounded undo / streaming search still to come.
+    # v0.1.9 #619 journal as swap/auto-save (tests/pty_autosave.rs): 'swapfile' / Emacs auto-save-default (no
+    # journal when off), 'updatecount' (sync count; 0 = none), 'directory' shown read-only; Emacs
+    # auto-save-visited-mode / -interval save the visited file after the idle interval. Divergences:
+    # auto-save-file-name-transforms, lock-file-name-transforms (the journal owner is the lock),
+    # auto-save-visited-predicate. editor.line_endings documented as superseded by files.fileformats.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.

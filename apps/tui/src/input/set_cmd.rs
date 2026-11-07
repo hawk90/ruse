@@ -148,6 +148,11 @@ pub enum Opt {
     Binary,
     /// The line endings a read tries (#619).
     FileFormats,
+    /// The recovery journal as Vim's swap file (#619, RFC-0023): per buffer, how often it syncs, and
+    /// where it lives (read-only: ruse's journal directory).
+    SwapFile,
+    UpdateCount,
+    Directory,
 }
 
 /// An option's value.
@@ -476,6 +481,36 @@ pub const OPTIONS: &[OptDef] = &[
         },
         OptVal::text("unix,dos"),
         OptVal::text("unix,dos"),
+        Locality::Global,
+    ),
+    def(
+        Opt::Directory,
+        "directory",
+        "dir",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::None,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Global,
+    ),
+    def(
+        Opt::SwapFile,
+        "swapfile",
+        "swf",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::PerBuffer,
+    ),
+    def(
+        Opt::UpdateCount,
+        "updatecount",
+        "uc",
+        NUM0,
+        OptVal::Num(200),
+        OptVal::Num(200),
         Locality::Global,
     ),
     def(

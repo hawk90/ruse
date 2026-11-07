@@ -339,6 +339,15 @@ impl OptionHost<'_> {
             Opt::PatchMode => OptVal::Text(self.files.write.patchmode.clone().into()),
             Opt::EndOfLine => OptVal::Bool(self.file_format(buf).final_newline),
             Opt::FileFormat => OptVal::Str(self.file_format(buf).eol.name()),
+            Opt::SwapFile => OptVal::Bool(
+                self.files
+                    .get(&buf)
+                    .map_or(self.files.write.swapfile, |bf| bf.swapfile),
+            ),
+            Opt::UpdateCount => {
+                OptVal::Num(i64::try_from(self.files.write.updatecount).unwrap_or(i64::MAX))
+            }
+            Opt::Directory => OptVal::Text(journal_dir().into()),
             Opt::Binary => OptVal::Bool(self.file_format(buf).binary),
             Opt::FileFormats => OptVal::Text(self.files.write.fileformats.clone().into()),
             Opt::AutoRead => OptVal::Bool(self.ui.buffers.autoread),
@@ -510,6 +519,18 @@ impl OptionHost<'_> {
                 crate::app::dispatch::run_ex(ExCmd::Modified(on), self.ws, self.recorded);
             }
             (Opt::FileFormats, _) => self.files.write.fileformats = text,
+            // `:setlocal noswf` is the buffer's; `:set` also sets the default of buffers opened later.
+            (Opt::SwapFile, _) => {
+                if let Some(bf) = self.files.get_mut(&buf) {
+                    bf.swapfile = on;
+                }
+                if level != OptionLevel::Local {
+                    self.files.write.swapfile = on;
+                }
+            }
+            (Opt::UpdateCount, OptVal::Num(n)) => {
+                self.files.write.updatecount = usize::try_from(n).unwrap_or(0);
+            }
             // `'fileformat'` changes how the file is written, so the buffer is modified (nvim); `:setglobal`
             // sets the format of buffers without a file.
             (Opt::FileFormat, OptVal::Str(name)) => {
@@ -784,11 +805,20 @@ pub(crate) fn run_set(
     out
 }
 
+/// `'directory'`'s value: the recovery journal directory (`$XDG_STATE_HOME/ruse/journal`), with nvim's `//`
+/// (the journal names its file after the whole path); empty without a state directory.
+fn journal_dir() -> String {
+    crate::persist::journal::current()
+        .map(|j| format!("{}//", j.dir().display()))
+        .unwrap_or_default()
+}
+
 /// ruse's default of `def`: the table's, except for the options whose default depends on the environment
 /// (`'backupdir'` names the state directory, `'backupskip'` the temp directories).
 fn default_of(def: &OptDef) -> OptVal {
     match def.opt {
         Opt::BackupDir => OptVal::Text(crate::persist::backup::default_backupdir().into()),
+        Opt::Directory => OptVal::Text(journal_dir().into()),
         Opt::BackupSkip => OptVal::Text(crate::persist::backup::default_backupskip().into()),
         _ => def.default.clone(),
     }
@@ -797,7 +827,7 @@ fn default_of(def: &OptDef) -> OptVal {
 /// nvim's default of `def` (`opt&vim`), environment-dependent as [`default_of`].
 fn vim_default_of(def: &OptDef) -> OptVal {
     match def.opt {
-        Opt::BackupDir | Opt::BackupSkip => default_of(def),
+        Opt::BackupDir | Opt::BackupSkip | Opt::Directory => default_of(def),
         _ => def.vim_default.clone(),
     }
 }
@@ -815,6 +845,8 @@ fn text_supported(opt: Opt, t: &str) -> bool {
     match opt {
         Opt::CpOptions => t == crate::input::set_cmd::CPO_DEFAULT,
         Opt::VerboseFile => t.is_empty(),
+        // The journal directory is where the next session looks for unsaved work: it is not moved (#619).
+        Opt::Directory => t == journal_dir(),
         // `'breakindentopt'` `list:` is not drawn (#615).
         Opt::BreakIndentOptions => {
             crate::ui::line_layout::parse_briopt(t).is_ok_and(|o| o.list == 0)
@@ -853,6 +885,8 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::AutoWriteAll => "editor.autowriteall",
         Opt::AutoRead => "editor.autoread",
         Opt::FileFormats => "files.fileformats",
+        Opt::SwapFile => "files.swapfile",
+        Opt::UpdateCount => "files.updatecount",
         Opt::Backup => "files.backup",
         Opt::WriteBackup => "files.writebackup",
         Opt::BackupDir => "files.backupdir",
