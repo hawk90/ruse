@@ -591,6 +591,32 @@ keeps the question); the page keys of View mode move the cursor a page rather th
 (the view follows); buffers are offered in buffer-number order, not Emacs's most-recently-selected order;
 `save-some-buffers-default-predicate` takes `nil` or `save-some-buffers-root`, no Lisp function.
 
+**Visiting files in the Emacs profile (v0.1.9, #619).** `C-x C-f` follows `find-file-noselect`:
+
+- `find-file-wildcards` visits every match of a last component with `*`, `?` or `[...]` (no leading-dot names
+  unless the pattern starts with a dot) and shows the first;
+- `directory-abbrev-alist` rewrites a name whose start matches FROM, and `find-file-visit-truename` visits
+  the true name;
+- a file another buffer visits under another name is visited in that buffer (`find-file-existing-other-name`
+  t), with `A and B are the same file` unless `find-file-suppress-same-file-warnings`;
+- a new file says `(New file)`; `confirm-nonexistent-file-or-buffer` t wants a second `RET` after `[Confirm]`;
+- `auto-mode-case-fold` retries an unknown extension in lower case;
+- `C-x C-w` (`write-file`) asks `File x exists; overwrite? (y or n)` and, under
+  `change-major-mode-with-file-name`, takes the new name's highlighting;
+- `M-x find-sibling-file` visits the first existing EXPANSION of the first matching `find-sibling-rules` rule.
+
+Divergences:
+- **Not built:**
+  - `find-file-existing-other-name` nil: ruse keeps one buffer per file, since two buffers on one file would
+    share a journal.
+  - Wildcards in directory components.
+  - An EXPANSION that is a regexp, and the choice among several siblings (the first wins).
+  - `major-mode-remap-alist`: ruse has no major modes; a file's type comes from its extension.
+- **Nothing for the variable to steer:**
+  - `mounted-file-systems`: ruse makes no temporary files outside a file's own directory.
+  - `remote-shell-program`: remote files are F-017's agent over ssh, not TRAMP.
+  - `save-abbrevs`: ruse has no abbrev tables.
+
 ### 6. Undo grouping boundaries (resolves the open D-005 part)
 
 Undo is recorded by **logical unit, not per keystroke** (INV-UNDO, [architecture §3.3](../architecture/architecture.md)). The

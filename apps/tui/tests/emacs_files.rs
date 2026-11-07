@@ -169,3 +169,86 @@ fn find_file_of_a_changed_file_asks_to_reread() {
     h.keys("yes<CR>");
     assert_eq!(h.text(), "outside\n");
 }
+
+/// Type `name` at the `C-x C-f` / `C-x C-w` prompt, replacing its default directory.
+fn answer_file(h: &mut Headless, prompt: &str, name: &str) {
+    let back = "<BS>".repeat(h.status().len() - prompt.len());
+    h.keys(&format!("{back}{name}<CR>"));
+}
+
+/// Emacs 31.1 `find-file-wildcards` t: `[ab].txt` visits every match and shows the first; a name that does
+/// not exist says `(New file)`; another name of a visited file says they are the same file.
+#[test]
+fn find_file_wildcards_new_files_and_same_file() {
+    let f = file("one\n");
+    let dir = f.parent().unwrap().to_path_buf();
+    std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+    std::fs::write(dir.join("b.txt"), "b\n").unwrap();
+    let mut h = emacs(&f);
+    h.keys("<C-x><C-f>");
+    answer_file(
+        &mut h,
+        "Find file: ",
+        &format!("{}/[ab].txt", dir.display()),
+    );
+    assert_eq!(h.text(), "a\n", "the first match is shown");
+    h.keys("<C-x><C-f>");
+    answer_file(&mut h, "Find file: ", &format!("{}/b.txt", dir.display()));
+    assert_eq!(h.text(), "b\n", "b.txt was visited too");
+    h.keys("<C-x><C-f>");
+    answer_file(&mut h, "Find file: ", &format!("{}/new.txt", dir.display()));
+    assert_eq!(h.status(), "(New file)");
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&f, dir.join("link.txt")).unwrap();
+        h.keys("<C-x><C-f>");
+        let link = dir.join("link.txt");
+        answer_file(&mut h, "Find file: ", &link.display().to_string());
+        assert_eq!(
+            h.status(),
+            format!("{} and {} are the same file", link.display(), f.display())
+        );
+        assert_eq!(h.text(), "one\n");
+    }
+}
+
+/// `C-x C-w` (`write-file`) writes the buffer to a new name, which it then visits; an existing name asks
+/// `File x exists; overwrite? (y or n)`.
+#[test]
+fn write_file_asks_before_overwriting() {
+    let f = file("one\n");
+    let dir = f.parent().unwrap().to_path_buf();
+    let mut h = emacs(&f);
+    h.keys("<C-x><C-w>");
+    answer_file(
+        &mut h,
+        "Write file: ",
+        &format!("{}/copy.txt", dir.display()),
+    );
+    assert_eq!(read(&dir.join("copy.txt")), "one\n");
+    std::fs::write(dir.join("old.txt"), "old\n").unwrap();
+    h.keys("x<C-x><C-w>");
+    answer_file(
+        &mut h,
+        "Write file: ",
+        &format!("{}/old.txt", dir.display()),
+    );
+    assert_eq!(h.status(), "File old.txt exists; overwrite? (y or n) ");
+    h.keys("y");
+    assert_eq!(read(&dir.join("old.txt")), "xone\n");
+}
+
+/// `find-sibling-file` without a file or without rules says what Emacs says.
+#[test]
+fn find_sibling_file_errors() {
+    let mut h = Headless::emacs("a\n");
+    h.keys("<M-x>find-sibling-file<CR>");
+    assert_eq!(h.status(), "Not visiting a file");
+    let f = file("one\n");
+    let mut h = emacs(&f);
+    h.keys("<M-x>find-sibling-file<CR>");
+    assert_eq!(
+        h.status(),
+        "The `find-sibling-rules' variable has not been configured"
+    );
+}

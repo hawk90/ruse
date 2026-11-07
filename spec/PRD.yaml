@@ -764,6 +764,11 @@ features:
     # auto-save-visited-mode / -interval save the visited file after the idle interval. Divergences:
     # auto-save-file-name-transforms, lock-file-name-transforms (the journal owner is the lock),
     # auto-save-visited-predicate. editor.line_endings documented as superseded by files.fileformats.
+    # v0.1.9 #619 Emacs visiting (tests/emacs_files.rs, tests/pty_emacs_visit.rs): find-file-wildcards,
+    # find-file-visit-truename, the same-file message (find-file-suppress-same-file-warnings), (New file),
+    # confirm-nonexistent-file-or-buffer, directory-abbrev-alist, auto-mode-case-fold, C-x C-w write-file with
+    # change-major-mode-with-file-name, M-x find-sibling-file with find-sibling-rules. Divergences:
+    # major-mode-remap-alist, mounted-file-systems, remote-shell-program, save-abbrevs, existing-other-name nil.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.
