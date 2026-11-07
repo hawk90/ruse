@@ -87,6 +87,8 @@ pub fn paste_text(raw: &str) -> String {
 pub enum Feed {
     /// A completed command to apply.
     Cmd(Command),
+    /// An Emacs file or buffer command the session runs (#619): it asks questions or reads a file name.
+    EmacsAction(emacs::EmacsAction),
     /// `.` (dot-repeat): replay a recorded change as an ORDERED command list — the change's leading
     /// command followed by any insert-session text (F-023). The frontend applies each in turn, exactly as
     /// if the original keys were re-typed at the current cursor. Kept distinct from `Cmd` because one
@@ -757,6 +759,8 @@ fn note_binding(out: &mut [Option<String>], commands: &[Command], feed: &Feed, s
     let cmd = match feed {
         Feed::Cmd(c) => c,
         Feed::Replay(cs) if cs.len() == 1 => &cs[0],
+        // Emacs `C-x C-c` is the palette's Quit, which the session runs as `save-buffers-kill-terminal`.
+        Feed::EmacsAction(EmacsAction::KillTerminal) => &Command::Quit,
         _ => return,
     };
     // `0` and `$` are the counted motions; the registry names the same moves without a count.
@@ -1177,6 +1181,14 @@ impl InputEngine {
         }
     }
 
+    /// Whether the Emacs profile is between commands: no minibuffer, prefix key, argument or meta pending.
+    pub(crate) fn emacs_idle(&self) -> bool {
+        self.cmdline.is_none()
+            && self.emacs_prefix.is_none()
+            && self.emacs_arg.is_none()
+            && !self.emacs_meta
+    }
+
     /// Open the Emacs `M-x` minibuffer (F-012): the same command-line namespace, reading a command NAME.
     /// The prompt glyph is a placeholder here; the frontend shows the `M-x ` prompt (a rendering follow-up).
     fn open_minibuffer(&mut self) {
@@ -1426,6 +1438,9 @@ impl InputEngine {
                     // `M-x <name> <CR>`: resolve the command name against the registry; an unknown name is a
                     // no-op (Emacs shows "[No match]"). Completion / history are deferred (F-004).
                     self.cmdline = None;
+                    if let Some(a) = emacs::emacs_action_by_name(&text) {
+                        return Feed::EmacsAction(a);
+                    }
                     return match emacs_command_by_name(&text) {
                         Some(cmd) => Feed::Cmd(cmd),
                         None => Feed::Ignored,
@@ -2629,8 +2644,26 @@ impl InputEngine {
     /// (including `C-g`) cancels the prefix and is inert — the prefix was already cleared by the caller, so
     /// the engine is never left wedged.
     fn feed_emacs_prefix(&mut self, prefix: char, key: KeyEvent) -> Feed {
+        let plain = |c: char| key.code == KeyCode::Char(c) && key.modifiers.is_empty();
         match prefix {
-            'x' => emacs::emacs_cx_command(key).map_or(Feed::Ignored, Feed::Cmd),
+            // `C-x x` (`ctl-x-x-map`): `C-x x g` is `revert-buffer-quick`.
+            'x' if plain('x') => {
+                self.emacs_prefix = Some('X');
+                Feed::Pending
+            }
+            'X' if plain('g') => Feed::EmacsAction(emacs::EmacsAction::RevertBufferQuick),
+            'x' => {
+                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                if let KeyCode::Char(c) = key.code {
+                    if let Some(&(_, _, a)) = emacs::EMACS_CX_ACTIONS
+                        .iter()
+                        .find(|(k, kc, _)| *k == c && *kc == ctrl)
+                    {
+                        return Feed::EmacsAction(a);
+                    }
+                }
+                emacs::emacs_cx_command(key).map_or(Feed::Ignored, Feed::Cmd)
+            }
             _ => Feed::Ignored,
         }
     }
@@ -4659,7 +4692,7 @@ mod native;
 pub(crate) use native::{native_leader_command, NATIVE_LEADER_MENU};
 
 mod emacs;
-pub use emacs::emacs_command_by_name;
+pub use emacs::{emacs_action_by_name, emacs_command_by_name, EmacsAction};
 use emacs::{emacs_repeat, fold_emacs_count, EmacsArg, EmacsBinding, EmacsKey, EmacsProfile, Step};
 
 mod cmdline;

@@ -2268,7 +2268,11 @@ mod tests {
         assert_eq!(e.feed(ctrl('s'), Mode::Insert), Feed::Cmd(Command::Save));
 
         assert_eq!(e.feed(ctrl('x'), Mode::Insert), Feed::Pending);
-        assert_eq!(e.feed(ctrl('c'), Mode::Insert), Feed::Cmd(Command::Quit));
+        // `C-x C-c` is the session's `save-buffers-kill-terminal`, which asks before quitting (#619).
+        assert_eq!(
+            e.feed(ctrl('c'), Mode::Insert),
+            Feed::EmacsAction(crate::input::EmacsAction::KillTerminal)
+        );
 
         assert_eq!(e.feed(ctrl('x'), Mode::Insert), Feed::Pending);
         assert_eq!(e.feed(k('u'), Mode::Insert), Feed::Cmd(Command::Undo));

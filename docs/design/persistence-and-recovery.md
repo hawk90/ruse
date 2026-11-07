@@ -522,6 +522,42 @@ they stand for (`CTRL-W q` / `CTRL-W CTRL-Q` = `:quit`, `CTRL-W c` = `:close`; `
 `:q!`), so the gate covers them. `:set (no)ma` and `:set (no)mod` are recorded in the replay trace
 (`ex_modifiable`, `ex_modified`, RFC-0020), so a session with an `E21` refusal saves a trace that replays.
 
+**The Emacs profile (v0.1.9, #619; `app/session/emacs_files.rs`).** Emacs 31.1's questions, in the echo
+area, from the `emacs.*` config keys:
+
+- `C-x C-c` is `save-buffers-kill-terminal`: `save-some-buffers` over every modified buffer (PRED `t`, so a
+  non-file buffer `buffer-offer-save` offers too), then `Modified buffers exist; exit anyway?` when one is
+  left, `Active processes exist; kill them and exit anyway?` for a running terminal
+  (`confirm-kill-processes`), and `Really exit Emacs?` (`confirm-kill-emacs`, `yes-or-no-p` or `y-or-n-p`)
+  unless it already asked. The palette's Quit runs the same.
+- `C-x s` is `save-some-buffers` with `save-some-buffers-default-predicate` (`save-some-buffers-root`: the
+  buffers under the nearest `.git` directory above the working one). Its question is
+  `Save file /abs/f.txt? (y, n, !, ., q, M-~, C-r, C-f, d or C-h) `: `y`/`SPC` save, `n`/`DEL` skip, `!`
+  saves the rest, `.` saves this one and stops, `q`/`RET` stop, `M-~` skips and marks it unmodified.
+- `M-x revert-buffer` asks `Revert buffer from file X?` (`Discard edits and reread from X?` when modified)
+  unless `revert-without-query` matches an unmodified buffer; `C-x x g` (`revert-buffer-quick`) reverts an
+  unmodified buffer at once (`Reverted buffer`) and asks with `y-or-n-p` under
+  `revert-buffer-quick-short-answers`. A revert is one undoable change, as `Workspace::reload_undoable`.
+- `C-x C-f` reads `Find file: ` from the working directory. Visiting a file whose buffer is stale asks
+  `File f changed on disk.  Reread from disk?` (`Discard your edits?` when modified) under
+  `query-about-changed-file`, says `... C-x x g to load new contents` without it, and reverts silently
+  where `revert-without-query` matches an unmodified buffer.
+- `C-x C-q` is `read-only-mode`, on `'modifiable'`: a change says `Buffer is read-only: #<buffer f.txt>`.
+  With `view-read-only` it enters View mode: `SPC`/`DEL`/`S-SPC` page, `d`/`u` half a page, `RET` a line,
+  `<`/`>` the ends, `q` leaves it (writable again when View mode made it read-only), `e` leaves it
+  read-only, `E` makes it writable.
+- `yes-or-no-p` takes a typed word and `RET` (`Please answer yes or no.` otherwise), `y-or-n-p` one key;
+  `C-g` quits any question (`Quit`). A question is drawn on one row, its start cut when too wide, never
+  behind a hit-enter prompt.
+- Emacs announces nothing when a file changes under a buffer until it is visited or edited, and has no
+  auto-revert by default: in the Emacs profile the idle W11/W12/E211 messages are off and `'autoread'` is
+  off.
+
+Divergences: `C-r`, `C-f`, `d` and `C-h` in save-some-buffers (view, diff, help) are not offered (the key
+keeps the question); the page keys of View mode move the cursor a page rather than scrolling the window
+(the view follows); buffers are offered in buffer-number order, not Emacs's most-recently-selected order;
+`save-some-buffers-default-predicate` takes `nil` or `save-some-buffers-root`, no Lisp function.
+
 ### 6. Undo grouping boundaries (resolves the open D-005 part)
 
 Undo is recorded by **logical unit, not per keystroke** (INV-UNDO, [architecture §3.3](../architecture/architecture.md)). The

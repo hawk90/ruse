@@ -38,6 +38,11 @@ impl Terminal {
         })
     }
 
+    /// Whether the child still runs (Emacs's `confirm-kill-processes` asks about it, #619).
+    pub fn is_running(&self) -> bool {
+        !self.exited
+    }
+
     /// Forward keystroke bytes to the child (Terminal mode). A dead child silently drops them.
     pub fn send(&mut self, bytes: &[u8]) {
         if !self.exited {

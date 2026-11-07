@@ -411,13 +411,53 @@ impl EmacsProfile {
     }
 }
 
+/// The file and buffer commands of the Emacs profile that ask questions or read a file name (#619): the
+/// session runs them (`app/session/emacs_files.rs`), since they prompt and touch files, not the document.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EmacsAction {
+    /// `C-x C-c` `save-buffers-kill-terminal`: offer to save each buffer, then exit.
+    KillTerminal,
+    /// `C-x s` `save-some-buffers`.
+    SaveSomeBuffers,
+    /// `M-x revert-buffer`.
+    RevertBuffer,
+    /// `C-x x g` `revert-buffer-quick`.
+    RevertBufferQuick,
+    /// `C-x C-q` `read-only-mode`.
+    ReadOnlyMode,
+    /// `C-x C-f` `find-file`.
+    FindFile,
+}
+
+/// The `C-x` keys that run an [`EmacsAction`]: `(key, ctrl held, action)`.
+pub(crate) const EMACS_CX_ACTIONS: &[(char, bool, EmacsAction)] = &[
+    ('c', true, EmacsAction::KillTerminal),
+    ('s', false, EmacsAction::SaveSomeBuffers),
+    ('q', true, EmacsAction::ReadOnlyMode),
+    ('f', true, EmacsAction::FindFile),
+];
+
+/// The `M-x` names of the [`EmacsAction`]s.
+#[must_use]
+pub fn emacs_action_by_name(name: &str) -> Option<EmacsAction> {
+    Some(match name.trim() {
+        "save-buffers-kill-terminal" | "save-buffers-kill-emacs" => EmacsAction::KillTerminal,
+        "save-some-buffers" => EmacsAction::SaveSomeBuffers,
+        "revert-buffer" => EmacsAction::RevertBuffer,
+        "revert-buffer-quick" => EmacsAction::RevertBufferQuick,
+        "read-only-mode" => EmacsAction::ReadOnlyMode,
+        "find-file" => EmacsAction::FindFile,
+        _ => return None,
+    })
+}
+
 /// The `C-x` prefix map (`ctl-x-map`): `(key, ctrl held, command)`. The key after `C-x` resolves here;
 /// anything else cancels the prefix. A table rather than a `match` so the static conflict check
 /// (ENG-PROFILE-001, #1130) can walk it.
 pub(crate) const EMACS_CX_MAP: &[(char, bool, Command)] = &[
     ('s', true, Command::Save),              // C-x C-s — save-buffer
-    ('c', true, Command::Quit),              // C-x C-c — save-buffers-kill-terminal
-    ('u', false, Command::Undo),             // C-x u — undo
+    ('c', true, Command::Quit), // C-x C-c — save-buffers-kill-terminal (the session asks)
+    ('u', false, Command::Undo), // C-x u — undo
     ('x', true, Command::ExchangePointMark), // C-x C-x — exchange point and mark
     (
         'u',

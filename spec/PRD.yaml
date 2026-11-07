@@ -747,6 +747,13 @@ features:
     # change; W11 only with noautoread). CTRL-W q / CTRL-W c run as :quit / :close through the same gate;
     # 'modifiable'/'modified' are trace tokens (ex_modifiable, ex_modified). The Emacs-profile counterparts (view-read-only, confirm-kill-*,
     # buffer-offer-save, revert-*, query-about-changed-file, save-some-buffers-default-predicate) come next.
+    # v0.1.9 #619 Emacs profile (Emacs 31.1; app/session/emacs_files.rs, tests/emacs_files.rs,
+    # tests/pty_emacs_files.rs): C-x C-c save-buffers-kill-terminal (save-some-buffers, "Modified buffers
+    # exist; exit anyway?", confirm-kill-processes, confirm-kill-emacs), C-x s save-some-buffers (y n ! . q M-~,
+    # save-some-buffers-default-predicate, buffer-offer-save), M-x revert-buffer and C-x x g
+    # revert-buffer-quick (revert-without-query, revert-buffer-quick-short-answers), C-x C-f find-file with
+    # query-about-changed-file, C-x C-q read-only-mode with view-read-only's View mode; yes-or-no-p /
+    # y-or-n-p / C-g as Emacs. The Emacs profile drops nvim's W11/W12 announcements and 'autoread'.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only per-transaction recovery journal.

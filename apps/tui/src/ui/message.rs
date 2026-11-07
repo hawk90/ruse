@@ -65,6 +65,17 @@ pub(crate) fn fit(prefix_cells: usize, message: &str, cols: usize) -> Shown {
     Shown::More(wrap(message, cols))
 }
 
+/// How a question waiting for its answer is shown (#619): on the last row alone, its start cut when it is
+/// wider than the screen, since the answer is typed at its end (Emacs's minibuffer, nvim's dialog). Never
+/// behind a hit-enter prompt, which would take the answer's key.
+pub(crate) fn fit_question(message: &str, cols: usize) -> Shown {
+    if width(message) <= cols {
+        Shown::CutRow(message.to_string())
+    } else {
+        Shown::CutRow(cut_start(message, cols))
+    }
+}
+
 /// nvim's `-- More --` prompt (`:help more-prompt`).
 pub(crate) const MORE: &str = "-- More --";
 /// What nvim adds to it after a key it does not take.

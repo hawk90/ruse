@@ -71,6 +71,18 @@ pub(crate) struct EmacsFiles {
     pub mode_require_final_newline: FinalNewline,
     pub temporary_file_directory: String,
     pub small_temporary_file_directory: String,
+    /// The buffer and quit variables (#619, `app/session/emacs_files.rs`).
+    pub view_read_only: bool,
+    /// `confirm-kill-emacs`: `nil`, `yes-or-no-p` or `y-or-n-p`.
+    pub confirm_kill_emacs: String,
+    pub confirm_kill_processes: bool,
+    /// `buffer-offer-save`: `nil`, `t` or `always`.
+    pub buffer_offer_save: String,
+    pub query_about_changed_file: bool,
+    pub revert_without_query: Vec<String>,
+    pub revert_buffer_quick_short_answers: bool,
+    /// `save-some-buffers-default-predicate` is `save-some-buffers-root`.
+    pub save_some_buffers_default_predicate_root: bool,
 }
 
 impl Default for EmacsFiles {
@@ -90,6 +102,14 @@ impl Default for EmacsFiles {
             mode_require_final_newline: FinalNewline::Add,
             temporary_file_directory: String::new(),
             small_temporary_file_directory: String::new(),
+            view_read_only: false,
+            confirm_kill_emacs: "nil".into(),
+            confirm_kill_processes: true,
+            buffer_offer_save: "nil".into(),
+            query_about_changed_file: true,
+            revert_without_query: Vec::new(),
+            revert_buffer_quick_short_answers: false,
+            save_some_buffers_default_predicate_root: false,
         }
     }
 }
@@ -174,6 +194,24 @@ impl EmacsFiles {
         e.temporary_file_directory = text("temporary_file_directory").unwrap_or_default();
         e.small_temporary_file_directory =
             text("small_temporary_file_directory").unwrap_or_default();
+        e.view_read_only = flag("view_read_only", e.view_read_only);
+        if let Some(v) = text("confirm_kill_emacs") {
+            e.confirm_kill_emacs = v;
+        }
+        e.confirm_kill_processes = flag("confirm_kill_processes", e.confirm_kill_processes);
+        if let Some(v) = text("buffer_offer_save") {
+            e.buffer_offer_save = v;
+        }
+        e.query_about_changed_file = flag("query_about_changed_file", e.query_about_changed_file);
+        if let Some(Value::List(l)) = get("revert_without_query") {
+            e.revert_without_query = l.clone();
+        }
+        e.revert_buffer_quick_short_answers = flag(
+            "revert_buffer_quick_short_answers",
+            e.revert_buffer_quick_short_answers,
+        );
+        e.save_some_buffers_default_predicate_root = text("save_some_buffers_default_predicate")
+            .is_some_and(|v| v == "save-some-buffers-root");
         e
     }
 

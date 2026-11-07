@@ -63,14 +63,28 @@ impl Headless {
     /// writes it only on an explicit `:w`.
     #[must_use]
     pub fn vim_named(text: &str, file: &str) -> Headless {
-        Headless::build(Profile::Vim, text.as_bytes(), 80, 24, Some(file.into()))
+        Headless::build(
+            Profile::Vim,
+            text.as_bytes(),
+            80,
+            24,
+            Some(file.into()),
+            crate::persist::encoding::FileFormat::default(),
+        )
     }
 
     /// A Vim-profile session over raw `bytes`, which need not be UTF-8 (the oracle's `bytes` fixtures,
     /// #1232).
     #[must_use]
     pub fn vim_bytes(bytes: &[u8]) -> Headless {
-        Headless::build(Profile::Vim, bytes, 80, 24, None)
+        Headless::build(
+            Profile::Vim,
+            bytes,
+            80,
+            24,
+            None,
+            crate::persist::encoding::FileFormat::default(),
+        )
     }
 
     /// An Emacs-profile session over `text`.
@@ -82,7 +96,31 @@ impl Headless {
     /// A session on a `cols`x`rows` terminal (the status line takes the last row).
     #[must_use]
     pub fn with_size(profile: Profile, text: &str, cols: u16, rows: u16) -> Headless {
-        Headless::build(profile, text.as_bytes(), cols, rows, None)
+        Headless::build(
+            profile,
+            text.as_bytes(),
+            cols,
+            rows,
+            None,
+            crate::persist::encoding::FileFormat::default(),
+        )
+    }
+
+    /// A session in `profile` visiting the file at `path`, read from disk as `ruse {path}` opens it: writes,
+    /// reverts and the changed-on-disk checks reach the real file.
+    #[must_use]
+    pub fn visiting(profile: Profile, path: &std::path::Path) -> Headless {
+        let raw = std::fs::read(path).unwrap_or_default();
+        let fmt = crate::persist::encoding::FileFormat::detect(&raw);
+        crate::persist::disk::saw(path, &raw);
+        Headless::build(
+            profile,
+            &fmt.to_buffer(&raw),
+            80,
+            24,
+            Some(path.to_path_buf()),
+            fmt,
+        )
     }
 
     fn build(
@@ -91,6 +129,7 @@ impl Headless {
         cols: u16,
         rows: u16,
         path: Option<std::path::PathBuf>,
+        fmt: crate::persist::encoding::FileFormat,
     ) -> Headless {
         let profile = match profile {
             Profile::Vim => "vim",
@@ -99,7 +138,7 @@ impl Headless {
         };
         let mut s = Session::new(SessionInit {
             path,
-            fmt: crate::persist::encoding::FileFormat::default(),
+            fmt,
             initial: text.to_vec(),
             status: String::new(),
             profile,

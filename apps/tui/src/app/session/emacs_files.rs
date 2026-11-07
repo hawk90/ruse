@@ -1,0 +1,775 @@
+//! The Emacs profile's file and buffer commands that ask (#619), as Emacs 31.1 (`emacs -Q`) runs them:
+//! `save-buffers-kill-terminal` (`C-x C-c`), `save-some-buffers` (`C-x s`), `revert-buffer`,
+//! `revert-buffer-quick` (`C-x x g`), `read-only-mode` (`C-x C-q`, with `view-read-only`'s View mode) and
+//! `find-file` (`C-x C-f`, with `query-about-changed-file` and `revert-without-query`).
+//!
+//! The questions are Emacs's, in the echo area:
+//! - `yes-or-no-p`: the answer is typed and ended with `RET`; anything but `yes` or `no` says
+//!   `Please answer yes or no.` and asks again;
+//! - `y-or-n-p`: one key, `y`/`SPC` or `n`/`DEL`; another key asks again after `Please answer y or n.  `;
+//! - `map-y-or-n-p` (save-some-buffers): `y`/`SPC` saves, `n`/`DEL` skips, `!` saves this and the rest,
+//!   `.` saves this one and stops, `q`/`RET` stops, `M-~` skips and marks the buffer unmodified;
+//! - `C-g` quits any of them (`Quit`).
+//!
+//! `C-x C-c` follows `save-buffers-kill-emacs`: it offers every modified buffer (`save-some-buffers` with
+//! PRED `t`, so a non-file buffer with `buffer-offer-save` too), then asks `Modified buffers exist; exit
+//! anyway?` if one is left, `Active processes exist; kill them and exit anyway?` for a running terminal
+//! (`confirm-kill-processes`), and `Really exit Emacs?` (`confirm-kill-emacs`) unless it already asked.
+
+use super::*;
+use crate::app::write_opts::EmacsFiles;
+use crate::input::EmacsAction;
+
+/// What answering the question does next.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Then {
+    /// `C-x C-c` past save-some-buffers: the checks from `stage` on (`asked`: a yes-or-no question was
+    /// already answered, so `confirm-kill-emacs` is not asked).
+    Kill { stage: u8, asked: bool },
+    /// Re-read the focused buffer from its file.
+    Revert,
+    /// Re-read buffer `id` (find-file's changed-on-disk question).
+    RevertBuffer(DocumentId),
+    /// Nothing more (save-some-buffers on its own).
+    Done,
+}
+
+/// An Emacs question waiting for its answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum EmacsPrompt {
+    /// `yes-or-no-p`: the text typed so far.
+    YesOrNo {
+        question: String,
+        typed: String,
+        then: Then,
+    },
+    /// `y-or-n-p`.
+    YOrN { question: String, then: Then },
+    /// `map-y-or-n-p` over `queue` (save-some-buffers), at `at`.
+    SaveSome {
+        queue: Vec<DocumentId>,
+        at: usize,
+        saved: usize,
+        then: Then,
+    },
+    /// A file name read in the minibuffer: `find-file`, or `write-file` for a buffer without one.
+    ReadFile {
+        prompt: String,
+        typed: String,
+        purpose: ReadFor,
+    },
+}
+
+/// What a file name is read for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ReadFor {
+    FindFile,
+    /// Saving buffer `buf` (no file) inside save-some-buffers, then going on with the queue.
+    SaveAs {
+        buf: DocumentId,
+        rest: Box<EmacsPrompt>,
+    },
+}
+
+/// The `save-some-buffers` question for `id`.
+fn save_question(s: &Session, id: DocumentId) -> String {
+    let keys = "(y, n, !, ., q, M-~, C-r, C-f, d or C-h) ";
+    match s.files.get(&id) {
+        Some(bf) => {
+            let file = std::path::absolute(&bf.path).unwrap_or_else(|_| bf.path.clone());
+            let base = file
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let name = s.ws.buffer_name(id).unwrap_or_default();
+            let shown = std::path::Path::new(name)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if shown == base {
+                format!("Save file {}? {keys}", file.display())
+            } else {
+                format!("Save file {} (buffer {name})? {keys}", file.display())
+            }
+        }
+        None => format!(
+            "Save buffer {}? {keys}",
+            s.ws.buffer_name(id).unwrap_or("*scratch*")
+        ),
+    }
+}
+
+fn plain(key: KeyEvent, c: char) -> bool {
+    key.code == KeyCode::Char(c)
+        && !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+}
+
+fn ctrl_g(key: KeyEvent) -> bool {
+    is_ctrl(key, 'g')
+}
+
+impl Session {
+    fn emacs_vars(&self) -> EmacsFiles {
+        self.files.write.emacs.clone().unwrap_or_default()
+    }
+
+    /// Show `p` and wait for its answer.
+    fn ask(&mut self, p: EmacsPrompt) {
+        let text = match &p {
+            EmacsPrompt::YesOrNo {
+                question, typed, ..
+            } => format!("{question}(yes or no) {typed}"),
+            EmacsPrompt::YOrN { question, .. } => format!("{question}(y or n) "),
+            EmacsPrompt::SaveSome { queue, at, .. } => save_question(self, queue[*at]),
+            EmacsPrompt::ReadFile { prompt, typed, .. } => format!("{prompt}{typed}"),
+        };
+        self.status.echo(text);
+        self.emacs_prompt = Some(p);
+    }
+
+    /// Ask `question` with `yes-or-no-p` (or `y-or-n-p` when `short`).
+    fn ask_yes(&mut self, question: String, short: bool, then: Then) {
+        if short {
+            self.ask(EmacsPrompt::YOrN { question, then });
+        } else {
+            self.ask(EmacsPrompt::YesOrNo {
+                question,
+                typed: String::new(),
+                then,
+            });
+        }
+    }
+
+    /// Run an Emacs action the engine resolved.
+    pub(crate) fn emacs_action(&mut self, a: EmacsAction, frame: &FrameCtx) {
+        let _ = frame;
+        match a {
+            EmacsAction::KillTerminal => {
+                let queue = self.buffers_needing_save(true);
+                self.save_some(
+                    queue,
+                    Then::Kill {
+                        stage: 1,
+                        asked: false,
+                    },
+                );
+            }
+            EmacsAction::SaveSomeBuffers => {
+                let queue = self.buffers_needing_save(false);
+                if queue.is_empty() {
+                    self.status.echo("(No files need saving)");
+                } else {
+                    self.save_some(queue, Then::Done);
+                }
+            }
+            EmacsAction::RevertBuffer => self.revert_buffer(false),
+            EmacsAction::RevertBufferQuick => self.revert_buffer(true),
+            EmacsAction::ReadOnlyMode => self.read_only_mode(),
+            EmacsAction::FindFile => {
+                let dir = std::env::current_dir()
+                    .map(|d| format!("{}/", d.display()))
+                    .unwrap_or_default();
+                let home = std::env::var("HOME").unwrap_or_default();
+                let shown = match dir.strip_prefix(&home) {
+                    Some(rest) if !home.is_empty() => format!("~{rest}"),
+                    _ => dir,
+                };
+                self.ask(EmacsPrompt::ReadFile {
+                    prompt: "Find file: ".into(),
+                    typed: shown,
+                    purpose: ReadFor::FindFile,
+                });
+            }
+        }
+    }
+
+    /// `files--buffers-needing-to-be-saved`: the modified buffers with a file, and (with `pred_t`, or
+    /// `buffer-offer-save` `always`) those without one that `buffer-offer-save` offers and are not empty;
+    /// without `pred_t`, `save-some-buffers-default-predicate` filters them.
+    fn buffers_needing_save(&self, pred_t: bool) -> Vec<DocumentId> {
+        let vars = self.emacs_vars();
+        let root = (!pred_t && vars.save_some_buffers_default_predicate_root).then(project_root);
+        self.ws
+            .buffers()
+            .into_iter()
+            .filter(|b| b.modified && !self.terminals.contains_key(&b.id))
+            .filter(|b| match self.files.get(&b.id) {
+                Some(bf) => root.as_ref().is_none_or(|r| {
+                    std::path::absolute(&bf.path)
+                        .ok()
+                        .and_then(|p| p.parent().map(|d| d.starts_with(r)))
+                        .unwrap_or(false)
+                }),
+                None => {
+                    let offer = vars.buffer_offer_save.as_str();
+                    let size = self.ws.document(b.id).map_or(0, |d| d.len());
+                    offer == "always" || (pred_t && offer == "t" && size > 0)
+                }
+            })
+            .map(|b| b.id)
+            .collect()
+    }
+
+    fn save_some(&mut self, queue: Vec<DocumentId>, then: Then) {
+        if queue.is_empty() {
+            self.emacs_then(then, true);
+        } else {
+            self.ask(EmacsPrompt::SaveSome {
+                queue,
+                at: 0,
+                saved: 0,
+                then,
+            });
+        }
+    }
+
+    /// Save buffer `id` (`save-buffer`); a buffer without a file reads one first. Returns false while a
+    /// file name is being read.
+    fn save_one(&mut self, id: DocumentId, rest: EmacsPrompt) -> bool {
+        if !self.files.contains_key(&id) {
+            self.ask(EmacsPrompt::ReadFile {
+                prompt: "File to save in: ".into(),
+                typed: String::new(),
+                purpose: ReadFor::SaveAs {
+                    buf: id,
+                    rest: Box::new(rest),
+                },
+            });
+            return false;
+        }
+        let Session {
+            ws, files, status, ..
+        } = self;
+        crate::app::abandon::write_buffer(ws, files, id, status);
+        true
+    }
+
+    /// Go on after save-some-buffers' question at `at`.
+    fn save_some_next(&mut self, queue: Vec<DocumentId>, at: usize, saved: usize, then: Then) {
+        if at + 1 < queue.len() {
+            self.ask(EmacsPrompt::SaveSome {
+                queue,
+                at: at + 1,
+                saved,
+                then,
+            });
+        } else {
+            self.status.clear();
+            self.emacs_then(then, true);
+        }
+    }
+
+    /// Continue `then` after a question answered `yes` (`ok`) or `no`.
+    fn emacs_then(&mut self, then: Then, ok: bool) {
+        if !ok {
+            return;
+        }
+        match then {
+            Then::Done => {}
+            Then::Revert => {
+                let id = self.ws.focused_buffer();
+                self.revert_now(id);
+            }
+            Then::RevertBuffer(id) => self.revert_now(id),
+            Then::Kill { stage, asked } => self.kill_stage(stage, asked),
+        }
+    }
+
+    /// `save-buffers-kill-emacs` after its save-some-buffers.
+    fn kill_stage(&mut self, stage: u8, asked: bool) {
+        let vars = self.emacs_vars();
+        if stage <= 1 {
+            let unsaved = self
+                .ws
+                .buffers()
+                .iter()
+                .any(|b| b.modified && self.files.contains_key(&b.id));
+            if unsaved {
+                return self.ask_yes(
+                    "Modified buffers exist; exit anyway? ".into(),
+                    false,
+                    Then::Kill {
+                        stage: 2,
+                        asked: true,
+                    },
+                );
+            }
+        }
+        if stage <= 2 && vars.confirm_kill_processes {
+            let running = self.terminals.values().any(|t| t.is_running());
+            if running {
+                return self.ask_yes(
+                    "Active processes exist; kill them and exit anyway? ".into(),
+                    false,
+                    Then::Kill {
+                        stage: 3,
+                        asked: true,
+                    },
+                );
+            }
+        }
+        if stage <= 3 && !asked {
+            match vars.confirm_kill_emacs.as_str() {
+                "yes-or-no-p" | "y-or-n-p" => {
+                    return self.ask_yes(
+                        "Really exit Emacs? ".into(),
+                        vars.confirm_kill_emacs == "y-or-n-p",
+                        Then::Kill {
+                            stage: 4,
+                            asked: true,
+                        },
+                    );
+                }
+                _ => {}
+            }
+        }
+        self.quit = true;
+    }
+
+    /// `revert-buffer` (`quick`: `revert-buffer-quick`).
+    fn revert_buffer(&mut self, quick: bool) {
+        let id = self.ws.focused_buffer();
+        let Some(path) = self.files.get(&id).map(|bf| bf.path.clone()) else {
+            self.status
+                .error("Buffer does not seem to be associated with any file");
+            return;
+        };
+        let vars = self.emacs_vars();
+        let modified = self.ws.focused().doc.is_modified();
+        let file = std::path::absolute(&path).unwrap_or(path);
+        if quick && !modified {
+            self.revert_now(id);
+            self.status.echo("Reverted buffer");
+            return;
+        }
+        let shown = file.display().to_string();
+        if !modified
+            && vars
+                .revert_without_query
+                .iter()
+                .any(|re| emacs_match(re, &shown))
+        {
+            self.revert_now(id);
+            return;
+        }
+        let question = if modified {
+            format!("Discard edits and reread from {shown}? ")
+        } else {
+            format!("Revert buffer from file {shown}? ")
+        };
+        self.ask_yes(
+            question,
+            quick && vars.revert_buffer_quick_short_answers,
+            Then::Revert,
+        );
+    }
+
+    /// Re-read buffer `id` from its file as one undoable change, marked unmodified.
+    fn revert_now(&mut self, id: DocumentId) {
+        let Some(path) = self.files.get(&id).map(|bf| bf.path.clone()) else {
+            return;
+        };
+        match persist::read_file(&path) {
+            Ok(raw) => {
+                persist::disk::saw(&path, &raw);
+                persist::backup::visited(&path);
+                let fmt = persist::encoding::FileFormat::detect(&raw);
+                self.ws.reload_undoable(id, fmt.to_buffer(&raw));
+                if let Some(bf) = self.files.get_mut(&id) {
+                    bf.fmt = fmt;
+                    bf.reloads = bf.reloads.saturating_add(1);
+                }
+                persist::journal::discard(Some(&path));
+                self.disk_changed.remove(&id);
+                self.disk_warned.remove(&id);
+            }
+            Err(e) => self
+                .status
+                .error(format!("Opening input file: {e}, {}", path.display())),
+        }
+    }
+
+    /// `read-only-mode` (`C-x C-q`): toggle `buffer-read-only`; with `view-read-only`, turning it on enters
+    /// View mode and turning it off leaves it.
+    fn read_only_mode(&mut self) {
+        let id = self.ws.focused_buffer();
+        let on = self.ws.focused().doc.is_modifiable();
+        self.ws.focused_doc_mut().set_modifiable(!on);
+        if on {
+            self.status.echo("Read-Only mode enabled in current buffer");
+            if self.emacs_vars().view_read_only {
+                self.view_mode.insert(id, true);
+            }
+        } else {
+            self.status
+                .echo("Read-Only mode disabled in current buffer");
+            self.view_mode.remove(&id);
+        }
+    }
+
+    /// A key in View mode (`view-mode-map`), or `None` when View mode does not bind it.
+    pub(crate) fn view_key(&mut self, key: KeyEvent, frame: &FrameCtx) -> bool {
+        let id = self.ws.focused_buffer();
+        let Some(&from_read_only) = self.view_mode.get(&id) else {
+            return false;
+        };
+        let rows = usize::from(frame.text_rows.max(3));
+        let page = rows.saturating_sub(2).max(1);
+        let half = (rows / 2).max(1);
+        let shift_space = key.code == KeyCode::Char(' ') && key.modifiers == KeyModifiers::SHIFT;
+        let mv = |s: &mut Session, down: bool, n: usize| {
+            let cmd = if down {
+                Command::MoveDown
+            } else {
+                Command::MoveUp
+            };
+            let Session {
+                ws,
+                files,
+                recorded,
+                status,
+                quit,
+                ..
+            } = s;
+            for _ in 0..n {
+                crate::app::dispatch::run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+            }
+        };
+        if shift_space || key.code == KeyCode::Backspace && key.modifiers.is_empty() {
+            mv(self, false, page);
+        } else if plain(key, ' ') {
+            mv(self, true, page);
+        } else if plain(key, 'd') {
+            mv(self, true, half);
+        } else if plain(key, 'u') {
+            mv(self, false, half);
+        } else if key.code == KeyCode::Enter && key.modifiers.is_empty() {
+            mv(self, true, 1);
+        } else if plain(key, '<') || plain(key, '>') {
+            let cmd = Command::EmacsBufferEdge {
+                start: plain(key, '<'),
+            };
+            let Session {
+                ws,
+                files,
+                recorded,
+                status,
+                quit,
+                ..
+            } = self;
+            crate::app::dispatch::run_cmd(cmd, ws, files, recorded, status, quit);
+        } else if plain(key, 'q') || plain(key, 'e') || plain(key, 'E') {
+            // `q` (`View-quit`) gives a buffer View mode made read-only its writability back; `e`
+            // (`View-exit`) keeps it read-only; `E` (`View-exit-and-edit`) makes it writable.
+            self.view_mode.remove(&id);
+            if plain(key, 'E') || (plain(key, 'q') && from_read_only) {
+                self.ws.focused_doc_mut().set_modifiable(true);
+            }
+            self.status.clear();
+        } else {
+            return false;
+        }
+        true
+    }
+
+    /// `find-file` of `name`: switch to its buffer, asking or telling about a file changed on disk.
+    fn find_file(&mut self, name: &str) {
+        let name = crate::persist::backup::expand(name.trim());
+        if name.is_empty() {
+            return;
+        }
+        let path = std::path::PathBuf::from(&name);
+        let existing = crate::app::dispatch::buffer_for_path(&self.files, &path);
+        {
+            let Session {
+                ws,
+                files,
+                highlighters,
+                status,
+                ..
+            } = self;
+            let opened =
+                crate::app::dispatch::open_file_with(&name, ws, files, highlighters, |f| f);
+            status.give(opened.status);
+            if opened.id.is_none() {
+                return;
+            }
+        }
+        let Some(id) = existing else {
+            self.status.clear();
+            return;
+        };
+        self.status.clear();
+        let Some(bf) = self.files.get(&id) else {
+            return;
+        };
+        if persist::disk::check(&bf.path) != persist::disk::State::Changed {
+            return;
+        }
+        let vars = self.emacs_vars();
+        let file = std::path::absolute(&bf.path).unwrap_or_else(|_| bf.path.clone());
+        let base = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let modified = self.ws.document(id).is_some_and(|d| d.is_modified());
+        let shown = file.display().to_string();
+        if !modified
+            && vars
+                .revert_without_query
+                .iter()
+                .any(|re| emacs_match(re, &shown))
+        {
+            self.revert_now(id);
+            self.status.echo(format!("Reverting file {shown}...done"));
+        } else if !vars.query_about_changed_file {
+            self.status.echo(format!(
+                "File {base} changed on disk.  C-x x g to load new contents{}",
+                if modified {
+                    " and discard your edits"
+                } else {
+                    ""
+                }
+            ));
+        } else {
+            let question = if modified {
+                format!("File {base} changed on disk.  Discard your edits? ")
+            } else {
+                format!("File {base} changed on disk.  Reread from disk? ")
+            };
+            self.ask_yes(question, false, Then::RevertBuffer(id));
+        }
+    }
+
+    /// The key that answered an Emacs question.
+    pub(crate) fn answer_emacs(&mut self, p: EmacsPrompt, key: KeyEvent) {
+        if ctrl_g(key) {
+            self.status.echo("Quit");
+            return;
+        }
+        match p {
+            EmacsPrompt::YesOrNo {
+                question,
+                mut typed,
+                then,
+            } => match key.code {
+                KeyCode::Enter => match typed.as_str() {
+                    "yes" => {
+                        self.status.clear();
+                        self.emacs_then(then, true);
+                    }
+                    "no" => self.status.clear(),
+                    _ => {
+                        self.status.echo("Please answer yes or no.");
+                        self.emacs_prompt = Some(EmacsPrompt::YesOrNo {
+                            question,
+                            typed: String::new(),
+                            then,
+                        });
+                    }
+                },
+                KeyCode::Backspace => {
+                    typed.pop();
+                    self.ask(EmacsPrompt::YesOrNo {
+                        question,
+                        typed,
+                        then,
+                    });
+                }
+                KeyCode::Char(c)
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
+                    typed.push(c);
+                    self.ask(EmacsPrompt::YesOrNo {
+                        question,
+                        typed,
+                        then,
+                    });
+                }
+                _ => self.ask(EmacsPrompt::YesOrNo {
+                    question,
+                    typed,
+                    then,
+                }),
+            },
+            EmacsPrompt::YOrN { question, then } => {
+                if plain(key, 'y') || plain(key, 'Y') || plain(key, ' ') {
+                    self.status.clear();
+                    self.emacs_then(then, true);
+                } else if plain(key, 'n') || plain(key, 'N') || key.code == KeyCode::Backspace {
+                    self.status.clear();
+                } else {
+                    self.status
+                        .echo(format!("Please answer y or n.  {question}(y or n) "));
+                    self.emacs_prompt = Some(EmacsPrompt::YOrN { question, then });
+                }
+            }
+            EmacsPrompt::SaveSome {
+                queue,
+                at,
+                saved,
+                then,
+            } => {
+                let id = queue[at];
+                let here = EmacsPrompt::SaveSome {
+                    queue: queue.clone(),
+                    at,
+                    saved,
+                    then: then.clone(),
+                };
+                if plain(key, 'y') || plain(key, ' ') {
+                    let next = EmacsPrompt::SaveSome {
+                        queue: queue.clone(),
+                        at,
+                        saved: saved + 1,
+                        then: then.clone(),
+                    };
+                    if self.save_one(id, next) {
+                        self.save_some_next(queue, at, saved + 1, then);
+                    }
+                } else if plain(key, 'n') || key.code == KeyCode::Backspace {
+                    self.save_some_next(queue, at, saved, then);
+                } else if key.code == KeyCode::Char('~')
+                    && key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    if let Some(d) = self.ws.document_mut(id) {
+                        d.mark_saved();
+                    }
+                    self.save_some_next(queue, at, saved, then);
+                } else if plain(key, '!') {
+                    for &b in &queue[at..] {
+                        if self.files.contains_key(&b) {
+                            let Session {
+                                ws, files, status, ..
+                            } = self;
+                            crate::app::abandon::write_buffer(ws, files, b, status);
+                        }
+                    }
+                    self.status.clear();
+                    self.emacs_then(then, true);
+                } else if plain(key, '.') {
+                    let done = EmacsPrompt::SaveSome {
+                        queue: vec![id],
+                        at: 0,
+                        saved: saved + 1,
+                        then: then.clone(),
+                    };
+                    if self.save_one(id, done) {
+                        self.status.clear();
+                        self.emacs_then(then, true);
+                    }
+                } else if plain(key, 'q') || key.code == KeyCode::Enter {
+                    self.status.clear();
+                    self.emacs_then(then, true);
+                } else {
+                    // `C-r`, `C-f`, `d` and `C-h` are Emacs's view, diff and help actions, which ruse does
+                    // not offer here; Emacs says the same for a key it does not know.
+                    self.ask(here);
+                }
+            }
+            EmacsPrompt::ReadFile {
+                prompt,
+                mut typed,
+                purpose,
+            } => match key.code {
+                KeyCode::Enter => {
+                    self.status.clear();
+                    match purpose {
+                        ReadFor::FindFile => self.find_file(&typed),
+                        ReadFor::SaveAs { buf, rest } => {
+                            let name = crate::persist::backup::expand(typed.trim());
+                            self.write_new_file(buf, &name);
+                            match *rest {
+                                EmacsPrompt::SaveSome {
+                                    queue,
+                                    at,
+                                    saved,
+                                    then,
+                                } if queue.len() > 1 || at > 0 => {
+                                    self.save_some_next(queue, at, saved, then)
+                                }
+                                EmacsPrompt::SaveSome { then, .. } => self.emacs_then(then, true),
+                                other => self.ask(other),
+                            }
+                        }
+                    }
+                }
+                KeyCode::Backspace => {
+                    typed.pop();
+                    self.ask(EmacsPrompt::ReadFile {
+                        prompt,
+                        typed,
+                        purpose,
+                    });
+                }
+                KeyCode::Char(c)
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
+                    typed.push(c);
+                    self.ask(EmacsPrompt::ReadFile {
+                        prompt,
+                        typed,
+                        purpose,
+                    });
+                }
+                _ => self.ask(EmacsPrompt::ReadFile {
+                    prompt,
+                    typed,
+                    purpose,
+                }),
+            },
+        }
+    }
+
+    /// `write-file` of the buffer `buf`, which has no file, to `name`.
+    fn write_new_file(&mut self, buf: DocumentId, name: &str) {
+        if name.is_empty() {
+            return;
+        }
+        let focus = self.ws.focused_buffer();
+        if focus != buf {
+            self.ws.focus_buffer(buf);
+        }
+        let spec = crate::input::WriteSpec {
+            range: None,
+            bang: false,
+            target: crate::input::WriteTarget::File(Some(name.to_string())),
+            opts: crate::input::FileOpts::default(),
+            if_modified: false,
+            quit: false,
+        };
+        let Session {
+            ws,
+            files,
+            highlighters,
+            status,
+            ..
+        } = self;
+        crate::app::file_cmds::ex_write(&spec, ws, files, highlighters, status);
+        if focus != buf {
+            self.ws.focus_buffer(focus);
+        }
+    }
+}
+
+/// `project-current`'s root for `save-some-buffers-root`: the nearest directory above the working one
+/// holding `.git` (the VC backend project.el uses), else the working directory.
+fn project_root() -> std::path::PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    cwd.ancestors()
+        .find(|d| d.join(".git").exists())
+        .map_or_else(|| cwd.clone(), std::path::Path::to_path_buf)
+}
+
+/// An Emacs regexp of `revert-without-query` against a file name, read by ruse's Vim-magic engine (which
+/// spells groups and alternation as Emacs does).
+fn emacs_match(re: &str, name: &str) -> bool {
+    ruse_core::pattern::Regex::compile(re, ruse_core::pattern::Options::default())
+        .is_ok_and(|r| r.find_at(name, ruse_core::BytePos(0)).is_some())
+}

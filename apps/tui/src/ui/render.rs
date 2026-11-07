@@ -965,6 +965,7 @@ pub(crate) fn render(
     conceal_on: bool,
     flags: &str,
     status_serial: u64,
+    question: bool,
     pager: &mut crate::ui::message::Pager,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
@@ -1333,12 +1334,17 @@ pub(crate) fn render(
             // A message too long for the rest of the row is shown whole above a hit-enter prompt, or a
             // file message cut at its start (#1222). One taller than the screen is paged from its top
             // with `-- More --` (#1235).
-            use crate::ui::message::{fit, Shown};
-            match fit(
-                crate::ui::message::width(&prefix),
-                status,
-                usize::from(cols),
-            ) {
+            use crate::ui::message::{fit, fit_question, Shown};
+            let shown = if question {
+                fit_question(status, usize::from(cols))
+            } else {
+                fit(
+                    crate::ui::message::width(&prefix),
+                    status,
+                    usize::from(cols),
+                )
+            };
+            match shown {
                 Shown::Fits => format!("{prefix}{status}"),
                 Shown::Cut(tail) => format!("{prefix}{tail}"),
                 Shown::CutRow(tail) => tail,

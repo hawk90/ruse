@@ -797,6 +797,10 @@ pub(crate) struct Session {
     pub(crate) confirm: Option<Confirm>,
     /// A backwards Ex range waiting for its `y`/`n` (`Backwards range given, OK to swap (y/n)?`, #1093).
     swap: Option<SwapPrompt>,
+    /// An Emacs question (save-some-buffers, yes-or-no-p, a file name), waiting for its key (#619).
+    emacs_prompt: Option<emacs_files::EmacsPrompt>,
+    /// The buffers in Emacs View mode, `true` when `read-only-mode` (with `view-read-only`) entered it.
+    view_mode: HashMap<DocumentId, bool>,
     /// A `'confirm'` / `:confirm` dialog over unsaved changes, waiting for its key (#619).
     changed_prompt: Option<crate::app::abandon::ChangedPrompt>,
     /// The Ex command a window key stands for (`C-w q` is `:quit`, `C-w c` `:close`), run after routing.
@@ -978,6 +982,8 @@ impl Session {
             confirm: None,
             swap: None,
             changed_prompt: None,
+            emacs_prompt: None,
+            view_mode: HashMap::new(),
             window_ex: None,
             ex_confirm: false,
             ex_line: String::new(),
@@ -986,7 +992,14 @@ impl Session {
             hlsearch_on: true,
             incsearch_on: true,
             scrolloff: SCROLLOFF,
-            ui_opts: crate::app::set_exec::UiOptions::default(),
+            ui_opts: crate::app::set_exec::UiOptions {
+                // Emacs re-reads a changed file only under auto-revert-mode, which is off (#619).
+                buffers: crate::app::abandon::BufferOptions {
+                    autoread: !emacs_profile,
+                    ..Default::default()
+                },
+                ..crate::app::set_exec::UiOptions::default()
+            },
             screen_want: None,
             scroll_valid: None,
             config_lmaps: Vec::new(),
@@ -1522,7 +1535,9 @@ impl Session {
         }
         self.disk_changed.retain(|id| self.files.contains_key(id));
         self.disk_warned.retain(|id, _| self.files.contains_key(id));
-        let Some((id, state)) = first.filter(|_| announce) else {
+        // Emacs says nothing until the buffer is visited or edited again (find-file, #619): the W11/W12/E211
+        // messages are nvim's.
+        let Some((id, state)) = first.filter(|_| announce && !self.emacs_profile) else {
             return;
         };
         self.disk_warned.insert(id, state);
@@ -1715,6 +1730,8 @@ impl Session {
                 self.answer_swap(prompt, key, frame);
             } else if let Some(prompt) = self.changed_prompt.take() {
                 self.answer_changed(prompt, key, frame);
+            } else if let Some(prompt) = self.emacs_prompt.take() {
+                self.answer_emacs(prompt, key);
             }
         }
 
@@ -1831,6 +1848,7 @@ impl Session {
         self.confirm.is_some()
             || self.swap.is_some()
             || self.changed_prompt.is_some()
+            || self.emacs_prompt.is_some()
             || self.overlay.is_some()
     }
 
@@ -2064,7 +2082,28 @@ impl Session {
     }
 
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
+        // Emacs View mode (`view-read-only`) takes its keys between commands (#619).
+        if self.emacs_profile
+            && !self.overlay_open()
+            && self.engine.emacs_idle()
+            && self.view_key(raw_key, frame)
+        {
+            return;
+        }
         self.route_key(raw_key, from_replay, frame);
+        // A read-only buffer refuses a change in Emacs's words (#619).
+        if self.emacs_profile && self.status.is_error() && self.status.text() == ruse_core::E21 {
+            let name = self
+                .ws
+                .buffer_name(self.ws.focused_buffer())
+                .unwrap_or("*scratch*");
+            let base = std::path::Path::new(name)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            self.status
+                .error(format!("Buffer is read-only: #<buffer {base}>"));
+        }
         // A window key that stands for an Ex command (`CTRL-W q` = `:quit`) runs it now, before the next
         // key, through the Ex dispatch and its unsaved-changes gate (#619).
         if let Some(line) = self.window_ex.take() {
@@ -2095,6 +2134,7 @@ impl Session {
             confirm,
             swap,
             changed_prompt,
+            emacs_prompt,
             swap_answer,
             window_ex,
             search_hl,
@@ -2256,7 +2296,7 @@ impl Session {
             return;
         }
         // A backwards-range prompt owns the next key; [`Session::on_key`] answers it once routing is done.
-        if swap.is_some() || changed_prompt.is_some() {
+        if swap.is_some() || changed_prompt.is_some() || emacs_prompt.is_some() {
             *swap_answer = Some(key);
             return;
         }
@@ -3150,6 +3190,7 @@ impl Session {
             Feed::ExecuteEx(text) => {
                 self.execute_ex(text, frame);
             }
+            Feed::EmacsAction(a) => self.emacs_action(a, frame),
             // `c_CTRL-R_CTRL-W` / `c_CTRL-R_CTRL-A`: splice the `<cword>` / `<cWORD>` under the BUFFER
             // cursor into the open command line. The engine owns the cmdline buffer but has no document, so
             // resolve the word here and hand it back. No string under the cursor → nothing spliced (nvim
@@ -3339,6 +3380,11 @@ impl Session {
     /// here, hlsearch and the special registers are refreshed, then it is recorded and applied. The
     /// command palette dispatches through this too, so a command picked there behaves as when typed.
     fn run_resolved_cmd(&mut self, cmd: Command, frame: &FrameCtx) {
+        // The Emacs profile's Quit is `save-buffers-kill-terminal`, which asks (#619).
+        if self.emacs_profile && cmd == Command::Quit {
+            self.emacs_action(crate::input::EmacsAction::KillTerminal, frame);
+            return;
+        }
         let report = self.ui_opts.report;
         let Session {
             ws,
@@ -6089,6 +6135,7 @@ pub(crate) fn run(
                 s.ui_opts.conceal,
                 &flags,
                 s.status.serial(),
+                s.emacs_prompt.is_some() || s.changed_prompt.is_some(),
                 &mut s.pager,
             )?;
             // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
@@ -6425,6 +6472,8 @@ fn dispatch_window(
         _ => {}
     }
 }
+
+mod emacs_files;
 
 #[cfg(test)]
 mod journal_outcome_tests {
