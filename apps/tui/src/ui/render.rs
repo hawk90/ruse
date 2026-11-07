@@ -306,10 +306,17 @@ pub(crate) fn paint_window(
                     .map(|&(s, e, v)| (s - ls, (e - ls).min(text.len()), v))
                     .collect()
             };
-            let lay = crate::ui::line_layout::layout_upto(
+            // The rows above the window (`skip`) or the columns left of it are counted, not laid out.
+            let min_vcol = if win.wrap {
+                skip.saturating_mul(tw.max(1))
+            } else {
+                leftcol
+            };
+            let lay = crate::ui::line_layout::layout_from(
                 text,
                 &lay_opts,
                 &conceal,
+                min_vcol,
                 max_vcol,
                 usize::MAX,
             );
@@ -587,8 +594,7 @@ pub(crate) fn cursor_screen(
             } else {
                 let limit = (win.skip + 1 + (1 << 12)).saturating_mul(win.width);
                 let line = text.line_upto(l, PaneText::bytes_for(limit));
-                crate::ui::line_layout::layout_upto(line, &win.layout(), &[], limit, usize::MAX)
-                    .rows
+                crate::ui::line_layout::rows_upto(line, &win.layout(), limit)
             };
             row += rows - if l == top { win.skip.min(rows - 1) } else { 0 };
             row += virt

@@ -672,3 +672,69 @@ const NVIM_ROWS: &[(usize, &str, &str, &[&str])] = &[
     (30, "tabstop=4 linebreak showbreak=+", "", &[""]),
     (30, "tabstop=4 linebreak showbreak=+", "short", &["short"]),
 ];
+
+/// #1294: [`layout_from`] counts the plain ASCII run before the window instead of laying it out, and lays
+/// out the rest exactly as the whole-line layout does: the same total and rows, and the same chars and
+/// cells from the row (or without 'wrap', the column) the window starts at.
+#[test]
+fn layout_from_skips_only_what_the_window_does_not_show() {
+    let lines: [&[u8]; 10] = [
+        b"abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz",
+        "   indented words go on and on past the edge of the window e\u{301}x".as_bytes(),
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u{301}bbb".as_bytes(),
+        "aaaaaaaaaaaaaaaaaaa\u{6f22}\u{5b57}aaaaaaaaaaaaaaaaaa\u{6f22}aaaaaaa".as_bytes(),
+        b"aaaaaaaaaaaaaaaaaaaaaaaaa\taaaaaaaaaaaaaaaaaaa\tbbbbbbbbbbbbbbbb",
+        b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\xffaaaaaaaaaaaaaaaaaaaaa\x80\x01bb",
+        "aaaaaaaaaaaaaaaaaaaaaaa\u{1f1ef}\u{1f1f5}\u{1f1f0}aaaaaaaaaaaaa\u{1f468}\u{200d}\u{1f469}"
+            .as_bytes(),
+        b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa   trailing   ",
+        b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        b"",
+    ];
+    let sets = [
+        "",
+        "showbreak=>>",
+        "breakindent briopt=shift:2",
+        "breakindent showbreak=+",
+        "list listchars=trail:-,space:.,eol:$",
+        "list listchars=eol:$ showbreak=>",
+    ];
+    let mut skipped = 0;
+    for set in sets {
+        for wrap in [true, false] {
+            for width in [1, 2, 7, 10] {
+                let (mut lay, _) = options(set);
+                lay.width = width;
+                lay.wrap = wrap;
+                for line in lines {
+                    for max_vcol in [usize::MAX, 23, 70] {
+                        let full = layout_upto(line, &lay, &[], max_vcol, usize::MAX);
+                        for min_vcol in 0..90 {
+                            let part = layout_from(line, &lay, &[], min_vcol, max_vcol, usize::MAX);
+                            let ctx = format!(
+                                "{set:?} wrap={wrap} w={width} {line:?} {min_vcol}..{max_vcol}"
+                            );
+                            assert_eq!((part.total, part.rows), (full.total, full.rows), "{ctx}");
+                            assert!(full.chars.ends_with(&part.chars), "{ctx}");
+                            assert!(full.cells.ends_with(&part.cells), "{ctx}");
+                            let shown = if wrap {
+                                min_vcol.min(max_vcol) / width * width
+                            } else {
+                                min_vcol.min(max_vcol)
+                            };
+                            let need = full.cells.iter().filter(|c| c.vcol >= shown).count();
+                            assert!(part.cells.len() >= need, "{ctx}");
+                            skipped += usize::from(part.chars.len() < full.chars.len());
+                            assert_eq!(
+                                rows_upto(line, &lay, max_vcol),
+                                full.rows,
+                                "{ctx} rows_upto"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(skipped > 10_000, "the run was skipped in {skipped} cases");
+}

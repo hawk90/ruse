@@ -171,9 +171,7 @@ impl Scroll<'_> {
             .lines
             .text
             .line_upto(l, window_view::PaneText::bytes_for(limit));
-        crate::ui::line_layout::layout_upto(text, &win.layout(), &[], limit, usize::MAX)
-            .rows
-            .clamp(1, max.max(1))
+        crate::ui::line_layout::rows_upto(text, &win.layout(), limit).clamp(1, max.max(1))
     }
 
     /// nvim's `linetabsize_eol`: the line's virtual columns, and one for a `'listchars'` `eol`.

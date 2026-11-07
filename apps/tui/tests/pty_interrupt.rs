@@ -15,7 +15,9 @@ use support::{Editor, Scratch};
 
 const CTRL_C: &[u8] = b"\x03";
 
-/// How long the editor may take, from CTRL-C to the end of `:wq`, to count as responsive.
+/// How long the editor may take, from CTRL-C to the end of `:wq`, to count as responsive. A debug build
+/// under a 16-process CPU load takes at most about 0.4 s for each test here (#1294: the count insert took
+/// up to 5 s before a window scrolled into its 1 MB line stopped laying out the rows it skips).
 const RESPONSIVE: Duration = Duration::from_secs(5);
 
 /// Let the long command get going, interrupt it, then save and quit. Returns how long the editor took from

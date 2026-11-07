@@ -215,6 +215,49 @@ impl<'t> LineBytes<'t> for &'t [u8] {
     }
 }
 
+/// How many leading bytes of `line` [`layout_from`] counts instead of walking, and the virtual column after
+/// them: printable ASCII chars, each one cell and its own cluster, up to the char that starts the row
+/// `min_vcol` is in (with `wrap`; without it, the char at `min_vcol`), never past `max_byte`. At least one
+/// char of the run is left to walk, so the cut falls between two ASCII bytes.
+///
+/// With `wrap` and a continuation-row head `head_w` cells wide, the first row holds `width` chars and each
+/// later one `width - head_w`, the head being in the size of the char that starts the row (nvim's
+/// `charsize_regular`): row `r > 0` starts at char `width + (r - 1) * (width - head_w)`, at virtual column
+/// `r * width`.
+fn ascii_skip(
+    line: &[u8],
+    wrap: bool,
+    width: usize,
+    head_w: usize,
+    min_vcol: usize,
+    max_byte: usize,
+) -> (usize, usize) {
+    if min_vcol == 0 {
+        return (0, 0);
+    }
+    let run = line
+        .iter()
+        .position(|b| !(0x20..0x7f).contains(b))
+        .unwrap_or(line.len());
+    let most = run.saturating_sub(1).min(max_byte);
+    if !wrap {
+        let n = most.min(min_vcol);
+        return (n, n);
+    }
+    let per_row = (width - head_w).max(1);
+    let by_chars = if most < width {
+        0
+    } else {
+        1 + (most - width) / per_row
+    };
+    let r = by_chars.min(min_vcol / width);
+    if r == 0 {
+        (0, 0)
+    } else {
+        (width + (r - 1) * per_row, r * width)
+    }
+}
+
 /// The per-line facts the layout walk reads.
 struct Walk<'t, 'a> {
     lay: &'a Layout<'t>,
@@ -428,6 +471,29 @@ pub(crate) fn layout_upto<'t>(
     max_vcol: usize,
     max_byte: usize,
 ) -> LineLayout<'t> {
+    layout_from(line, lay, conceal, 0, max_vcol, max_byte)
+}
+
+/// The rows [`layout_upto`] gives `line` up to virtual column `max_vcol`, without laying out the plain
+/// ASCII run it starts with ([`layout_from`]): what the viewport and the cursor-row count read of a line.
+pub(crate) fn rows_upto<'t>(line: impl LineBytes<'t>, lay: &Layout<'t>, max_vcol: usize) -> usize {
+    layout_from(line, lay, &[], max_vcol, max_vcol, usize::MAX).rows
+}
+
+/// [`layout_upto`] that need not lay out what lies before virtual column `min_vcol` (#1294). The plain ASCII
+/// run a line starts with (printable bytes, one cell and one cluster each) is counted in closed form, up to
+/// the start of the row `min_vcol` is in (the column itself without `'wrap'`), and only the rest is walked.
+/// So a window scrolled far into a huge line (a count insert, a minified file) costs the rows it shows, not
+/// the line's length. [`LineLayout::chars`] and [`LineLayout::cells`] then start at the first char walked;
+/// `total` and `rows` are those of the whole layout. With `conceal` or `'linebreak'` nothing is skipped.
+pub(crate) fn layout_from<'t>(
+    line: impl LineBytes<'t>,
+    lay: &Layout<'t>,
+    conceal: &[(usize, usize, Option<&'t str>)],
+    min_vcol: usize,
+    max_vcol: usize,
+    max_byte: usize,
+) -> LineLayout<'t> {
     // Every char takes a cell (but concealed ones), so the graphemes past the limits plus a margin for
     // the 'linebreak' look-ahead are never read.
     let line = line.line_bytes();
@@ -442,6 +508,19 @@ pub(crate) fn layout_upto<'t>(
     };
     let bytes = line;
     let blank = |b: &&u8| matches!(**b, b' ' | b'\t');
+    let head_w = (bri + sbr_w).min(width.saturating_sub(1));
+    let (skip_bytes, skip_vcol) = if conceal.is_empty() && !(lay.wrap && lay.linebreak) {
+        ascii_skip(
+            line,
+            lay.wrap,
+            width,
+            head_w,
+            min_vcol.min(max_vcol),
+            max_byte,
+        )
+    } else {
+        (0, 0)
+    };
     let w = Walk {
         lay,
         width,
@@ -450,11 +529,14 @@ pub(crate) fn layout_upto<'t>(
         sbr,
         bri,
         // A continuation row's head never takes the whole row.
-        head_w: (bri + sbr_w).min(width.saturating_sub(1)),
+        head_w,
         bytes,
-        graphemes: cells::glyphs(line)
+        // The run skipped ends between two ASCII bytes, a cluster boundary with no context reaching back
+        // across it, so the rest segments as it does in the whole line.
+        graphemes: cells::glyphs(&line[skip_bytes..])
+            .map(|(i, g)| (i + skip_bytes, g))
             .take_while(|&(i, _)| i <= max_byte.saturating_add(slack))
-            .take(max_vcol.saturating_add(slack))
+            .take(max_vcol.saturating_sub(skip_vcol).saturating_add(slack))
             .collect(),
         lbr_from: (lay.wrap && lay.linebreak)
             .then(|| bytes.iter().take_while(|&&b| lay.breakat.has(b)).count()),
@@ -470,7 +552,7 @@ pub(crate) fn layout_upto<'t>(
         wrap: lay.wrap,
         with_cells: max_vcol != usize::MAX || max_byte == usize::MAX,
     };
-    let mut vcol = 0usize;
+    let mut vcol = skip_vcol;
     let mut truncated = false;
     for gi in 0..w.graphemes.len() {
         let (b, g) = w.graphemes[gi];

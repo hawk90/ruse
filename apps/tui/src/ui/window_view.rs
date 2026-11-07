@@ -451,7 +451,7 @@ impl PaneLines<'_> {
         if self.win.wrap {
             let limit = self.height.saturating_add(1).saturating_mul(self.win.width);
             let line = self.text.line_upto(l, PaneText::bytes_for(limit));
-            line_layout::layout_upto(line, &self.win.layout(), &[], limit, usize::MAX).rows
+            line_layout::rows_upto(line, &self.win.layout(), limit)
         } else {
             1
         }
