@@ -83,6 +83,17 @@ class TestCiMatchesRegistry(unittest.TestCase):
                                   f"{wf}: `{_key(st)}` runs a check that is not in spec/verification.yaml "
                                   "steps; add it there, or to ci_only with a reason")
 
+    def test_the_msrv_step_checks_the_declared_rust_version(self):
+        # #1313: the toolchain the msrv step names is the workspace `rust-version`, in CI too.
+        import tomllib
+        with open(os.path.join(ROOT, "Cargo.toml"), "rb") as fh:
+            declared = tomllib.load(fh)["workspace"]["package"]["rust-version"]
+        (msrv,) = [s for s in self.steps if s["name"] == "msrv"]
+        self.assertEqual(msrv["cmd"][1], f"+{declared}")
+        installs = [st["run"] for st in self.ci["ci.yml"] if st.get("name") == "install msrv toolchain"]
+        self.assertEqual(len(installs), 1)
+        self.assertIn(f"rustup toolchain install {declared} ", installs[0])
+
     def test_ci_only_entries_exist_and_give_a_reason(self):
         keys = {_key(st) for steps in self.ci.values() for st in steps}
         for key, reason in self.ci_only.items():
