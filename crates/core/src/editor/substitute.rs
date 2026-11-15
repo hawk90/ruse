@@ -1,9 +1,10 @@
-//! The substitute/global (`:s` / `:g`) data types and the two pure text helpers behind them
-//! (`line_spans`, `expand_replacement`). The `EditorState::{substitute, substitute_preview,
-//! apply_substitutions, global}` METHODS stay in `mod.rs`'s hub (they read private `View`/`Document`
-//! state); they reach these helpers through `mod.rs`'s `pub(crate) use substitute::{…}` re-export.
+//! `:s`: the substitute/global (`:s` / `:g`) data types, the two pure text helpers behind them
+//! (`line_spans`, `expand_replacement`), and the `EditorState::{substitute, substitute_preview,
+//! substitute_count, apply_substitutions}` methods (#1352). A child module, so the methods read the
+//! private `View`/`Document` state as they did in `mod.rs`; `:g` is in `line_cmds.rs`.
 //! The public types stay `pub` and remain reachable at the crate root via `crate::lib`'s re-export.
 
+use super::*;
 use crate::pattern::{Match, Regex};
 use crate::pos::BytePos;
 
@@ -413,4 +414,201 @@ pub(crate) fn expand_replacement(replacement: &str, matched: &str) -> Vec<u8> {
         }
     }
     out
+}
+
+impl EditorState {
+    /// Execute `:[range]s/pattern/replacement/flags` (F-009 #2). Every substitution across the range is
+    /// applied as ONE undo group (a single [`Transaction`]). Matches are found with the Vim-regex engine
+    /// (magic + `\zs`/`\ze`); the REPORTED span is what gets replaced, so `:s/foo\zsbar/X/` rewrites only
+    /// `bar`. The replacement supports `&`/`\0` (the whole reported match) and `\n`/`\t`/`\\`/`\&`
+    /// escapes; capture backreferences `\1`-`\9` are a documented follow-up (they need the lowering to
+    /// expose a group-index map). The cursor lands on the start of the last changed line (Vim).
+    ///
+    /// # Errors
+    /// [`RegexError`] if the pattern is unrepresentable or malformed.
+    pub fn substitute(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        replacement: &str,
+        flags: SubFlags,
+    ) -> Result<SubOutcome, RegexError> {
+        // On the emptied buffer `:s` works on its one line (nvim: `:s/^/#/` gives `#`, RFC-0024 §5).
+        if self.makes_the_emptied_line() {
+            return self
+                .on_the_emptied_line(|st| st.substitute(range, pattern, replacement, flags));
+        }
+        if pattern == r"\n" && replacement.is_empty() && flags.ignore_case.is_none() {
+            return Ok(self.substitute_join(range));
+        }
+        let subs = self.substitute_preview(range, pattern, replacement, flags)?;
+        Ok(self.apply_substitutions(&subs))
+    }
+
+    /// `:[range]s/\n//` (with no flag but `g`), which Vim runs as a join (`sub_joining_lines`, nvim
+    /// v0.12.6): the range's lines plus the next one, if there is one, are joined with nothing in between,
+    /// and the cursor lands where the last joined line begins. Joining a single line (the last one) is not
+    /// an error; it reports no replacements on one line.
+    fn substitute_join(&mut self, range: SubRange) -> SubOutcome {
+        let bytes = self.doc.bytes();
+        let lines = line_spans(bytes);
+        let cursor_line = crate::pos::raw::line_of(bytes, self.view.cursor);
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        let joined = last - first + 1 + usize::from(last + 1 < lines.len());
+        if joined <= 1 {
+            // Vim still moves to the range's first line, keeping the column.
+            let col = self.view.cursor - lines[cursor_line.min(lines.len() - 1)].0;
+            let (ls, le) = lines[first];
+            self.view.cursor = (ls + col).min(le);
+            self.settle_offsets();
+            return SubOutcome {
+                replacements: 0,
+                lines: 1,
+            };
+        }
+        let seams = joined - 1;
+        let edits: Vec<Edit> = (first..first + seams)
+            .map(|li| Edit::delete(BytePos(lines[li].1), 1))
+            .collect();
+        let cursor = lines[first + seams].0 - seams;
+        let list = EditList::new(edits).expect("line breaks are disjoint and ordered");
+        self.apply_ex_edit(list, self.origin, None)
+            .expect("join substitute applies cleanly");
+        self.view.last_was_edit = true;
+        self.view.cursor = cursor.min(self.doc.bytes().len());
+        self.settle_offsets();
+        SubOutcome {
+            replacements: seams,
+            lines: 1,
+        }
+    }
+
+    /// Compute — but do NOT apply — the substitutions `:[range]s/pat/rep/flags` would make (F-009 #2).
+    /// Returns each pending [`Substitution`] (absolute byte span + replacement) in document order, so an
+    /// interactive `c`-confirm loop can present them one by one and apply only the accepted subset with
+    /// [`EditorState::apply_substitutions`]. Offsets are valid only until the buffer is edited — which is
+    /// why confirm collects the accepted set and applies it in one pass at the end.
+    ///
+    /// # Errors
+    /// [`RegexError`] if the pattern is unrepresentable/malformed.
+    pub fn substitute_preview(
+        &self,
+        range: SubRange,
+        pattern: &str,
+        replacement: &str,
+        flags: SubFlags,
+    ) -> Result<Vec<Substitution>, RegexError> {
+        // Case: an explicit `i`/`I` flag overrides the config (and disables smartcase for this command).
+        let base = self.view.search_options();
+        let opts = crate::pattern::Options {
+            magic: base.magic,
+            ignore_case: flags.ignore_case.unwrap_or(base.ignore_case),
+            smart_case: flags.ignore_case.is_none() && base.smart_case,
+        };
+        let re = crate::pattern::Regex::compile(pattern, opts)?;
+
+        let bytes = self.doc.bytes();
+        // A byte that is not UTF-8 is one char to the pattern (#1243).
+        let hay = crate::pattern::Hay::new(bytes);
+        // (start, end-excluding-newline) per line, without the slot after a final newline, so a zero-width
+        // pattern (`^`, `$`, `x*`) never substitutes there (`:%s/^/#/` on "abc\ndef\n" appends no line).
+        let lines = line_spans(hay.as_str());
+        let cursor_line = crate::pos::raw::line_of(bytes, self.view.cursor);
+        // 1-based inclusive from the user, clamped into range and put in order.
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+
+        let mut out: Vec<Substitution> = Vec::new();
+        find_substitutions(
+            &re,
+            &hay,
+            &lines,
+            (first, last),
+            flags.global,
+            replacement,
+            &mut None,
+            &mut out,
+        );
+        Ok(out)
+    }
+
+    /// Count — WITHOUT editing — the matches `:[range]s/pat//n` (the `n` "report only" flag) would act on
+    /// (F-009 #2). Returns the same [`SubOutcome`] shape as [`EditorState::substitute`] (total matches +
+    /// distinct lines), but the buffer is UNCHANGED, no [`Transaction`] is created, no undo entry is added,
+    /// and the cursor does not move — this borrows `&self`, so mutation is impossible by construction. The
+    /// `g` flag counts every match on each line; without it, one match per line. Verified vs nvim v0.12.4:
+    /// the frontend echoes `N matches on M lines`.
+    ///
+    /// # Errors
+    /// [`RegexError`] if the pattern is unrepresentable/malformed.
+    pub fn substitute_count(
+        &self,
+        range: SubRange,
+        pattern: &str,
+        flags: SubFlags,
+    ) -> Result<SubOutcome, RegexError> {
+        // Reuse the exact match-finding of `substitute_preview` (with an empty replacement, never applied),
+        // so the count is guaranteed consistent with what a real `:s` would replace.
+        let subs = self.substitute_preview(range, pattern, "", flags)?;
+        let lines = subs
+            .iter()
+            .map(|s| s.line)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        Ok(SubOutcome {
+            replacements: subs.len(),
+            lines,
+        })
+    }
+
+    /// Apply a set of pending [`Substitution`]s as ONE undo group (a single [`Transaction`]) and move the
+    /// cursor to the start of the last changed line (Vim). The subs must be disjoint and in document
+    /// order (as [`EditorState::substitute_preview`] returns them, or an accepted subset of it).
+    pub fn apply_substitutions(&mut self, subs: &[Substitution]) -> SubOutcome {
+        if subs.is_empty() {
+            return SubOutcome {
+                replacements: 0,
+                lines: 0,
+            };
+        }
+        let mut lines_seen = std::collections::BTreeSet::new();
+        let edits: Vec<Edit> = subs
+            .iter()
+            .map(|s| {
+                lines_seen.insert(s.line);
+                Edit::replace(s.start, s.end.0 - s.start.0, s.replacement.clone())
+            })
+            .collect();
+        let replacements = edits.len();
+        // Where the last replacement ends once every edit is in: its start moves by the length change of
+        // the edits before it.
+        let last_end = subs.last().map(|last| {
+            let before: isize = subs[..subs.len() - 1]
+                .iter()
+                .map(|s| s.replacement.len() as isize - (s.end.0 - s.start.0) as isize)
+                .sum();
+            (last.start.0 as isize + before) as usize + last.replacement.len()
+        });
+        // Disjoint + ordered by construction; `new` re-validates (a bad accepted set is a caller bug).
+        let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
+        self.apply_ex_edit(list, self.origin, None)
+            .expect("substitute transaction applies cleanly");
+        self.view.last_was_edit = true;
+        if let Some(end) = last_end {
+            // Vim: the line the last replacement ends on (a `\r` in it moves the cursor down with the new
+            // line), at its first non-blank (`beginline(BL_WHITE | BL_FIX)`).
+            let nb = self.doc.bytes();
+            let end = end.min(nb.len());
+            let line_start = nb[..end]
+                .iter()
+                .rposition(|&c| c == b'\n')
+                .map_or(0, |i| i + 1);
+            self.view.cursor = motion::first_non_blank(nb, line_start);
+        }
+        self.settle_offsets();
+        self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
+        SubOutcome {
+            replacements,
+            lines: lines_seen.len(),
+        }
+    }
 }

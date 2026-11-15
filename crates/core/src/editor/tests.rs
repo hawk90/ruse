@@ -9803,7 +9803,9 @@ mod relocate_tests {
                                 assert_eq!(st.doc.bytes(), old.as_slice(), "{what}");
                                 continue;
                             }
-                            let want = relocated_by_lines(&old, first, last, ins, copy);
+                            let want = crate::editor::line_cmds::relocated_by_lines(
+                                &old, first, last, ins, copy,
+                            );
                             assert_eq!(st.doc.bytes(), want.as_slice(), "{what}");
                             assert!(st.view.cursor <= want.len(), "{what}");
                             st.doc.undo();
