@@ -63,7 +63,7 @@ Input → Input Profile → Semantic Command → Transaction → Document(rev++)
 stages of ARCH-FLOW-001 are the deferred target (D-039); the TUI paints the document directly.
 
 ## Requirements
-MVP (marked done): F-001..F-010, F-023..F-029 — editing kernel, Vim profile and its namespaces, command engine,
+MVP (marked done): F-001..F-010, F-022..F-029 — editing kernel, Vim profile and its namespaces, command engine,
 undo, TUI, windows, save/recovery, search, terminal capability. Post-MVP (planned/partial): F-011..F-021,
 F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 
@@ -80,9 +80,13 @@ F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 - Workspace trust gates language-server spawning. (D-058)
 - Milestones are titled by release version. (D-059)
 - Intermediate version milestones between phases hold issues only. (D-060)
+- Ex edits are recorded in the trace as resolved semantic commands. (D-061)
+- Keymaps are user-only; `.ruse/` is product-owned; workspace trust is bound to content. (D-062)
+- Byte positions crossing the `crates/core` API are typed `BytePos`. (D-063)
+- The recovery journal is per-transaction RJ01 records in the state dir. (D-064)
 
 ## Open questions
-- Save/recovery tuning (design decided; v0 journal shipped). (D-005)
+- Save/recovery tuning (design decided; RJ01 journal shipped, D-064). (D-005)
 - Multi-client workspace + offline/reconnect policy. (D-012, D-013)
 - Log PII/redaction field list. (D-017)
 
