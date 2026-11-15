@@ -351,14 +351,25 @@ pub(crate) fn debug_panic_if_requested() {
 pub(crate) mod tests {
     use super::*;
 
-    /// A `tracing` subscriber for this thread that writes what `init` would write into a buffer, and the
-    /// buffer, as one string per event.
+    /// What a capturing thread logged: the lines `init`'s format writes, as bytes.
     #[derive(Clone, Default)]
     pub(crate) struct Capture(Arc<Mutex<Vec<u8>>>);
 
-    impl std::io::Write for Capture {
+    std::thread_local! {
+        /// The capture this thread writes into, while [`Capture::run`] runs on it.
+        static SINK: std::cell::RefCell<Option<Capture>> = const { std::cell::RefCell::new(None) };
+    }
+
+    /// The writer of the process-wide test subscriber: this thread's capture, else nowhere.
+    struct ThreadSink;
+
+    impl std::io::Write for ThreadSink {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("capture").extend_from_slice(buf);
+            SINK.with(|s| {
+                if let Some(c) = s.borrow().as_ref() {
+                    c.0.lock().expect("capture").extend_from_slice(buf);
+                }
+            });
             Ok(buf.len())
         }
         fn flush(&mut self) -> std::io::Result<()> {
@@ -366,24 +377,58 @@ pub(crate) mod tests {
         }
     }
 
-    impl Capture {
-        /// Run `f` with a subscriber that records every event at `trace` and above, the format `init` uses;
-        /// return the lines it logged.
-        pub(crate) fn run(f: impl FnOnce()) -> Vec<String> {
-            let cap = Capture::default();
-            let sink = cap.clone();
-            let sub = tracing_subscriber::fmt()
-                .with_writer(move || sink.clone())
+    /// The test subscriber's filter: an event is recorded on a capturing thread only. It is decided per
+    /// event (`Interest::sometimes`), never cached per callsite.
+    struct Capturing;
+
+    impl<S> tracing_subscriber::layer::Filter<S> for Capturing {
+        fn enabled(
+            &self,
+            _: &tracing::Metadata<'_>,
+            _: &tracing_subscriber::layer::Context<'_, S>,
+        ) -> bool {
+            SINK.with(|s| s.borrow().is_some())
+        }
+
+        fn callsite_enabled(
+            &self,
+            _: &'static tracing::Metadata<'static>,
+        ) -> tracing::subscriber::Interest {
+            tracing::subscriber::Interest::sometimes()
+        }
+    }
+
+    /// One subscriber for the whole test process, in `init`'s format, that records an event only on a
+    /// thread inside [`Capture::run`]. Its filter decides per event, so no callsite ever caches that no
+    /// one listens: a thread-local subscriber could miss an event when another test thread registered
+    /// the same callsite at the same time with none listening (#1371).
+    fn install() {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        use tracing_subscriber::Layer;
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            let layer = tracing_subscriber::fmt::layer()
+                .with_writer(|| ThreadSink)
                 .with_ansi(false)
                 .with_target(false)
-                .with_max_level(tracing::Level::TRACE)
-                .finish();
-            tracing::subscriber::with_default(sub, || {
-                // A callsite another test thread registered while no capture was listening cached that no one
-                // listens; with this subscriber the default here, recompute it so no event is dropped (#1371).
-                tracing::callsite::rebuild_interest_cache();
-                f();
-            });
+                .with_filter(Capturing);
+            tracing_subscriber::registry()
+                .with(layer)
+                .try_init()
+                .expect("the test subscriber is the first global one");
+        });
+    }
+
+    impl Capture {
+        /// Run `f` recording every event this thread logs at `trace` and above, in the format `init`
+        /// uses; return the lines it logged.
+        pub(crate) fn run(f: impl FnOnce()) -> Vec<String> {
+            install();
+            let cap = Capture::default();
+            SINK.with(|s| *s.borrow_mut() = Some(cap.clone()));
+            f();
+            SINK.with(|s| *s.borrow_mut() = None);
             let bytes = cap.0.lock().expect("capture").clone();
             String::from_utf8_lossy(&bytes)
                 .lines()
