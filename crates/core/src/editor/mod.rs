@@ -3938,54 +3938,109 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         return plan.effects;
     }
     let entry_selection = st.view.mode.selection();
-    let was_selection = entry_selection.is_some();
-    let entry_cursor = st.view.cursor;
-    let entry_anchor = st.view.anchor;
-    let entry_mode = st.view.mode;
-    // Every command outside a text-entry session is a new change for `U`; inside one only the first change
-    // is (and the first after an undo break, which the transaction's `BreakBefore` hint carries).
-    let new_command = !is_text_entry(entry_mode);
+    let entry = Entry {
+        cursor: st.view.cursor,
+        anchor: st.view.anchor,
+        mode: st.view.mode,
+        // Every command outside a text-entry session is a new change for `U`; inside one only the first
+        // change is (and the first after an undo break, which the transaction's `BreakBefore` hint carries).
+        new_command: !is_text_entry(st.view.mode),
+    };
     // Whether the buffer ended in a newline before this command: only then is a cursor left at the end
     // the phantom slot (see the clamp below). `x` on the one char of an unterminated last line leaves that
     // line empty, which the byte model spells the same as a final newline.
     let entry_terminated = st.doc.bytes().last() == Some(&b'\n');
-    // The `[`/`]` change-mark span for a Normal-mode edit — read off the plan's edits (post-edit coords)
-    // before they are moved into a Transaction. A yank has no edits; its span rides in `RegWrite::Yank`.
-    let mut edit_span: Option<(usize, usize)> = None;
-    // `g;`/`g,` resolve their destination here (they step `change_idx`, which the pure planner cannot do).
-    let mut nav_target: Option<usize> = None;
-    // The lines an undo/redo leaves `[`, `]` and `.` on (#1168).
-    let mut undo_marks: Option<crate::undo_cursor::ChangeMarks> = None;
-    // Effects the commit itself adds (a failed `g;`/`CTRL-O`), after the plan's own.
-    let mut extra: Vec<Effect> = Vec::new();
     // The undo group before the command: an edit that leaves a different one began a new undo step.
     let entry_group = st.doc.history().current_group();
     // Leaving a selection remembers it (anchor, active end, kind) for `gv` and `'<`/`'>` — the depth-1
     // slice of D-027's selection history — BEFORE the operator's edit, so the edit carries it as nvim's
     // `mark_adjust` carries `b_visual` (#686).
     if plan.mode.selection().is_none() {
-        if let (Some(kind), Some(a)) = (entry_selection, entry_anchor) {
-            st.view.last_visual = Some((a, entry_cursor, kind));
+        if let (Some(kind), Some(a)) = (entry_selection, entry.anchor) {
+            st.view.last_visual = Some((a, entry.cursor, kind));
             st.view.visual_one_end = None;
         }
     }
-    match plan.action {
+    let applied = apply_action(st, plan.action, plan.mode, &entry);
+    // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
+    // text unpredictably — clamp and snap to a char boundary either way.
+    // `g;`/`g,` navigate the change list: the action stepped `change_idx` above and yielded the target
+    // (or `None` at an end), which overrides the plan's placeholder cursor for this frame only.
+    let resolved_cursor = applied.nav_target.unwrap_or(plan.cursor);
+    st.view.cursor = snap(st.doc.bytes(), resolved_cursor);
+    // Vim `` `^ ``: leaving Insert for Normal records where the caret was (the pre-clamp insert position),
+    // so `gi` resumes Insert exactly there. Checked before the mode is overwritten below.
+    if matches!(st.view.mode, Mode::Insert) && matches!(plan.mode, Mode::Normal) {
+        st.view.last_insert = Some(entry.cursor);
+    }
+    st.view.mode = plan.mode;
+    st.view.last_was_edit = plan.is_edit;
+    // Vim change list: an edit records where it happened (the cursor it left behind) as the newest entry,
+    // which is also the `` `. `` mark. Motions/undo/g;/g, don't push. Snapped below with the other offsets.
+    if plan.is_edit {
+        let new_step = st.doc.history().current_group() != entry_group;
+        st.view
+            .push_change(st.doc.bytes(), st.view.cursor, new_step);
+    }
+    let leaving_entry = set_change_marks(st, &entry, &plan.set_register, &applied);
+    st.view.snap_offsets(st.doc.bytes());
+    // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
+    if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
+        st.view.replace_stack.clear();
+    }
+    // A blockwise insert-replicate session lives only while Insert is held; drop it on any exit (the
+    // `<Esc>` that closes it already read the session to build the replicate before this runs).
+    if st.view.mode != Mode::Insert {
+        st.view.block_insert = None;
+    }
+    settle_normal_cursor(st, plan.is_edit, leaving_entry, entry_terminated);
+    write_register(st, plan.set_register);
+    set_anchor_and_mark(
+        st,
+        entry_selection.is_some(),
+        entry.cursor,
+        plan.set_anchor,
+        plan.set_mark,
+    );
+    // The pending register (`"x`) is one-shot: any command other than `SetRegister` (which returned early
+    // above) consumes it. Cleared here AFTER the register write so a stray `"x` before a non-register
+    // command is simply forgotten, and a later plain edit never leaks into the named slot.
+    st.view.pending_register = None;
+    let mut effects = plan.effects;
+    effects.extend(applied.extra);
+    effects
+}
+
+/// The state a command found, read before [`commit`] runs its action.
+struct Entry {
+    cursor: usize,
+    anchor: Option<usize>,
+    mode: Mode,
+    /// Whether the command starts a new change for `U` (see [`commit`]).
+    new_command: bool,
+}
+
+/// What a plan's action left for the rest of [`commit`] to read.
+#[derive(Default)]
+struct Applied {
+    /// The `[`/`]` change-mark span of a Normal-mode edit, read off the plan's edits (post-edit coords)
+    /// before they are moved into a Transaction. A yank has no edits; its span rides in `RegWrite::Yank`.
+    edit_span: Option<(usize, usize)>,
+    /// `g;`/`g,`, the jumplist and undo resolve their destination here (they step state the pure planner
+    /// cannot); it overrides the plan's cursor.
+    nav_target: Option<usize>,
+    /// The lines an undo/redo leaves `[`, `]` and `.` on (#1168).
+    undo_marks: Option<crate::undo_cursor::ChangeMarks>,
+    /// Effects the commit itself adds (a failed `g;`/`CTRL-O`), after the plan's own.
+    extra: Vec<Effect>,
+}
+
+/// Run a plan's action: apply its edits, step undo or a list, or arm a session.
+fn apply_action(st: &mut EditorState, action: Action, mode: Mode, entry: &Entry) -> Applied {
+    let mut out = Applied::default();
+    match action {
         Action::Txn { edits, hint } => {
-            edit_span = edit_bracket(&edits);
-            st.doc.prime_line_undo(entry_cursor, new_command);
-            let start = change_start(
-                st.doc.bytes(),
-                entry_mode,
-                entry_cursor,
-                entry_anchor,
-                &edits,
-            );
-            let txn = Transaction::new(st.doc.revision(), edits, st.origin)
-                .with_hint(hint)
-                .with_cursor(BytePos(start));
-            // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
-            st.apply_txn(txn)
-                .expect("planned transaction applies cleanly");
+            out.edit_span = apply_planned(st, edits, hint, entry);
         }
         Action::ReplaceTxn {
             edits,
@@ -3993,20 +4048,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             push,
             pop,
         } => {
-            edit_span = edit_bracket(&edits);
-            st.doc.prime_line_undo(entry_cursor, new_command);
-            let start = change_start(
-                st.doc.bytes(),
-                entry_mode,
-                entry_cursor,
-                entry_anchor,
-                &edits,
-            );
-            let txn = Transaction::new(st.doc.revision(), edits, st.origin)
-                .with_hint(hint)
-                .with_cursor(BytePos(start));
-            st.apply_txn(txn)
-                .expect("planned transaction applies cleanly");
+            out.edit_span = apply_planned(st, edits, hint, entry);
             if pop {
                 st.view.replace_stack.pop();
             }
@@ -4014,36 +4056,24 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 st.view.replace_stack.push(entry);
             }
         }
-        Action::Undo => {
-            let placed = undo_step(st, entry_cursor, |d, t| {
-                d.undo_tracked(BytePos(entry_cursor), t)
-            });
-            nav_target = placed.map(|p| undo_target(st, p, plan.mode));
-            undo_marks = placed.map(|p| p.marks);
-        }
-        Action::Redo => {
-            let placed = undo_step(st, entry_cursor, |d, t| {
-                d.redo_tracked(BytePos(entry_cursor), t)
-            });
-            nav_target = placed.map(|p| undo_target(st, p, plan.mode));
-            undo_marks = placed.map(|p| p.marks);
-        }
-        Action::UndoChrono { older } => {
-            let placed = undo_step(st, entry_cursor, |d, t| {
-                d.chronological_tracked(older, BytePos(entry_cursor), t)
-            });
-            nav_target = placed.map(|p| undo_target(st, p, plan.mode));
-            undo_marks = placed.map(|p| p.marks);
-        }
+        Action::Undo => undo_nav(st, &mut out, mode, |d, t| {
+            d.undo_tracked(BytePos(entry.cursor), t)
+        }),
+        Action::Redo => undo_nav(st, &mut out, mode, |d, t| {
+            d.redo_tracked(BytePos(entry.cursor), t)
+        }),
+        Action::UndoChrono { older } => undo_nav(st, &mut out, mode, |d, t| {
+            d.chronological_tracked(older, BytePos(entry.cursor), t)
+        }),
         Action::LineUndo => {
             let origin = st.origin;
-            nav_target = st
-                .with_tracked(|d, t| d.line_undo_tracked(BytePos(entry_cursor), origin, t))
+            out.nav_target = st
+                .with_tracked(|d, t| d.line_undo_tracked(BytePos(entry.cursor), origin, t))
                 .map(|p| p.0);
         }
         Action::JumpChange { older } => {
-            nav_target = st.view.nav_change(older);
-            if nav_target.is_none() {
+            out.nav_target = st.view.nav_change(older);
+            if out.nav_target.is_none() {
                 // nvim's `nv_pcmark`: each end of the change list has its own error.
                 let msg = if st.view.changes.is_empty() {
                     "E664: Changelist is empty"
@@ -4052,14 +4082,14 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 } else {
                     "E663: At end of changelist"
                 };
-                extra.push(Effect::Status(msg.to_string()));
-                extra.push(Effect::Beep);
+                out.extra.push(Effect::Status(msg.to_string()));
+                out.extra.push(Effect::Beep);
             }
         }
         Action::JumpList { older } => {
-            nav_target = st.view.nav_jump(older, entry_cursor, st.doc.bytes());
-            if nav_target.is_none() {
-                extra.push(Effect::Beep);
+            out.nav_target = st.view.nav_jump(older, entry.cursor, st.doc.bytes());
+            if out.nav_target.is_none() {
+                out.extra.push(Effect::Beep);
             }
         }
         Action::SetNamedMark { ch } => {
@@ -4071,20 +4101,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             session,
         } => {
             if !edits.is_empty() {
-                edit_span = edit_bracket(&edits);
-                st.doc.prime_line_undo(entry_cursor, new_command);
-                let start = change_start(
-                    st.doc.bytes(),
-                    entry_mode,
-                    entry_cursor,
-                    entry_anchor,
-                    &edits,
-                );
-                let txn = Transaction::new(st.doc.revision(), edits, st.origin)
-                    .with_hint(hint)
-                    .with_cursor(BytePos(start));
-                st.apply_txn(txn)
-                    .expect("planned transaction applies cleanly");
+                out.edit_span = apply_planned(st, edits, hint, entry);
             }
             // Retain this block's geometry so a later `.` (dot-repeat) can rebuild an equivalent block at
             // the caret. Set on ARM (the geometry is known here) so it is available before the session's
@@ -4111,26 +4128,59 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             unreachable!("SetExprPending is handled before the action match")
         }
     }
-    // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
-    // text unpredictably — clamp and snap to a char boundary either way.
-    // `g;`/`g,` navigate the change list: the action stepped `change_idx` above and yielded the target
-    // (or `None` at an end), which overrides the plan's placeholder cursor for this frame only.
-    let resolved_cursor = nav_target.unwrap_or(plan.cursor);
-    st.view.cursor = snap(st.doc.bytes(), resolved_cursor);
-    // Vim `` `^ ``: leaving Insert for Normal records where the caret was (the pre-clamp insert position),
-    // so `gi` resumes Insert exactly there. Checked before the mode is overwritten below.
-    if matches!(st.view.mode, Mode::Insert) && matches!(plan.mode, Mode::Normal) {
-        st.view.last_insert = Some(entry_cursor);
-    }
-    st.view.mode = plan.mode;
-    st.view.last_was_edit = plan.is_edit;
-    // Vim change list: an edit records where it happened (the cursor it left behind) as the newest entry,
-    // which is also the `` `. `` mark. Motions/undo/g;/g, don't push. Snapped below with the other offsets.
-    if plan.is_edit {
-        let new_step = st.doc.history().current_group() != entry_group;
-        st.view
-            .push_change(st.doc.bytes(), st.view.cursor, new_step);
-    }
+    out
+}
+
+/// Apply a plan's edits as one transaction whose cursor is where the change began; the `[`/`]` span of
+/// the edits, in post-edit coordinates.
+fn apply_planned(
+    st: &mut EditorState,
+    edits: EditList,
+    hint: GroupHint,
+    entry: &Entry,
+) -> Option<(usize, usize)> {
+    let span = edit_bracket(&edits);
+    st.doc.prime_line_undo(entry.cursor, entry.new_command);
+    let start = change_start(
+        st.doc.bytes(),
+        entry.mode,
+        entry.cursor,
+        entry.anchor,
+        &edits,
+    );
+    let txn = Transaction::new(st.doc.revision(), edits, st.origin)
+        .with_hint(hint)
+        .with_cursor(BytePos(start));
+    // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
+    st.apply_txn(txn)
+        .expect("planned transaction applies cleanly");
+    span
+}
+
+/// One undo-tree step (`u`, `CTRL-R`, `g-`/`g+`): where it puts the cursor and the marks it leaves.
+fn undo_nav(
+    st: &mut EditorState,
+    out: &mut Applied,
+    mode: Mode,
+    step: impl FnOnce(&mut Document, &mut [Tracked]) -> Option<crate::undo_cursor::UndoCursor>,
+) {
+    let placed = undo_step(st, st.view.cursor, step);
+    out.nav_target = placed.map(|p| undo_target(st, p, mode));
+    out.undo_marks = placed.map(|p| p.marks);
+}
+
+/// The `[`/`]` change marks and the `.` entry an undo leaves; whether the command left a text-entry
+/// session.
+fn set_change_marks(
+    st: &mut EditorState,
+    entry: &Entry,
+    set_register: &Option<RegWrite>,
+    applied: &Applied,
+) -> bool {
+    let (entry_mode, entry_cursor) = (entry.mode, entry.cursor);
+    let plan_mode = st.view.mode;
+    let undo_marks = applied.undo_marks;
+    let edit_span = applied.edit_span;
     // Undo and redo put `[`/`]` at column 0 of the first and last line they re-applied, and `.` (the newest
     // change-list entry, without starting a new one) at column 0 of the top line of the last entry they
     // re-applied: nvim's `u_undoredo` and `changed_lines` (#1168).
@@ -4149,8 +4199,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // span carried in `RegWrite::Yank`. `]` is stored as the LAST char (inclusive) for delete/replace/put/
     // yank, but as the exclusive insert END-caret for a session — the jump's EOL clamp reconciles both to
     // match Neovim. Individual keystrokes WITHIN a session don't touch the marks (only entry/exit do).
-    let entering_entry = !is_text_entry(entry_mode) && is_text_entry(plan.mode);
-    let leaving_entry = is_text_entry(entry_mode) && !is_text_entry(plan.mode);
+    let entering_entry = !is_text_entry(entry_mode) && is_text_entry(plan_mode);
+    let leaving_entry = is_text_entry(entry_mode) && !is_text_entry(plan_mode);
     if entering_entry {
         st.view.insert_start = Some(st.view.cursor);
     }
@@ -4159,9 +4209,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         st.view.change_start = Some(start.min(entry_cursor));
         st.view.change_end = Some(start.max(entry_cursor));
         st.view.insert_start = None;
-    } else if !is_text_entry(plan.mode) {
+    } else if !is_text_entry(plan_mode) {
         // A completed Normal-mode edit, or a yank (which carries its own span since it makes no edits).
-        let yank_span = match &plan.set_register {
+        let yank_span = match set_register {
             Some(RegWrite::Yank(_, span)) => Some(*span),
             _ => None,
         };
@@ -4175,23 +4225,24 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             st.view.change_end = Some(if e > s { prev_grapheme(b, e) } else { s });
         }
     }
-    st.view.snap_offsets(st.doc.bytes());
-    // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
-    if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
-        st.view.replace_stack.clear();
-    }
-    // A blockwise insert-replicate session lives only while Insert is held; drop it on any exit (the
-    // `<Esc>` that closes it already read the session to build the replicate before this runs).
-    if st.view.mode != Mode::Insert {
-        st.view.block_insert = None;
-    }
+    leaving_entry
+}
+
+/// Where an edit leaves the on-char cursor: never on the newline, never inside a cluster, never on the
+/// phantom slot after the final newline.
+fn settle_normal_cursor(
+    st: &mut EditorState,
+    is_edit: bool,
+    leaving_entry: bool,
+    entry_terminated: bool,
+) {
     // Vim never rests the Normal-mode cursor on the newline: after an edit that leaves it beyond the final
     // char of a non-empty line, pull it back onto the last char (e.g. `dw` on the last word → the cursor
     // clamps to the trailing char rather than the line end). Scoped to edits in Normal mode so it never
     // touches Insert's legitimate cursor-past-end, and guarded by `ls < le` so an empty line keeps `[n,0]`.
     // Gated on `CaretGravity::OnChar` (D-050): the Emacs profile is BetweenChar, so Emacs point legitimately
     // rests on the after-last slot and must NOT be clamped (`kill-line`/`yank` land point N+1, not N).
-    if plan.is_edit && st.view.mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
+    if is_edit && st.view.mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
         let b = st.doc.bytes();
         let le = line_end(b, st.view.cursor);
         let ls = line_start(b, st.view.cursor);
@@ -4221,13 +4272,17 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     {
         st.view.cursor = motion::off_phantom_at(st.doc.bytes(), st.view.cursor);
     }
+}
+
+/// Write what a plan captured into the pending register (or the unnamed one), and keep the Emacs kill run.
+fn write_register(st: &mut EditorState, set_register: Option<RegWrite>) {
     // A yank/delete/change writes its captured span into the pending register (or unnamed when none),
     // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store. An Emacs kill
     // additionally ACCUMULATES onto the unnamed entry when the previous command was also a kill, and always
     // marks the run so the next kill accumulates onto it; any other command breaks the run.
     let was_kill = st.view.last_was_kill;
     st.view.last_was_kill = false;
-    match plan.set_register {
+    match set_register {
         Some(RegWrite::Edit(reg)) => st.view.registers.delete(st.view.pending_register, reg),
         Some(RegWrite::EditRingOne(reg)) => {
             st.view
@@ -4255,6 +4310,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         Some(RegWrite::Write(reg)) => st.view.registers.write(st.view.pending_register, reg),
         None => {}
     }
+}
+
+/// The selection anchor and the Emacs mark after a command, snapped into the text.
+fn set_anchor_and_mark(
+    st: &mut EditorState,
+    was_selection: bool,
+    entry_cursor: usize,
+    set_anchor: Option<usize>,
+    set_mark: Option<MarkWrite>,
+) {
     // Maintain the selection anchor: set it when entering a selection mode (Visual/Select; the fixed end
     // is where the cursor was), keep it while staying in one — including across a Visual↔Select CTRL-G
     // toggle, since both are selection modes — and clear it on any exit to Normal/Insert.
@@ -4265,7 +4330,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         (true, true) => {}
     }
     // A text object in a selection mode overrides the anchor to span the object (both ends move at once).
-    if let Some(a) = plan.set_anchor {
+    if let Some(a) = set_anchor {
         st.view.anchor = Some(a);
     }
     // Keep the raw-offset anchor valid: an edit applied while in Visual mode can resize the buffer under it,
@@ -4277,20 +4342,13 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     }
     // The Emacs mark (D-027): a plan installs or drops it; otherwise it persists. Snap it into range like the
     // anchor so an edit that resized the buffer under it can never make `KillRegion` slice out of bounds.
-    match plan.set_mark {
+    match set_mark {
         Some(MarkWrite::Set(m)) => st.view.mark = Some(m),
         None => {}
     }
     if let Some(m) = st.view.mark {
         st.view.mark = Some(snap(st.doc.bytes(), m));
     }
-    // The pending register (`"x`) is one-shot: any command other than `SetRegister` (which returned early
-    // above) consumes it. Cleared here AFTER the register write so a stray `"x` before a non-register
-    // command is simply forgotten, and a later plain edit never leaks into the named slot.
-    st.view.pending_register = None;
-    let mut effects = plan.effects;
-    effects.extend(extra);
-    effects
 }
 
 /// Whether `cmd` is a Vim JUMP — a command that sets the `''`/jumplist "before" mark (search, `G`/`gg`, `%`,
@@ -4409,21 +4467,7 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
             entry_cursor,
         )
     };
-    // The smartindent state a line opened by this command arms (read from the buffer before the edit).
-    let opened_si = opened_si_state(st, cmd);
-    // An open that continues a comment leader counts as an untouched autoindent (nvim sets `did_ai`).
-    let opened = planner::open_comment_line(st, cmd);
-    let opened_leader = opened.as_ref().is_some_and(|o| o.1);
-    let opened_end_comment = planner::open_end_comment(st, cmd);
-    // The indent `^ CTRL-D` deletes, for the next `<CR>`.
-    let deleted_indent = if matches!(cmd, Command::InsertDeleteIndentRestore) {
-        let b = st.doc.bytes();
-        let ls = line_start(b, st.view.cursor);
-        // The `^` is deleted first, by the `DeleteBack` before this command; the indent is the line's.
-        indent::indent_cols(&b[ls..line_end(b, ls)], st.view.indent.tabs()).0
-    } else {
-        0
-    };
+    let opened = Opened::of(st, cmd);
     let mut p = plan(st, cmd);
     // `'nomodifiable'` (#619): a command that would change the text or step the undo history does
     // nothing but say E21 (nvim checks `MODIFIABLE` before each change), so no register, mark or mode
@@ -4459,47 +4503,20 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         p = refused;
     }
     let mut effects = commit(st, p);
-    // `'lisp'` under `'autoindent'`: the line an open or a linewise change leaves takes the Lisp indent
-    // (nvim's `open_line` and `op_change` run `fixthisline(get_lisp_indent)`, #1163).
-    if st.view.format.lisp
-        && st.view.indent.autoindent
-        && st.view.mode == Mode::Insert
-        && !opened_leader
-        && st.view.caret == CaretGravity::OnChar
-        && (linewise_change
-            || (matches!(
-                cmd,
-                Command::OpenBelow | Command::OpenAbove | Command::InsertNewline
-            ) && st.doc.revision() != entry_rev))
-    {
-        let b = st.doc.bytes();
-        let row = crate::pos::raw::line_of(b, st.view.cursor);
-        let cols = lisp::line_indent(b, row, st.view.indent.tabs(), &st.view.format.lispwords);
-        let fix = planner::plan_set_indents(st, row, row, &[Some(cols)], GroupHint::Continue);
-        effects.extend(commit(st, fix));
-    }
+    effects.extend(lisp_reindent(
+        st,
+        cmd,
+        linewise_change,
+        opened.leader,
+        entry_rev,
+    ));
     let failed = !was_refused
         && st.view.cursor == entry_cursor
         && st.doc.revision() == entry_rev
         && st.view.mode == entry_mode;
     let kept_col = failed && keeps_curswant_on_failure(st, cmd, effects.contains(&Effect::Beep));
     track_insert_start(st, cmd, entry_mode, entry_cursor, entry_rev, &entry_col);
-    // Opening a line drops the line `U` would restore (nvim's `open_line`). After `o`/`O` the first typed
-    // change still saves the new line; after an Insert `<CR>` the rest of the insert saves nothing.
-    match cmd {
-        Command::OpenBelow
-        | Command::OpenAbove
-        | Command::OpenLineIndent {
-            kind: OpenKind::Below | OpenKind::Above,
-            ..
-        } => st.doc.clear_line_undo(false),
-        Command::InsertNewline
-        | Command::OpenLineIndent {
-            kind: OpenKind::Split,
-            ..
-        } if st.doc.revision() != entry_rev => st.doc.clear_line_undo(true),
-        _ => {}
-    }
+    drop_opened_line_undo(st, cmd, entry_rev);
     // `CTRL-G U` + `<Left>`/`<Right>` moves without starting a new undo group.
     if matches!(cmd, Command::InsertCaretStep { .. }) {
         st.view.last_was_edit = entry_was_edit;
@@ -4515,6 +4532,101 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         };
         st.view.push_jump(from);
     }
+    set_insert_state(st, cmd, &opened, linewise_change, &entry_text, entry_cursor);
+    update_curswant(st, cmd, entry_mode, kept_col);
+    effects
+}
+
+/// What a line the command opens carries, read from the buffer before the command's edit.
+struct Opened {
+    /// The smartindent state the opened line arms.
+    si: indent::SiState,
+    /// Whether the open continues a comment leader, which counts as an untouched autoindent (nvim sets
+    /// `did_ai`).
+    leader: bool,
+    /// The end of a three-piece comment the opened line may close.
+    end_comment: Option<u8>,
+    /// The indent `^ CTRL-D` deletes, for the next `<CR>`.
+    deleted_indent: usize,
+}
+
+impl Opened {
+    fn of(st: &EditorState, cmd: &Command) -> Opened {
+        let deleted_indent = if matches!(cmd, Command::InsertDeleteIndentRestore) {
+            let b = st.doc.bytes();
+            let ls = line_start(b, st.view.cursor);
+            // The `^` is deleted first, by the `DeleteBack` before this command; the indent is the line's.
+            indent::indent_cols(&b[ls..line_end(b, ls)], st.view.indent.tabs()).0
+        } else {
+            0
+        };
+        Opened {
+            si: opened_si_state(st, cmd),
+            leader: planner::open_comment_line(st, cmd).is_some_and(|o| o.1),
+            end_comment: planner::open_end_comment(st, cmd),
+            deleted_indent,
+        }
+    }
+}
+
+/// `'lisp'` under `'autoindent'`: the line an open or a linewise change leaves takes the Lisp indent
+/// (nvim's `open_line` and `op_change` run `fixthisline(get_lisp_indent)`, #1163).
+fn lisp_reindent(
+    st: &mut EditorState,
+    cmd: &Command,
+    linewise_change: bool,
+    opened_leader: bool,
+    entry_rev: crate::Revision,
+) -> Vec<Effect> {
+    if st.view.format.lisp
+        && st.view.indent.autoindent
+        && st.view.mode == Mode::Insert
+        && !opened_leader
+        && st.view.caret == CaretGravity::OnChar
+        && (linewise_change
+            || (matches!(
+                cmd,
+                Command::OpenBelow | Command::OpenAbove | Command::InsertNewline
+            ) && st.doc.revision() != entry_rev))
+    {
+        let b = st.doc.bytes();
+        let row = crate::pos::raw::line_of(b, st.view.cursor);
+        let cols = lisp::line_indent(b, row, st.view.indent.tabs(), &st.view.format.lispwords);
+        let fix = planner::plan_set_indents(st, row, row, &[Some(cols)], GroupHint::Continue);
+        return commit(st, fix);
+    }
+    Vec::new()
+}
+
+/// Opening a line drops the line `U` would restore (nvim's `open_line`). After `o`/`O` the first typed
+/// change still saves the new line; after an Insert `<CR>` the rest of the insert saves nothing.
+fn drop_opened_line_undo(st: &mut EditorState, cmd: &Command, entry_rev: crate::Revision) {
+    match cmd {
+        Command::OpenBelow
+        | Command::OpenAbove
+        | Command::OpenLineIndent {
+            kind: OpenKind::Below | OpenKind::Above,
+            ..
+        } => st.doc.clear_line_undo(false),
+        Command::InsertNewline
+        | Command::OpenLineIndent {
+            kind: OpenKind::Split,
+            ..
+        } if st.doc.revision() != entry_rev => st.doc.clear_line_undo(true),
+        _ => {}
+    }
+}
+
+/// The Insert-session state a command leaves: the pending autoindent, smartindent, the indent `^ CTRL-D`
+/// took, the comment end to close and whether a space was just typed.
+fn set_insert_state(
+    st: &mut EditorState,
+    cmd: &Command,
+    opened: &Opened,
+    linewise_change: bool,
+    entry_text: &[u8],
+    entry_cursor: usize,
+) {
     // Maintain the auto-indent-pending flag (read by `EnterNormal` for `<Esc>` autoindent cleanup): a
     // tree-suggested open sets it; typing a non-blank clears it; any Insert entry/exit resets it so it
     // never leaks to a later line. Done here (not in the pure planner) because it depends on the Command.
@@ -4522,11 +4634,11 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         Command::OpenLineIndent { level, .. } => st.view.auto_indent_pending = *level > 0,
         Command::OpenBelow | Command::OpenAbove | Command::InsertNewline => {
             st.view.auto_indent_pending =
-                st.view.mode == Mode::Insert && (opened_leader || only_indent_before_caret(st));
+                st.view.mode == Mode::Insert && (opened.leader || only_indent_before_caret(st));
         }
         _ if linewise_change => st.view.auto_indent_pending = only_indent_before_caret(st),
         // A caret key off the line ends it (nvim's `start_arrow`).
-        _ if left_line(&entry_text, entry_cursor, st.doc.bytes(), st.view.cursor) => {
+        _ if left_line(entry_text, entry_cursor, st.doc.bytes(), st.view.cursor) => {
             st.view.auto_indent_pending = false;
         }
         // Typing anything keeps the indent (nvim clears `did_ai` on a typed blank too).
@@ -4543,14 +4655,14 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         | Command::AppendLineEnd => st.view.auto_indent_pending = false,
         _ => {}
     }
-    st.view.si_state = opened_si;
+    st.view.si_state = opened.si;
     match cmd {
-        Command::InsertDeleteIndentRestore => st.view.old_indent = deleted_indent,
+        Command::InsertDeleteIndentRestore => st.view.old_indent = opened.deleted_indent,
         Command::InsertNewline if st.view.mode == Mode::Insert => st.view.old_indent = 0,
         _ => {}
     }
-    st.view.end_comment = if opened_leader {
-        opened_end_comment
+    st.view.end_comment = if opened.leader {
+        opened.end_comment
     } else {
         None
     };
@@ -4564,8 +4676,6 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         }
         _ => false,
     };
-    update_curswant(st, cmd, entry_mode, kept_col);
-    effects
 }
 
 /// `p`, an offset into `old`, in `new`, which differs from it in one contiguous span: unchanged before
