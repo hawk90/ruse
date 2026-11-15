@@ -137,8 +137,8 @@ define intent
   **[done]**, Risk-Based **[done]**, Context Manifest **[done]**, Repository Constitution **[done]**,
   Fitness Functions (static) **[done]**, Contract files **[done]**. All governance checkers run behind one
   auto-discovered `ruse gov check` (drop a `tools/rusekit/gov/*.py` module → it joins the gate with no wiring), and
-  all verification is one registry ([spec/verification.yaml](../../spec/verification.yaml)) read by
-  `ruse verify` + lefthook + CI. Quantitative fitness (build/size/API) stays **[next]**, pending code + a
+  all verification is one registry ([spec/verification.yaml](../../spec/verification.yaml)) run by
+  `ruse verify` + lefthook, and matched step for step by CI (`tools/tests/test_ci_registry.py`, #1310). Quantitative fitness (build/size/API) stays **[next]**, pending code + a
   metrics source; phased-delivery planning (`spec/phases.yaml`, `ruse phase`) tracks the editor build ladder.
 - **P1 — before scale.** Ownership governance, API-diff, Decision revisit triggers, structured Evidence
   artifacts, Agent provenance, Tech-debt budget, Continuous Verification (nightly).

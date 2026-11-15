@@ -24,9 +24,9 @@ Tool-agnostic. Rules here are operational shortcuts; the normative sources are `
 ```sh
 python3 tools/spec-validate.py
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings   # local `ruse verify` clippy is lenient; CI is not
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 tools/ruse.py verify --full                     # what pre-push (lefthook) runs
+python3 tools/ruse.py verify --full                     # what pre-push (lefthook) runs; the same steps as CI
 ```
 
 `python3 tools/ruse.py --help` lists the rest (classify, impact, pr check, bench, gov check).
