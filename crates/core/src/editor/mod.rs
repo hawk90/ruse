@@ -1891,6 +1891,23 @@ impl EditorState {
         r
     }
 
+    /// Apply `list` as an Ex command's own undo step (`BreakBefore`) carrying `origin`, the undo cursor at
+    /// `cursor` when given. The Ex line commands and `:s` (in child modules) build their transaction here,
+    /// in the transaction path CON-TXN-ONLY-MUTATION allows.
+    pub(crate) fn apply_ex_edit(
+        &mut self,
+        list: EditList,
+        origin: TransactionOrigin,
+        cursor: Option<usize>,
+    ) -> Result<crate::pos::Revision, TxnError> {
+        let mut txn =
+            Transaction::new(self.doc.revision(), list, origin).with_hint(GroupHint::BreakBefore);
+        if let Some(c) = cursor {
+            txn = txn.with_cursor(BytePos(c));
+        }
+        self.apply_txn(txn)
+    }
+
     /// Make the edits that follow carry `origin` (INV-ORIGIN, #880).
     pub(crate) fn set_origin(&mut self, origin: TransactionOrigin) {
         self.origin = origin;

@@ -163,9 +163,8 @@ impl EditorState {
                 }
                 let list =
                     EditList::new(edits).expect("whole-line deletes are disjoint and ordered");
-                let txn = Transaction::new(self.doc.revision(), list, self.origin)
-                    .with_hint(GroupHint::BreakBefore);
-                self.apply_txn(txn).expect("global-delete applies cleanly");
+                self.apply_ex_edit(list, self.origin, None)
+                    .expect("global-delete applies cleanly");
                 self.view.last_was_edit = true;
                 // Like Vim, the cursor lands on the line that followed the last deleted one (the last line if
                 // that was the end), at its first non-blank.
@@ -258,10 +257,7 @@ impl EditorState {
         // where `u` puts it back (nvim 0.12.6: `4l:3d<CR>u` -> line 3, column 4).
         let col = self.view.cursor - line_start(bytes, self.view.cursor);
         let undo_at = snap(bytes, (fs + col).min(first_end));
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore)
-            .with_cursor(BytePos(undo_at));
-        self.apply_txn(txn)
+        self.apply_ex_edit(list, self.origin, Some(undo_at))
             .expect("line-range delete applies cleanly");
         self.view.last_was_edit = true;
         // On the line that took their place, or the new last line (never the slot after a final newline,
@@ -498,10 +494,8 @@ impl EditorState {
         let list = EditList::new(edits).expect("the move's delete and insert are disjoint");
         // `u` and `CTRL-R` start from where the cursor stood: Vim's `u_save` in `ex_copy`/`do_move` runs
         // before the cursor moves, so `uh_cursor` is the cursor before the command (#1258).
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore)
-            .with_cursor(BytePos(self.view.cursor.min(old.len())));
-        self.apply_txn(txn).expect("line relocate applies cleanly");
+        self.apply_ex_edit(list, self.origin, Some(self.view.cursor.min(old.len())))
+            .expect("line relocate applies cleanly");
         self.view.last_was_edit = true;
         // On the block's last line where it now is.
         let new = self.doc.bytes();
@@ -587,9 +581,8 @@ impl EditorState {
             .sum();
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
-        self.apply_txn(txn).expect("line put applies cleanly");
+        self.apply_ex_edit(list, self.origin, None)
+            .expect("line put applies cleanly");
         self.view.last_was_edit = true;
         // Vim leaves the cursor on the first non-blank of the last inserted line.
         let nb = self.doc.bytes();
@@ -669,9 +662,8 @@ impl EditorState {
             .sum();
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
-        self.apply_txn(txn).expect("line read applies cleanly");
+        self.apply_ex_edit(list, self.origin, None)
+            .expect("line read applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
@@ -763,10 +755,8 @@ impl EditorState {
         let last_start = spans[last].0;
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore)
-            .with_cursor(BytePos(last_start));
-        self.apply_txn(txn).expect("line filter applies cleanly");
+        self.apply_ex_edit(list, self.origin, Some(last_start))
+            .expect("line filter applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
@@ -834,9 +824,8 @@ impl EditorState {
         }
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), out)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
-        self.apply_txn(txn).expect("retab applies cleanly");
+        self.apply_ex_edit(list, self.origin, None)
+            .expect("retab applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         let ls = nb
@@ -961,9 +950,8 @@ impl EditorState {
             .min(new_bytes.len());
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
-        self.apply_txn(txn).expect("sort applies cleanly");
+        self.apply_ex_edit(list, self.origin, None)
+            .expect("sort applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
@@ -1029,9 +1017,7 @@ impl EditorState {
         let Ok(list) = EditList::new(es) else {
             return false;
         };
-        let txn =
-            Transaction::new(self.doc.revision(), list, origin).with_hint(GroupHint::BreakBefore);
-        if self.apply_txn(txn).is_err() {
+        if self.apply_ex_edit(list, origin, None).is_err() {
             return false;
         }
         self.view.last_was_edit = true;

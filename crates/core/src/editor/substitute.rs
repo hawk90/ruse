@@ -472,9 +472,7 @@ impl EditorState {
             .collect();
         let cursor = lines[first + seams].0 - seams;
         let list = EditList::new(edits).expect("line breaks are disjoint and ordered");
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
-        self.apply_txn(txn)
+        self.apply_ex_edit(list, self.origin, None)
             .expect("join substitute applies cleanly");
         self.view.last_was_edit = true;
         self.view.cursor = cursor.min(self.doc.bytes().len());
@@ -592,9 +590,7 @@ impl EditorState {
         });
         // Disjoint + ordered by construction; `new` re-validates (a bad accepted set is a caller bug).
         let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
-        let txn = Transaction::new(self.doc.revision(), list, self.origin)
-            .with_hint(GroupHint::BreakBefore);
-        self.apply_txn(txn)
+        self.apply_ex_edit(list, self.origin, None)
             .expect("substitute transaction applies cleanly");
         self.view.last_was_edit = true;
         if let Some(end) = last_end {
