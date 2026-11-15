@@ -2962,6 +2962,26 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn a_one_shot_jump_leaves_from_where_the_autoindent_went() {
+        // #1368 (nvim v0.12.6: `O<C-o>G` on "\t" puts the jump on line 1 col 0): the jump off an opened,
+        // untouched autoindent line records the start of the removed blanks, inside the text.
+        let mut st = EditorState::new(b"\t\n".to_vec());
+        st.view.indent.autoindent = true;
+        apply_command(&mut st, &Command::OpenAbove);
+        apply_command(&mut st, &Command::Move(1, Motion::LastLine));
+        st.assert_invariants();
+        assert_eq!(text(&st), "\n\t\n");
+        assert_eq!(st.view.jumps.last(), Some(&0));
+    }
+
+    #[test]
+    fn through_change_maps_around_one_changed_span() {
+        assert_eq!(through_change(b"ab  \ncd", b"ab\ncd", 4), 2);
+        assert_eq!(through_change(b"ab  \ncd", b"ab\ncd", 1), 1);
+        assert_eq!(through_change(b"ab  \ncd", b"ab\ncd", 6), 4);
+    }
+
+    #[test]
     fn gi_on_the_emptied_buffer_keeps_its_offsets_inside_the_text() {
         // #1364: `gi` changes no text, so the emptied line it ran on is taken back, with what it stored.
         let mut st = EditorState::new(Vec::new());
