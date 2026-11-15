@@ -321,3 +321,64 @@ fn plan_move(
     }
     nop(target, st.view.mode)
 }
+
+/// `c{motion}` / `cc`: delete the change span, capture it to a register, and enter Insert. A linewise span
+/// (`cc`/`S`, `cj`, `c}` reduced by the exclusive-linewise rule, `cip`, a linewise inner block) keeps the
+/// first line's indent and the trailing newline ([`plan_linewise_change`]); a failed linewise motion stays
+/// in Normal.
+fn plan_change(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    count: u32,
+    m: &Motion,
+    hint: GroupHint,
+) -> Plan {
+    let sp = change_span(b, cur, *m, count);
+    let landing = op_landing(
+        b,
+        cur,
+        *m,
+        count,
+        &st.view.curswant,
+        st.view.indent.tabs(),
+        false,
+    );
+    apply_op(st, b, cur, MarkOp::Change, sp, landing, hint)
+}
+
+/// The `MarkOp` form of a delete / change / yank.
+fn mark_op(op: OpKind) -> MarkOp {
+    match op {
+        OpKind::Delete => MarkOp::Delete,
+        OpKind::Change => MarkOp::Change,
+        OpKind::Yank => MarkOp::Yank,
+    }
+}
+
+/// `gq`/`gw` {motion} — format the motion's whole lines (nvim's `op_format`). `gw` (`keep_cursor`) keeps
+/// the caret on its text; `gq` leaves it on the first non-blank of the last formatted line.
+fn plan_format(
+    st: &EditorState,
+    cur: usize,
+    count: u32,
+    motion: Motion,
+    keep_cursor: bool,
+    hint: GroupHint,
+) -> Plan {
+    let b = st.bytes();
+    let (s, e, _) = op_span(b, cur, motion, count);
+    if s >= e {
+        return nop(cur, st.view.mode);
+    }
+    // Through the last touched line (exclusive of its trailing newline).
+    plan_format_lines(
+        st,
+        cur,
+        line_start(b, s),
+        line_end(b, e - 1),
+        keep_cursor,
+        exclusive_end_adjusted(b, cur, motion, count),
+        hint,
+    )
+}

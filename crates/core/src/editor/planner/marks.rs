@@ -142,3 +142,28 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         _ => unreachable!("planner::marks plans only its own commands"),
     }
 }
+
+/// A non-editing plan carrying an arbitrary `action` — the jumplist / changelist / named-mark steps whose
+/// resolution happens in `commit` (the planner supplies a placeholder cursor the action then overrides).
+/// Same field shape as [`nop`] but the action is not forced to `Action::Nop`.
+fn moved(action: Action, cursor: usize, mode: Mode) -> Plan {
+    Plan {
+        action,
+        ..nop(cursor, mode)
+    }
+}
+
+/// A charwise mark jump target: snap `pos` to a char boundary, then apply Vim's Normal-mode end-of-line
+/// clamp — a mark that lands on (or past) the line's newline pulls back onto the line's last char. This is
+/// what makes `` `] `` land on the last inserted/changed char even when the stored mark is the exclusive
+/// insert end-caret or the trailing '\n' of a linewise span (matching Neovim's on-jump clamp).
+fn mark_char_target(b: &[u8], pos: usize) -> usize {
+    let p = motion::snap(b, pos.min(b.len()));
+    let le = line_end(b, p);
+    let ls = line_start(b, p);
+    if p >= le && ls < le {
+        prev_grapheme(b, le)
+    } else {
+        p
+    }
+}
