@@ -518,6 +518,7 @@ fn origin_token(origin: TransactionOrigin) -> &'static str {
         TransactionOrigin::Lsp => "lsp",
         TransactionOrigin::AiAgent => "ai",
         TransactionOrigin::RemotePeer => "remote",
+        TransactionOrigin::Reload => "reload",
     }
 }
 
@@ -912,6 +913,7 @@ impl ExCmd {
                     "lsp" => TransactionOrigin::Lsp,
                     "ai" => TransactionOrigin::AiAgent,
                     "remote" => TransactionOrigin::RemotePeer,
+                    "reload" => TransactionOrigin::Reload,
                     _ => return Err(a.bad()),
                 };
                 // Both limits are checked before a byte is decoded (INV-FAIL-BOUNDED).
@@ -1304,6 +1306,10 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Edits {
             origin: TransactionOrigin::UserInput,
             edits: Vec::new(),
+        },
+        ExCmd::Edits {
+            origin: TransactionOrigin::Reload,
+            edits: vec![(BytePos(0), BytePos(1), "z".into())],
         },
         ExCmd::KeepJumps(true),
         ExCmd::KeepJumps(false),

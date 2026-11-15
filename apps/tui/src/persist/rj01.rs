@@ -19,13 +19,16 @@
 //! Payloads (lengths are `u32` unless named `u64`):
 //!
 //! * Header: `pid u32`, `host bytes`, `start_ms u64`, `path bytes`, `format u8` ([`format_bits`]),
-//!   `created_ms u64`, `base u8` (0 = a Checkpoint follows, 1 = disk: `len u64`, `sha256 [32]`).
+//!   `created_ms u64`, `base u8` (0 = a Checkpoint follows, 1 = disk: `len u64`, `sha256 [32]`);
+//!   since 1.1 `format_ext u8` ([`format_ext_bits`]).
 //! * Checkpoint: `node u64`, `revision u64`, `text` (`u64` length + bytes).
 //! * Edit: `seq u64`, `base_revision u64`, `result_revision u64`, `origin u8`, `group_hint u8`,
 //!   `timestamp_ms u64`, `kind u8` (0 = fresh: `node u64`, `parent u64`; 1 = navigate: `to_node u64`), then
-//!   the forward and the inverse edit lists, each `count u32` and per edit `pos u64`, `del u64`, `ins bytes`.
+//!   the forward and the inverse edit lists, each `count u32` and per edit `pos u64`, `del u64`, `ins bytes`;
+//!   since 1.1 `origin_full u8`, the origin including values 1.0 has no code for (`origin` then holds the
+//!   nearest 1.0 one).
 //! * Meta: `tag u8`: 0 = save point (`saved_node u64`, `len u64`, `sha256 [32]`), 1 = file format
-//!   (`format u8`), 2 = rename (`path bytes`).
+//!   (`format u8`, since 1.1 then `format_ext u8`), 2 = rename (`path bytes`).
 //! * Marker: `time_ms u64`, written after each fsync.
 
 use std::io;
@@ -40,7 +43,9 @@ use super::encoding::{Eol, FileFormat};
 pub const MAGIC: [u8; 4] = *b"RJ01";
 pub const END_MAGIC: [u8; 4] = *b"rj01";
 pub const SCHEMA_MAJOR: u8 = 1;
-pub const SCHEMA_MINOR: u8 = 0;
+/// 1.1 (#1286, #1326) appends the format extension byte to Header and Meta-format payloads and the full
+/// origin to Edit payloads; a 1.0 record has neither, and reads with the 1.0 defaults.
+pub const SCHEMA_MINOR: u8 = 1;
 /// The `schema_ver` this build writes.
 pub const SCHEMA: u16 = (SCHEMA_MAJOR as u16) << 8 | SCHEMA_MINOR as u16;
 /// The fixed record header and trailer sizes.
@@ -168,16 +173,28 @@ pub fn format_bits(f: FileFormat) -> u8 {
     u8::from(f.eol == Eol::Crlf) | u8::from(f.bom) << 1 | u8::from(f.final_newline) << 2
 }
 
-fn format_from_bits(b: u8) -> FileFormat {
+/// The 1.1 format extension byte (#1286): bit 0 `'endoffile'`, bit 1 `'binary'`, bit 2 `'fileformat'` mac.
+/// The 1.0 byte cannot say mac, so [`format_bits`] writes it as LF there and a 1.0 reader gets unix.
+pub fn format_ext_bits(f: FileFormat) -> u8 {
+    u8::from(f.eof) | u8::from(f.binary) << 1 | u8::from(f.eol == Eol::Cr) << 2
+}
+
+/// A [`FileFormat`] from its 1.0 byte and, when the record has one, its 1.1 extension byte. Without one
+/// (a 1.0 record) `'endoffile'` and `'binary'` are off and the EOL is LF or CRLF.
+fn format_from_bits(b: u8, ext: Option<u8>) -> FileFormat {
+    let ext = ext.unwrap_or(0);
     FileFormat {
-        eol: if b & 1 != 0 { Eol::Crlf } else { Eol::Lf },
+        eol: if ext & 4 != 0 {
+            Eol::Cr
+        } else if b & 1 != 0 {
+            Eol::Crlf
+        } else {
+            Eol::Lf
+        },
         bom: b & 2 != 0,
         final_newline: b & 4 != 0,
-        // `'endoffile'` (#619) is not in the format byte: a recovered DOS file with a final CTRL-Z comes
-        // back without it, until the next format version carries it.
-        eof: false,
-        // Nor are `'fileformat'` mac and `'binary'` (#619): such a buffer comes back unix, not binary.
-        binary: false,
+        eof: ext & 1 != 0,
+        binary: ext & 2 != 0,
     }
 }
 
@@ -189,6 +206,17 @@ fn origin_u8(o: TransactionOrigin) -> u8 {
         TransactionOrigin::Lsp => 3,
         TransactionOrigin::AiAgent => 4,
         TransactionOrigin::RemotePeer => 5,
+        TransactionOrigin::Reload => 6,
+    }
+}
+
+/// The 1.0 `origin` byte: an origin 1.0 has no code for is written as the nearest one, so a 1.0 reader
+/// still replays the record. A reload is a change the user did not type, but it is not a plugin's either;
+/// 1.0 had only user input for it (#1326).
+fn origin_u8_v10(o: TransactionOrigin) -> u8 {
+    match o {
+        TransactionOrigin::Reload => origin_u8(TransactionOrigin::UserInput),
+        o => origin_u8(o),
     }
 }
 
@@ -200,6 +228,7 @@ fn origin_from(b: u8) -> Option<TransactionOrigin> {
         3 => TransactionOrigin::Lsp,
         4 => TransactionOrigin::AiAgent,
         5 => TransactionOrigin::RemotePeer,
+        6 => TransactionOrigin::Reload,
         _ => return None,
     })
 }
@@ -292,6 +321,7 @@ pub fn encode_header(out: &mut Vec<u8>, h: &Header) -> io::Result<()> {
                 o.extend_from_slice(&sha256);
             }
         }
+        o.push(format_ext_bits(h.format));
     })
 }
 
@@ -315,7 +345,7 @@ pub fn encode_edit(out: &mut Vec<u8>, meta: EditMeta, e: &ChangeEntry) -> io::Re
         put_u64(o, meta.seq);
         put_u64(o, e.base_revision.0);
         put_u64(o, e.result_revision.0);
-        o.push(origin_u8(e.origin));
+        o.push(origin_u8_v10(e.origin));
         o.push(hint_u8(e.group_hint));
         put_u64(o, meta.timestamp_ms);
         match e.kind {
@@ -331,6 +361,7 @@ pub fn encode_edit(out: &mut Vec<u8>, meta: EditMeta, e: &ChangeEntry) -> io::Re
         }
         put_list(o, &e.forward);
         put_list(o, &e.inverse);
+        o.push(origin_u8(e.origin));
     })
 }
 
@@ -349,6 +380,7 @@ pub fn encode_meta(out: &mut Vec<u8>, m: &Meta) -> io::Result<()> {
         Meta::Format(f) => {
             o.push(1);
             o.push(format_bits(*f));
+            o.push(format_ext_bits(*f));
         }
         Meta::Rename(p) => {
             o.push(2);
@@ -390,6 +422,15 @@ impl<'a> Cursor<'a> {
         self.i = end;
         Some(s)
     }
+    /// A field a newer minor appended: `None` at the end of the payload (an older record), else the byte.
+    fn optional_u8(&mut self) -> Option<u8> {
+        if self.rest() == 0 {
+            None
+        } else {
+            self.u8()
+        }
+    }
+
     fn u8(&mut self) -> Option<u8> {
         self.take(1).map(|s| s[0])
     }
@@ -439,7 +480,7 @@ fn decode_header(c: &mut Cursor) -> Option<Header> {
     let host = c.bytes()?.to_vec();
     let start_ms = c.u64()?;
     let path = c.bytes()?.to_vec();
-    let format = format_from_bits(c.u8()?);
+    let format = c.u8()?;
     let created_ms = c.u64()?;
     let base = match c.u8()? {
         0 => Base::Checkpoint,
@@ -449,6 +490,7 @@ fn decode_header(c: &mut Cursor) -> Option<Header> {
         },
         _ => return None,
     };
+    let format = format_from_bits(format, c.optional_u8());
     Some(Header {
         owner: Owner {
             pid,
@@ -482,6 +524,11 @@ fn decode_edit(c: &mut Cursor) -> Option<EditRecord> {
     };
     let forward = c.list()?;
     let inverse = c.list()?;
+    // 1.1: the full origin follows; a 1.0 record ends here and keeps its 1.0 origin.
+    let origin = match c.optional_u8() {
+        Some(b) => origin_from(b)?,
+        None => origin,
+    };
     Some(EditRecord {
         meta: EditMeta { seq, timestamp_ms },
         base_revision,
@@ -501,7 +548,10 @@ fn decode_meta(c: &mut Cursor) -> Option<Meta> {
             len: c.u64()?,
             sha256: c.sha()?,
         },
-        1 => Meta::Format(format_from_bits(c.u8()?)),
+        1 => {
+            let b = c.u8()?;
+            Meta::Format(format_from_bits(b, c.optional_u8()))
+        }
         2 => Meta::Rename(c.bytes()?.to_vec()),
         _ => return None,
     })
@@ -1034,6 +1084,135 @@ mod tests {
         assert_eq!(r.last_marker_ms, Some(77));
         assert_eq!(r.last_good, j.len());
         assert_eq!(r.text.as_deref(), Some(&b"base"[..]));
+    }
+
+    /// `'fileformat'` mac with `'endoffile'` and `'binary'`: everything the 1.0 format byte could not say.
+    fn mac_eof_binary() -> FileFormat {
+        FileFormat {
+            eol: Eol::Cr,
+            bom: false,
+            final_newline: false,
+            eof: true,
+            binary: true,
+        }
+    }
+
+    /// The record at `at` re-framed as schema 1.0 wrote it: `drop` appended payload bytes removed, the
+    /// length, version and both CRCs recomputed.
+    fn as_v10(j: &[u8], at: usize, drop: usize) -> Vec<u8> {
+        let len = le32(&j[at + 8..at + 12]) as usize;
+        let payload = &j[at + HEAD..at + HEAD + len - drop];
+        let mut h = j[at..at + HEAD].to_vec();
+        h[4..6].copy_from_slice(&0x0100u16.to_le_bytes());
+        h[8..12].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+        let crc = crc32c(&h[..12]);
+        h[12..16].copy_from_slice(&crc.to_le_bytes());
+        h.extend_from_slice(payload);
+        h.extend_from_slice(&crc32c(payload).to_le_bytes());
+        h.extend_from_slice(&END_MAGIC);
+        h
+    }
+
+    #[test]
+    fn schema_1_1_keeps_endoffile_binary_mac_and_a_reload_origin() {
+        // #1286, #1326: what 1.0 dropped on recovery now comes back.
+        let mut j = Vec::new();
+        let mut h = header(Base::Checkpoint);
+        h.format = mac_eof_binary();
+        encode_header(&mut j, &h).unwrap();
+        encode_checkpoint(&mut j, 0, 1, b"abc\r").unwrap();
+        let meta_at = j.len();
+        encode_meta(&mut j, &Meta::Format(mac_eof_binary())).unwrap();
+        let edit_at = j.len();
+        let mut e = entry(1, vec![Edit::insert(BytePos(0), "x")], b"abc\r");
+        e.origin = TransactionOrigin::Reload;
+        encode_edit(
+            &mut j,
+            EditMeta {
+                seq: 1,
+                timestamp_ms: 1,
+            },
+            &e,
+        )
+        .unwrap();
+        assert_eq!(read_record(&j, 0).unwrap().0, Record::Header(h));
+        assert_eq!(
+            read_record(&j, meta_at).unwrap().0,
+            Record::Meta(Meta::Format(mac_eof_binary()))
+        );
+        let Record::Edit(rec) = read_record(&j, edit_at).unwrap().0 else {
+            panic!()
+        };
+        assert_eq!(rec.origin, TransactionOrigin::Reload);
+        let r = replay(&j, None);
+        assert_eq!(r.format, Some(mac_eof_binary()));
+        assert_eq!(r.text.as_deref(), Some(&b"xabc\r"[..]));
+    }
+
+    #[test]
+    fn a_1_0_record_reads_with_the_1_0_defaults() {
+        // A journal an older ruse wrote: no format extension, no full origin.
+        let mut j = Vec::new();
+        let mut h = header(Base::Checkpoint);
+        h.format = mac_eof_binary();
+        encode_header(&mut j, &h).unwrap();
+        let v10 = as_v10(&j, 0, 1);
+        let Record::Header(old) = read_record(&v10, 0).unwrap().0 else {
+            panic!()
+        };
+        let lf = FileFormat {
+            eol: Eol::Lf,
+            bom: false,
+            final_newline: false,
+            eof: false,
+            binary: false,
+        };
+        assert_eq!(old.format, lf, "1.0 drops endoffile, binary and mac");
+        let mut e = entry(1, vec![Edit::insert(BytePos(0), "x")], b"a");
+        e.origin = TransactionOrigin::Reload;
+        let mut ej = Vec::new();
+        encode_edit(
+            &mut ej,
+            EditMeta {
+                seq: 1,
+                timestamp_ms: 1,
+            },
+            &e,
+        )
+        .unwrap();
+        let Record::Edit(old) = read_record(&as_v10(&ej, 0, 1), 0).unwrap().0 else {
+            panic!()
+        };
+        assert_eq!(
+            old.origin,
+            TransactionOrigin::UserInput,
+            "1.0 had no reload origin"
+        );
+    }
+
+    #[test]
+    fn a_1_0_reader_still_replays_a_1_1_record() {
+        // The 1.0 fields of a 1.1 record say only what 1.0 can: the nearest origin, LF for mac. A 1.0
+        // reader skips the appended bytes as a newer minor's (a_newer_minor_version_with_extra_payload_is_read).
+        assert_eq!(
+            origin_u8_v10(TransactionOrigin::Reload),
+            origin_u8(TransactionOrigin::UserInput)
+        );
+        assert_eq!(
+            format_bits(mac_eof_binary()) & 1,
+            0,
+            "mac is not CRLF in the 1.0 byte"
+        );
+        for o in [
+            TransactionOrigin::UserInput,
+            TransactionOrigin::Macro,
+            TransactionOrigin::Plugin,
+            TransactionOrigin::Lsp,
+            TransactionOrigin::AiAgent,
+            TransactionOrigin::RemotePeer,
+        ] {
+            assert_eq!(origin_u8_v10(o), origin_u8(o), "{o:?} keeps its 1.0 code");
+        }
     }
 
     #[test]
