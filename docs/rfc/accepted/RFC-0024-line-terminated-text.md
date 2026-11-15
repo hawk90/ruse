@@ -95,9 +95,11 @@ is now always true, so none of the 43 core sites changes.
 Every path that turns outside bytes into buffer text ends with one canonicalisation: non-empty text that does
 not end in `\n` gets one, and `'endofline'` records that the file had none. It is `FileFormat::to_buffer`
 (open, `:e`, `:e!`, `'autoread'` reload, the recovery prompt's disk text, `ruse --replay`'s start text,
-`headless`), plus recovered journal text from a journal an older build wrote (RJ01 Checkpoints of an
+`headless`'s file reads), plus recovered journal text from a journal an older build wrote (RJ01 Checkpoints of an
 unterminated text). `'binary'` reads the same way: the bytes are kept, and only the final newline becomes the
-flag. Text read INTO a buffer (`:r`, `:r !`, a filter's output, a put) is lines: each piece is terminated
+flag. A read whose format is forced (`++ff=`, `++bin`, `find-file-literally`) reads `'endofline'` again
+from the raw bytes in that format (`FileFormat::reading`), so a classic Mac file read as unix and reopened
+with `++ff=mac` keeps its last CR. Text read INTO a buffer (`:r`, `:r !`, a filter's output, a put) is lines: each piece is terminated
 where it lands, and `'endofline'` does not change (nvim: `:r` of a file without a final newline, or `:%!printf
 x`, leaves `'eol'` as it was).
 
@@ -106,7 +108,7 @@ x`, leaves `'eol'` as it was).
 One function, `WriteOpts::encode` (already the one encoder for `:w`, `:w >>`, `:w !cmd`, `:up`, `:wq`,
 `:sav`), gives the bytes: the empty text writes nothing; otherwise the final `\n` is dropped when the range
 includes the last line and neither `'endofline'` nor the write policy (`'fixeol'`, Emacs
-`require-final-newline`) asks for one. The same rule applies to a filter's input (`:{range}!`), whose range
+`require-final-newline`) asks for one. The same rule applies to a filter's input (`:{range}!`, and `gq` / `=` through `'formatprg'` / `'equalprg'`), whose range
 text comes from `range_text`, and to the byte counts the user sees (`g CTRL-G`, `wordcount()`-style counts, the
 `:w` message). nvim checks: `:w !od -c` and `:%!od -c` of `a\nb` without `'eol'` send three bytes; `:1w part`
 of it writes `a\n`, `:2w part` writes `b`.
@@ -154,6 +156,9 @@ structure and the cursor (the parity corpus compares lines, not the written file
   unterminated disk text, so after the change its base no longer matches and recovery reports it unreplayable
   and keeps it (RFC-0023 §5); this needs a file over 32 MiB, without a final newline, with an unsaved journal,
   across an upgrade.
+- An older journal whose only unsaved change added the final newline to a file without one replays to the
+  disk text once canonicalised, so it offers nothing: the change was the `'endofline'` flag, which RJ01 1.0
+  did not record. RJ01 1.1 records the format, so a journal written by this build keeps it.
 - A read path that skips the canonicalisation would let the Document add a newline on the first edit, which
   the file did not have. The read paths are few (§2) and each gets a test that a file without a final newline,
   edited and saved, still has none.

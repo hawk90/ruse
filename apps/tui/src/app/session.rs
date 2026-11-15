@@ -3631,7 +3631,7 @@ impl Session {
         let opens_fold = crate::app::fold_cmds::shift_opens_fold(&cmd)
             || (typed && crate::app::fold_cmds::opens_fold(&cmd, &ui_opts.foldopen));
         // `gq` under 'formatprg' / `=` under 'equalprg' filter through the program instead (#617, #618).
-        if crate::app::dispatch::run_prg_operator(&cmd, ws, recorded, status) {
+        if crate::app::dispatch::run_prg_operator(&cmd, ws, files, recorded, status) {
             return;
         }
         let indent_after = crate::app::indent_keys::before(&cmd, ws, highlighters, can_cindent);

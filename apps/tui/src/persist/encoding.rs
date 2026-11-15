@@ -134,15 +134,39 @@ impl FileFormat {
         };
         // nvim: a DOS file's last byte CTRL-Z is `'endoffile'`, not text.
         let eof = eol == Eol::Crlf && body.last() == Some(&CTRL_Z);
-        let body = if eof { &body[..body.len() - 1] } else { body };
-        let last = if eol == Eol::Cr { b'\r' } else { b'\n' };
-        let final_newline = body.is_empty() || body.last() == Some(&last);
         FileFormat {
             eol,
             bom,
-            final_newline,
+            final_newline: true,
             eof,
             binary: false,
+        }
+        .reading(raw)
+    }
+
+    /// `self` with `'endofline'` as `raw` read in this format ends: after the BOM and `'endoffile'`'s
+    /// CTRL-Z, the file's last byte is its line break (`\r` for mac, else `\n`), or the file is empty. A
+    /// read whose format is forced (`++ff=`, `++bin`, `find-file-literally`) calls it again, because the
+    /// buffer is line-terminated (RFC-0024) and a wrong flag would drop or add a byte on the next write.
+    #[must_use]
+    pub fn reading(self, raw: &[u8]) -> FileFormat {
+        let body = if !self.binary && self.bom && raw.starts_with(&BOM) {
+            &raw[BOM.len()..]
+        } else {
+            raw
+        };
+        let body = match body.split_last() {
+            Some((&CTRL_Z, rest)) if !self.binary && self.eof => rest,
+            _ => body,
+        };
+        let last = if !self.binary && self.eol == Eol::Cr {
+            b'\r'
+        } else {
+            b'\n'
+        };
+        FileFormat {
+            final_newline: body.is_empty() || body.last() == Some(&last),
+            ..self
         }
     }
 
@@ -152,10 +176,11 @@ impl FileFormat {
         FileFormat {
             eol: Eol::Lf,
             bom: false,
-            final_newline: raw.is_empty() || raw.ends_with(b"\n"),
+            final_newline: true,
             eof: false,
             binary: true,
         }
+        .reading(raw)
     }
 
     /// Normalise raw file bytes into clean editor bytes: drop the BOM, fold `\r\n` → `\n`. The
@@ -258,14 +283,25 @@ mod tests {
         #[test]
         fn an_unmodified_buffer_writes_back_its_bytes(
             raw in proptest::collection::vec(
-                proptest::sample::select(b"a\r\n\r\n\xEF\xBB\xBF\x00\xFF".to_vec()), 0..24),
+                proptest::sample::select(b"a\r\n\r\n\xEF\xBB\xBF\x00\xFF\x1A".to_vec()), 0..24),
             bom in proptest::prelude::any::<bool>(),
+            ffs in proptest::sample::select(vec!["unix,dos", "unix,dos,mac", "mac", "dos", "unix"]),
         ) {
             let raw = if bom { [BOM.as_slice(), &raw].concat() } else { raw };
-            let fmt = FileFormat::detect(&raw);
-            let buffer = fmt.to_buffer(&raw);
-            proptest::prop_assert!(!fmt.final_newline || buffer.is_empty() || buffer.ends_with(b"\n"));
-            proptest::prop_assert_eq!(fmt.to_disk(&buffer), raw);
+            // Every read: detected under any 'fileformats', and `++bin`.
+            for fmt in [FileFormat::detect_with(&raw, ffs, Eol::Lf), FileFormat::binary(&raw)] {
+                let buffer = fmt.to_buffer(&raw);
+                // INV-TEXT-TERMINATED (RFC-0024): the buffer is empty or ends in a newline.
+                proptest::prop_assert!(buffer.is_empty() || buffer.ends_with(b"\n"), "{:?}", buffer);
+                // Byte for byte when the format was detected (several 'fileformats') or `++bin`; one forced
+                // format converts on write, as Vim's does. A mac read of a file with a bare `\n` cannot
+                // round-trip either, before RFC-0024 too: the buffer's `\n` is the line break, which a mac
+                // write turns into `\r` (Vim keeps such a byte as NUL).
+                let detected = fmt.binary || ffs.contains(',');
+                if detected && !(fmt.eol == Eol::Cr && !fmt.binary && raw.contains(&b'\n')) {
+                    proptest::prop_assert_eq!(fmt.to_disk(&buffer), raw.clone(), "{:?}", fmt);
+                }
+            }
         }
     }
 

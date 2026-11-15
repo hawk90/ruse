@@ -89,7 +89,8 @@ pub(crate) fn open_file_with(
             };
         }
     };
-    let mut f = format(files.write.read_format(&raw));
+    // A forced format (`++ff=`, `++bin`) reads the final newline anew (RFC-0024).
+    let mut f = format(files.write.read_format(&raw)).reading(&raw);
     let disk = f.to_buffer(&raw);
     // The same prompt as at startup (RFC-0023 §7); `q` cancels this open and keeps the journal.
     let offer =
@@ -391,6 +392,7 @@ impl std::ops::DerefMut for Files {
 pub(crate) fn run_prg_operator(
     cmd: &Command,
     ws: &mut Workspace,
+    buffers: &Files,
     recorded: &mut Vec<Command>,
     status: &mut Status,
 ) -> bool {
@@ -451,6 +453,13 @@ pub(crate) fn run_prg_operator(
     let range = SubRange::Lines(first + 1, last + 1);
     let Some(input) = ws.range_text(range) else {
         return true;
+    };
+    // A range that reaches the last line goes out as the file ends it, as `:{range}!` does (RFC-0024 §3).
+    let input = if crate::app::file_cmds::reaches_last_line(ws, range) {
+        let fmt = crate::app::file_cmds::buffer_format(buffers, ws.focused_buffer());
+        buffers.write.lines_out(&input, fmt).to_vec()
+    } else {
+        input
     };
     match crate::shell::filter(&prg, &input) {
         Ok(out) => {

@@ -199,4 +199,30 @@ fn ranges_pipes_and_filters_end_as_the_file_does() {
     assert!(h.status().trim_start().starts_with('3'), "{}", h.status());
     h.keys(":%!cat<CR>:w<CR>");
     assert_eq!(read(&f), b"a\nb");
+    // What the filter reads, counted: three bytes, for `:%!` and for `gq` through 'formatprg'.
+    let mut h = vim(&f);
+    h.keys(":%!wc -c<CR>");
+    assert_eq!(String::from_utf8_lossy(&h.bytes()).trim(), "3");
+    let mut h = vim(&f);
+    h.keys(":set formatprg=wc\\ -c<CR>gqG");
+    assert_eq!(String::from_utf8_lossy(&h.bytes()).trim(), "3");
+}
+
+/// A read whose format is forced reads `'endofline'` anew (RFC-0024): `:e ++ff=mac` of a classic Mac file
+/// that `fileformats=unix,dos` first read as unix keeps its last CR, and `++bin` of a DOS file ending in
+/// CTRL-Z sees no final newline after it; an unedited `:w` writes each back byte for byte.
+#[test]
+fn a_forced_read_format_keeps_the_files_final_line_break() {
+    let f = scratch("m.txt", b"a\rb\r");
+    let mut h = vim(&f);
+    h.keys(":e ++ff=mac<CR>");
+    assert_eq!(h.bytes(), b"a\nb\n");
+    h.keys(":w!<CR>");
+    assert_eq!(read(&f), b"a\rb\r");
+    let f = scratch("z.txt", b"a\r\n\x1a");
+    let mut h = vim(&f);
+    h.keys(":e ++bin<CR>");
+    assert_eq!(h.bytes(), b"a\r\n\x1a\n");
+    h.keys(":w!<CR>");
+    assert_eq!(read(&f), b"a\r\n\x1a");
 }
