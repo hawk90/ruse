@@ -3883,32 +3883,89 @@ impl Session {
         self.check_disk(external || parsed == Ex::CheckTime);
     }
 
-    fn execute_ex_parsed(&mut self, text: String, frame: &FrameCtx) {
+    /// The `:` line's leading range resolved (`app::ex_range`), or `None` when that is all it does: `:[count]messages`
+    /// (whose count is no line number), a range with no command (`:5` goes to the line), a backwards range
+    /// (asked before it is swapped) and an error. A `/pat/` address becomes the last search, and a `;` that
+    /// moved the cursor leaves it moved. The text that remains is the command.
+    fn resolve_ex_line(&mut self, text: &str) -> Option<String> {
         let Session {
             ws,
             files,
-            highlighters,
             recorded,
             engine,
             quit,
             folds,
             swap,
             search_hl,
-            ui_opts,
             last_substitute,
-            last_shell,
-            overlay,
-            #[cfg(unix)]
-            terminals,
-            lsp,
             status,
-            alt_file,
-            prev_dir,
-            pending_insert,
             global_busy,
             ..
         } = self;
-        let snapshot = &frame.snapshot;
+        // The leading range (`.`, `$`, offsets, marks, `/pat/`, `'<,'>` from Visual `:`) resolves to line
+        // numbers (`app::ex_range`); one past the buffer is E16 (#1079), a range with no command goes to its
+        // line (`:5`, `:$`), and a backwards one asks before it is swapped.
+        // `:[count]messages [clear]` (#1235): its count is no line number, so it is read before the range.
+        if let Some(cmd) = crate::app::messages::parse_messages(text) {
+            match cmd {
+                Ok(cmd) if cmd.clear => status.history_mut().keep_last(cmd.count.unwrap_or(0)),
+                Ok(cmd) => {
+                    let shown: Vec<&str> = status.history().last(cmd.count).collect();
+                    let shown = shown.join("\n");
+                    status.echo(shown);
+                }
+                Err(e) => status.error(e.to_string()),
+            }
+            return None;
+        }
+        let pats = crate::app::ex_range::AddrPatterns {
+            search: engine.last_search(),
+            substitute: last_substitute.as_ref().map(|(p, _, _)| p.as_str()),
+        };
+        // Inside a `:g` a range does not grow to closed folds (nvim checks `global_busy`).
+        let range_folds = (!*global_busy)
+            .then(|| folds.get(&ws.focused_buffer()).map(Vec::as_slice))
+            .flatten();
+        let resolved = crate::app::ex_range::resolve_ex_range(text, ws, pats, range_folds);
+        // A `/pat/` or `?pat?` address becomes the last search, as in Vim (`:/foo/d` then `n`).
+        if let Some((pat, forward)) = resolved.search {
+            engine.set_last_search(pat.clone(), forward);
+            *search_hl = Some(pat);
+        }
+        // A `;` in the range moved the cursor, and it stays moved whatever the command does (`:5;-2d`).
+        if let Some(line) = resolved.cursor {
+            goto_line(line, ws, files, recorded, status, quit);
+        }
+        match resolved.range {
+            Ok(ExRange::Line(text)) => Some(text),
+            Ok(ExRange::Backwards(swapped)) => {
+                status.echo("Backwards range given, OK to swap (y/n)?");
+                *swap = Some(SwapPrompt {
+                    pending: vec![swapped],
+                });
+                None
+            }
+            Ok(ExRange::Goto(line)) => {
+                goto_line(line, ws, files, recorded, status, quit);
+                None
+            }
+            Err(e) => {
+                status.error(e.to_string());
+                None
+            }
+        }
+    }
+
+    /// `ex` with its file names and shell commands expanded: `%`/`#`/`#n` in a file argument, and `!` (the
+    /// previous command, remembered for the next) in a shell command.
+    fn expand_ex_args(&mut self, ex: Ex) -> Result<Ex, crate::input::ExpandError> {
+        let Session {
+            ws,
+            files,
+            alt_file,
+            last_shell,
+            ..
+        } = self;
         // The current, alternate and numbered file names, for `%` / `#` / `#n` in a file argument or shell
         // command.
         let file_name = |id: Option<DocumentId>| {
@@ -3936,59 +3993,7 @@ impl Session {
             *last_shell = Some(cmd.clone());
             Ok(cmd)
         };
-        // The leading range (`.`, `$`, offsets, marks, `/pat/`, `'<,'>` from Visual `:`) resolves to line
-        // numbers (`app::ex_range`); one past the buffer is E16 (#1079), a range with no command goes to its
-        // line (`:5`, `:$`), and a backwards one asks before it is swapped.
-        // `:[count]messages [clear]` (#1235): its count is no line number, so it is read before the range.
-        if let Some(cmd) = crate::app::messages::parse_messages(&text) {
-            match cmd {
-                Ok(cmd) if cmd.clear => status.history_mut().keep_last(cmd.count.unwrap_or(0)),
-                Ok(cmd) => {
-                    let shown: Vec<&str> = status.history().last(cmd.count).collect();
-                    let shown = shown.join("\n");
-                    status.echo(shown);
-                }
-                Err(e) => status.error(e.to_string()),
-            }
-            return;
-        }
-        let pats = crate::app::ex_range::AddrPatterns {
-            search: engine.last_search(),
-            substitute: last_substitute.as_ref().map(|(p, _, _)| p.as_str()),
-        };
-        // Inside a `:g` a range does not grow to closed folds (nvim checks `global_busy`).
-        let range_folds = (!*global_busy)
-            .then(|| folds.get(&ws.focused_buffer()).map(Vec::as_slice))
-            .flatten();
-        let resolved = crate::app::ex_range::resolve_ex_range(&text, ws, pats, range_folds);
-        // A `/pat/` or `?pat?` address becomes the last search, as in Vim (`:/foo/d` then `n`).
-        if let Some((pat, forward)) = resolved.search {
-            engine.set_last_search(pat.clone(), forward);
-            *search_hl = Some(pat);
-        }
-        // A `;` in the range moved the cursor, and it stays moved whatever the command does (`:5;-2d`).
-        if let Some(line) = resolved.cursor {
-            goto_line(line, ws, files, recorded, status, quit);
-        }
-        let text = match resolved.range {
-            Ok(ExRange::Line(text)) => text,
-            Ok(ExRange::Backwards(swapped)) => {
-                status.echo("Backwards range given, OK to swap (y/n)?");
-                *swap = Some(SwapPrompt {
-                    pending: vec![swapped],
-                });
-                return;
-            }
-            Ok(ExRange::Goto(line)) => {
-                goto_line(line, ws, files, recorded, status, quit);
-                return;
-            }
-            Err(e) => {
-                status.error(e.to_string());
-                return;
-            }
-        };
-        let ex = match parse_ex(&text) {
+        match ex {
             Ex::Edit(spec) => {
                 expand_opt(spec.file.clone()).map(|file| Ex::Edit(EditSpec { file, ..spec }))
             }
@@ -4024,15 +4029,45 @@ impl Session {
             }),
             Ex::Filter { range, cmd } => shell_cmd(&cmd).map(|cmd| Ex::Filter { range, cmd }),
             Ex::Shell(cmd) => shell_cmd(&cmd).map(Ex::Shell),
+            // `:cd -` is the previous directory, not a file name.
+            Ex::Cd(Some(dir)) if dir != "-" => expand(&dir).map(|dir| Ex::Cd(Some(dir))),
+            Ex::File(crate::input::FileCmd::Rename(name)) => {
+                expand(&name).map(|name| Ex::File(crate::input::FileCmd::Rename(name)))
+            }
             ex => Ok(ex),
+        }
+    }
+
+    fn execute_ex_parsed(&mut self, text: String, frame: &FrameCtx) {
+        let Some(text) = self.resolve_ex_line(&text) else {
+            return;
         };
-        let ex = match ex {
+        let ex = match self.expand_ex_args(parse_ex(&text)) {
             Ok(ex) => ex,
             Err(e) => {
-                status.error(e.to_string());
+                self.status.error(e.to_string());
                 return;
             }
         };
+        let Session {
+            ws,
+            files,
+            highlighters,
+            recorded,
+            engine,
+            quit,
+            search_hl,
+            ui_opts,
+            overlay,
+            #[cfg(unix)]
+            terminals,
+            lsp,
+            status,
+            alt_file,
+            pending_insert,
+            ..
+        } = self;
+        let snapshot = &frame.snapshot;
         // An Ex line a command asks to run after it (`:e +cmd`).
         let mut then_run = None;
         let mut trust_change = None;
@@ -4112,17 +4147,7 @@ impl Session {
             Ex::CheckTime => {}
             Ex::Earlier(n) => time_travel(true, n, ws, files, recorded, status, quit),
             Ex::Later(n) => time_travel(false, n, ws, files, recorded, status, quit),
-            // `:e[!] [++ff] [+cmd] [{file}]` (F-007, #610): open a file into a buffer (shared with the file
-            // picker), or re-read the focused buffer's own file, which unsaved changes block (`E37`) without `!`.
-            // A `+cmd` runs once the file is open (after this dispatch, which holds the session's fields).
-            Ex::Edit(spec) => {
-                if crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status) {
-                    then_run = spec
-                        .cmd
-                        .as_deref()
-                        .map(crate::app::file_cmds::plus_cmd_line);
-                }
-            }
+            Ex::Edit(spec) => then_run = self.ex_edit(spec),
             Ex::Read { addr, source } => self.ex_read(addr, source),
             Ex::Filter { range, cmd } => self.ex_filter(range, cmd),
             Ex::Shell(cmd) => self.ex_shell(cmd),
@@ -4164,21 +4189,10 @@ impl Session {
                 ws.split(SplitDir::Vertical);
                 status.echo("window vsplit");
             }
-            Ex::Only => {
-                status.echo(match ws.only() {
-                    0 => "already one window".into(),
-                    1 => "1 window closed".into(),
-                    n => format!("{n} windows closed"),
-                });
-            }
+            Ex::Only => self.ex_only(),
             Ex::SaveTrace(p) => self.ex_save_trace(p),
             Ex::Delete(range, reg, flags) => self.ex_delete(range, reg, flags),
-            // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
-            Ex::Yank(range, reg) => {
-                let (first, last) = ws.resolve_range(range);
-                let n = lines_outcome(&run_ex(ExCmd::Yank { first, last, reg }, ws, recorded));
-                give_report(status, report::yanked(n, false, reg, ui_opts.report));
-            }
+            Ex::Yank(range, reg) => self.ex_yank(range, reg),
             Ex::Join { range, bang } => self.ex_join(range, bang),
             // `:[range]m {addr}` — move the range's lines to after the destination line.
             Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, dest) => {
@@ -4278,14 +4292,7 @@ impl Session {
             }
             Ex::Print { range, flags } => self.ex_print(range, flags),
             Ex::Z(spec) => self.ex_z(spec, frame),
-            // `:=` (#609): the last line number of the range, or of the buffer.
-            Ex::LineNumber(range) => {
-                let n = match range {
-                    Some(r) => crate::app::dispatch::resolve_normal_range(ws, r).1,
-                    None => crate::app::dispatch::line_count(ws.focused().doc.bytes()),
-                };
-                status.info(n.to_string());
-            }
+            Ex::LineNumber(range) => self.ex_line_number(range),
             Ex::Retab {
                 range,
                 bang,
@@ -4299,109 +4306,10 @@ impl Session {
                 Ok(d) => status.info(d.display().to_string()),
                 Err(e) => status.error(e.to_string()),
             },
-            Ex::Cd(dir) => {
-                let dir = match dir
-                    .map(|d| if d == "-" { Ok(d) } else { expand(&d) })
-                    .transpose()
-                {
-                    Ok(dir) => dir,
-                    Err(e) => {
-                        status.error(e.to_string());
-                        return;
-                    }
-                };
-                match crate::app::ex_more::cd_target(dir.as_deref(), prev_dir.as_deref()) {
-                    Ok(target) => {
-                        let shown = dir.as_deref().unwrap_or("~");
-                        match crate::app::ex_more::change_dir(&target, shown, ws, files) {
-                            Ok(old) => *prev_dir = Some(old),
-                            Err(e) => status.error(e.to_string()),
-                        }
-                    }
-                    Err(e) => status.error(e.to_string()),
-                }
-            }
-            // `:file` (#610): show the file information, rename the buffer, or remove its name. The old name
-            // becomes the alternate file.
-            Ex::File(cmd) => {
-                let id = ws.focused_buffer();
-                let old = files.get(&id).map(|bf| bf.path.display().to_string());
-                match cmd {
-                    crate::input::FileCmd::Info => {
-                        if let Some(msg) = info_status(&Command::FileInfo, ws, true) {
-                            status.give(msg);
-                        }
-                    }
-                    crate::input::FileCmd::Rename(name) => match expand(&name) {
-                        Ok(name) => {
-                            let fmt = files.get(&id).map(|bf| bf.fmt).unwrap_or_default();
-                            crate::app::file_cmds::adopt_file(
-                                ws,
-                                files,
-                                highlighters,
-                                id,
-                                &name,
-                                fmt,
-                            );
-                            if let Some(old) = old.filter(|o| *o != name) {
-                                *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
-                            }
-                        }
-                        Err(e) => status.error(e.to_string()),
-                    },
-                    crate::input::FileCmd::Clear => {
-                        files.remove(&id);
-                        highlighters.remove(&id);
-                        ws.clear_focused_buffer_name();
-                        if let Some(old) = old {
-                            *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
-                        }
-                    }
-                }
-            }
-            // `:find` / `:sfind` (#610): edit the file found in `'path'` (`.,,`), in a new window for `:sf`.
-            Ex::Find { split, spec } => {
-                let name = spec.file.clone().unwrap_or_default();
-                let current = files.get(&ws.focused_buffer()).map(|bf| bf.path.clone());
-                match crate::app::ex_more::find_in_path(&name, current.as_deref()) {
-                    Some(found) => {
-                        if split {
-                            ws.split(SplitDir::Horizontal);
-                        }
-                        let spec = EditSpec {
-                            file: Some(found),
-                            ..spec
-                        };
-                        if crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status) {
-                            then_run = spec
-                                .cmd
-                                .as_deref()
-                                .map(crate::app::file_cmds::plus_cmd_line);
-                        }
-                    }
-                    None => status.error(format!("E345: Can't find file \"{name}\" in path")),
-                }
-            }
-            // `:drop {file}` (#610): go to a window that shows the file, or edit it here.
-            Ex::Drop(spec) => {
-                let name = spec.file.clone().unwrap_or_default();
-                let shown =
-                    crate::app::dispatch::buffer_for_path(files, std::path::Path::new(&name))
-                        .and_then(|id| (0..ws.window_count()).find(|&i| ws.pane(i).doc.id() == id));
-                let opened = match shown {
-                    Some(i) => {
-                        ws.focus_window(i);
-                        true
-                    }
-                    None => crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status),
-                };
-                if opened {
-                    then_run = spec
-                        .cmd
-                        .as_deref()
-                        .map(crate::app::file_cmds::plus_cmd_line);
-                }
-            }
+            Ex::Cd(dir) => self.ex_cd(dir),
+            Ex::File(cmd) => self.ex_file(cmd),
+            Ex::Find { split, spec } => then_run = self.ex_find(split, spec),
+            Ex::Drop(spec) => then_run = self.ex_drop(spec),
             Ex::Fail(msg) => status.error(msg),
             Ex::Unknown(s) => status.error(format!("E492: Not an editor command: {s}")),
         }
