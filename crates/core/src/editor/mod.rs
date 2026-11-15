@@ -1935,21 +1935,14 @@ impl EditorState {
         let after_line = self.doc.revision();
         let r = f(self);
         let unchanged = made && self.doc.revision() == after_line;
+        if unchanged {
+            // Take the line back as though it was never made: no undo step, no redo branch lost, and the
+            // buffer is not modified; the marks the command set on it go back to the start with it.
+            self.with_tracked(|doc, t| doc.retract_tracked(t));
+            self.view.cursor = 0;
+        }
         if block {
             self.doc.end_undo_block();
-        }
-        if unchanged {
-            if block {
-                // The line was a step of its own: undo it, which also gives back the unmodified state, and
-                // carries the marks the command set on the line back with it.
-                self.with_tracked(|doc, t| doc.undo_tracked(BytePos(0), t));
-            } else if let Ok(list) = EditList::new(vec![Edit::delete(BytePos(0), 1)]) {
-                // Inside an outer undo step (a macro, `:normal`): take the line back in it.
-                let txn = Transaction::new(self.doc.revision(), list, self.origin)
-                    .with_hint(GroupHint::JoinPrev);
-                let _ = self.apply_txn(txn);
-            }
-            self.view.cursor = 0;
         }
         self.on_emptied_line = false;
         r
@@ -3201,10 +3194,19 @@ impl EditorState {
         {
             return false;
         }
-        let es: Vec<Edit> = edits
+        let mut es: Vec<Edit> = edits
             .iter()
             .map(|(s, e, t)| Edit::replace(*s, e.0 - s.0, t.clone().into_bytes()))
             .collect();
+        // The edits address the bytes, so the emptied buffer's text is the empty text they were made
+        // against; what they give it ends with the line's newline (RFC-0024 §5), as typing there would.
+        if self.makes_the_emptied_line() {
+            if let Some(last) = es.iter_mut().rev().find(|e| !e.ins.is_empty()) {
+                if last.ins.last() != Some(&b'\n') {
+                    last.ins.push(b'\n');
+                }
+            }
+        }
         let Ok(list) = EditList::new(es) else {
             return false; // overlapping edits — refuse rather than corrupt the buffer
         };
@@ -4349,10 +4351,11 @@ fn adds_text(st: &EditorState, cmd: &Command) -> bool {
             .is_empty()
     };
     match cmd {
-        Command::OpenBelow | Command::OpenAbove => true,
-        Command::Paste { .. } | Command::PasteIndent { .. } | Command::PasteBlockInner { .. } => {
-            register()
-        }
+        Command::OpenBelow | Command::OpenAbove | Command::OpenLineIndent { .. } => true,
+        Command::Paste { .. }
+        | Command::PasteIndent { .. }
+        | Command::PasteBlockInner { .. }
+        | Command::PasteSelection { .. } => register(),
         Command::InsertChar(_)
         | Command::InsertNewline
         | Command::InsertTab
@@ -4360,7 +4363,14 @@ fn adds_text(st: &EditorState, cmd: &Command) -> bool {
         | Command::InsertEval(_)
         | Command::InsertPaste(_)
         | Command::InsertCloser { .. }
-        | Command::InsertAtLastInsert => true,
+        | Command::InsertAtLastInsert
+        | Command::InsertIndent
+        | Command::CompleteWord { .. }
+        | Command::ReplaceType(_)
+        | Command::VirtualReplaceType(_)
+        | Command::VirtualReplaceChar(..)
+        | Command::ReplacePaste(_)
+        | Command::BlockInsert(_) => true,
         _ => false,
     }
 }

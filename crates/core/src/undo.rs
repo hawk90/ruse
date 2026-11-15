@@ -82,6 +82,9 @@ pub struct UndoHistory {
     /// An undo sync since the last change (Vim's `u_sync`, [`UndoHistory::sync`]): the next change starts a
     /// new group even with a [`GroupHint::Continue`] hint. An explicit [`GroupHint::JoinPrev`] still joins.
     synced: bool,
+    /// What the newest [`UndoHistory::record`] replaced, for [`UndoHistory::retract`]: the node it made,
+    /// its parent's redo child and the history's `last_was_nav`/`synced` before it.
+    last_record: Option<(UndoNodeId, Option<UndoNodeId>, bool, bool)>,
 }
 
 impl Default for UndoHistory {
@@ -114,6 +117,7 @@ impl UndoHistory {
             next_group: 1,
             last_was_nav: false,
             synced: false,
+            last_record: None,
         }
     }
 
@@ -189,6 +193,7 @@ impl UndoHistory {
             cursor,
         });
         let parent = &mut self.nodes[self.current.0];
+        self.last_record = Some((id, parent.redo_child, self.last_was_nav, self.synced));
         parent.children.push(id);
         parent.redo_child = Some(id);
         self.current = id;
@@ -196,6 +201,30 @@ impl UndoHistory {
         self.last_was_nav = false;
         self.synced = false;
         id
+    }
+
+    /// Take back the newest recorded change as though it was never made: `current` returns to its parent,
+    /// the node leaves the tree (its parent's redo child, `seq` and grouping state are restored), and its
+    /// inverse is returned to apply, with the node's group when the node was that group's only one. Only the
+    /// change just recorded, with nothing done since, is taken back; `None` otherwise. Unlike
+    /// [`UndoHistory::undo`] it leaves no redo branch and no undo step.
+    pub(crate) fn retract(&mut self) -> Option<(EditList, Option<u64>)> {
+        let (id, redo_child, last_was_nav, synced) = self.last_record.take()?;
+        if self.current != id || id.0 + 1 != self.nodes.len() {
+            return None;
+        }
+        let node = self.nodes.pop()?;
+        let parent = node.parent?;
+        let p = &mut self.nodes[parent.0];
+        let own_group = (p.parent.is_none() || p.group != node.group).then_some(node.group);
+        p.children.retain(|c| *c != id);
+        p.redo_child = redo_child;
+        self.chronological.pop();
+        self.next_seq = node.seq.0;
+        self.current = parent;
+        self.last_was_nav = last_was_nav;
+        self.synced = synced;
+        node.inverse.map(|inv| (inv, own_group))
     }
 
     /// Whether `u` has somewhere to go.

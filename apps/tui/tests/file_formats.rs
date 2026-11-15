@@ -247,6 +247,12 @@ fn the_emptied_buffer_keeps_its_line_for_commands_that_add_lines() {
         ("ggdGo<Esc>u", b""),
         ("ggdGi<CR><Esc>", b"\n\n"),
         ("ggdGiab<Esc>U", b"\n"),
+        ("ggdGRx<Esc>", b"x\n"),
+        ("ggdGgRx<Esc>", b"x\n"),
+        ("ggdGgrx", b"x\n"),
+        ("ggdG<C-v>Ax<Esc>", b" x\n"),
+        ("ggdG<C-v>Ix<Esc>", b"x\n"),
+        ("ggdGix<Esc>ui<C-r>z<Esc><C-r>", b"x\n"),
     ] {
         let f = scratch("e.txt", b"a\nb\n");
         std::fs::write(f.with_file_name("OTHER"), b"r1\nr2\n").unwrap();
@@ -257,6 +263,20 @@ fn the_emptied_buffer_keeps_its_line_for_commands_that_add_lines() {
         h.keys("<Esc>:w!<CR>");
         assert_eq!(read(&f), want, "{keys}");
     }
+}
+
+/// RFC-0024 §5: a command that adds nothing to the emptied buffer leaves no trace, inside an outer undo
+/// step too (nvim v0.12.6: `:normal i<C-r>z<Esc>` with `z` empty is no change and no undo step).
+#[test]
+fn an_emptied_buffer_change_that_adds_nothing_leaves_no_undo_step() {
+    let mut h = Headless::vim("");
+    h.keys(":exe \"normal i\\<C-r>z\\<Esc>\"<CR>");
+    assert_eq!(h.text(), "");
+    assert_eq!(h.keys(":set modified?<CR>").status(), "nomodified");
+    h.keys(":normal ix<CR>u");
+    assert_eq!(h.text(), "");
+    h.keys(":exe \"normal i\\<C-r>z\\<Esc>\"<CR><C-r>");
+    assert_eq!(h.text(), "x\n");
 }
 
 /// RFC-0024 §5: on a `'nomodifiable'` emptied buffer `o` fails without making its line (nvim v0.12.6: E21,

@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 25022c4132728ba8597e5d2c7005650ae0293958242a9528805b870b7a694b31 # shrinks to disk = [], rec = [98]
 cc 5668ff2b5d5d2ee6dd1a238028a8fa000d137cbe1293b6196f0348cd450ccd48 # shrinks to disk = [128], rec = [10]
+cc d7c3a07887d94b32334db7a8e2ea0873bb843fac586b06771f32d8c9f7832845 # shrinks to disk = [], rec = [98]

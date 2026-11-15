@@ -515,6 +515,25 @@ impl Document {
         Some(self.replay(step, cursor.0, tracked))
     }
 
+    /// Take back the change just applied as though it was never made ([`UndoHistory::retract`]): its
+    /// inverse is applied, and it leaves no undo step, no redo branch and no modified state. Whether there
+    /// was such a change to take back.
+    pub(crate) fn retract_tracked(&mut self, tracked: &mut [Tracked]) -> bool {
+        let Some((inverse, own_group)) = self.undo.retract() else {
+            return false;
+        };
+        if let Some(g) = own_group {
+            self.mark_undo.remove(&g);
+            // The change opened the block's group: the block's next change opens it again.
+            if self.undo_block.is_some() {
+                self.undo_block = Some(false);
+            }
+        }
+        let to = (self.undo.current_seq(), None);
+        self.reapply(&inverse, to, tracked);
+        true
+    }
+
     /// [`Document::redo_from`] carrying `tracked`.
     pub fn redo_tracked(&mut self, cursor: BytePos, tracked: &mut [Tracked]) -> Option<UndoCursor> {
         let step = self.undo.redo()?;

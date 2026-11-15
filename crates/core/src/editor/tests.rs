@@ -2962,6 +2962,19 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn apply_edits_on_the_emptied_buffer_end_with_its_newline() {
+        // RFC-0024 §5: the edits address the empty text; what they give it is line-terminated.
+        for (ins, want) in [("abc", "abc\n"), ("abc\n", "abc\n"), ("a\nb", "a\nb\n")] {
+            let mut st = EditorState::new(Vec::new());
+            assert!(st.apply_edits(
+                &[(crate::BytePos(0), crate::BytePos(0), ins.to_string())],
+                crate::TransactionOrigin::Lsp,
+            ));
+            assert_eq!(text(&st), want, "{ins:?}");
+        }
+    }
+
+    #[test]
     fn apply_edits_batches_are_separate_undo_units_regardless_of_origin() {
         // Each apply_edits call is its own undo group (GroupHint::BreakBefore), so a later batch never
         // coalesces into an earlier one — independent of the caller-supplied origin (#305). This is the
