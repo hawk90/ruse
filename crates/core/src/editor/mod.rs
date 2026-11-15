@@ -4506,6 +4506,13 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     }
     // A failed jump (a search that matches nowhere) records nothing.
     if let Some(from) = jump_from.filter(|_| !effects.contains(&Effect::Beep)) {
+        // A jump edits nothing, except the untouched autoindent an Insert one-shot leaves behind
+        // (`leave_autoindent`): the jump then leaves from where that removal put the cursor (#1368).
+        let from = if st.doc.revision() == entry_rev {
+            from
+        } else {
+            through_change(&entry_text, st.doc.bytes(), from)
+        };
         st.view.push_jump(from);
     }
     // Maintain the auto-indent-pending flag (read by `EnterNormal` for `<Esc>` autoindent cleanup): a
@@ -4559,6 +4566,27 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     };
     update_curswant(st, cmd, entry_mode, kept_col);
     effects
+}
+
+/// `p`, an offset into `old`, in `new`, which differs from it in one contiguous span: unchanged before
+/// the span, shifted after it, and the span's start inside it.
+fn through_change(old: &[u8], new: &[u8], p: usize) -> usize {
+    let prefix = old.iter().zip(new).take_while(|(a, b)| a == b).count();
+    let room = old.len().min(new.len()) - prefix;
+    let suffix = old
+        .iter()
+        .rev()
+        .zip(new.iter().rev())
+        .take(room)
+        .take_while(|(a, b)| a == b)
+        .count();
+    if p <= prefix {
+        p
+    } else if p >= old.len() - suffix {
+        p + new.len() - old.len()
+    } else {
+        prefix
+    }
 }
 
 /// Whether `cmd`, which FAILED (nothing moved, changed or switched mode; `beeped` when it beeped), leaves
