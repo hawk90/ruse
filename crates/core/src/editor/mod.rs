@@ -877,20 +877,20 @@ impl View {
     /// Take back the positions [`View::tracked`] gave out, as the Document left them.
     pub(crate) fn untrack(&mut self, t: &[Tracked]) {
         let pos = |i: usize| t.get(i).and_then(|t| t.pos).map(|p| p.0);
-        for i in 0..26 {
-            self.named_marks[i] = pos(i);
+        for (i, m) in self.named_marks[..26].iter_mut().enumerate() {
+            *m = pos(i);
         }
         if let (Some((_, _, kind)), Some(a), Some(e)) = (self.last_visual, pos(26), pos(27)) {
             self.last_visual = Some((a, e, kind));
         }
-        for i in 26..52 {
-            self.named_marks[i] = pos(i + 2);
+        for (i, m) in self.named_marks[26..52].iter_mut().enumerate() {
+            *m = pos(26 + i + 2);
         }
         self.last_insert = pos(54);
         self.change_start = pos(55);
         self.change_end = pos(56);
-        for i in 52..62 {
-            self.named_marks[i] = pos(i + 5);
+        for (i, m) in self.named_marks[52..62].iter_mut().enumerate() {
+            *m = pos(52 + i + 5);
         }
         let n = self.changes.len();
         for (i, c) in self.changes.iter_mut().enumerate() {
