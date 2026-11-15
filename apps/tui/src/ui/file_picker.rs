@@ -183,8 +183,7 @@ mod file_picker_tests {
     fn gitignore_load_parses_common_patterns() {
         // Hermetic: write a .gitignore into a temp dir and load it. Path-anchored (`/target/`) and `**/`
         // patterns reduce to the base name; comments, blanks, `!` negations, and nested-path rules drop.
-        let dir = std::env::temp_dir().join(format!("ruse_gi_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = crate::TestDir::new("gitignore");
         std::fs::write(
             dir.join(".gitignore"),
             "# comment\n/target/\n**/*.rs.bk\n*.pyc\ndiagnostic-bundle/\n!keep.me\nsub/dir\n",

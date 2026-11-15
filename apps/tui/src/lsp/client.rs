@@ -399,8 +399,7 @@ mod tests {
         use std::process::Command as PCommand;
         use std::time::{Duration, Instant};
 
-        let dir = std::env::temp_dir().join(format!("ruse_lsp_smoke_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = crate::TestDir::new("lsp_smoke");
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(
             dir.join("Cargo.toml"),
