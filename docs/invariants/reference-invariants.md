@@ -48,6 +48,10 @@ they do not mint new numbering.
   **bias** (`Before | After`, anchor-store D-023) that survive edits, never raw offsets; anchor update cost
   is not O(anchors × edits).
   *Guards:* TEXT-4/5/6, PERF-6.
+- **INV-TEXT-TERMINATED** — A Document's text is empty or ends in `\n`. The file's final newline is the
+  buffer's `'endofline'`, applied on read and when text leaves the buffer; a transaction never leaves non-empty
+  text without its final newline; the empty text is the emptied (`ML_EMPTY`) buffer (D-065, RFC-0024).
+  *Guards:* TEXT-12/13 (line model), F-008 byte-preserve.
 
 ## Transaction & Undo
 

@@ -25,7 +25,7 @@ principles:
     strength: required
     category: correctness
     scope: [core.document]
-    invariants: [INV-TXN, INV-ORIGIN]
+    invariants: [INV-TXN, INV-ORIGIN, INV-TEXT-TERMINATED]
     practice:
       summary: All document changes apply through a Transaction with base revision and origin.
       evidence: [transaction-origin, revision-increment, undo-round-trip-test]

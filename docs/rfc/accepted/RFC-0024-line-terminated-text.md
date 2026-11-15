@@ -8,20 +8,20 @@ summary: >
   This RFC makes the text line-terminated in memory: empty, or ending in a newline. Whether the file ends in a
   newline becomes only the `'endofline'` flag, applied when text is read and when it leaves the buffer.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../design/persistence-and-recovery.md
   - ../../architecture/architecture.md
   - ../../../spec/DECISIONS.md
   - ../../invariants/reference-invariants.md
-  - ../accepted/RFC-0007-transaction-engine.md
-  - ../accepted/RFC-0008-document-model.md
-  - ../accepted/RFC-0023-per-transaction-journal.md
+  - ./RFC-0007-transaction-engine.md
+  - ./RFC-0008-document-model.md
+  - ./RFC-0023-per-transaction-journal.md
 ---
 
 # RFC-0024: Line-terminated buffer text, with the final newline as 'endofline'
 
-- **Status:** proposed
+- **Status:** accepted — D-065 decided (design), approved by the maintainer 2026-11-15
 - **Author(s):** Claude Opus 5.5, for maintainer review
 - **Created:** 2026-11-15
 - **Decision link:** D-065
@@ -37,7 +37,7 @@ count). The empty text is Vim's `ML_EMPTY` buffer: it shows one empty line, writ
 that adds lines treats it as that one empty line. A transaction never leaves non-empty text without its final
 newline: the Document keeps it.
 
-This extends [RFC-0008 §6](../accepted/RFC-0008-document-model.md) ("encoding and line-endings are metadata,
+This extends [RFC-0008 §6](./RFC-0008-document-model.md) ("encoding and line-endings are metadata,
 not data") to the one line-ending it left in the data: the file's last one.
 
 ## Motivation / Problem
