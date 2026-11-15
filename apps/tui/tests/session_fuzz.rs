@@ -348,14 +348,17 @@ proptest! {
 /// 1). This buffer cannot hold an empty last line without a newline (the slot after a final newline is no
 /// line), so the fold goes with its line instead of pointing past the buffer.
 #[test]
-fn a_fold_on_a_last_line_emptied_by_x_goes_with_the_line() {
+fn a_fold_on_a_last_line_emptied_by_x_stays_on_the_kept_line() {
     let mut h = Headless::vim("");
     for k in ["h", "h", "h", "i", "<CR>", "h", "<Esc>", "z", "f", "0", "x"] {
         h.keys(k);
         h.assert_invariants();
     }
-    assert_eq!(h.text(), "\n");
-    assert_eq!(h.folds(), &[]);
+    // nvim v0.12.6 (`i<CR>h<Esc>zf0x`): `x` deletes the char and leaves `['', '']`; the one-line fold is
+    // not closed there ('foldminlines'), so it stays on the line, which the buffer now keeps (RFC-0024).
+    assert_eq!(h.text(), "\n\n");
+    assert_eq!(h.folds().len(), 1);
+    assert_eq!((h.folds()[0].start, h.folds()[0].end), (1, 1));
 }
 
 /// #1296, the regression the fuzzer then found (`session_fuzz.proptest-regressions`): a linewise `P` into
@@ -368,6 +371,7 @@ fn a_fold_left_on_an_emptied_buffer_does_not_outlive_a_put_above() {
         h.keys(k);
         h.assert_invariants();
     }
-    assert_eq!(h.text(), "\u{a1}\n");
+    // nvim's `['¡', '']`, line-terminated (RFC-0024).
+    assert_eq!(h.text(), "\u{a1}\n\n");
     assert_eq!(h.folds(), &[]);
 }

@@ -180,6 +180,31 @@ proptest! {
         }
     }
 
+    /// INV-TEXT-TERMINATED (RFC-0024): from line-terminated text (a file as read, or the emptied buffer),
+    /// no sequence of Vim commands leaves the text without its final newline, and undo walks back through
+    /// texts that are terminated too.
+    #[test]
+    fn vim_commands_keep_the_text_line_terminated(
+        init in text(),
+        empty in any::<bool>(),
+        cmds in prop::collection::vec(command(), 0..60),
+    ) {
+        let mut init = if empty { Vec::new() } else { init };
+        if !init.is_empty() && init.last() != Some(&b'\n') {
+            init.push(b'\n');
+        }
+        let terminated = |b: &[u8]| b.is_empty() || b.last() == Some(&b'\n');
+        let mut st = EditorState::new(init);
+        for c in &cmds {
+            apply_command(&mut st, c);
+            prop_assert!(terminated(st.bytes()), "{:?} after {c:?}", st.bytes());
+        }
+        for _ in 0..cmds.len() {
+            apply_command(&mut st, &Command::Undo);
+            prop_assert!(terminated(st.bytes()), "{:?} after undo", st.bytes());
+        }
+    }
+
     /// Full undo returns to the initial buffer; full redo returns to the edited buffer — for any edit
     /// sequence, regardless of how edits coalesce into undo groups (INV-UNDO substrate).
     #[test]

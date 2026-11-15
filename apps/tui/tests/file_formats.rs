@@ -226,3 +226,80 @@ fn a_forced_read_format_keeps_the_files_final_line_break() {
     h.keys(":w!<CR>");
     assert_eq!(read(&f), b"a\r\n\x1a");
 }
+
+/// #730, RFC-0024 §5: the emptied buffer (`ggdG`, nvim's `ML_EMPTY`) has one empty line, and a command that
+/// adds lines keeps it. nvim v0.12.6 (`'nofixeol'`) writes these bytes from `a\nb\n`; a command that changes
+/// nothing leaves the buffer emptied (it writes nothing), and one `u` goes back to it.
+#[test]
+fn the_emptied_buffer_keeps_its_line_for_commands_that_add_lines() {
+    for (keys, want) in [
+        ("ggdGo", &b"\n\n"[..]),
+        ("ggdGO", b"\n\n"),
+        ("ggdGoa", b"\na\n"),
+        ("ggdGia", b"a\n"),
+        ("yyggdGp", b"\na\nb\n"),
+        ("yyggdGP", b"a\nb\n\n"),
+        ("yyggdG:put<CR>", b"\na\nb\n"),
+        ("yyggdG:0put<CR>", b"a\nb\n\n"),
+        ("ggdG:r OTHER<CR>", b"\nr1\nr2\n"),
+        ("ggdG:0r OTHER<CR>", b"r1\nr2\n\n"),
+        ("ggdGi<Esc>", b""),
+        ("ggdGo<Esc>u", b""),
+        ("ggdGi<CR><Esc>", b"\n\n"),
+        ("ggdGiab<Esc>U", b"\n"),
+        ("ggdGRx<Esc>", b"x\n"),
+        ("ggdGgRx<Esc>", b"x\n"),
+        ("ggdGgrx", b"x\n"),
+        ("ggdG<C-v>Ax<Esc>", b" x\n"),
+        ("ggdG<C-v>Ix<Esc>", b"x\n"),
+        ("ggdGix<Esc>ui<C-r>z<Esc><C-r>", b"x\n"),
+    ] {
+        let f = scratch("e.txt", b"a\nb\n");
+        std::fs::write(f.with_file_name("OTHER"), b"r1\nr2\n").unwrap();
+        let mut h = vim(&f);
+        h.keys(":cd ");
+        h.keys(&format!("{}<CR>", f.parent().unwrap().display()));
+        h.keys(keys);
+        h.keys("<Esc>:w!<CR>");
+        assert_eq!(read(&f), want, "{keys}");
+    }
+}
+
+/// RFC-0024 §5: a command that adds nothing to the emptied buffer leaves no trace, inside an outer undo
+/// step too (nvim v0.12.6: `:normal i<C-r>z<Esc>` with `z` empty is no change and no undo step).
+#[test]
+fn an_emptied_buffer_change_that_adds_nothing_leaves_no_undo_step() {
+    let mut h = Headless::vim("");
+    h.keys(":exe \"normal i\\<C-r>z\\<Esc>\"<CR>");
+    assert_eq!(h.text(), "");
+    assert_eq!(h.keys(":set modified?<CR>").status(), "nomodified");
+    h.keys(":normal ix<CR>u");
+    assert_eq!(h.text(), "");
+    h.keys(":exe \"normal i\\<C-r>z\\<Esc>\"<CR><C-r>");
+    assert_eq!(h.text(), "x\n");
+}
+
+/// RFC-0024 §5: on a `'nomodifiable'` emptied buffer `o` fails without making its line (nvim v0.12.6: E21,
+/// not modified).
+#[test]
+fn a_nomodifiable_emptied_buffer_stays_unmodified() {
+    let mut h = Headless::vim("");
+    h.keys(":set nomodifiable<CR>o<Esc>");
+    assert_eq!(h.text(), "");
+    assert_eq!(h.keys(":set modified?<CR>").status(), "nomodified");
+}
+
+/// RFC-0024 §4: the last line's newline matches `\n` in `:s`, but no substitution removes it (nvim v0.12.6).
+#[test]
+fn substitute_matches_the_last_line_break_and_keeps_it() {
+    for (text, cmd, want) in [
+        ("a\nb\nc\n", ":%s/\\n//<CR>", "abc\n"),
+        ("a\nb\nc\n", ":%s/\\n/-/<CR>", "a-b-c-\n"),
+        ("a\nb\n", ":2s/\\n/-/<CR>", "a\nb-\n"),
+        ("a\nb\n", ":2s/\\n//<CR>", "a\nb\n"),
+    ] {
+        let mut h = Headless::vim(text);
+        h.keys(cmd);
+        assert_eq!(h.text(), want, "{text:?} {cmd}");
+    }
+}

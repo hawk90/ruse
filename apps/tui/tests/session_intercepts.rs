@@ -689,6 +689,6 @@ fn registers_are_shared_by_buffers_and_splits() {
         run("one\ntwo\n", ":split<CR>yy<C-w>wjp").text(),
         "one\ntwo\none\n"
     );
-    assert_eq!(run("one\ntwo\n", "yy:enew<CR>p").text(), "\none");
-    assert_eq!(run("one\n", "qaA!<Esc>q:enew<CR>@a").text(), "!");
+    assert_eq!(run("one\ntwo\n", "yy:enew<CR>p").text(), "\none\n");
+    assert_eq!(run("one\n", "qaA!<Esc>q:enew<CR>@a").text(), "!\n");
 }

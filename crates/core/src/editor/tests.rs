@@ -427,7 +427,11 @@ mod register_tests {
                 Command::InsertEval("7 / 0".into()), // div-by-zero → empty → no-op
             ],
         );
-        assert_eq!(text(&st), "n=5", "only the valid expression inserted text");
+        assert_eq!(
+            text(&st),
+            "n=5\n",
+            "only the valid expression inserted text"
+        );
     }
 
     #[test]
@@ -1042,7 +1046,7 @@ mod visual_swap_tests {
         );
         assert_eq!(
             text(&with_break),
-            "ab",
+            "ab\n",
             "the undo-break makes `u` stop at the CTRL-G u point"
         );
         // A second undo reverts the first group too.
@@ -2924,7 +2928,7 @@ mod insert_entry_tests {
     #[test]
     fn open_below_on_last_line() {
         let st = run("ab", &[Command::OpenBelow, Command::InsertChar('X')]);
-        assert_eq!(text(&st), "ab\nX");
+        assert_eq!(text(&st), "ab\nX\n");
     }
 
     #[test]
@@ -2955,6 +2959,28 @@ mod insert_entry_tests {
         // The whole set is one undo group (LSP origin).
         apply_command(&mut st, &Command::Undo);
         assert_eq!(text(&st), "hello world");
+    }
+
+    #[test]
+    fn apply_edits_on_the_emptied_buffer_end_with_its_newline() {
+        // RFC-0024 §5: the edits address the empty text; what they give it is line-terminated.
+        for (ins, want) in [("abc", "abc\n"), ("abc\n", "abc\n"), ("a\nb", "a\nb\n")] {
+            let mut st = EditorState::new(Vec::new());
+            assert!(st.apply_edits(
+                &[(crate::BytePos(0), crate::BytePos(0), ins.to_string())],
+                crate::TransactionOrigin::Lsp,
+            ));
+            assert_eq!(text(&st), want, "{ins:?}");
+        }
+        // The cursor stays before the added newline: a completion accepted in Insert mode types on.
+        let mut st = EditorState::new(Vec::new());
+        apply_command(&mut st, &Command::EnterInsert);
+        st.apply_edits(
+            &[(crate::BytePos(0), crate::BytePos(0), "foo".to_string())],
+            crate::TransactionOrigin::Lsp,
+        );
+        apply_command(&mut st, &Command::InsertChar('x'));
+        assert_eq!(text(&st), "foox\n");
     }
 
     #[test]
@@ -3141,7 +3167,7 @@ mod insert_entry_tests {
                 Command::InsertChar('X'),
             ],
         );
-        assert_eq!(text(&st), "ab\nX");
+        assert_eq!(text(&st), "ab\nX\n");
     }
 
     // Like `run`, but seeds the cursor at the end of `initial` (where a closer would be typed).
@@ -4316,7 +4342,8 @@ mod blockwise_tests {
     fn block_paste_into_the_empty_last_line_starts_there() {
         // #1080: `Go<Esc>` then `p` of a block lands in the new empty line, with or without a final
         // newline before it (nvim v0.12.6: `ab\ncd` + `a\nc` → `ab\ncd\na\nc`).
-        for (start, want) in [("ab\ncd", "ab\ncd\na\nc"), ("ab\ncd\n", "ab\ncd\na\nc\n")] {
+        // `o` ends the unterminated `ab\ncd`; the lines are then line-terminated (RFC-0024).
+        for (start, want) in [("ab\ncd", "ab\ncd\na\nc\n"), ("ab\ncd\n", "ab\ncd\na\nc\n")] {
             let st = block_then(
                 start,
                 &[
@@ -4344,7 +4371,7 @@ mod blockwise_tests {
         let mut empty = EditorState::new(Vec::new());
         empty.view.registers.yank(None, reg);
         apply_command(&mut empty, &PASTE_AFTER);
-        assert_eq!(text(&empty), "a\nc");
+        assert_eq!(text(&empty), "a\nc\n");
     }
 
     #[test]
@@ -6526,7 +6553,7 @@ mod substitute_tests {
         let (st, _) = sub("abc\n", SubRange::WholeFile, "$", ";", SubFlags::default());
         assert_eq!(st.as_str().unwrap(), "abc;\n");
         let (st, _) = sub("", SubRange::WholeFile, "^", "#", SubFlags::default());
-        assert_eq!(st.as_str().unwrap(), "#");
+        assert_eq!(st.as_str().unwrap(), "#\n");
     }
 
     /// #715: a `\n` in the pattern matches the line break, across lines, as in nvim v0.12.6 — with and
@@ -9769,4 +9796,15 @@ mod relocate_tests {
             }
         }
     }
+}
+
+/// RFC-0024 §5 is Vim's line model: the Emacs profile's empty buffer has no line, so `:r` and `:put` into it
+/// give the lines as before, and never make (or recurse on) the emptied line.
+#[test]
+fn the_emacs_profile_has_no_emptied_line() {
+    use crate::editor::substitute::LineAddr;
+    let mut st = crate::editor::EditorState::new(Vec::new());
+    st.set_caret_gravity(crate::CaretGravity::BetweenChar);
+    assert_eq!(st.read_lines(LineAddr::Line(0), b"\xff\n", false), 1);
+    assert_eq!(st.bytes(), b"\xff");
 }

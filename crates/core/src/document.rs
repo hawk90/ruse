@@ -58,6 +58,10 @@ pub struct Document {
     /// An open undo block ([`Document::begin_undo_block`]): `Some(joining)`, where `joining` turns true once
     /// the block's first change is recorded and every later change then joins its undo group.
     undo_block: Option<bool>,
+    /// INV-TEXT-TERMINATED is kept (RFC-0024 §4): the editor turns it on for each command of Vim's line
+    /// model, and off for the Emacs profile, whose buffer is bytes and whose final newline is text a command
+    /// may delete. Off for a Document edited directly (a reload, a recovery, its own tests).
+    keep_final_newline: bool,
     /// Per undo group, the restorable [`Tracked`] positions as they were when the group began (Vim's
     /// `uh_namedm`/`uh_visual`): undoing the group puts them back, and keeps the ones it replaced for the
     /// redo (#686).
@@ -103,6 +107,7 @@ impl Document {
             saved_node: None,
             line_undo: LineUndo::default(),
             undo_block: None,
+            keep_final_newline: false,
             mark_undo: HashMap::new(),
             pinned: Vec::new(),
             changes: ChangeLog::default(),
@@ -353,6 +358,11 @@ impl Document {
             }
             return Ok(self.revision);
         }
+        // INV-TEXT-TERMINATED (RFC-0024 §4): text that was line-terminated stays so. A change that would
+        // leave it without its final newline (typing into the emptied buffer, deleting the last newline)
+        // keeps one, in the same transaction, so undo is exact. Text that was not terminated (a document
+        // made from raw bytes) is left as the edits make it.
+        let txn = self.keep_final_newline(txn);
         // Committed path — nothing above mutated state, so failure above is atomic-no-op.
         let inverse = txn.edits.inverse(&self.text);
         let new_text = txn.edits.apply_to(&self.text);
@@ -422,6 +432,51 @@ impl Document {
         Ok(self.revision)
     }
 
+    /// Whether a transaction keeps the final newline (INV-TEXT-TERMINATED): Vim's line model keeps it, the
+    /// Emacs profile's bytes do not (RFC-0024 §4).
+    pub(crate) fn set_keep_final_newline(&mut self, on: bool) {
+        self.keep_final_newline = on;
+    }
+
+    /// `txn` with its edits extended so the result keeps the final newline, when the text has one now and
+    /// the edits would leave non-empty text without it (RFC-0024 §4).
+    fn keep_final_newline(&self, mut txn: Transaction) -> Transaction {
+        let old = &self.text;
+        // The emptied buffer is no text here: a Vim command that adds to it makes its line first
+        // (`EditorState::on_the_emptied_line`), and an edit that is not a command gives its text as it is.
+        if !self.keep_final_newline || old.last() != Some(&b'\n') {
+            return txn;
+        }
+        let edits = txn.edits.edits();
+        // The result's last byte: the last edit's last inserted byte when that edit reaches the end, else
+        // the old text's last byte (which is a newline here).
+        let len = old.len();
+        let reaches_end = edits.last().is_some_and(|e| e.pos.0 + e.del == len);
+        let result_empty_or_terminated = if reaches_end {
+            let e = edits.last().expect("reaches_end has a last edit");
+            match e.ins.last() {
+                Some(&last) => last == b'\n',
+                // The tail is deleted: the result ends where the text before this edit ends.
+                None => {
+                    let before = txn.edits.apply_to(&old[..e.pos.0 + e.del]);
+                    before.is_empty() || before.last() == Some(&b'\n')
+                }
+            }
+        } else {
+            true
+        };
+        if result_empty_or_terminated {
+            return txn;
+        }
+        let mut v = edits.to_vec();
+        let last = v.last_mut().expect("reaches_end has a last edit");
+        last.ins.push(b'\n');
+        if let Ok(list) = EditList::new(v) {
+            txn.edits = list;
+        }
+        txn
+    }
+
     /// Open an undo block: every change recorded until [`Document::end_undo_block`] joins the group of the
     /// block's first change, so one `u` undoes them all (INV-UNDO). This is how Vim treats keys that were
     /// not typed (`:normal`, `:g/pat/normal`): no undo sync happens between them. A block already open is
@@ -458,6 +513,25 @@ impl Document {
     pub fn undo_tracked(&mut self, cursor: BytePos, tracked: &mut [Tracked]) -> Option<UndoCursor> {
         let step = self.undo.undo()?;
         Some(self.replay(step, cursor.0, tracked))
+    }
+
+    /// Take back the change just applied as though it was never made ([`UndoHistory::retract`]): its
+    /// inverse is applied, and it leaves no undo step, no redo branch and no modified state. Whether there
+    /// was such a change to take back.
+    pub(crate) fn retract_tracked(&mut self, tracked: &mut [Tracked]) -> bool {
+        let Some((inverse, own_group)) = self.undo.retract() else {
+            return false;
+        };
+        if let Some(g) = own_group {
+            self.mark_undo.remove(&g);
+            // The change opened the block's group: the block's next change opens it again.
+            if self.undo_block.is_some() {
+                self.undo_block = Some(false);
+            }
+        }
+        let to = (self.undo.current_seq(), None);
+        self.reapply(&inverse, to, tracked);
+        true
     }
 
     /// [`Document::redo_from`] carrying `tracked`.

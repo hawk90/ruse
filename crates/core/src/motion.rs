@@ -794,8 +794,10 @@ fn word_end_in(s: &Steps, pos: usize, big: bool) -> usize {
     while i < b.len() && char_cls(b, i, big) == 0 {
         i = s.next(i);
     }
+    // No word ahead: the end is the last line's end, before its newline (`3e` past the last word stays on
+    // its last char, and `c3w` keeps the final newline, RFC-0024).
     if i >= b.len() {
-        return b.len();
+        return content_end(b);
     }
     run_end(s, i, big)
 }
