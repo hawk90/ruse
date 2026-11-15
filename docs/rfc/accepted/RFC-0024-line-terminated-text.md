@@ -116,24 +116,28 @@ of it writes `a\n`, `:2w part` writes `b`.
 ### 4. The Document keeps the final newline
 
 `Document::apply` checks the result: if a transaction would leave non-empty text that does not end in `\n`,
-when the text ended in one (or was empty) before it, the same transaction also inserts one at the end. Its
-inverse removes it, so undo is exact. The rule is on for commands of Vim's line model: the editor sets it from
-the View's caret gravity in `EditorState::with_tracked`, through which every editor change goes, so the Emacs
-profile (`BetweenChar`), whose buffer is bytes, is not affected, and a Document edited directly (a reload, a
-recovery) keeps its text as given. This is what Vim does with the last line's terminator, which no edit
-removes:
+when the text ended in one before it, the same transaction also inserts one at the end. Its inverse removes
+it, so undo is exact. The rule is on for the commands of Vim's line model only: the editor turns it on from
+the View's caret gravity in `EditorState::with_tracked`, through which every editor change goes, and off
+again after the change, so the Emacs profile (`BetweenChar`), whose buffer is bytes, is not affected, and a
+Document edited directly (a reload, a recovery) keeps its text as given. The emptied buffer is §5's: an edit
+that is not a command (a recovery, an LSP or trace edit) puts its text into it as it is. This is what Vim
+does with the last line's terminator, which no edit removes:
 
-- typing into the emptied buffer (`ggdGia`) gives `a\n`;
 - `:s` replaces the last line's `\n` (nvim matches it there, even without `'eol'`) but the terminator stays:
   `2s/\n/-/` on `a\nb\n` gives `a\nb-\n`, and `2s/\n//` changes nothing. The substitute plan puts the
   replacement before the final newline, so it is not a dropped newline that the Document must restore.
 
 ### 5. The emptied buffer adds lines to its one line
 
-A command that adds lines treats the empty text as `\n`: `o` and `O`, linewise `p`, `P`, `gp`, `gP`, `]p`,
-`[p`, `zp`, `zP`, `:put`, `:r`, `:r !` and `:0r`. `EditorState::on_the_emptied_line` makes that line first, in
-the same undo step as the command's change (an undo block), so one `u` gives the emptied buffer back; a
-command that then changes nothing takes the line back. Ex addresses count the emptied buffer as one line, as
+A Vim command that adds text treats the empty text as `\n`: `o` and `O`, every put of a non-empty register
+(`p`, `P`, `gp`, `gP`, `]p`, `[p`, `zp`, `zP`), `:put`, `:r`, `:r !`, `:0r`, `:s`, and the text commands of
+Insert and Replace mode (typed chars, `<CR>`, `<Tab>`, `CTRL-R`, `CTRL-A`, a paste, a closer), so `ggdGia`
+gives `a\n`, `ggdGi<CR>` gives `\n\n`, and `U` after `ggdGiab` gives the empty line back.
+`EditorState::on_the_emptied_line` makes that line first, in the same undo step as the command's change (an
+undo block), so one `u` gives the emptied buffer back; when the command then changes nothing (no match, an
+empty register, `E21` on a `'nomodifiable'` buffer, which makes no line at all), the line is undone, so the
+buffer stays emptied and unmodified. It runs only in Vim's line model and never inside itself. Ex addresses count the emptied buffer as one line, as
 Vim's `line('$')` does, so `:put` goes after it and `:0put` before it. nvim's results are the reference (table
 above): `ggdGP` of `a\nb\n` gives `a\nb\n\n`, `ggdGp` and `:put` give `\na\nb\n`, `:0r` gives the read lines
 then the empty one.

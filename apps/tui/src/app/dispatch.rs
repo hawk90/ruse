@@ -162,7 +162,9 @@ pub(crate) fn open_file_with(
 pub(crate) fn apply_recovery(ws: &mut Workspace, rec: Vec<u8>, recorded: &mut Vec<Command>) {
     // Buffer text is line-terminated (RFC-0024): the offer gives it so, and so does the buffer.
     let rec = persist::encoding::terminated(rec);
-    let cmds = persist::recovery_commands(ws.focused().doc.bytes(), &rec);
+    // Vim's line model has the emptied buffer's line; the Emacs profile's empty buffer is no text.
+    let vim = ws.focused().view.caret_gravity() == ruse_core::CaretGravity::OnChar;
+    let cmds = persist::recovery_commands(ws.focused().doc.bytes(), &rec, vim);
     let group = cmds.len() > 1;
     let opened = group && !ws.focused().doc.in_undo_block();
     if opened {
@@ -1863,6 +1865,17 @@ mod dispatch_tests {
         st.doc.undo();
         assert_eq!(st.doc.bytes(), disk, "and replays it as one undo step");
         recorded
+    }
+
+    /// RFC-0024: in the Emacs profile the empty disk text has no line to read around, and the recovery is
+    /// still exactly the recovered text (no recursion on an emptied line that profile does not have).
+    #[test]
+    fn an_emacs_profile_recovery_of_an_empty_file_is_the_recovered_text() {
+        let mut ws = Workspace::new(Vec::new());
+        ws.set_caret_gravity(ruse_core::CaretGravity::BetweenChar);
+        let mut recorded = Vec::new();
+        apply_recovery(&mut ws, b"\xff\n".to_vec(), &mut recorded);
+        assert_eq!(ws.focused().doc.bytes(), b"\xff\n");
     }
 
     /// #1194: a non-UTF-8 recovery into the emptied buffer (no line to filter) is a read above its one line,

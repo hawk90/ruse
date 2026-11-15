@@ -782,6 +782,9 @@ pub struct EditorState {
     ///
     /// [`Workspace::set_origin`]: crate::Workspace::set_origin
     origin: TransactionOrigin,
+    /// A command runs on the emptied buffer's line ([`EditorState::on_the_emptied_line`]): its own calls
+    /// do not make the line again.
+    on_emptied_line: bool,
 }
 
 impl View {
@@ -1847,6 +1850,7 @@ impl EditorState {
             doc,
             view,
             origin: TransactionOrigin::UserInput,
+            on_emptied_line: false,
         };
         // A caret on a leading `<Tab>` wants the tab's last cell (#1090).
         st.view.curswant = st.wanted_col();
@@ -1877,10 +1881,12 @@ impl EditorState {
         f: impl FnOnce(&mut Document, &mut [Tracked]) -> R,
     ) -> R {
         let mut t = self.view.tracked();
-        // Vim's line model keeps the final newline; the Emacs profile's bytes do not (RFC-0024 §4).
+        // Vim's line model keeps the final newline; the Emacs profile's bytes do not (RFC-0024 §4). Only for
+        // this command: a Document edited directly keeps its text as given.
         self.doc
             .set_keep_final_newline(self.view.caret == CaretGravity::OnChar);
         let r = f(&mut self.doc, &mut t);
+        self.doc.set_keep_final_newline(false);
         self.view.untrack(&t);
         r
     }
@@ -1890,41 +1896,62 @@ impl EditorState {
         self.origin = origin;
     }
 
-    /// Run `f`, a command that adds lines, on the emptied buffer's one line (RFC-0024 §5). Vim's `ML_EMPTY`
-    /// buffer shows one empty line, and a command that adds lines keeps it: `o` there gives two empty
-    /// lines, `:put` puts after it, `P` and `:0r` before it. The text is empty, so that line is made first,
-    /// as `\n`, in the same undo step as `f`'s change; when `f` changes nothing, it is taken back, so the
-    /// buffer stays emptied. On a buffer that is not empty, `f` just runs.
+    /// Whether [`EditorState::on_the_emptied_line`] makes the emptied buffer's line for a command now.
+    fn makes_the_emptied_line(&self) -> bool {
+        !self.on_emptied_line
+            && self.doc.is_empty()
+            && self.view.caret == CaretGravity::OnChar
+            && self.doc.is_modifiable()
+    }
+
+    /// Run `f`, a command that adds text, on the emptied buffer's one line (RFC-0024 §5). Vim's `ML_EMPTY`
+    /// buffer shows one empty line, and what a command adds goes into it or around it: `o` there gives two
+    /// empty lines, `:put` puts after it, `P` and `:0r` before it, and typed text (`a`, `<CR>`) goes before
+    /// its newline. The text is empty, so that line is made first, as `\n`, in the same undo step as `f`'s
+    /// change; when `f` changes nothing, the line is taken back, so the buffer stays emptied and is not
+    /// modified. `f` just runs on a buffer that is not empty, in the Emacs profile (whose empty buffer is no
+    /// text), on a `'nomodifiable'` buffer, and inside another call of this.
     pub(crate) fn on_the_emptied_line<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
-        // Only Vim's line model has the emptied buffer's line; the Emacs profile's empty buffer is no text.
-        if !self.doc.is_empty() || self.view.caret != CaretGravity::OnChar {
+        if !self.makes_the_emptied_line() {
             return f(self);
         }
+        self.on_emptied_line = true;
         let block = !self.doc.in_undo_block();
         if block {
             self.doc.begin_undo_block();
         }
-        let made = EditList::new(vec![Edit::insert(BytePos(0), b"\n".to_vec())])
-            .ok()
-            .map(|list| {
-                Transaction::new(self.doc.revision(), list, self.origin)
-                    .with_hint(GroupHint::BreakBefore)
+        let line = EditList::new(vec![Edit::insert(BytePos(0), b"\n".to_vec())]).map(|list| {
+            Transaction::new(self.doc.revision(), list, self.origin)
+                .with_hint(GroupHint::BreakBefore)
+        });
+        // The line is the emptied buffer's own: the Document adds no newline to it.
+        let made = line.is_ok_and(|txn| {
+            self.with_tracked(|doc, t| {
+                doc.set_keep_final_newline(false);
+                doc.apply_tracked(txn, t)
             })
-            .is_some_and(|txn| self.apply_txn(txn).is_ok());
+            .is_ok()
+        });
         let after_line = self.doc.revision();
         let r = f(self);
-        if made && self.doc.revision() == after_line && self.doc.bytes() == b"\n" {
-            // `f` changed nothing: the emptied buffer stays as it was.
-            if let Ok(list) = EditList::new(vec![Edit::delete(BytePos(0), 1)]) {
+        let unchanged = made && self.doc.revision() == after_line;
+        if block {
+            self.doc.end_undo_block();
+        }
+        if unchanged {
+            if block {
+                // The line was a step of its own: undo it, which also gives back the unmodified state, and
+                // carries the marks the command set on the line back with it.
+                self.with_tracked(|doc, t| doc.undo_tracked(BytePos(0), t));
+            } else if let Ok(list) = EditList::new(vec![Edit::delete(BytePos(0), 1)]) {
+                // Inside an outer undo step (a macro, `:normal`): take the line back in it.
                 let txn = Transaction::new(self.doc.revision(), list, self.origin)
                     .with_hint(GroupHint::JoinPrev);
                 let _ = self.apply_txn(txn);
             }
             self.view.cursor = 0;
         }
-        if block {
-            self.doc.end_undo_block();
-        }
+        self.on_emptied_line = false;
         r
     }
 
@@ -1938,6 +1965,7 @@ impl EditorState {
             doc,
             view,
             origin: TransactionOrigin::UserInput,
+            on_emptied_line: false,
         }
     }
 
@@ -1992,6 +2020,11 @@ impl EditorState {
         replacement: &str,
         flags: SubFlags,
     ) -> Result<SubOutcome, RegexError> {
+        // On the emptied buffer `:s` works on its one line (nvim: `:s/^/#/` gives `#`, RFC-0024 §5).
+        if self.makes_the_emptied_line() {
+            return self
+                .on_the_emptied_line(|st| st.substitute(range, pattern, replacement, flags));
+        }
         if pattern == r"\n" && replacement.is_empty() && flags.ignore_case.is_none() {
             return Ok(self.substitute_join(range));
         }
@@ -2693,7 +2726,7 @@ impl EditorState {
             return 0;
         }
         // Into the emptied buffer the lines go around its one line (nvim: `:put` after it, `:0put` before).
-        if self.doc.is_empty() {
+        if self.makes_the_emptied_line() {
             return self.on_the_emptied_line(|st| st.put_lines(addr, reg));
         }
         let buf = self.doc.bytes();
@@ -2779,7 +2812,7 @@ impl EditorState {
             return 0;
         }
         // Into the emptied buffer the lines go around its one line (nvim: `:r` after it, `:0r` before it).
-        if self.doc.is_empty() {
+        if self.makes_the_emptied_line() {
             return self.on_the_emptied_line(|st| st.read_lines(addr, text, cursor_on_last));
         }
         let buf = self.doc.bytes();
@@ -4298,25 +4331,36 @@ fn is_jump(cmd: &Command) -> bool {
 
 /// Convenience: plan then commit one command, then maintain the sticky desired column (curswant).
 pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
-    // A command that adds lines to the emptied buffer adds them to its one line (RFC-0024 §5).
-    if st.doc.is_empty() && adds_lines(st, cmd) {
+    // A command that adds text to the emptied buffer adds it to its one line (RFC-0024 §5).
+    if st.makes_the_emptied_line() && adds_text(st, cmd) {
         return st.on_the_emptied_line(|st| apply_command_here(st, cmd));
     }
     apply_command_here(st, cmd)
 }
 
-/// Whether `cmd` adds whole lines: `o`, `O`, and a put of a non-empty linewise register (`p`, `P`, `gp`,
-/// `gP`, `]p`, `[p`, `zp`, `zP`). A charwise put into the emptied buffer types into its line instead.
-fn adds_lines(st: &EditorState, cmd: &Command) -> bool {
-    let linewise_register = || {
-        let r = st.view.registers.get(st.view.pending_register);
-        r.kind() == crate::register::RegKind::Linewise && !r.text().is_empty()
+/// Whether `cmd` adds text to the buffer: `o` and `O`, a put of a non-empty register (`p`, `P`, `gp`, `gP`,
+/// `]p`, `[p`, `zp`, `zP`), and the text commands of Insert and Replace mode (typed, put or completed).
+fn adds_text(st: &EditorState, cmd: &Command) -> bool {
+    let register = || {
+        !st.view
+            .registers
+            .get(st.view.pending_register)
+            .text()
+            .is_empty()
     };
     match cmd {
-        Command::OpenBelow | Command::OpenAbove => st.view.mode == Mode::Normal,
+        Command::OpenBelow | Command::OpenAbove => true,
         Command::Paste { .. } | Command::PasteIndent { .. } | Command::PasteBlockInner { .. } => {
-            st.view.mode == Mode::Normal && linewise_register()
+            register()
         }
+        Command::InsertChar(_)
+        | Command::InsertNewline
+        | Command::InsertTab
+        | Command::InsertRegister(_)
+        | Command::InsertEval(_)
+        | Command::InsertPaste(_)
+        | Command::InsertCloser { .. }
+        | Command::InsertAtLastInsert => true,
         _ => false,
     }
 }

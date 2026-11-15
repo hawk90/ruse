@@ -9775,3 +9775,14 @@ mod relocate_tests {
         }
     }
 }
+
+/// RFC-0024 §5 is Vim's line model: the Emacs profile's empty buffer has no line, so `:r` and `:put` into it
+/// give the lines as before, and never make (or recurse on) the emptied line.
+#[test]
+fn the_emacs_profile_has_no_emptied_line() {
+    use crate::editor::substitute::LineAddr;
+    let mut st = crate::editor::EditorState::new(Vec::new());
+    st.set_caret_gravity(crate::CaretGravity::BetweenChar);
+    assert_eq!(st.read_lines(LineAddr::Line(0), b"\xff\n", false), 1);
+    assert_eq!(st.bytes(), b"\xff");
+}

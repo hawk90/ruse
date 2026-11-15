@@ -245,6 +245,8 @@ fn the_emptied_buffer_keeps_its_line_for_commands_that_add_lines() {
         ("ggdG:0r OTHER<CR>", b"r1\nr2\n\n"),
         ("ggdGi<Esc>", b""),
         ("ggdGo<Esc>u", b""),
+        ("ggdGi<CR><Esc>", b"\n\n"),
+        ("ggdGiab<Esc>U", b"\n"),
     ] {
         let f = scratch("e.txt", b"a\nb\n");
         std::fs::write(f.with_file_name("OTHER"), b"r1\nr2\n").unwrap();
@@ -255,6 +257,16 @@ fn the_emptied_buffer_keeps_its_line_for_commands_that_add_lines() {
         h.keys("<Esc>:w!<CR>");
         assert_eq!(read(&f), want, "{keys}");
     }
+}
+
+/// RFC-0024 §5: on a `'nomodifiable'` emptied buffer `o` fails without making its line (nvim v0.12.6: E21,
+/// not modified).
+#[test]
+fn a_nomodifiable_emptied_buffer_stays_unmodified() {
+    let mut h = Headless::vim("");
+    h.keys(":set nomodifiable<CR>o<Esc>");
+    assert_eq!(h.text(), "");
+    assert_eq!(h.keys(":set modified?<CR>").status(), "nomodified");
 }
 
 /// RFC-0024 §4: the last line's newline matches `\n` in `:s`, but no substitution removes it (nvim v0.12.6).

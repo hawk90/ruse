@@ -118,21 +118,30 @@ pub fn recovery_edit(disk: &[u8], recovered: &[u8]) -> Option<(usize, usize, Str
 /// * The span that differs as one text edit ([`recovery_edit`]) when it is UTF-8.
 /// * Otherwise the bytes as lines: a filter of every line (`ex_filter`, which carries bytes), or, for an empty
 ///   disk text, which has no line to filter, a read above line 1 (`ex_read 0`). Both texts are
-///   line-terminated (RFC-0024), so the filter gives the recovered text exactly; the read keeps the emptied
-///   buffer's one line below what it reads, as nvim's `:0r` does, and a one-character edit removes it.
-pub fn recovery_commands(disk: &[u8], recovered: &[u8]) -> Vec<ExCmd> {
+///   line-terminated (RFC-0024), so the filter gives the recovered text exactly. In Vim's line model
+///   (`emptied_line`) the read keeps the emptied buffer's one line below what it reads, as nvim's `:0r`
+///   does, and a one-character edit removes it; in the Emacs profile it leaves out the final newline,
+///   which a one-character edit adds.
+pub fn recovery_commands(disk: &[u8], recovered: &[u8], emptied_line: bool) -> Vec<ExCmd> {
     if let Some((start, end, text)) = recovery_edit(disk, recovered) {
         return vec![edit(start, end, text)];
     }
     if disk.is_empty() {
-        // `:0r` into the emptied buffer reads above its one line, which then goes.
         let read = ExCmd::ReadText {
             dest: 0,
             cursor_on_last: false,
             bytes: recovered.to_vec(),
         };
         let n = recovered.len();
-        return vec![read, edit(n, n + 1, String::new())];
+        if emptied_line {
+            // Vim's emptied buffer has its line: `:0r` reads above it, then it goes.
+            return vec![read, edit(n, n + 1, String::new())];
+        }
+        // The Emacs profile's empty buffer is no text: the read gives the lines without the final newline.
+        return match recovered.strip_suffix(b"\n") {
+            Some(body) => vec![read, edit(body.len(), body.len(), "\n".into())],
+            None => vec![read],
+        };
     }
     vec![ExCmd::FilterReplace {
         first: 1,
@@ -339,28 +348,31 @@ mod tests {
             bytes: bytes.to_vec(),
         };
         assert_eq!(
-            recovery_commands(b"caf\xe9\n", b"caf\xe9 au lait\n"),
+            recovery_commands(b"caf\xe9\n", b"caf\xe9 au lait\n", true),
             [edit(4, 4, " au lait".into())]
         );
         assert_eq!(
-            recovery_commands(b"x\ny\n", b"\xff\n"),
+            recovery_commands(b"x\ny\n", b"\xff\n", true),
             [filter(2, b"\xff\n")]
         );
         // The disk text is the emptied buffer: a read above its one line, which then goes (RFC-0024).
+        let read = ExCmd::ReadText {
+            dest: 0,
+            cursor_on_last: false,
+            bytes: b"\xff\n".to_vec(),
+        };
         assert_eq!(
-            recovery_commands(b"", b"\xff\n"),
-            [
-                ExCmd::ReadText {
-                    dest: 0,
-                    cursor_on_last: false,
-                    bytes: b"\xff\n".to_vec()
-                },
-                edit(2, 3, String::new())
-            ]
+            recovery_commands(b"", b"\xff\n", true),
+            [read.clone(), edit(2, 3, String::new())]
+        );
+        // The Emacs profile's empty buffer has no line: the read leaves out the final newline.
+        assert_eq!(
+            recovery_commands(b"", b"\xff\n", false),
+            [read, edit(1, 1, "\n".into())]
         );
         // Both texts are line-terminated (RFC-0024), so the filter gives the recovered text as it is.
         assert_eq!(
-            recovery_commands(b"a\nb\n", b"\xff\n\n"),
+            recovery_commands(b"a\nb\n", b"\xff\n\n", true),
             [filter(2, b"\xff\n\n")]
         );
         assert_eq!(line_count(b""), 0);

@@ -438,11 +438,13 @@ impl Document {
         self.keep_final_newline = on;
     }
 
-    /// `txn` with its edits extended so the result keeps the final newline, when the text has one now (or
-    /// is empty) and the edits would leave non-empty text without it (RFC-0024 §4).
+    /// `txn` with its edits extended so the result keeps the final newline, when the text has one now and
+    /// the edits would leave non-empty text without it (RFC-0024 §4).
     fn keep_final_newline(&self, mut txn: Transaction) -> Transaction {
         let old = &self.text;
-        if !self.keep_final_newline || !(old.is_empty() || old.last() == Some(&b'\n')) {
+        // The emptied buffer is no text here: a Vim command that adds to it makes its line first
+        // (`EditorState::on_the_emptied_line`), and an edit that is not a command gives its text as it is.
+        if !self.keep_final_newline || old.last() != Some(&b'\n') {
             return txn;
         }
         let edits = txn.edits.edits();
