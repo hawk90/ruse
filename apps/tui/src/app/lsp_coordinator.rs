@@ -304,7 +304,13 @@ impl LspCoordinator {
                         }
                     }
                     let client = self.lsp.get_mut(key)?;
-                    let text = String::from_utf8_lossy(snapshot);
+                    // The server sees the file's text: without `'endofline'` the buffer's final newline
+                    // is not part of it (nvim's `_buf_get_full_text`, RFC-0024 §3).
+                    let file_text = match snapshot.strip_suffix(b"\n") {
+                        Some(body) if !bf.fmt.final_newline => body,
+                        _ => snapshot,
+                    };
+                    let text = String::from_utf8_lossy(file_text);
                     match self.lsp_docs.get_mut(&id) {
                         None => {
                             let uri = std::fs::canonicalize(&bf.path)

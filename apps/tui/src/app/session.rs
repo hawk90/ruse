@@ -3520,7 +3520,7 @@ impl Session {
         // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
         // mutation. Like `*`/`gd`, the engine has no buffer, so the frontend reads the focused
         // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
-        if let Some(msg) = info_status(&cmd, ws) {
+        if let Some(msg) = info_status(&cmd, ws, writes_final_newline(files, ws)) {
             status.give(msg);
             return;
         }
@@ -4511,7 +4511,16 @@ impl Session {
             // As in nvim the output (stdout + stderr) replaces the range even when the command fails,
             // and the status line says `shell returned {n}` (#861).
             Ex::Filter { range, cmd } => match ws.range_text(range) {
-                Some(input) => match crate::shell::filter(&cmd, &input) {
+                Some(input) => match crate::shell::filter(&cmd, {
+                    // The range's last line goes out as the file ends it (nvim: `:%!od -c` of `a\nb`
+                    // without `'eol'` reads three bytes, RFC-0024 §3).
+                    if crate::app::file_cmds::reaches_last_line(ws, range) {
+                        let fmt = crate::app::file_cmds::buffer_format(files, ws.focused_buffer());
+                        files.write.lines_out(&input, fmt)
+                    } else {
+                        &input
+                    }
+                }) {
                     Ok(out) => {
                         // Recorded with the filter's output as data: replay never runs the command.
                         let (first, last) = ws.resolve_range(range);
@@ -5166,7 +5175,7 @@ impl Session {
                 let old = files.get(&id).map(|bf| bf.path.display().to_string());
                 match cmd {
                     crate::input::FileCmd::Info => {
-                        if let Some(msg) = info_status(&Command::FileInfo, ws) {
+                        if let Some(msg) = info_status(&Command::FileInfo, ws, true) {
                             status.give(msg);
                         }
                     }
@@ -6388,7 +6397,19 @@ fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut Status) -> bool
 /// run loop just sets `status` and skips dispatch. Splitting this out keeps the whole
 /// keystroke→Command→message path unit-testable without a session.
 /// `ga` is not kept in `:messages` and `CTRL-G` is (nvim v0.12.6); `g8` and `g CTRL-G` follow them.
-fn info_status(cmd: &Command, ws: &Workspace) -> Option<Msg> {
+/// Whether a write of the focused buffer ends it with a newline: `'endofline'`, or the write policy.
+fn writes_final_newline(files: &Files, ws: &Workspace) -> bool {
+    files
+        .write
+        .add_final_newline(crate::app::file_cmds::buffer_format(
+            files,
+            ws.focused_buffer(),
+        ))
+}
+
+/// `final_newline` is whether a write of the focused buffer ends it with a newline (`g CTRL-G` counts the
+/// bytes a write gives, RFC-0024 §3).
+fn info_status(cmd: &Command, ws: &Workspace, final_newline: bool) -> Option<Msg> {
     match cmd {
         Command::AsciiInfo => {
             let pane = ws.focused();
@@ -6423,6 +6444,7 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<Msg> {
                 pane.doc.bytes(),
                 pane.view.cursor(),
                 pane.view.tabs(),
+                final_newline,
             )))
         }
         _ => None,
@@ -6607,7 +6629,7 @@ mod info_tests {
         let mut ws = Workspace::new(&b"Hi"[..]);
         ws.place_focused_cursor(ruse_core::BytePos(1)); // on 'i'
         assert_eq!(
-            info_status(&Command::AsciiInfo, &ws)
+            info_status(&Command::AsciiInfo, &ws, true)
                 .map(|m| m.text)
                 .as_deref(),
             Some("<i>  105,  Hex 69,  Octal 151")
@@ -6620,7 +6642,7 @@ mod info_tests {
         ws.set_focused_buffer_name("f.txt");
         ws.place_focused_cursor(ruse_core::BytePos(0)); // line 1 of 3 -> 33%
         assert_eq!(
-            info_status(&Command::FileInfo, &ws)
+            info_status(&Command::FileInfo, &ws, true)
                 .map(|m| m.text)
                 .as_deref(),
             Some("\"f.txt\" 3 lines --33%--")
@@ -6632,7 +6654,7 @@ mod info_tests {
         let mut ws = Workspace::new(&b"x\n"[..]);
         ws.place_focused_cursor(ruse_core::BytePos(0));
         assert_eq!(
-            info_status(&Command::FileInfo, &ws)
+            info_status(&Command::FileInfo, &ws, true)
                 .map(|m| m.text)
                 .as_deref(),
             Some("\"[No Name]\" 1 line --100%--")
@@ -6644,7 +6666,7 @@ mod info_tests {
         let mut ws = Workspace::new(&b"foo bar baz\n"[..]);
         ws.place_focused_cursor(ruse_core::BytePos(4)); // on 'b' of "bar" (byte 4, word 2)
         assert_eq!(
-            info_status(&Command::CursorInfo, &ws)
+            info_status(&Command::CursorInfo, &ws, true)
                 .map(|m| m.text)
                 .as_deref(),
             Some("Col 5 of 11; Line 1 of 1; Word 2 of 3; Byte 5 of 12")
@@ -6654,7 +6676,7 @@ mod info_tests {
     #[test]
     fn non_info_command_is_none() {
         let ws = Workspace::new(&b"x\n"[..]);
-        assert!(info_status(&Command::Undo, &ws).is_none());
+        assert!(info_status(&Command::Undo, &ws, true).is_none());
     }
 }
 

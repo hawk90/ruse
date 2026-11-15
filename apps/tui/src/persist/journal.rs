@@ -609,7 +609,9 @@ impl Journals {
             }
             None => {}
         }
-        match r.text {
+        // A journal an older build wrote may hold a last line without its newline; the buffer text is
+        // line-terminated (RFC-0024 §2), as `disk` already is.
+        match r.text.map(super::encoding::terminated) {
             Some(text) if text != disk => Recovery::Available(Box::new(Available {
                 recovered: text,
                 base: r.header.as_ref().map(|h| h.base),
@@ -631,27 +633,29 @@ impl Journals {
     fn offer_legacy(&self, doc: Option<&Path>, disk: &[u8]) -> Recovery {
         let sidecar = rjs0::sidecar_path(doc);
         match read_journal(&sidecar) {
-            Ok(raw) => match rjs0::last_snapshot(&raw) {
-                Some(text) if text != disk => Recovery::Available(Box::new(Available {
-                    recovered: text.to_vec(),
-                    base: None,
-                    changes: None,
-                    last_change: None,
-                    up_to: None,
-                    lost_tail: false,
-                    stale: doc.and_then(|d| stale_since(d, &sidecar)),
-                    owner: None,
-                    journal: sidecar,
-                    legacy: true,
-                    format: None,
-                })),
-                // Nothing in it to recover: archive it so it stops sitting in the project tree.
-                Some(_) => {
-                    let _ = self.archive(&sidecar);
-                    Recovery::None
+            Ok(raw) => {
+                match rjs0::last_snapshot(&raw).map(|t| super::encoding::terminated(t.to_vec())) {
+                    Some(text) if text != disk => Recovery::Available(Box::new(Available {
+                        recovered: text,
+                        base: None,
+                        changes: None,
+                        last_change: None,
+                        up_to: None,
+                        lost_tail: false,
+                        stale: doc.and_then(|d| stale_since(d, &sidecar)),
+                        owner: None,
+                        journal: sidecar,
+                        legacy: true,
+                        format: None,
+                    })),
+                    // Nothing in it to recover: archive it so it stops sitting in the project tree.
+                    Some(_) => {
+                        let _ = self.archive(&sidecar);
+                        Recovery::None
+                    }
+                    None => Recovery::None,
                 }
-                None => Recovery::None,
-            },
+            }
             Err(e) if e.kind() == io::ErrorKind::NotFound => Recovery::None,
             Err(e) => Recovery::Unreplayable {
                 reason: unreadable_note(&sidecar, &e),
@@ -2062,7 +2066,9 @@ mod tests {
     fn a_large_document_journals_against_the_disk_text() {
         let (j, dir) = scratch("large");
         let file = dir.join("big.txt");
-        let disk = vec![b'a'; rj01::LARGE_FILE + 1];
+        // Buffer text is line-terminated (RFC-0024).
+        let mut disk = vec![b'a'; rj01::LARGE_FILE + 1];
+        *disk.last_mut().unwrap() = b'\n';
         let mut d = opened(&disk);
         let mut w = Writer::new(&j, &file, FileFormat::default());
         step(&mut w, &mut d);
@@ -2100,7 +2106,9 @@ mod tests {
     fn a_large_base_is_hashed_off_the_input_path() {
         let (j, dir) = scratch("large-hash");
         let file = dir.join("big.txt");
-        let disk = vec![b'a'; rj01::LARGE_FILE + 1];
+        // Buffer text is line-terminated (RFC-0024).
+        let mut disk = vec![b'a'; rj01::LARGE_FILE + 1];
+        *disk.last_mut().unwrap() = b'\n';
         let mut d = opened(&disk);
         let mut w = Writer::new(&j, &file, FileFormat::default());
         w.absorb(&mut d, FileFormat::default(), Instant::now());

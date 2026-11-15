@@ -293,6 +293,19 @@ impl EmacsFiles {
     }
 }
 
+/// What a write puts on disk ([`WriteOptions::encode`]).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct Encoded {
+    /// The text written, as lines (line-terminated unless it is the emptied buffer's or a range's typed
+    /// text): what the `:w` message counts.
+    pub source: Vec<u8>,
+    /// The bytes on disk: without the final newline when [`Encoded::noeol`], in the file's line endings,
+    /// BOM and `'endoffile'`.
+    pub disk: Vec<u8>,
+    /// The file ends without a newline (`[noeol]` in the message).
+    pub noeol: bool,
+}
+
 /// The write options of a session.
 #[derive(Clone, Debug)]
 pub(crate) struct WriteOptions {
@@ -454,19 +467,49 @@ impl WriteOptions {
         fmt.eof && !(self.emacs.is_none() && self.fixeol)
     }
 
-    /// The text a write puts in the file of a buffer read as `fmt`, and its bytes on disk.
-    pub(crate) fn encode(&self, text: &[u8], fmt: FileFormat) -> (Vec<u8>, Vec<u8>) {
+    /// The text a write puts in the file of a buffer read as `fmt`, and its bytes on disk. The buffer is
+    /// line-terminated (RFC-0024), so its final newline is written only when the write policy asks for one
+    /// ([`WriteOptions::add_final_newline`]); the emptied buffer writes nothing. `text` is the whole
+    /// buffer, or a range that ends at its last line; a range that ends earlier is whole lines, see
+    /// [`WriteOptions::encode_lines`].
+    pub(crate) fn encode(&self, text: &[u8], fmt: FileFormat) -> Encoded {
+        self.encode_as(text, fmt, self.add_final_newline(fmt))
+    }
+
+    /// [`WriteOptions::encode`] for a range that ends before the buffer's last line: every line keeps its
+    /// newline, whatever `'endofline'` says (nvim: `:1w part` of `a\nb` without `'eol'` writes `a\n`).
+    pub(crate) fn encode_lines(&self, text: &[u8], fmt: FileFormat) -> Encoded {
+        self.encode_as(text, fmt, true)
+    }
+
+    fn encode_as(&self, text: &[u8], fmt: FileFormat, final_newline: bool) -> Encoded {
         let mut source = text.to_vec();
-        // The newline is added before `to_disk`, so a CRLF file gets `\r\n`.
-        if self.add_final_newline(fmt) && !source.is_empty() && source.last() != Some(&b'\n') {
+        // The newline is added before `to_disk`, so a CRLF file gets `\r\n`. A buffer is line-terminated
+        // (RFC-0024), but the emptied buffer's typed text is not until the Document keeps the newline.
+        if final_newline && !source.is_empty() && source.last() != Some(&b'\n') {
             source.push(b'\n');
         }
-        let fmt = FileFormat {
+        let disk = FileFormat {
             eof: self.add_eof(fmt),
+            final_newline,
             ..fmt
-        };
-        let disk = fmt.to_disk(&source);
-        (source, disk)
+        }
+        .to_disk(&source);
+        Encoded {
+            noeol: !final_newline && !source.is_empty(),
+            source,
+            disk,
+        }
+    }
+
+    /// The bytes of `text` (the whole buffer, or a range ending at its last line) as a write would end
+    /// them, before any line-ending conversion: for `:w !cmd`, a filter's input and byte counts (nvim sends
+    /// and counts `a\nb` without `'eol'` as three bytes).
+    pub(crate) fn lines_out<'a>(&self, text: &'a [u8], fmt: FileFormat) -> &'a [u8] {
+        match text.strip_suffix(b"\n") {
+            Some(body) if !self.add_final_newline(fmt) => body,
+            _ => text,
+        }
     }
 
     /// The shape of a file read now: `'binary'` under `ruse -b`, else by `'fileformats'`.
@@ -538,19 +581,55 @@ mod tests {
             ..FileFormat::default()
         };
         let mut vim = WriteOptions::new(false);
-        assert_eq!(vim.encode(b"a", noeol).1, b"a");
+        assert_eq!(vim.encode(b"a", noeol).disk, b"a");
         vim.fixeol = true;
-        assert_eq!(vim.encode(b"a", noeol).1, b"a\n");
+        assert_eq!(vim.encode(b"a", noeol).disk, b"a\n");
         let mut emacs = WriteOptions::new(true);
         assert_eq!(
-            emacs.encode(b"a", noeol).1,
+            emacs.encode(b"a", noeol).disk,
             b"a\n",
             "mode-require-final-newline t"
         );
         if let Some(e) = &mut emacs.emacs {
             e.require_final_newline = Some(FinalNewline::Never);
         }
-        assert_eq!(emacs.encode(b"a", noeol).1, b"a");
+        assert_eq!(emacs.encode(b"a", noeol).disk, b"a");
+    }
+
+    /// RFC-0024: the buffer is line-terminated; its final newline is written only as the policy says, a
+    /// range that ends before the last line keeps every newline, and the emptied buffer writes nothing.
+    #[test]
+    fn a_line_terminated_buffer_writes_as_endofline_says() {
+        let noeol = FileFormat {
+            final_newline: false,
+            ..FileFormat::default()
+        };
+        let mut vim = WriteOptions::new(false);
+        let e = vim.encode(b"a\nb\n", noeol);
+        assert_eq!((&e.disk[..], e.noeol), (&b"a\nb"[..], true));
+        assert_eq!(
+            vim.encode(b"\n", noeol).disk,
+            b"",
+            "one empty line without eol"
+        );
+        assert!(vim.encode(b"\n", noeol).noeol);
+        assert_eq!(vim.encode(b"", noeol).disk, b"");
+        assert!(
+            !vim.encode(b"", noeol).noeol,
+            "the emptied buffer is not [noeol]"
+        );
+        assert_eq!(vim.encode_lines(b"a\n", noeol).disk, b"a\n");
+        assert_eq!(vim.lines_out(b"a\nb\n", noeol), b"a\nb");
+        assert_eq!(vim.encode(b"a\n", FileFormat::default()).disk, b"a\n");
+        vim.fixeol = true;
+        assert_eq!(vim.encode(b"a\n", noeol).disk, b"a\n");
+        assert_eq!(vim.lines_out(b"a\n", noeol), b"a\n");
+        let crlf = FileFormat {
+            eol: crate::persist::encoding::Eol::Crlf,
+            ..noeol
+        };
+        vim.fixeol = false;
+        assert_eq!(vim.encode(b"a\nb\n", crlf).disk, b"a\r\nb");
     }
 
     #[test]
@@ -560,9 +639,9 @@ mod tests {
             ..FileFormat::default()
         };
         let mut w = WriteOptions::new(false);
-        assert_eq!(w.encode(b"a\n", fmt).1, b"a\n\x1a");
+        assert_eq!(w.encode(b"a\n", fmt).disk, b"a\n\x1a");
         w.fixeol = true;
-        assert_eq!(w.encode(b"a\n", fmt).1, b"a\n");
+        assert_eq!(w.encode(b"a\n", fmt).disk, b"a\n");
     }
 
     #[test]

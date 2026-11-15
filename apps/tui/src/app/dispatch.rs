@@ -966,7 +966,7 @@ pub(crate) fn disk_image(
     buffer: &[u8],
     w: &crate::app::write_opts::WriteOptions,
 ) -> Vec<u8> {
-    w.encode(buffer, fmt).1
+    w.encode(buffer, fmt).disk
 }
 
 /// Returns whether the focused buffer reached disk.
@@ -987,16 +987,17 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status) -> bo
     }
     // Restore the original encoding/line-endings (F-008 #2) with the final newline the write options add,
     // then write durably (fsync + rename, #1) under the backup policy (#619).
-    let (source, bytes) = files.write.encode(ws.focused().doc.bytes(), bf.fmt);
+    let enc = files.write.encode(ws.focused().doc.bytes(), bf.fmt);
+    let bytes = &enc.disk;
     // A command-driven write is never forced: a read-only file is `E505`, as nvim's `ZZ` is, and a file
     // changed on disk since ruse read or saved it is not overwritten (RFC-0023 §8).
     if persist::disk::conflicts(&bf.path) {
         status.warn(persist::disk::CHANGED_SINCE_READ);
         return false;
     }
-    match crate::app::write_opts::write_file(&files.write, &bf.path, &bytes, false) {
+    match crate::app::write_opts::write_file(&files.write, &bf.path, bytes, false) {
         Ok(written) => {
-            persist::disk::saw(&bf.path, &bytes);
+            persist::disk::saw(&bf.path, bytes);
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             crate::log::save(&bf.path, bytes.len());
@@ -1006,8 +1007,7 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut Status) -> bo
                 crate::app::file_cmds::write_report(
                     &bf.path.display().to_string(),
                     false,
-                    &source,
-                    bytes.len(),
+                    &enc,
                     "written",
                     bf.fmt,
                 ) + &written.note(),
@@ -1340,30 +1340,44 @@ mod dispatch_tests {
     #[test]
     fn write_report_tags_follow_nvim() {
         use crate::app::file_cmds::write_report;
+        use crate::app::write_opts::Encoded;
         use persist::encoding::{Eol, FileFormat};
         let unix = FileFormat::default();
         let dos = FileFormat {
             eol: Eol::Crlf,
             ..unix
         };
+        let enc = |source: &[u8], disk: usize, noeol| Encoded {
+            source: source.to_vec(),
+            disk: vec![0; disk],
+            noeol,
+        };
         assert_eq!(
-            write_report("f", false, b"a\n", 2, "written", unix),
+            write_report("f", false, &enc(b"a\n", 2, false), "written", unix),
             "\"f\" 1L, 2B written"
         );
         assert_eq!(
-            write_report("f", false, b"a", 1, "written", unix),
+            write_report("f", false, &enc(b"a\n", 1, true), "written", unix),
             "\"f\" [noeol] 1L, 1B written"
         );
+        // RFC-0024: one empty line without 'endofline' is a line and zero bytes; the emptied buffer is none.
         assert_eq!(
-            write_report("f", true, b"a\n", 3, "written", dos),
+            write_report("f", false, &enc(b"\n", 0, true), "written", unix),
+            "\"f\" [noeol] 1L, 0B written"
+        );
+        assert_eq!(
+            write_report("f", false, &enc(b"", 0, false), "written", unix),
+            "\"f\" 0L, 0B written"
+        );
+        assert_eq!(
+            write_report("f", true, &enc(b"a\n", 3, false), "written", dos),
             "\"f\" [New][dos] 1L, 3B written"
         );
         assert_eq!(
             write_report(
                 "f",
                 false,
-                b"a",
-                1,
+                &enc(b"a\n", 1, true),
                 "written",
                 FileFormat {
                     eol: Eol::Cr,
@@ -1377,7 +1391,7 @@ mod dispatch_tests {
             ..dos
         };
         assert_eq!(
-            write_report("f", false, b"a\n", 2, "written", bin),
+            write_report("f", false, &enc(b"a\n", 2, false), "written", bin),
             "\"f\" 1L, 2B written"
         );
     }

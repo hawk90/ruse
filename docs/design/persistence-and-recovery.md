@@ -394,7 +394,9 @@ nor a reason to write in place.
 (`fileformat` unix/dos/mac), BOM (`bomb`), a DOS file's final CTRL-Z (`endoffile`) and trailing-newline policy
 (`endofline`, `fixeol`, Emacs `require-final-newline`) are captured at open and re-applied on write — kept
 separate from document data ([TEXT-19 / VIM-STATE](../parity/vim.md)). `:set eol` / `eof` / `bomb` change them
-per buffer (a BOM change modifies the buffer, as nvim).
+per buffer (a BOM change modifies the buffer, as nvim). The buffer text itself is line-terminated (RFC-0024,
+D-065): a file without a final newline reads with one and `'endofline'` off, and every write, pipe, filter
+input and byte count leaves it out again; the emptied buffer is the empty text and writes nothing.
 
 **Per-platform notes:**
 

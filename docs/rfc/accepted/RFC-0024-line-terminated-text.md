@@ -168,9 +168,10 @@ One check of the last byte per transaction, and at most one extra byte per buffe
 
 ## Compatibility & Migration
 
-- RJ01 and the trace format are unchanged. Journals and traces from older builds replay (canonicalised).
-- Recorded traces whose start text lacks a final newline now start one byte longer; trace fixtures that pin
-  byte offsets at the end of such a text are updated in slice 1.
+- RJ01 and the trace format are unchanged. Journals from older builds replay, their text canonicalised.
+- A trace records a hash of its start text, and one recorded before slice 1 on a file without a final
+  newline hashed the text without it. `ruse --replay` tries the line-terminated text first, then that one,
+  and replays from the one that matches (`system_replay` tests both).
 - LSP: `didOpen`/`didChange` carry the buffer text, which for a file without a final newline now ends in one.
   nvim sends the newline only with `'eol'`; ruse follows in slice 1 by applying §3 to the full-text sync.
 

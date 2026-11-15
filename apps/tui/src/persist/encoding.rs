@@ -82,6 +82,15 @@ impl Default for FileFormat {
 
 const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
 
+/// `text` line-terminated (INV-TEXT-TERMINATED, RFC-0024): empty, or ending in `\n`. Every path that brings
+/// outside text in as a buffer's whole text ends here.
+pub fn terminated(mut text: Vec<u8>) -> Vec<u8> {
+    if !text.is_empty() && text.last() != Some(&b'\n') {
+        text.push(b'\n');
+    }
+    text
+}
+
 impl FileFormat {
     /// Read the style of the original file. Like Vim's `fileformats=unix,dos`, a file is CRLF only when
     /// every line break is `\r\n`; one bare `\n` makes it LF, with each `\r` kept as buffer text, so a save
@@ -150,8 +159,16 @@ impl FileFormat {
     }
 
     /// Normalise raw file bytes into clean editor bytes: drop the BOM, fold `\r\n` → `\n`. The
-    /// editor never sees `^M` or a BOM char; the style is remembered in `self` for save.
+    /// editor never sees `^M` or a BOM char; the style is remembered in `self` for save. The result is
+    /// line-terminated (INV-TEXT-TERMINATED, RFC-0024): a last line without a newline gets one, and
+    /// `'endofline'` (`final_newline`, from [`FileFormat::detect`]) remembers that the file had none.
     pub fn to_buffer(self, raw: &[u8]) -> Vec<u8> {
+        terminated(self.decode(raw))
+    }
+
+    /// [`FileFormat::to_buffer`] before the final newline is added: the buffer text a build before RFC-0024
+    /// started from, which a trace recorded then hashes (`ruse --replay`).
+    pub fn decode(self, raw: &[u8]) -> Vec<u8> {
         if self.binary {
             return raw.to_vec();
         }
@@ -193,9 +210,14 @@ impl FileFormat {
         FileFormat::detect(raw).to_buffer(raw)
     }
 
-    /// Restore the original style for writing to disk: re-expand `\n` → `\r\n` for a CRLF file and
-    /// re-prepend the BOM. The inverse of [`to_buffer`].
+    /// Restore the original style for writing to disk: drop the buffer's final newline without
+    /// `'endofline'`, re-expand `\n` → `\r\n` for a CRLF file and re-prepend the BOM. The inverse of
+    /// [`to_buffer`].
     pub fn to_disk(self, buffer: &[u8]) -> Vec<u8> {
+        let buffer = match buffer.strip_suffix(b"\n") {
+            Some(body) if !self.final_newline => body,
+            _ => buffer,
+        };
         if self.binary {
             return buffer.to_vec();
         }
@@ -254,7 +276,9 @@ mod tests {
         assert_eq!(fmt.eol, Eol::Crlf);
         assert!(!fmt.bom);
         let buf = fmt.to_buffer(raw);
-        assert_eq!(buf, b"one\ntwo\nthree"); // clean LF in the editor
+        // Clean LF in the editor, line-terminated (RFC-0024): the missing final newline is `'endofline'`.
+        assert!(!fmt.final_newline);
+        assert_eq!(buf, b"one\ntwo\nthree\n");
         assert_eq!(fmt.to_disk(&buf), raw); // exact original on save
     }
 
@@ -350,14 +374,15 @@ mod tests {
         );
     }
 
-    /// `'binary'`: the buffer is the file's bytes, BOM and CR included, and a write gives them back.
+    /// `'binary'`: the buffer is the file's bytes, BOM and CR included, and a write gives them back. Only
+    /// the missing final newline becomes `'endofline'`, as in any buffer (RFC-0024).
     #[test]
     fn binary_converts_nothing() {
         let raw = b"\xEF\xBB\xBFa\r\nb";
         let f = FileFormat::binary(raw);
         assert!(!f.final_newline);
-        assert_eq!(f.to_buffer(raw), raw);
-        assert_eq!(f.to_disk(raw), raw);
+        assert_eq!(f.to_buffer(raw), b"\xEF\xBB\xBFa\r\nb\n");
+        assert_eq!(f.to_disk(&f.to_buffer(raw)), raw);
     }
 
     /// nvim v0.12.6: a DOS file ending in CTRL-Z has `'endoffile'`; the byte is not text and comes back on
@@ -371,7 +396,11 @@ mod tests {
         assert_eq!(fmt.to_disk(&fmt.to_buffer(raw)), raw);
         let unix = FileFormat::detect(b"one\ntwo\n\x1a");
         assert!(!unix.eof && !unix.final_newline);
-        assert_eq!(unix.to_buffer(b"one\ntwo\n\x1a"), b"one\ntwo\n\x1a");
+        assert_eq!(unix.to_buffer(b"one\ntwo\n\x1a"), b"one\ntwo\n\x1a\n");
+        assert_eq!(
+            unix.to_disk(&unix.to_buffer(b"one\ntwo\n\x1a")),
+            b"one\ntwo\n\x1a"
+        );
     }
 
     /// #860: `:r` text is cleaned by its own format, so the target buffer's save adds exactly one `\r`.

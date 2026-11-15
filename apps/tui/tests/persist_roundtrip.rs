@@ -61,9 +61,10 @@ fn crash_with_unsaved_work_is_recoverable_then_cleared_on_save() {
         .unwrap();
     assert!(journal.starts_with(j.dir()), "outside the project tree");
 
-    // Reopen: the journal's latest valid record differs from disk → recovery is offered.
+    // Reopen: the journal's latest valid record differs from disk → recovery is offered, line-terminated
+    // as buffer text is (RFC-0024 §2), though this journal's text has no final newline.
     match j.offer(Some(&f), &disk) {
-        Recovery::Available(a) => assert_eq!(a.recovered, b"saved line\nunsaved 1\nunsaved 2"),
+        Recovery::Available(a) => assert_eq!(a.recovered, b"saved line\nunsaved 1\nunsaved 2\n"),
         other => panic!("{other:?}"),
     }
 
