@@ -25,6 +25,7 @@ steps:
   - { name: cargo-fmt,        scope: rust,      needs: cargo,   gate_on: Cargo.toml, cmd: [cargo, fmt, --all, --check] }
   - { name: cargo-clippy,     scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, clippy, --workspace, --all-targets, -q, --, -D, warnings] }
   - { name: cargo-test,       scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, test, --workspace, -q] }
+  - { name: msrv,             scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, "+1.97", check, --locked, --workspace, --all-targets, --target-dir, target/msrv] }
   - { name: cargo-deny,       scope: rust,      needs: cargo-deny, gate_on: deny.toml, cmd: [cargo, deny, check, licenses, bans, sources] }
   - { name: fuzz-check,       scope: rust,      needs: cargo,   heavy: true, gate_on: fuzz/Cargo.toml,
       cmd: [cargo, check, --locked, --manifest-path, fuzz/Cargo.toml, --all-targets, --target-dir, target/fuzz-check,

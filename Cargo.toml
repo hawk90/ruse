@@ -16,5 +16,8 @@ exclude = ["fuzz"]
 edition = "2021"
 version = "0.0.0"
 license = "MIT"
+# MSRV (#1313): the oldest Rust that builds the workspace (usize::isolate_lowest_one, 1.97). CI checks it
+# (the `msrv` verify step); raise it in the PR that needs a newer feature, with the reason.
+rust-version = "1.97"
 # Not published to crates.io; cargo-deny (deny.toml) relies on it for path dependencies.
 publish = false

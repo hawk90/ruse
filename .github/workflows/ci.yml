@@ -85,6 +85,14 @@ jobs:
       - name: fuzz targets compile
         if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo check --locked --manifest-path fuzz/Cargo.toml --all-targets --target-dir target/fuzz-check --config 'build.rustflags=["--cfg","fuzzing"]'
+      # MSRV (#1313): the workspace still builds on the declared `rust-version` (Cargo.toml). Its own target
+      # dir, so the pinned-toolchain build above stays cached.
+      - name: install msrv toolchain
+        if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
+        run: rustup toolchain install 1.97 --profile minimal --no-self-update
+      - name: msrv check
+        if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
+        run: cargo +1.97 check --locked --workspace --all-targets --target-dir target/msrv
       # License, banned-crate and source policy (#1311, deny.toml). Advisories stay with cargo-audit in
       # security.yml; this check reads only Cargo.lock and crate metadata.
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'

@@ -80,7 +80,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-CI enforces these; run them locally before pushing. Branch protection on `main` requires the `gate`, `rust` and
+CI enforces these; run them locally before pushing. Development uses the toolchain pinned in
+`rust-toolchain.toml`; the workspace must also build on its declared minimum, `rust-version` in `Cargo.toml`
+(the `msrv` step of `python3 tools/ruse.py verify --full` checks it). Raise the minimum only in the PR that
+needs a newer feature, and say which one. Branch protection on `main` requires the `gate`, `rust` and
 `spec-validate` checks and requires the branch to be up to date with `main`, so rebase (or merge `main`) before
 the last push. The repository allows squash merges only and deletes the head branch on merge. There is no merge
 queue: GitHub offers it only to organization-owned repositories, and ruse is under a personal account.
