@@ -22,14 +22,8 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
             // active end, and install the stored anchor (via `set_anchor`, which `commit` applies after its
             // enter-selection bookkeeping). No prior selection → a clean no-op (Vim rings the bell).
             Some((anchor, active, kind)) => Plan {
-                action: Action::Nop,
-                cursor: active,
-                mode: Mode::Visual { kind },
-                is_edit: false,
-                effects: Vec::new(),
-                set_register: None,
                 set_anchor: Some(anchor),
-                set_mark: None,
+                ..nop(active, Mode::Visual { kind })
             },
             None => nop(cur, st.view.mode),
         },

@@ -115,13 +115,9 @@ fn plan_block_insert(
             hint,
             session,
         },
-        cursor: insert_start + seed.len(),
-        mode: Mode::Insert,
         is_edit,
-        effects: Vec::new(),
         set_register: reg.map(RegWrite::Edit),
-        set_anchor: None,
-        set_mark: None,
+        ..nop(insert_start + seed.len(), Mode::Insert)
     }
 }
 
@@ -159,21 +155,18 @@ fn plan_selection_span(
         // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal: on a char,
         // so a start on a line's break (`$vk` reaches past the end, #1176) is its last char.
         OpKind::Yank => Plan {
-            action: Action::Nop,
-            cursor: {
-                let (ls, le) = (line_start(b, s), line_end(b, s));
-                if s >= le && le > ls && st.view.caret == CaretGravity::OnChar {
-                    prev_grapheme(b, le)
-                } else {
-                    s
-                }
-            },
-            mode: Mode::Normal,
-            is_edit: false,
-            effects: Vec::new(),
             set_register: Some(RegWrite::Yank(reg, (s, e))),
-            set_anchor: None,
-            set_mark: None,
+            ..nop(
+                {
+                    let (ls, le) = (line_start(b, s), line_end(b, s));
+                    if s >= le && le > ls && st.view.caret == CaretGravity::OnChar {
+                        prev_grapheme(b, le)
+                    } else {
+                        s
+                    }
+                },
+                Mode::Normal,
+            )
         },
         OpKind::Delete if s < e => {
             // A linewise delete keeps the wanted column on the line that moves up under the cursor (nvim's
@@ -376,14 +369,8 @@ fn plan_linewise_change(
         // Nothing after the indent to delete (empty/blank line): keep the buffer, but still capture the
         // register linewise and drop into Insert at the indent end.
         Plan {
-            action: Action::Nop,
-            cursor: indent_end,
-            mode: Mode::Insert,
-            is_edit: false,
-            effects: Vec::new(),
             set_register: Some(RegWrite::Edit(reg)),
-            set_anchor: None,
-            set_mark: None,
+            ..nop(indent_end, Mode::Insert)
         }
     } else {
         edit_yank(
@@ -991,14 +978,8 @@ fn apply_op(
             )
         }
         MarkOp::Yank => Plan {
-            action: Action::Nop,
-            cursor: rest,
-            mode,
-            is_edit: false,
-            effects: Vec::new(),
             set_register: Some(RegWrite::Yank(captured(b, s, e, linewise), (s, e))),
-            set_anchor: None,
-            set_mark: None,
+            ..nop(rest, mode)
         },
         // Recase the span; an all-non-letter span is just a cursor move (Vim). Invalid UTF-8 bytes are kept.
         MarkOp::Case(case) => {
@@ -1212,16 +1193,13 @@ fn plan_search_object(
         // Bare `gn`/`gN`: enter charwise Visual with the match selected (anchor at its start, cursor on its
         // last char). `commit` applies `set_anchor` after its enter-selection default, so this span wins.
         SearchOp::Move => Plan {
-            action: Action::Nop,
-            cursor: motion::prev_grapheme(b, e),
-            mode: Mode::Visual {
-                kind: SelectKind::Charwise,
-            },
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
             set_anchor: Some(s),
-            set_mark: None,
+            ..nop(
+                motion::prev_grapheme(b, e),
+                Mode::Visual {
+                    kind: SelectKind::Charwise,
+                },
+            )
         },
         SearchOp::Delete => {
             let reg = captured(b, s, e, false);
@@ -1246,14 +1224,8 @@ fn plan_search_object(
         SearchOp::Yank => {
             let reg = captured(b, s, e, false);
             Plan {
-                action: Action::Nop,
-                cursor: s,
-                mode: st.view.mode,
-                is_edit: false,
-                effects: Vec::new(),
                 set_register: Some(RegWrite::Yank(reg, (s, e))),
-                set_anchor: None,
-                set_mark: None,
+                ..nop(s, st.view.mode)
             }
         }
         // `gUgn`, `>gn`, `gqgn`, ...: the shared span-operator planner over the match.
@@ -1317,13 +1289,8 @@ fn plan_virtual_replace_type(
             push,
             pop: false,
         },
-        cursor,
-        mode: Mode::VirtualReplace,
         is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
+        ..nop(cursor, Mode::VirtualReplace)
     }
 }
 
@@ -1518,6 +1485,12 @@ fn edit_yank(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: R
         set_anchor: None,
         set_mark: None,
     }
+}
+
+/// Insert `text` at the caret, leaving the cursor after it — what typing, `i_CTRL-R` and a paste do.
+fn insert_text(cur: usize, text: Vec<u8>, mode: Mode, hint: GroupHint) -> Plan {
+    let n = text.len();
+    edit(one(Edit::insert(BytePos(cur), text)), cur + n, mode, hint)
 }
 
 fn one(e: Edit) -> EditList {
@@ -1976,13 +1949,9 @@ fn replace_selection_with(
 fn edit_kill(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: Register) -> Plan {
     Plan {
         action: Action::Txn { edits, hint },
-        cursor,
-        mode,
         is_edit: true,
-        effects: Vec::new(),
         set_register: Some(RegWrite::KillAppend(reg)),
-        set_anchor: None,
-        set_mark: None,
+        ..nop(cursor, mode)
     }
 }
 
@@ -2802,75 +2771,34 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         Command::Redo if !st.doc.can_redo() => beep(cur, st.view.mode),
         Command::Undo => Plan {
             action: Action::Undo,
-            cursor: cur,
-            mode: undo_resume_mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, undo_resume_mode)
         },
         Command::Redo => Plan {
             action: Action::Redo,
-            cursor: cur,
-            mode: undo_resume_mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, undo_resume_mode)
         },
         Command::UndoOlder => Plan {
             action: Action::UndoChrono { older: true },
-            cursor: cur,
-            mode: undo_resume_mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, undo_resume_mode)
         },
         // `U` — a change in its own right (`u` undoes it), so it is an edit; nothing to restore is a no-op.
         Command::LineUndo if st.doc.can_line_undo() => Plan {
             action: Action::LineUndo,
-            cursor: cur,
-            mode: Mode::Normal,
             is_edit: true,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, Mode::Normal)
         },
         Command::LineUndo => nop(cur, st.view.mode),
         Command::UndoNewer => Plan {
             action: Action::UndoChrono { older: false },
-            cursor: cur,
-            mode: undo_resume_mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, undo_resume_mode)
         },
         Command::Save => Plan {
-            action: Action::Nop,
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
             effects: vec![Effect::Save],
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, st.view.mode)
         },
         Command::Quit => Plan {
-            action: Action::Nop,
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
             effects: vec![Effect::Quit],
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, st.view.mode)
         },
         // Emacs-profile commands: the depth-1 region ops (D-027) and the distinct Emacs commands
         // (D-051), grouped into `plan_emacs` to keep this match readable.
@@ -2913,14 +2841,8 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
             Some((s, e)) => {
                 let reg = captured(b, s, e, false);
                 Plan {
-                    action: Action::Nop,
-                    cursor: cur,
-                    mode: st.view.mode,
-                    is_edit: false,
-                    effects: Vec::new(),
                     set_register: Some(RegWrite::Yank(reg, (s, e))),
-                    set_anchor: None,
-                    set_mark: None,
+                    ..nop(cur, st.view.mode)
                 }
             }
             None => nop(cur, st.view.mode),
@@ -3031,13 +2953,9 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                         edits: one(Edit::delete(BytePos(target), cur - target)),
                         hint,
                     },
-                    cursor: target,
-                    mode: st.view.mode,
                     is_edit: true,
-                    effects: Vec::new(),
                     set_register: Some(RegWrite::KillPrepend(reg)),
-                    set_anchor: None,
-                    set_mark: None,
+                    ..nop(target, st.view.mode)
                 }
             }
         }
@@ -3061,13 +2979,8 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                         edits: one(Edit::replace(BytePos(j - 1), 2, vec![b[j], b[j - 1]])),
                         hint,
                     },
-                    cursor: j + 1,
-                    mode: st.view.mode,
                     is_edit: true,
-                    effects: Vec::new(),
-                    set_register: None,
-                    set_anchor: None,
-                    set_mark: None,
+                    ..nop(j + 1, st.view.mode)
                 },
                 _ => nop(cur, st.view.mode),
             }
@@ -3110,13 +3023,8 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                             edits: one(Edit::replace(BytePos(cur), end - cur, recased)),
                             hint,
                         },
-                        cursor,
-                        mode: st.view.mode,
                         is_edit: true,
-                        effects: Vec::new(),
-                        set_register: None,
-                        set_anchor: None,
-                        set_mark: None,
+                        ..nop(cursor, st.view.mode)
                     }
                 }
                 None => nop(cur, st.view.mode),
@@ -3217,13 +3125,9 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                             edits: one(Edit::replace(BytePos(s), e - s, recased)),
                             hint,
                         },
-                        cursor: follow(cur),
-                        mode: st.view.mode,
                         is_edit: true,
-                        effects: Vec::new(),
-                        set_register: None,
-                        set_anchor: None,
                         set_mark,
+                        ..nop(follow(cur), st.view.mode)
                     }
                 }
                 None => nop(cur, st.view.mode),
@@ -3353,16 +3257,7 @@ pub(super) fn plan_set_indents(
     }
     let edits =
         EditList::new(edits).expect("indent edits sit at distinct line starts, so disjoint");
-    Plan {
-        action: Action::Txn { edits, hint },
-        cursor: first_cursor,
-        mode: st.mode(),
-        is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    }
+    edit(edits, first_cursor, st.mode(), hint)
 }
 
 /// The formatting options a `gq` or an auto-wrap reads, from this View's (#618).
@@ -3741,29 +3636,11 @@ fn plan_shift_times(
 
     if edits.is_empty() {
         // Nothing to indent/unindent (e.g. `<<` at column 0, or `>>` on an empty line): a pure cursor move.
-        return Plan {
-            action: Action::Nop,
-            cursor,
-            mode: st.mode(),
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
-        };
+        return nop(cursor, st.mode());
     }
     let edits = EditList::new(edits)
         .expect("shift edits sit at distinct line starts, so they are disjoint");
-    Plan {
-        action: Action::Txn { edits, hint },
-        cursor,
-        mode: st.mode(),
-        is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    }
+    edit(edits, cursor, st.mode(), hint)
 }
 
 /// Visual-block `>`/`<` (`:help v_b_>`, `v_b_<`, #1180): each row is shifted from the block's LEFT column
@@ -3871,16 +3748,7 @@ fn plan_block_shift(
         return nop(cursor, st.mode());
     }
     let edits = EditList::new(edits).expect("one edit per block row, top to bottom: disjoint");
-    Plan {
-        action: Action::Txn { edits, hint },
-        cursor,
-        mode: st.mode(),
-        is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    }
+    edit(edits, cursor, st.mode(), hint)
 }
 
 /// Blockwise (`CTRL-V`) yank/delete/change over the rectangle whose corners are the byte offsets `c1` and
@@ -3907,16 +3775,7 @@ fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> Plan {
     // The `[`/`]` change-mark span for a blockwise yank: top-left corner → bottom-right corner (the end of
     // the last row's slice). An approximation of Vim's rectangular bracketing, adequate for the mark jump.
     let block_span = (top.ds, block.rows.last().map_or(top.ds, |r| r.de));
-    let nop = |mode: Mode| Plan {
-        action: Action::Nop,
-        cursor: top_left,
-        mode,
-        is_edit: false,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    };
+    let nop = |mode: Mode| nop(top_left, mode);
     // One edit per row (rows on different lines are inherently disjoint): remove every character the block
     // touches, leaving the outside cells of a split `<Tab>` or wide char as spaces (Vim `op_delete`).
     let deletes = || -> Vec<Edit> {
@@ -3940,16 +3799,7 @@ fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> Plan {
                 return nop(Mode::Normal);
             }
             let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
-            Plan {
-                action: Action::Txn { edits: list, hint },
-                cursor: top_left,
-                mode: Mode::Normal,
-                is_edit: true,
-                effects: Vec::new(),
-                set_register: Some(RegWrite::Edit(reg)),
-                set_anchor: None,
-                set_mark: None,
-            }
+            edit_yank(list, top_left, Mode::Normal, hint, reg)
         }
         // Operator-forced blockwise change (`c<C-v>{motion}`): delete the block on every row (captured
         // blockwise, above), then ARM a replicate session at the top-left — the SAME machinery
@@ -3979,13 +3829,9 @@ fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> Plan {
                     hint,
                     session,
                 },
-                cursor: top_left,
-                mode: Mode::Insert,
                 is_edit,
-                effects: Vec::new(),
                 set_register: Some(RegWrite::Edit(reg)),
-                set_anchor: None,
-                set_mark: None,
+                ..self::nop(top_left, Mode::Insert)
             }
         }
     }
@@ -4031,16 +3877,7 @@ fn block_insert_point(
 /// for `c` (change) it rests one char left of the top row's typed text — the normal Insert-exit position,
 /// which Vim keeps for a block change (matters only when more than one char was typed).
 fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, ts: Tabs) -> Plan {
-    let nop = |cursor: usize| Plan {
-        action: Action::Nop,
-        cursor,
-        mode: Mode::Normal,
-        is_edit: false,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    };
+    let nop = |cursor: usize| nop(cursor, Mode::Normal);
     let mut start = session.insert_start;
     // Insert left the block's top line (a `<BS>` at its start joined it onto the line above): nothing is
     // replicated, as Vim's `op_insert` gives up when the cursor's line changed, and the cursor steps left
@@ -4103,16 +3940,7 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
         return nop(rest_cursor);
     }
     let list = EditList::new(edits).expect("block-replicate inserts are disjoint (one per line)");
-    Plan {
-        action: Action::Txn { edits: list, hint },
-        cursor: rest_cursor,
-        mode: Mode::Normal,
-        is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    }
+    edit(list, rest_cursor, Mode::Normal, hint)
 }
 
 /// A block change (`c`/`C`) whose Insert broke the top row with a `<CR>` (#1142), as nvim's `op_change`:
@@ -4169,16 +3997,7 @@ fn block_change_split(
         .map(|e| e.ins.len())
         .sum();
     let list = EditList::new(edits).expect("one insert per line, top to bottom: disjoint");
-    Plan {
-        action: Action::Txn { edits: list, hint },
-        cursor: rest + shift,
-        mode: Mode::Normal,
-        is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    }
+    edit(list, rest + shift, Mode::Normal, hint)
 }
 
 /// Blockwise paste (`p`/`P` of a `CTRL-V` register, nvim `do_put`): drop the register's rows as a
@@ -4291,16 +4110,7 @@ fn paste_block(
         }
     }
     if edits.is_empty() {
-        return Plan {
-            action: Action::Nop,
-            cursor: cursor.min(b.len()),
-            mode: Mode::Normal,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
-        };
+        return nop(cursor.min(b.len()), Mode::Normal);
     }
     let list = EditList::new(edits).expect("block paste edits are disjoint (one per line)");
     Plan {
@@ -4308,13 +4118,8 @@ fn paste_block(
             edits: list,
             hint: GroupHint::BreakBefore,
         },
-        cursor,
-        mode: Mode::Normal,
         is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
+        ..nop(cursor, Mode::Normal)
     }
 }
 
@@ -4386,16 +4191,7 @@ fn paste(
     pad_block: bool,
     ts: Tabs,
 ) -> Plan {
-    let nop = Plan {
-        action: Action::Nop,
-        cursor: cur,
-        mode,
-        is_edit: false,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
-    };
+    let nop = nop(cur, mode);
     if reg.is_empty() {
         return nop;
     }
@@ -4421,13 +4217,8 @@ fn paste(
             edits: one(Edit::insert(BytePos(at), bytes)),
             hint: GroupHint::BreakBefore,
         },
-        cursor,
-        mode: end_mode,
         is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-        set_mark: None,
+        ..self::nop(cursor, end_mode)
     };
 
     if reg.is_linewise() {

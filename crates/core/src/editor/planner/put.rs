@@ -82,26 +82,14 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Pla
         // `"x` — install the one-shot pending register. A pure state set: no edit, no cursor/mode change.
         Command::SetRegister(name) => Plan {
             action: Action::SetPending(*name),
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, st.view.mode)
         },
         // `"=<expr><CR>` — evaluate the expression, store the formatted result in the `"=` slot, and arm `=`
         // as the pending register so the following `p`/`P` pastes it. An empty result (malformed/unsupported
         // expression) makes that paste a no-op (Vim's degrade). Like `SetRegister`, a pure state set.
         Command::SetExprRegister(e) => Plan {
             action: Action::SetExprPending(crate::expr::eval_or_empty(e)),
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
+            ..nop(cur, st.view.mode)
         },
         _ => unreachable!("planner::put plans only its own commands"),
     }
