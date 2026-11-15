@@ -89,7 +89,7 @@ pub(crate) fn open_file_with(
             };
         }
     };
-    let f = format(files.write.read_format(&raw));
+    let mut f = format(files.write.read_format(&raw));
     let disk = f.to_buffer(&raw);
     // The same prompt as at startup (RFC-0023 §7); `q` cancels this open and keeps the journal.
     let offer =
@@ -101,7 +101,14 @@ pub(crate) fn open_file_with(
             recovered,
             read_only,
             note,
-        }) => (recovered, read_only, note),
+            format,
+        }) => {
+            // A recovered buffer takes the format its journal recorded (#1286).
+            if let Some(format) = format {
+                f = format;
+            }
+            (recovered, read_only, note)
+        }
         Ok(crate::ui::recovery::Resolved::Quit { journal }) => {
             return Opened {
                 status: Msg::info(format!(

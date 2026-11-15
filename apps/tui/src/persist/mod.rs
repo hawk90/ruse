@@ -73,6 +73,9 @@ pub struct Available {
     pub journal: PathBuf,
     /// The journal is a legacy RJS0 sidecar in the project tree.
     pub legacy: bool,
+    /// The buffer's format as the journal last recorded it (its Header, then any format Meta), which a
+    /// recovery restores (#1286); `None` for a legacy snapshot, which has none.
+    pub format: Option<encoding::FileFormat>,
 }
 
 /// The recovered text as one edit over the disk text (#863): `(start, end, text)` replaces `disk[start..end]`

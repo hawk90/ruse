@@ -227,6 +227,9 @@ pub(crate) enum Resolved {
         recovered: Option<Vec<u8>>,
         read_only: bool,
         note: Option<String>,
+        /// With `recovered`: the format the journal recorded, which the buffer takes over the disk file's
+        /// (#1286: `'endoffile'`, `'binary'`, mac, and a format changed in the session).
+        format: Option<FileFormat>,
     },
     /// Open nothing; `journal` stays where it is.
     Quit { journal: PathBuf },
@@ -249,6 +252,7 @@ pub(crate) fn resolve(
         recovered,
         read_only,
         note,
+        format: None,
     };
     match rec {
         Recovery::None => Ok(open(None, false, None)),
@@ -299,13 +303,15 @@ pub(crate) fn resolve(
                                 recovered,
                                 read_only,
                                 note: n,
-                            } => open(
+                                format,
+                            } => Resolved::Open {
                                 recovered,
                                 read_only,
-                                with_note(
+                                note: with_note(
                                     n.map_or_else(|| also.clone(), |n| format!("{n} · {also}")),
                                 ),
-                            ),
+                                format,
+                            },
                             quit @ Resolved::Quit { .. } => quit,
                         }
                     }
@@ -345,7 +351,9 @@ pub(crate) fn resolve(
                         continue;
                     }
                     Some(Choice::Recover) => {
-                        let note = match j.adopt(&a, doc, fmt) {
+                        // The journal's format is the buffer's; the disk file's may be older (#1286).
+                        let format = a.format.unwrap_or(fmt);
+                        let note = match j.adopt(&a, doc, format) {
                             Ok(_) => "recovered unsaved changes (:w to save)".to_string(),
                             Err(e) => {
                                 crate::log::recover_failed("adopt", doc, Some(&a.journal), &e);
@@ -356,7 +364,12 @@ pub(crate) fn resolve(
                                 )
                             }
                         };
-                        open(Some(a.recovered.clone()), false, Some(note))
+                        Resolved::Open {
+                            recovered: Some(a.recovered.clone()),
+                            read_only: false,
+                            note: Some(note),
+                            format: Some(format),
+                        }
                     }
                     Some(c @ (Choice::EditDisk | Choice::Discard)) => {
                         let what = if c == Choice::EditDisk {
@@ -623,6 +636,7 @@ mod tests {
             }),
             journal: PathBuf::from("/s/j.rj"),
             legacy: false,
+            format: None,
         }
     }
 

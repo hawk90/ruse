@@ -310,7 +310,13 @@ input, because the core had no origin for it. Schema **1.1** adds them, strictly
 - **Header** and **Meta** file format: a `format_ext u8` after the existing fields: bit 0 `'endoffile'`, bit 1
   `'binary'`, bit 2 `'fileformat'` mac. The 1.0 `format` byte is unchanged; for mac it says LF.
 - **Edit**: an `origin_full u8` after the inverse list, the origin with codes 1.0 lacks (6 = `Reload`, the new
-  `TransactionOrigin` variant). The 1.0 `origin` byte keeps the nearest 1.0 code (`UserInput` for `Reload`).
+  `TransactionOrigin` variant). The 1.0 `origin` byte keeps the nearest 1.0 code (`UserInput` for `Reload`),
+  and a reader falls back to it for an `origin_full` it does not know, so a later minor may add origins the
+  same way.
+
+**Recovery uses it.** The offer carries the format the journal last recorded (its Header, then any format
+Meta), and recovering takes it over the disk file's, so a buffer whose file is gone, or whose format changed
+in the session, comes back with its own. A legacy RJS0 offer has none and keeps the disk file's.
 
 **Compatibility.** A 1.1 reader reads a 1.0 record (no appended bytes) with the 1.0 meaning: no
 `'endoffile'`, no `'binary'`, LF or CRLF, and the 1.0 origin. A 1.0 reader reads a 1.1 record as a newer minor:
@@ -318,7 +324,9 @@ it skips the appended bytes using `payload_len`, so it recovers the text, with t
 migration is needed and no record is rewritten. The trace format gains the origin token `reload`
 (`editor/ex_cmd.rs`); an older build rejects a trace line that carries it, which is acceptable because traces
 are test and debugging artifacts, not user data. Tests: `rj01::tests::schema_1_1_keeps_endoffile_binary_mac_and_a_reload_origin`,
-`a_1_0_record_reads_with_the_1_0_defaults`, `a_1_0_reader_still_replays_a_1_1_record`, and the existing
+`a_1_0_record_reads_with_the_1_0_defaults`, `a_1_1_record_is_the_1_0_record_plus_appended_bytes`,
+`a_1_0_reader_still_replays_a_1_1_record`, `journal::tests::the_offer_carries_the_format_the_journal_recorded`,
+and the existing
 `a_newer_minor_version_with_extra_payload_is_read`.
 
 ## Slices

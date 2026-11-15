@@ -621,6 +621,7 @@ impl Journals {
                 owner: r.header.map(|h| h.owner),
                 journal: journal.to_path_buf(),
                 legacy: false,
+                format: r.format,
             })),
             _ => Recovery::None,
         }
@@ -642,6 +643,7 @@ impl Journals {
                     owner: None,
                     journal: sidecar,
                     legacy: true,
+                    format: None,
                 })),
                 // Nothing in it to recover: archive it so it stops sitting in the project tree.
                 Some(_) => {
@@ -1957,6 +1959,41 @@ mod tests {
     }
 
     /// `r` takes the journal over as this process's own, and archives one of another name it came from.
+    #[test]
+    fn the_offer_carries_the_format_the_journal_recorded() {
+        // #1286: a recovered buffer gets back `'endoffile'`, `'binary'` and mac from its journal, not
+        // from the disk file (gone, or read before the format changed in the session).
+        let (j, dir) = scratch("offer-format");
+        let file = dir.join("f.txt");
+        fs::write(&file, b"disk\n").unwrap();
+        let fmt = FileFormat {
+            eol: super::super::encoding::Eol::Cr,
+            eof: true,
+            binary: true,
+            ..FileFormat::default()
+        };
+        let mut d = opened(b"disk\n");
+        let mut w = Writer::new(&j, &file, fmt);
+        let step = |w: &mut Writer, d: &mut Document| {
+            w.absorb(d, fmt, Instant::now());
+            w.flush(d).unwrap();
+        };
+        step(&mut w, &mut d);
+        insert(&mut d, 0, "x");
+        step(&mut w, &mut d);
+        assert_eq!(available(j.offer(Some(&file), b"disk\n")).format, Some(fmt));
+        // A format changed in the session is journaled as a Meta and offered too.
+        let unix = FileFormat::default();
+        w.absorb(&mut d, unix, Instant::now());
+        insert(&mut d, 0, "y");
+        w.absorb(&mut d, unix, Instant::now());
+        w.flush(&d).unwrap();
+        assert_eq!(
+            available(j.offer(Some(&file), b"disk\n")).format,
+            Some(unix)
+        );
+    }
+
     #[test]
     fn adopting_a_recovery_owns_the_journal() {
         let (j, dir) = scratch("adopt");
