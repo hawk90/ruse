@@ -85,6 +85,15 @@ jobs:
       - name: fuzz targets compile
         if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo check --locked --manifest-path fuzz/Cargo.toml --all-targets --target-dir target/fuzz-check --config 'build.rustflags=["--cfg","fuzzing"]'
+      # License, banned-crate and source policy (#1311, deny.toml). Advisories stay with cargo-audit in
+      # security.yml; this check reads only Cargo.lock and crate metadata.
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-deny@0.18.9
+      - name: license and bans check
+        if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
+        run: cargo deny check licenses bans sources
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: ./.github/actions/setup-python-yaml
       - name: dependency direction + cycle check

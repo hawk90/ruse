@@ -219,8 +219,8 @@ update the baseline from a developer's personal machine).
 
 Plugins + remote workspaces widen the supply-chain surface. Required:
 
-- Dependabot/Renovate; CodeQL (or equivalent static analysis); Rust advisory (`cargo-audit`); license check;
-  secret scan.
+- Dependabot/Renovate; CodeQL (or equivalent static analysis); Rust advisory (`cargo-audit`); license and
+  banned-crate check (`cargo deny`, policy in `deny.toml`, the `cargo-deny` verify step); secret scan.
 - Plugin package signing; GitHub Actions pinned by SHA; least-privilege `GITHUB_TOKEN`; deploy secrets
   blocked on fork PRs.
 - **AI-based workflows:** never feed untrusted text (PR/issue bodies) into an agent and then wire its output
