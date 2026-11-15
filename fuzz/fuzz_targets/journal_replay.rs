@@ -6,5 +6,7 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let _ = ruse_tui::persist::journal::replay_bytes(data);
+    // Both journal kinds: a Checkpoint base needs no disk text; a DiskBase checks it against `disk`.
+    let _ = ruse_tui::persist::rj01::replay(data, None);
+    let _ = ruse_tui::persist::rj01::replay(data, Some(data));
 });
