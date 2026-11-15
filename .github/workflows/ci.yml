@@ -78,6 +78,13 @@ jobs:
           cargo install --locked --debug --path apps/tui --root "$root" --target-dir target
           "$root/bin/ruse" --version | grep -E '^ruse [0-9]+\.[0-9]+\.[0-9]+'
           "$root/bin/ruse" --help | grep '^usage: ruse' >/dev/null
+      # Fuzz targets compile (#1330): `fuzz/` is its own workspace, so the steps above never build it, and
+      # the targets drifted from the API unnoticed until the weekly fuzz run. A check on stable with the
+      # `fuzzing` cfg the targets need; its own target dir, because the cfg would invalidate the shared one.
+      - name: fuzz targets compile
+        if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
+        env: { RUSTFLAGS: "--cfg fuzzing" }
+        run: cargo check --locked --manifest-path fuzz/Cargo.toml --all-targets --target-dir target/fuzz-check
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: ./.github/actions/setup-python-yaml
       - name: dependency direction + cycle check

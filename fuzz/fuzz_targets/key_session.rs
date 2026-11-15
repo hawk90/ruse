@@ -82,8 +82,9 @@ fuzz_target!(|data: &[u8]| {
         let (bytes, cursor) = (ws.focused().doc.bytes(), ws.focused().view.cursor());
         let s = std::str::from_utf8(bytes).expect("the buffer stays valid UTF-8");
         assert!(
-            s.is_char_boundary(cursor),
-            "cursor {cursor} off a char boundary"
+            s.is_char_boundary(cursor.0),
+            "cursor {} off a char boundary",
+            cursor.0
         );
         // The walker over the workspace and the session's folds (#906, #819).
         h.assert_invariants();

@@ -31,7 +31,7 @@ fuzz_target!(|data: &[u8]| {
                     let pos = usize::from(*p) % (len + 1);
                     let del = usize::from(p.wrapping_mul(7) >> 5).min(len - pos);
                     let ins = ["", "x", "\n", "가", "yz\n"][(usize::from(*p) + i) % 5];
-                    edits.push(Edit::replace(pos, del, ins.as_bytes().to_vec()));
+                    edits.push(Edit::replace(BytePos(pos), del, ins.as_bytes().to_vec()));
                 }
                 if let Ok(list) = EditList::new(edits) {
                     if k & 0x80 != 0 {
