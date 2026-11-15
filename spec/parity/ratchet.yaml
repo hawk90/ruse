@@ -8,8 +8,9 @@ version: 1
 buckets:
   config_untraced: 8      # config-schema keys with `derives_from: []`      (see gov prd_cfg)
   cap_untraced: 18        # capabilities with an empty `prd:`               (see gov capability_coverage)
-  legacy_in_prd: 58       # hand-authored parity IDs still cited by the PRD (see gov parity_discovery)
-  backlog: 77             # entries in spec/parity-backlog.yaml
+  legacy_in_prd: 56       # hand-authored parity IDs still cited by the PRD (see gov parity_discovery)
+  backlog: 78             # entries in spec/parity-backlog.yaml
   review_machine_unwired: 137   # review axes with method=machine and no automated_by (see gov review_coverage)
 # raised — <bucket>: why this change raises its ceiling (an issue or PR reference and one sentence).
-raised: {}
+raised:
+  backlog: "#1315 moves COM-7 and EMACS-EDIT-1 out of F-001's legacy trace into the backlog, so legacy_in_prd falls by two as backlog rises by one"
