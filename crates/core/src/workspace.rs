@@ -1503,12 +1503,9 @@ impl Workspace {
     #[must_use]
     pub fn resolve_addr(&self, addr: LineAddr) -> Option<usize> {
         let p = self.focused();
-        let b = p.doc.bytes();
-        let nlines = if b.is_empty() {
-            0
-        } else {
-            crate::editor::line_count(p.doc)
-        };
+        // The emptied buffer has its one line (Vim's `ML_EMPTY`: `line('$')` is 1), so `:put` goes after it
+        // and `:0put` before it (RFC-0024 §5).
+        let nlines = crate::editor::line_count(p.doc).max(1);
         addr.insert_index(p.doc.line_of(p.view.cursor()), nlines)
     }
 

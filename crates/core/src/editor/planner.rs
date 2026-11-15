@@ -1934,6 +1934,8 @@ fn replace_selection_with(
     match st.view.anchor {
         Some(anchor) => {
             let (s, e) = selection_range(b, anchor, cur, line);
+            // The last line's newline is never part of it (nvim: `gHX` on the last line leaves `"def"`).
+            let e = e.min(crate::motion::content_end(b)).max(s);
             if s < e {
                 // The removed span fills the unnamed register, as a Visual/Normal delete does —
                 // charwise even for whole lines, as nvim stores it (`gHX` leaves `"abc\n"`, `v`).

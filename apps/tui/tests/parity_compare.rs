@@ -20,9 +20,9 @@ mod parity_ratchet;
 /// engine and the Ex dispatch, exactly as the binary routes them (#895). The oracle runs `-u NONE`, so the
 /// session uses Vim's factory search case, not ruse's shipped smartcase.
 ///
-/// A fixture whose last line is empty is opened as a newline-TERMINATED buffer (`["", "", ""]` is
-/// `"\n\n\n"`): joined bare, its empty last line would be the slot after a final newline, which is not a
-/// line in ruse's model (as in Vim's), so the buffer would have a line fewer than nvim's (#1089).
+/// A fixture's lines open as a line-terminated buffer, as a file is read (RFC-0024): every line ends in a
+/// newline, so `["hello"]` is `"hello\n"` and `["", "", ""]` is `"\n\n\n"` (#1089), and the buffer has
+/// nvim's lines.
 ///
 /// A fixture with a `file` opens its buffer under that name, so the file's type applies (#1142).
 ///
@@ -40,9 +40,9 @@ fn drive_ruse(lines: &[String], keys: &str, file: Option<&str>, raw: bool) -> He
     h
 }
 
-/// Whether the fixture opens as a terminated buffer (see [`drive_ruse`]).
+/// Whether the fixture opens as a terminated buffer (see [`drive_ruse`]): every fixture with a line does.
 fn terminated(lines: &[String]) -> bool {
-    lines.len() > 1 && lines.last().is_some_and(String::is_empty)
+    !lines.is_empty()
 }
 
 fn ruse_input(lines: &[String]) -> String {

@@ -61,22 +61,22 @@ fn g_minus_reaches_a_state_a_new_edit_branched_away() {
     apply_command(&mut st, &Command::EnterInsert);
     apply_command(&mut st, &Command::InsertChar('X'));
     apply_command(&mut st, &Command::EnterNormal);
-    assert_eq!(st.as_str(), Some("X"));
+    assert_eq!(st.as_str(), Some("X\n"));
     // Undo back to empty, then a DIFFERENT change: insert "Y". "X" is now on an abandoned branch.
     apply_command(&mut st, &Command::Undo);
     apply_command(&mut st, &Command::EnterInsert);
     apply_command(&mut st, &Command::InsertChar('Y'));
     apply_command(&mut st, &Command::EnterNormal);
-    assert_eq!(st.as_str(), Some("Y"));
+    assert_eq!(st.as_str(), Some("Y\n"));
     // `u`/redo could never reach "X" (it is off the current lineage) — `g-` can.
     apply_command(&mut st, &Command::UndoOlder);
     assert_eq!(
         st.as_str(),
-        Some("X"),
+        Some("X\n"),
         "g- crosses into the branched-away state"
     );
     apply_command(&mut st, &Command::UndoNewer);
-    assert_eq!(st.as_str(), Some("Y"), "g+ returns along creation order");
+    assert_eq!(st.as_str(), Some("Y\n"), "g+ returns along creation order");
 }
 
 #[test]

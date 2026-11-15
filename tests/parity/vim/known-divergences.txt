@@ -4,9 +4,6 @@
 # Add a line only for a new fixture ruse does not match yet, never to silence a regression.
 
 sc_mark_last_change_exact # `. past a shortened line rests on the newline (#728)
-sc_edge_empty_dd # the oracle's set_lines({''}) is one real empty line, where dd takes "\n"; ruse's empty buffer is nvim's "--No lines in buffer--" (an empty file, every line deleted), where dd fails (#906)
-sc_edge_empty_Vd # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lines buffer (#906)
-sc_edge_empty_ex_delete # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lines buffer (#906)
 ik_js_brace_object_value # nvim's JavaScript indent script (GetJavascriptIndent, not cindent) gives a line after `var o =` one shiftwidth of operator continuation; ruse's node depth keeps 0 (#1163)
 
 # #900: the observables the oracle records since #900 (mode, marks, visualmode). Each line names
@@ -71,7 +68,6 @@ v_pat_nl_marks # #900: an Ex edit (:d, :s, :!, :v) sets no '[ '] '. marks
 nl_fail_unknown_in_visual # #900: :normal leaves Visual mode when a key fails; nvim stays in Visual
 mk_visual_delete_adds_head # #900: a named mark lands elsewhere after a Visual delete or :m
 mk_visual_delete_clamps # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char; a named mark lands elsewhere after a Visual delete or :m
-mk_move_last_line_onto_empty # #900: a named mark lands elsewhere after a Visual delete or :m
 mk_o_text_on_empty_line # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 mk_O_text_on_empty_line # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 vb_C_bs_joins_the_top_line_up # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)

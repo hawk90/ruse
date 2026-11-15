@@ -92,7 +92,11 @@ fn translated_insert_changes_document_and_dot_repeat_replays_the_translation() {
     step(&mut e, &mut st, ctrl('^'));
     step(&mut e, &mut st, k('a'));
     step(&mut e, &mut st, esc());
-    assert_eq!(text(&st), "б", "the mapped key must insert its translation");
+    assert_eq!(
+        text(&st),
+        "б\n",
+        "the mapped key must insert its translation"
+    );
 
     // `.` replays the change: another 'б', never the raw 'a'.
     step(&mut e, &mut st, k('.'));
@@ -222,7 +226,7 @@ fn typed_lmap_command_wires_the_map() {
     step(&mut e, &mut st, esc());
     assert_eq!(
         text(&st),
-        "b",
+        "b\n",
         "a typed `:lmap a b` must make `a` insert `b`"
     );
 }
@@ -247,7 +251,7 @@ fn lunmap_removes_a_mapping() {
     step(&mut e, &mut st, esc());
     assert_eq!(
         text(&st),
-        "a",
+        "a\n",
         "after :lunmap, `a` must insert the literal `a`"
     );
 }

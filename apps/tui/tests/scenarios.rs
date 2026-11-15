@@ -29,7 +29,7 @@ fn session(initial: &str) -> Headless {
 fn insert_session_is_a_single_undo_group() {
     let mut h = session("");
     feed_str(&mut h, "ihello<Esc>");
-    assert_eq!(buf(&h), "hello");
+    assert_eq!(buf(&h), "hello\n");
     feed_str(&mut h, "u");
     assert_eq!(buf(&h), "", "the whole insert session undoes as one group");
 }
@@ -340,11 +340,11 @@ fn branched_history() -> Headless {
     feed_str(&mut h, "g-g-"); // rewind chronologically to "a"
     assert_eq!(
         buf(&h),
-        "a",
+        "a\n",
         "precondition: two g- from \"cba\" reach \"a\""
     );
     feed_str(&mut h, "iX<Esc>"); // "Xa"  (node D — forks a new branch off A)
-    assert_eq!(buf(&h), "Xa", "precondition: the fork produced \"Xa\"");
+    assert_eq!(buf(&h), "Xa\n", "precondition: the fork produced \"Xa\"");
     h
 }
 
@@ -362,7 +362,7 @@ fn earlier_later_match_repeated_g_minus_g_plus() {
     feed_str(&mut h_key, "g-g-g-");
     assert_eq!(
         buf(&h_ex),
-        "a",
+        "a\n",
         "`:earlier 3` walks three chronological states back to \"a\""
     );
     assert_eq!(
@@ -376,7 +376,7 @@ fn earlier_later_match_repeated_g_minus_g_plus() {
     feed_str(&mut h_key, "g+g+");
     assert_eq!(
         buf(&h_ex),
-        "cba",
+        "cba\n",
         "`:later 2` walks two chronological states forward to \"cba\""
     );
     assert_eq!(
@@ -388,9 +388,9 @@ fn earlier_later_match_repeated_g_minus_g_plus() {
     // The `ea` / `lat` abbreviations drive the identical path.
     let mut h_ab = branched_history();
     feed_str(&mut h_ab, ":ea 3<CR>");
-    assert_eq!(buf(&h_ab), "a", "`:ea` is `:earlier`");
+    assert_eq!(buf(&h_ab), "a\n", "`:ea` is `:earlier`");
     feed_str(&mut h_ab, ":lat 1<CR>");
-    assert_eq!(buf(&h_ab), "ba", "`:lat` is `:later`");
+    assert_eq!(buf(&h_ab), "ba\n", "`:lat` is `:later`");
 }
 
 #[test]
@@ -409,13 +409,13 @@ fn earlier_later_clamp_at_undo_tree_bounds() {
     feed_str(&mut h, ":later 999<CR>");
     assert_eq!(
         buf(&h),
-        "Xa",
+        "Xa\n",
         "`:later` past the tip clamps at the newest state"
     );
 
     // A bare `:earlier` (no count) is exactly one step, matching Vim's default of 1.
     feed_str(&mut h, ":earlier<CR>");
-    assert_eq!(buf(&h), "cba", "bare `:earlier` steps one state back");
+    assert_eq!(buf(&h), "cba\n", "bare `:earlier` steps one state back");
 }
 
 #[test]
@@ -424,18 +424,18 @@ fn ctrl_v_numeric_char_entry_end_to_end() {
     // Decimal `065` -> A.
     let mut h = session("");
     feed_str(&mut h, "i<C-v>065<Esc>");
-    assert_eq!(buf(&h), "A");
+    assert_eq!(buf(&h), "A\n");
 
     // Hex byte, BMP unicode, and full unicode all land as the resolved UTF-8 char.
     let mut h = session("");
     feed_str(&mut h, "i<C-v>x41<C-v>u00e9<Esc>");
-    assert_eq!(buf(&h), "Aé");
+    assert_eq!(buf(&h), "Aé\n");
 
     // Early terminator: `9` is a valid decimal digit, `x` is not — so char 9 (a tab) is inserted AND
     // the `x` is processed as normal input. Both reach the Workspace via `Feed::Replay`.
     let mut h = session("");
     feed_str(&mut h, "i<C-v>9x<Esc>");
-    assert_eq!(buf(&h), "\tx");
+    assert_eq!(buf(&h), "\tx\n");
 }
 
 #[test]
@@ -443,9 +443,9 @@ fn ctrl_v_resolved_char_is_dot_repeatable() {
     // The resolved char is a plain `InsertChar`, so the insert session records it and `.` replays it.
     let mut h = session("");
     feed_str(&mut h, "i<C-v>065<Esc>"); // insert "A"
-    assert_eq!(buf(&h), "A");
+    assert_eq!(buf(&h), "A\n");
     feed_str(&mut h, "."); // repeat the whole insert session
-    assert_eq!(buf(&h), "AA", "`.` replays the CTRL-V-resolved char");
+    assert_eq!(buf(&h), "AA\n", "`.` replays the CTRL-V-resolved char");
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -465,7 +465,7 @@ fn count_insert_i_repeats_typed_text() {
     // nvim: `3ihello<Esc>` on an empty line -> "hellohellohello", caret on the last 'o' (col 14).
     let mut h = session("");
     feed_str(&mut h, "3ihello<Esc>");
-    assert_eq!(buf(&h), "hellohellohello");
+    assert_eq!(buf(&h), "hellohellohello\n");
     assert_eq!(cur(&h), 14, "caret rests on the last inserted char");
 }
 
@@ -523,7 +523,7 @@ fn count_insert_is_one_undo_group() {
     // The whole `3ihello` collapses into a SINGLE undo unit — one `u` removes all three copies.
     let mut h = session("");
     feed_str(&mut h, "3ihello<Esc>");
-    assert_eq!(buf(&h), "hellohellohello");
+    assert_eq!(buf(&h), "hellohellohello\n");
     feed_str(&mut h, "u");
     assert_eq!(
         buf(&h),
@@ -581,12 +581,12 @@ fn count_one_insert_is_unchanged() {
     // Esc still leaves a single, normally-grouped insert session that `.` repeats once.
     let mut h = session("");
     feed_str(&mut h, "ihello<Esc>");
-    assert_eq!(buf(&h), "hello");
+    assert_eq!(buf(&h), "hello\n");
     assert_eq!(cur(&h), 4);
     feed_str(&mut h, ".");
     assert_eq!(
         buf(&h),
-        "hellhelloo",
+        "hellhelloo\n",
         "`.` repeats the single insert once at the caret"
     );
 }
@@ -600,7 +600,7 @@ fn insert_ctrl_a_reinserts_last_insert_text() {
     let mut h = session("");
     feed_str(&mut h, "ihello<Esc>");
     feed_str(&mut h, "A<C-a><Esc>");
-    assert_eq!(buf(&h), "hellohello");
+    assert_eq!(buf(&h), "hellohello\n");
 }
 
 #[test]
@@ -609,9 +609,9 @@ fn insert_ctrl_a_replays_resulting_text_after_backspace() {
     // a space and re-inserts "helo" -> "helo helo". C-A replays the keystrokes (backspace and all).
     let mut h = session("");
     feed_str(&mut h, "ihel<BS>lo<Esc>");
-    assert_eq!(buf(&h), "helo");
+    assert_eq!(buf(&h), "helo\n");
     feed_str(&mut h, "A <C-a><Esc>");
-    assert_eq!(buf(&h), "helo helo");
+    assert_eq!(buf(&h), "helo helo\n");
 }
 
 #[test]
@@ -621,7 +621,7 @@ fn insert_ctrl_at_reinserts_then_leaves_insert() {
     let mut h = session("");
     feed_str(&mut h, "ihello<Esc>");
     feed_str(&mut h, "A<C-@>x");
-    assert_eq!(buf(&h), "hellohell");
+    assert_eq!(buf(&h), "hellohell\n");
     assert_eq!(h.mode(), ruse_core::Mode::Normal);
 }
 
@@ -632,7 +632,7 @@ fn insert_ctrl_a_survives_a_non_insert_change() {
     let mut h = session("");
     feed_str(&mut h, "ihello<Esc>");
     feed_str(&mut h, "0xA<C-a><Esc>");
-    assert_eq!(buf(&h), "ellohello");
+    assert_eq!(buf(&h), "ellohello\n");
 }
 
 #[test]
@@ -643,9 +643,9 @@ fn insert_ctrl_a_output_rolls_into_the_session_text() {
     let mut h = session("");
     feed_str(&mut h, "ihello<Esc>");
     feed_str(&mut h, "iworld<C-a><Esc>");
-    assert_eq!(buf(&h), "hellworldhelloo");
+    assert_eq!(buf(&h), "hellworldhelloo\n");
     feed_str(&mut h, "A<C-a><Esc>");
-    assert_eq!(buf(&h), "hellworldhellooworldhello");
+    assert_eq!(buf(&h), "hellworldhellooworldhello\n");
 }
 
 #[test]
@@ -654,7 +654,7 @@ fn insert_ctrl_a_with_no_previous_insert_is_a_noop() {
     // text yet") and stays in Insert.
     let mut h = session("");
     feed_str(&mut h, "i<C-a>abc<Esc>");
-    assert_eq!(buf(&h), "abc");
+    assert_eq!(buf(&h), "abc\n");
 }
 
 #[test]
@@ -904,27 +904,31 @@ fn insert_ctrl_y_dot_repeats_the_literal_char() {
 fn insert_ctrl_n_completes_and_cycles_forward() {
     let mut h = session("foo food\nfoobar\nfoo");
     feed_str(&mut h, "Gofo"); // open a fresh last line, type the base "fo"
-    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfo");
+    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfo\n");
     feed_str(&mut h, "<C-n>");
-    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfoo", "first C-N → 'foo'");
-    feed_str(&mut h, "<C-n>");
-    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfood", "next C-N → 'food'");
+    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfoo\n", "first C-N → 'foo'");
     feed_str(&mut h, "<C-n>");
     assert_eq!(
         buf(&h),
-        "foo food\nfoobar\nfoo\nfoobar",
+        "foo food\nfoobar\nfoo\nfood\n",
+        "next C-N → 'food'"
+    );
+    feed_str(&mut h, "<C-n>");
+    assert_eq!(
+        buf(&h),
+        "foo food\nfoobar\nfoo\nfoobar\n",
         "next C-N → 'foobar'"
     );
     feed_str(&mut h, "<C-n>");
     assert_eq!(
         buf(&h),
-        "foo food\nfoobar\nfoo\nfo",
+        "foo food\nfoobar\nfoo\nfo\n",
         "next C-N → back to original"
     );
     feed_str(&mut h, "<C-n>");
     assert_eq!(
         buf(&h),
-        "foo food\nfoobar\nfoo\nfoo",
+        "foo food\nfoobar\nfoo\nfoo\n",
         "next C-N wraps → 'foo'"
     );
 }
@@ -938,17 +942,21 @@ fn insert_ctrl_p_cycles_backward() {
     feed_str(&mut h, "<C-p>");
     assert_eq!(
         buf(&h),
-        "foo food\nfoobar\nfoo\nfoobar",
+        "foo food\nfoobar\nfoo\nfoobar\n",
         "first C-P → last candidate"
     );
     feed_str(&mut h, "<C-p>");
-    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfood", "next C-P → 'food'");
+    assert_eq!(
+        buf(&h),
+        "foo food\nfoobar\nfoo\nfood\n",
+        "next C-P → 'food'"
+    );
     feed_str(&mut h, "<C-p>");
-    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfoo", "next C-P → 'foo'");
+    assert_eq!(buf(&h), "foo food\nfoobar\nfoo\nfoo\n", "next C-P → 'foo'");
     feed_str(&mut h, "<C-p>");
     assert_eq!(
         buf(&h),
-        "foo food\nfoobar\nfoo\nfo",
+        "foo food\nfoobar\nfoo\nfo\n",
         "next C-P → back to original"
     );
 }
@@ -988,13 +996,13 @@ fn insert_ctrl_n_no_match_is_noop() {
     feed_str(&mut h, "<C-n>");
     assert_eq!(
         buf(&h),
-        "foo bar\nbaz\nzz",
+        "foo bar\nbaz\nzz\n",
         "no candidate → nothing changes"
     );
     feed_str(&mut h, "x<Esc>"); // still in Insert: typing continues normally
     assert_eq!(
         buf(&h),
-        "foo bar\nbaz\nzzx",
+        "foo bar\nbaz\nzzx\n",
         "completion was inert, insert continues"
     );
 }
@@ -1008,11 +1016,11 @@ fn insert_ctrl_n_includes_exact_match() {
     feed_str(&mut h, "<C-n>");
     assert_eq!(
         buf(&h),
-        "foo foobar\nfoo",
+        "foo foobar\nfoo\n",
         "first C-N → 'foo' (exact match candidate)"
     );
     feed_str(&mut h, "<C-n>");
-    assert_eq!(buf(&h), "foo foobar\nfoobar", "next C-N → 'foobar'");
+    assert_eq!(buf(&h), "foo foobar\nfoobar\n", "next C-N → 'foobar'");
 }
 
 /// Any other key ACCEPTS the current candidate and ends completion; the accepted text stays and typing
@@ -1024,7 +1032,7 @@ fn insert_ctrl_n_accept_on_other_key() {
     feed_str(&mut h, "<C-n>!<Esc>"); // complete → foobar, then '!' accepts + appends
     assert_eq!(
         buf(&h),
-        "foobar foobaz\nfoobar!",
+        "foobar foobaz\nfoobar!\n",
         "other key accepts the candidate"
     );
 }
@@ -1035,11 +1043,11 @@ fn insert_ctrl_n_accept_on_other_key() {
 fn insert_ctrl_n_dot_repeats_literal_text() {
     let mut h = session("foobar foobaz");
     feed_str(&mut h, "ofo<C-n><Esc>"); // line 2 -> "foobar" (last change = open+type+complete)
-    assert_eq!(buf(&h), "foobar foobaz\nfoobar");
+    assert_eq!(buf(&h), "foobar foobaz\nfoobar\n");
     feed_str(&mut h, "."); // repeat: open a line, type "fo", apply the recorded completion
     assert_eq!(
         buf(&h),
-        "foobar foobaz\nfoobar\nfoobar",
+        "foobar foobaz\nfoobar\nfoobar\n",
         "`.` replays the accepted completion text literally"
     );
 }

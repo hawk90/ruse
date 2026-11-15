@@ -845,7 +845,8 @@ fn block_from(b: &[u8], top: usize, bot: usize, lo: usize, hi: usize, ts: Tabs) 
     loop {
         rows.push(block_row(b, rs, lo, hi, ts));
         let le = line_end(b, rs);
-        if rs >= bot_ls || le >= b.len() {
+        // The last line's end is the buffer's: the slot after its newline is no row (RFC-0024).
+        if rs >= bot_ls || le >= crate::motion::content_end(b) {
             break;
         }
         rs = le + 1;

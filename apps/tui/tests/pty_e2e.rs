@@ -402,8 +402,8 @@ fn signal_journals_every_modified_buffer() {
 
 /// #1085: an emptied buffer saves as an empty file (nvim v0.12.6 writes 0 bytes for `ggdG:w`, its
 /// `ML_EMPTY` buffer), while one empty line saves as `\n`. #1107: text typed into it keeps the file's
-/// `'endofline'`, so `ia` gives `a\n`, as in nvim. Not pinned: `o` there gives `\n` where nvim writes
-/// `\n\n`, because the bytes `\n` cannot tell one empty line from an emptied buffer plus `o`.
+/// `'endofline'`, so `ia` gives `a\n`, as in nvim. #730 (RFC-0024 §5): `o` there keeps the emptied buffer's
+/// one line, so it writes `\n\n`, as nvim does.
 #[test]
 fn an_emptied_buffer_saves_like_nvim() {
     assert_eq!(edit_and_save(b"a\nb\n", "ggdG"), b"");
@@ -411,6 +411,7 @@ fn an_emptied_buffer_saves_like_nvim() {
     assert_eq!(edit_and_save(b"a", "dd"), b"");
     assert_eq!(edit_and_save(b"a\nb\n", "ggdGia"), b"a\n");
     assert_eq!(edit_and_save(b"", "ihello"), b"hello\n");
+    assert_eq!(edit_and_save(b"a\nb\n", "ggdGo"), b"\n\n");
 }
 
 /// #1107: a file opened without a final newline keeps it missing (F-008 byte-preserve), as nvim does with
