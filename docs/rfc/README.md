@@ -65,6 +65,7 @@ row says which decision did it. Each RFC is in exactly one row below.
 | [RFC-0021](accepted/RFC-0021-workspace-config-boundary.md) | The workspace config boundary (keymaps, `.ruse/` ownership, content-bound trust) | D-062 | | [config-model](../design/config-model.md) |
 | [RFC-0022](accepted/RFC-0022-typed-positions-at-the-core-boundary.md) | Positions are typed at the core boundary | D-063 | | [reference-invariants](../invariants/reference-invariants.md) |
 | [RFC-0023](accepted/RFC-0023-per-transaction-journal.md) | Per-transaction recovery journal (RJ01), state-dir location, three-way recovery | D-064 | | [persistence-and-recovery](../design/persistence-and-recovery.md) |
+| [RFC-0024](accepted/RFC-0024-line-terminated-text.md) | Line-terminated buffer text, the final newline as `'endofline'` | D-065 | | [persistence-and-recovery](../design/persistence-and-recovery.md) |
 
 ## Rejected (do-not-relitigate)
 

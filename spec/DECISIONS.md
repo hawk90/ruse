@@ -1039,3 +1039,18 @@ related:
 - Refs: [RFC-0023](../docs/rfc/accepted/RFC-0023-per-transaction-journal.md), D-005, D-034, RFC-0007,
   INV-ADDITIVE, INV-TXN, INV-UNDO, INV-BUFFER-KIND, INV-TRUST-1, PERSIST-003/005/007/009, F-008, #932, #933,
   #938.
+
+## D-065 — Buffer text is line-terminated; the final newline is 'endofline' · decided (design)
+- **Decision:** A Document's text is empty or ends in `\n` (INV-TEXT-TERMINATED). The file's final newline is
+  only `'endofline'`, set on read and applied when text leaves the buffer (write, pipe, filter, byte counts);
+  the Document keeps the final newline through every transaction; the empty text is Vim's `ML_EMPTY` buffer,
+  which a command that adds lines treats as one empty line. Full design:
+  [RFC-0024](../docs/rfc/accepted/RFC-0024-line-terminated-text.md). Approved by the maintainer 2026-11-15,
+  with the Emacs profile's final-newline behaviour left to its own design (RFC-0024 Trade-offs).
+- **Reason:** #1298/#730: bytes that mirror the file cannot tell one empty line from two without a final
+  newline, or an emptied buffer from one empty line. Vim keeps lines plus `'eol'`; the line-terminated text is
+  that model with every core line function unchanged (43 sites), where a flag in the line model would touch all.
+- **Re-evaluate if:** the Emacs profile's done-decision (F-012) needs the final newline as undoable text; a
+  second frontend or a remote peer must share the text byte-for-byte with the file.
+- Refs: [RFC-0024](../docs/rfc/accepted/RFC-0024-line-terminated-text.md), D-005, D-064, RFC-0007, INV-TXN,
+  INV-UNDO, F-001, F-008, F-012, #730, #1298.
