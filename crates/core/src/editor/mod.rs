@@ -1940,6 +1940,8 @@ impl EditorState {
             // buffer is not modified; the marks the command set on it go back to the start with it.
             self.with_tracked(|doc, t| doc.retract_tracked(t));
             self.view.cursor = 0;
+            // What the command stored on the line (the Insert start of `gi`, …) comes back into the text.
+            self.settle_offsets();
         }
         if block {
             self.doc.end_undo_block();

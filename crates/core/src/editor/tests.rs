@@ -2962,6 +2962,21 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn gi_on_the_emptied_buffer_keeps_its_offsets_inside_the_text() {
+        // #1364: `gi` changes no text, so the emptied line it ran on is taken back, with what it stored.
+        let mut st = EditorState::new(Vec::new());
+        for cmd in [
+            Command::EnterInsert,
+            Command::EnterNormal,
+            Command::InsertAtLastInsert,
+        ] {
+            apply_command(&mut st, &cmd);
+            st.assert_invariants();
+        }
+        assert_eq!(text(&st), "");
+    }
+
+    #[test]
     fn apply_edits_on_the_emptied_buffer_end_with_its_newline() {
         // RFC-0024 §5: the edits address the empty text; what they give it is line-terminated.
         for (ins, want) in [("abc", "abc\n"), ("abc\n", "abc\n"), ("a\nb", "a\nb\n")] {
