@@ -59,18 +59,18 @@ pub(crate) fn with_ff(fmt: FileFormat, opts: FileOpts) -> FileFormat {
 pub(crate) fn write_report(
     name: &str,
     new: bool,
-    source: &[u8],
-    disk: usize,
+    written: &crate::app::write_opts::Encoded,
     verb: &str,
     fmt: FileFormat,
 ) -> String {
+    let (source, disk) = (&written.source[..], written.disk.len());
     // nvim's `[New][noeol][dos]` (`msg_add_fileformat`): the tags follow each other after one blank; a
     // binary write uses no fileformat.
     let mut tags = String::new();
     if new {
         tags.push_str("[New]");
     }
-    if !(source.is_empty() || source.last() == Some(&b'\n')) {
+    if written.noeol {
         tags.push_str("[noeol]");
     }
     if !fmt.binary && fmt.eol != Eol::Lf {
@@ -81,7 +81,13 @@ pub(crate) fn write_report(
     } else {
         format!(" {tags}")
     };
-    format!("\"{name}\"{tags} {}L, {disk}B {verb}", line_count(source))
+    // nvim counts the emptied buffer as no lines (`0L, 0B`), though it shows one empty line.
+    let lines = if source.is_empty() {
+        0
+    } else {
+        line_count(source)
+    };
+    format!("\"{name}\"{tags} {lines}L, {disk}B {verb}")
 }
 
 /// Why a write could not be made. `Display` is the status line: nvim's message where it has one.
@@ -123,6 +129,21 @@ fn covers_whole(ws: &Workspace, range: SubRange) -> bool {
     resolve_normal_range(ws, range) == (1, total)
 }
 
+/// Whether `range` includes the focused buffer's last line, so its text ends as the file does (RFC-0024 §3:
+/// a range that stops earlier is whole lines, each with its newline).
+pub(crate) fn reaches_last_line(ws: &Workspace, range: SubRange) -> bool {
+    resolve_normal_range(ws, range).1 >= line_count(ws.focused().doc.bytes())
+}
+
+/// The format a write of buffer `id` uses: its file's, else the one `:w` would give a buffer with no file.
+pub(crate) fn buffer_format(files: &Files, id: DocumentId) -> FileFormat {
+    files
+        .get(&id)
+        .map(|bf| bf.fmt)
+        .or_else(|| files.write.nofile_fmt.get(&id).copied())
+        .unwrap_or_else(|| files.write.new_format())
+}
+
 /// Write `disk` to the buffer `id`'s own file and mark it saved; the status is the write report. `force`
 /// (`:w!`) writes a read-only file.
 #[allow(clippy::too_many_arguments)]
@@ -130,13 +151,13 @@ fn write_own(
     ws: &mut Workspace,
     id: DocumentId,
     path: &Path,
-    source: &[u8],
-    disk: &[u8],
+    enc: &crate::app::write_opts::Encoded,
     mark_saved: bool,
     force: bool,
     fmt: FileFormat,
     w: &WriteOptions,
 ) -> Result<String, FileError> {
+    let disk = &enc.disk[..];
     // A file changed by another program since ruse read or saved it is not overwritten without `!`.
     if !force && persist::disk::conflicts(path) {
         return Err(FileError::ChangedOnDisk);
@@ -151,14 +172,10 @@ fn write_own(
                 persist::journal::clear(Some(path)); // saved bytes are durable — nothing to recover
             }
             crate::log::save(path, disk.len());
-            Ok(write_report(
-                &path.display().to_string(),
-                false,
-                source,
-                disk.len(),
-                "written",
-                fmt,
-            ) + &written.note())
+            Ok(
+                write_report(&path.display().to_string(), false, enc, "written", fmt)
+                    + &written.note(),
+            )
         }
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
@@ -270,6 +287,7 @@ pub(crate) fn ex_write(
         }
     }
     let whole = spec.range.is_none_or(|r| covers_whole(ws, r));
+    let to_end = spec.range.is_none_or(|r| reaches_last_line(ws, r));
     let text = match spec.range {
         Some(r) if !whole => ws.range_text(r).unwrap_or_default(),
         _ => ws.focused().doc.bytes().to_vec(),
@@ -285,7 +303,16 @@ pub(crate) fn ex_write(
     );
     let result = match &spec.target {
         // `:w !cmd`: the lines go to the command's stdin; its output is shown and the buffer is untouched.
-        WriteTarget::Command(cmd) => match crate::shell::filter(cmd, &text) {
+        // A range that reaches the last line ends as the file does (nvim: `:w !od -c` of `a\nb` without
+        // `'eol'` sends three bytes, RFC-0024 §3).
+        WriteTarget::Command(cmd) => match crate::shell::filter(
+            cmd,
+            if to_end {
+                w.lines_out(&text, fmt)
+            } else {
+                &text
+            },
+        ) {
             Ok(out) => {
                 let shown = out.text.trim_end_matches('\n').replace('\n', " | ");
                 Ok(match out.failure() {
@@ -305,7 +332,11 @@ pub(crate) fn ex_write(
                     return false;
                 }
             };
-            let (source, disk) = w.encode(&text, fmt);
+            let enc = if to_end {
+                w.encode(&text, fmt)
+            } else {
+                w.encode_lines(&text, fmt)
+            };
             // An append to the buffer's own file is ruse's own write, not a change on disk (#1221).
             let before = names_own(
                 files,
@@ -314,7 +345,7 @@ pub(crate) fn ex_write(
                 own.as_ref().map(|o| o.0.as_path()),
             )
             .then(|| persist::disk::check(&path));
-            match append_to(&path, &disk) {
+            match append_to(&path, &enc.disk) {
                 Ok(()) => {
                     if let Some(before) = before {
                         persist::disk::appended(&path, before);
@@ -322,8 +353,7 @@ pub(crate) fn ex_write(
                     Ok(write_report(
                         &path.display().to_string(),
                         false,
-                        &source,
-                        disk.len(),
+                        &enc,
                         "appended",
                         fmt,
                     ))
@@ -339,7 +369,12 @@ pub(crate) fn ex_write(
                     name.as_deref(),
                     own.as_ref().map(|o| o.0.as_path()),
                 );
-            let (source, disk) = w.encode(&text, fmt);
+            let enc = if to_end {
+                w.encode(&text, fmt)
+            } else {
+                w.encode_lines(&text, fmt)
+            };
+            let disk = &enc.disk;
             if to_own {
                 match &own {
                     None => Err("E32: No file name".to_string()),
@@ -350,9 +385,8 @@ pub(crate) fn ex_write(
                         Err("E140: Use ! to write partial buffer".to_string())
                     }
                     Some((path, _)) => {
-                        let written =
-                            write_own(ws, id, path, &source, &disk, whole, spec.bang, fmt, w)
-                                .map_err(|e| e.to_string());
+                        let written = write_own(ws, id, path, &enc, whole, spec.bang, fmt, w)
+                            .map_err(|e| e.to_string());
                         // `:w!` over a 'readonly' buffer's own file resets 'readonly' (nvim, without
                         // 'cpoptions' `Z`).
                         if written.is_ok() && spec.bang {
@@ -368,20 +402,19 @@ pub(crate) fn ex_write(
                 let target = PathBuf::from(name);
                 match check_other_target(files, id, &target, name, spec.bang, w.writeany) {
                     Err(e) => Err(e.to_string()),
-                    Ok(new) => match write_file(w, &target, &disk, spec.bang) {
+                    Ok(new) => match write_file(w, &target, disk, spec.bang) {
                         Ok(written) => {
                             // A buffer with no file takes the name it is first written to (Vim's
                             // 'cpoptions' `F`); written whole, it is then saved.
                             if own.is_none() {
-                                persist::disk::saw(&target, &disk);
+                                persist::disk::saw(&target, disk);
                                 adopt_file(ws, files, highlighters, id, name, fmt);
                                 if whole {
                                     ws.focused_doc_mut().mark_saved();
                                     persist::journal::clear(Some(&target));
                                 }
                             }
-                            Ok(write_report(name, new, &source, disk.len(), "written", fmt)
-                                + &written.note())
+                            Ok(write_report(name, new, &enc, "written", fmt) + &written.note())
                         }
                         Err(e) => Err(e.to_string()),
                     },
@@ -447,19 +480,18 @@ pub(crate) fn ex_saveas(
             .unwrap_or_else(|| w.new_format()),
         opts,
     );
-    let (source, disk) = w.encode(ws.focused().doc.bytes(), fmt);
-    match write_file(w, &target, &disk, bang) {
+    let enc = w.encode(ws.focused().doc.bytes(), fmt);
+    let disk = &enc.disk;
+    match write_file(w, &target, disk, bang) {
         Ok(written) => {
-            persist::disk::saw(&target, &disk);
+            persist::disk::saw(&target, disk);
             if let Some((old, _)) = &own {
                 persist::journal::clear(Some(old)); // the changes are on disk under the new name
             }
             adopt_file(ws, files, highlighters, id, name, fmt);
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(&target));
-            status.echo(
-                write_report(name, new, &source, disk.len(), "written", fmt) + &written.note(),
-            );
+            status.echo(write_report(name, new, &enc, "written", fmt) + &written.note());
             true
         }
         Err(e) => {
@@ -502,8 +534,8 @@ pub(crate) fn ex_write_all(
         let Some(text) = ws.document(b.id).map(|d| d.bytes().to_vec()) else {
             continue;
         };
-        let (source, disk) = w.encode(&text, bf.fmt);
-        match write_own(ws, b.id, &bf.path, &source, &disk, true, false, bf.fmt, w) {
+        let enc = w.encode(&text, bf.fmt);
+        match write_own(ws, b.id, &bf.path, &enc, true, false, bf.fmt, w) {
             Ok(msg) => last = Some(msg),
             Err(e) => error = Some(e.to_string()),
         }
@@ -532,7 +564,7 @@ pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: F
         Ok(raw) => {
             persist::disk::saw(&path, &raw);
             persist::backup::visited(&path);
-            let fmt = with_ff(files.write.read_format(&raw), opts);
+            let fmt = with_ff(files.write.read_format(&raw), opts).reading(&raw);
             ws.reload_focused(fmt.to_buffer(&raw));
             // The changes were thrown away on purpose (`:e!`); a journal of them must not be offered on
             // the next start (#862). Neovim's swap file then holds the re-read text, which offers nothing.

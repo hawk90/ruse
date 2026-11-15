@@ -69,6 +69,33 @@ fn replay_applies_trace_and_prints_the_resulting_document() {
     );
 }
 
+/// RFC-0024: a trace recorded now starts from the line-terminated buffer (`hello\n` for a file `hello`
+/// without a final newline), and replays to what `:w` writes: still no final newline. The fixture above
+/// starts from `hello`, as a trace recorded before RFC-0024 does, and replays too.
+#[test]
+fn a_trace_from_a_line_terminated_buffer_replays_and_writes_without_the_newline() {
+    let mut cmds = vec![Command::MoveLineEnd, Command::EnterInsert];
+    cmds.extend("!".chars().map(Command::InsertChar));
+    cmds.push(Command::EnterNormal);
+    let file = file_with("noeol.txt", b"hello");
+    let trace = file_with(
+        "noeol.trace",
+        Trace::record(b"hello\n", cmds).to_text().as_bytes(),
+    );
+    let out = ruse()
+        .arg("--replay")
+        .arg(&trace)
+        .arg(&file)
+        .output()
+        .expect("spawn ruse --replay");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.stdout, b"hello!");
+}
+
 #[test]
 fn replay_is_deterministic_across_runs() {
     // DET-1: the SAME log against the SAME base reproduces the identical final bytes, run after run.

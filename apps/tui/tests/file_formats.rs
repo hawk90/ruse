@@ -101,7 +101,8 @@ fn binary_reads_and_writes_the_bytes_as_they_are() {
     let mut h = vim(&f);
     h.keys(":e ++bin<CR>");
     assert_eq!(h.keys(":set bin?<CR>").status(), "  binary");
-    assert_eq!(h.bytes(), b"\xEF\xBB\xBFa\r\nb");
+    // The buffer is line-terminated (RFC-0024); the missing final newline is `'endofline'`.
+    assert_eq!(h.bytes(), b"\xEF\xBB\xBFa\r\nb\n");
     // `x` deletes the BOM, which is one character, as in nvim.
     h.keys("gg0x:w<CR>");
     assert_eq!(read(&f), b"a\r\nb");
@@ -141,4 +142,87 @@ fn emacs_large_file_warning() {
     find(&mut h);
     h.keys("l");
     assert!(h.text().starts_with("a\r\na\r\n"), "literally: CR kept");
+}
+
+/// #1298, RFC-0024: a file without a final newline reads line-terminated, so `x` on the only character of
+/// its last line (`\nh`) leaves two empty lines, as nvim v0.12.6 (`'nofixeol'`): the cursor stays on the
+/// second, `k` and `G` move between them, and `:w` writes `\n` (one newline joins the two lines).
+#[test]
+fn emptying_the_last_line_of_a_file_without_a_final_newline_keeps_the_line() {
+    let f = scratch("e.txt", b"\nh");
+    let mut h = vim(&f);
+    h.keys("Gx");
+    assert_eq!(h.bytes(), b"\n\n");
+    assert_eq!(h.cursor_row_col(), (2, 0), "1-based: the second line");
+    h.keys("g<C-g>");
+    assert_eq!(
+        h.status(),
+        "Col 1 of 0; Line 2 of 2; Word 0 of 0; Char 2 of 2; Byte 2 of 1"
+    );
+    assert_eq!(h.keys("k").cursor_row_col(), (1, 0));
+    assert_eq!(h.keys("G").cursor_row_col(), (2, 0));
+    h.keys(":w<CR>");
+    assert_eq!(read(&f), b"\n");
+    assert!(
+        h.status().contains("[noeol] 2L, 1B written"),
+        "{}",
+        h.status()
+    );
+}
+
+/// RFC-0024: `'endofline'` is the file's final newline, whatever the buffer text: `:set noeol` on a file
+/// that had one drops it on the next write, and `:set eol` adds it back (nvim v0.12.6, `'nofixeol'`).
+#[test]
+fn set_noeol_drops_the_final_newline_on_the_next_write() {
+    let f = scratch("n.txt", b"a\n");
+    let mut h = vim(&f);
+    h.keys(":set noeol<CR>:w<CR>");
+    assert_eq!(read(&f), b"a");
+    h.keys(":set eol<CR>:w<CR>");
+    assert_eq!(read(&f), b"a\n");
+}
+
+/// RFC-0024 §3: text that leaves a buffer without `'endofline'` ends as the file does. nvim v0.12.6
+/// (`'nofixeol'`) on `a\nb`: `:1w` writes the whole line `a\n`, `:2w` writes `b`, `:w !cat` and the
+/// filter `:%!cat` send three bytes, so the filter gives the same text back.
+#[test]
+fn ranges_pipes_and_filters_end_as_the_file_does() {
+    let f = scratch("r.txt", b"a\nb");
+    let first = scratch("first.txt", b"");
+    let last = scratch("last.txt", b"");
+    let mut h = vim(&f);
+    h.keys(&format!(":1w! {}<CR>", first.display()));
+    assert_eq!(read(&first), b"a\n");
+    h.keys(&format!(":2w! {}<CR>", last.display()));
+    assert_eq!(read(&last), b"b");
+    h.keys(":w !wc -c<CR>");
+    assert!(h.status().trim_start().starts_with('3'), "{}", h.status());
+    h.keys(":%!cat<CR>:w<CR>");
+    assert_eq!(read(&f), b"a\nb");
+    // What the filter reads, counted: three bytes, for `:%!` and for `gq` through 'formatprg'.
+    let mut h = vim(&f);
+    h.keys(":%!wc -c<CR>");
+    assert_eq!(String::from_utf8_lossy(&h.bytes()).trim(), "3");
+    let mut h = vim(&f);
+    h.keys(":set formatprg=wc\\ -c<CR>gqG");
+    assert_eq!(String::from_utf8_lossy(&h.bytes()).trim(), "3");
+}
+
+/// A read whose format is forced reads `'endofline'` anew (RFC-0024): `:e ++ff=mac` of a classic Mac file
+/// that `fileformats=unix,dos` first read as unix keeps its last CR, and `++bin` of a DOS file ending in
+/// CTRL-Z sees no final newline after it; an unedited `:w` writes each back byte for byte.
+#[test]
+fn a_forced_read_format_keeps_the_files_final_line_break() {
+    let f = scratch("m.txt", b"a\rb\r");
+    let mut h = vim(&f);
+    h.keys(":e ++ff=mac<CR>");
+    assert_eq!(h.bytes(), b"a\nb\n");
+    h.keys(":w!<CR>");
+    assert_eq!(read(&f), b"a\rb\r");
+    let f = scratch("z.txt", b"a\r\n\x1a");
+    let mut h = vim(&f);
+    h.keys(":e ++bin<CR>");
+    assert_eq!(h.bytes(), b"a\r\n\x1a\n");
+    h.keys(":w!<CR>");
+    assert_eq!(read(&f), b"a\r\n\x1a");
 }

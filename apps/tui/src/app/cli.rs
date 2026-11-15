@@ -296,7 +296,16 @@ fn replay(args: &[String]) -> ExitCode {
     // The file is read as the editor opens it (F-008): the trace starts from the buffer, without the BOM
     // and with LF line endings, and the result is printed as `:w` writes it back (#690).
     let fmt = FileFormat::detect(&raw);
-    match trace.replay(&fmt.to_buffer(&raw)) {
+    let buffer = fmt.to_buffer(&raw);
+    let replayed = match trace.replay(&buffer) {
+        // A trace recorded before RFC-0024 started from a file without a final newline as it was, not
+        // line-terminated: it hashes that text, and replays from it.
+        Err(ruse_core::TraceError::HashMismatch { .. }) if fmt.decode(&raw) != buffer => {
+            trace.replay(&fmt.decode(&raw))
+        }
+        r => r,
+    };
+    match replayed {
         Ok(st) => {
             let _ = io::stdout().write_all(&disk_image(fmt, st.bytes(), &Default::default()));
             ExitCode::SUCCESS

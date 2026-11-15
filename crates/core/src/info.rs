@@ -214,9 +214,16 @@ fn col_print(col: usize, vcol: usize) -> String {
 ///
 /// Virtual columns are the cells the renderer paints (#1251): a wide glyph is two, a byte that is not UTF-8
 /// four (`<ff>`), a control char two (`^A`). The cursor's is its char's first cell, a `<Tab>`'s last (nvim's
-/// `w_virtcol` in Normal mode). `tabstop` sizes `<Tab>` expansion.
+/// `w_virtcol` in Normal mode). `tabstop` sizes `<Tab>` expansion. `final_newline` is whether the file
+/// ends in a newline when written (`'endofline'` or `'fixeol'`, RFC-0024): nvim counts the bytes a write
+/// gives, so `a\nb` is `Byte 1 of 4` with it and `of 3` without.
 #[must_use]
-pub fn cursor_pos_info(bytes: &[u8], cursor: BytePos, tabstop: impl Into<Tabs>) -> String {
+pub fn cursor_pos_info(
+    bytes: &[u8],
+    cursor: BytePos,
+    tabstop: impl Into<Tabs>,
+    final_newline: bool,
+) -> String {
     let tabstop: Tabs = tabstop.into();
     let cursor = cursor.0;
     if line_count(bytes) == 0 {
@@ -265,11 +272,13 @@ pub fn cursor_pos_info(bytes: &[u8], cursor: BytePos, tabstop: impl Into<Tabs>) 
         word_cursor = word_count;
     }
 
-    let noeol = usize::from(bytes.last() != Some(&b'\n'));
+    // nvim counts one newline per line in the chars, the last line's too, but the bytes as a write gives
+    // them: without `final_newline` the last line's newline is not a byte (`bytes` is not empty here).
+    let content = bytes.strip_suffix(b"\n").unwrap_or(bytes);
     let byte_cursor = cursor + 1;
-    let byte_total = bytes.len() + noeol;
+    let byte_total = content.len() + usize::from(final_newline);
     let char_cursor = char_count(&bytes[..cursor]) + 1;
-    let char_total = char_count(bytes) + noeol;
+    let char_total = char_count(content) + 1;
 
     let head = format!(
         "Col {} of {}; Line {cur_line} of {total_lines}; Word {word_cursor} of {word_count}",
@@ -405,7 +414,7 @@ mod tests {
         let b = b"Hello world foo\nsecond line here\nthird line\nfourth\nfifth line end\n";
         let cursor = b"Hello world foo\nsecond line here\nth".len(); // byte 35 -> 'i'
         assert_eq!(
-            cursor_pos_info(b, BytePos(cursor), 8),
+            cursor_pos_info(b, BytePos(cursor), 8, true),
             "Col 3 of 10; Line 3 of 5; Word 7 of 12; Byte 36 of 66"
         );
     }
@@ -414,7 +423,7 @@ mod tests {
     fn cursor_pos_words_are_whitespace_separated() {
         // Punctuation does NOT split words (unlike `w`): "foo,bar baz.qux" is 2 words.
         assert_eq!(
-            cursor_pos_info(b"foo,bar baz.qux\n", BytePos(0), 8),
+            cursor_pos_info(b"foo,bar baz.qux\n", BytePos(0), 8, true),
             "Col 1 of 15; Line 1 of 1; Word 1 of 2; Byte 1 of 16"
         );
     }
@@ -422,7 +431,7 @@ mod tests {
     #[test]
     fn cursor_pos_word_zero_on_leading_whitespace() {
         assert_eq!(
-            cursor_pos_info(b"  leading spaces\n", BytePos(0), 8),
+            cursor_pos_info(b"  leading spaces\n", BytePos(0), 8, true),
             "Col 1 of 16; Line 1 of 1; Word 0 of 2; Byte 1 of 17"
         );
     }
@@ -431,7 +440,7 @@ mod tests {
     fn cursor_pos_tab_expands_vcol() {
         // "a\tbc": Col byte 2 (the Tab) sits at vcol 8; the line is 4 bytes / 10 vcols.
         assert_eq!(
-            cursor_pos_info(b"a\tbc\n", BytePos(1), 8),
+            cursor_pos_info(b"a\tbc\n", BytePos(1), 8, true),
             "Col 2-8 of 4-10; Line 1 of 1; Word 1 of 2; Byte 2 of 5"
         );
     }
@@ -440,7 +449,7 @@ mod tests {
     fn cursor_pos_multibyte_adds_char_field() {
         // "café x": cursor on the space (byte 5). Char field appears; Col shows byte-vcol.
         assert_eq!(
-            cursor_pos_info("café x\n".as_bytes(), BytePos(5), 8),
+            cursor_pos_info("café x\n".as_bytes(), BytePos(5), 8, true),
             "Col 6-5 of 7-6; Line 1 of 1; Word 1 of 2; Char 5 of 7; Byte 6 of 8"
         );
     }
@@ -449,7 +458,7 @@ mod tests {
     fn cursor_pos_noeol_counts_phantom_eol() {
         // "abc" (no trailing newline): total bytes count the phantom EOL -> 4.
         assert_eq!(
-            cursor_pos_info(b"abc", BytePos(2), 8),
+            cursor_pos_info(b"abc", BytePos(2), 8, true),
             "Col 3 of 3; Line 1 of 1; Word 1 of 1; Byte 3 of 4"
         );
     }
@@ -457,7 +466,7 @@ mod tests {
     #[test]
     fn cursor_pos_empty_buffer() {
         assert_eq!(
-            cursor_pos_info(b"", BytePos(0), 8),
+            cursor_pos_info(b"", BytePos(0), 8, true),
             "--No lines in buffer--"
         );
     }
@@ -476,29 +485,51 @@ mod tests {
     /// mark after it as none (the whole messages are nvim v0.12.6's).
     #[test]
     fn cursor_pos_counts_an_invalid_byte_as_one_char() {
-        let info = cursor_pos_info(b"a\xff\xc3\xa9\xffb\nq\n", BytePos(5), 8);
+        let info = cursor_pos_info(b"a\xff\xc3\xa9\xffb\nq\n", BytePos(5), 8, true);
         assert_eq!(
             info,
             "Col 6-11 of 6-11; Line 1 of 2; Word 1 of 2; Char 5 of 8; Byte 6 of 9"
         );
-        let info = cursor_pos_info(b"\xea\xb0ab\nq\n", BytePos(2), 8);
+        let info = cursor_pos_info(b"\xea\xb0ab\nq\n", BytePos(2), 8, true);
         assert!(info.ends_with("Word 1 of 2; Byte 3 of 7"), "{info}");
-        let info = cursor_pos_info(b"x\x80\xcc\x81y z\nq\n", BytePos(4), 8);
+        let info = cursor_pos_info(b"x\x80\xcc\x81y z\nq\n", BytePos(4), 8, true);
         assert_eq!(
             info,
             "Col 5-6 of 7-8; Line 1 of 2; Word 1 of 3; Char 4 of 9; Byte 5 of 10"
         );
-        let info = cursor_pos_info(b"\xff\xffabc", BytePos(3), 8);
+        let info = cursor_pos_info(b"\xff\xffabc", BytePos(3), 8, true);
         assert_eq!(
             info,
             "Col 4-10 of 5-11; Line 1 of 1; Word 1 of 1; Byte 4 of 6"
         );
-        let info = cursor_pos_info(b"\xffa", BytePos(0), 8);
+        let info = cursor_pos_info(b"\xffa", BytePos(0), 8, true);
         assert_eq!(info, "Col 1 of 2-5; Line 1 of 1; Word 1 of 1; Byte 1 of 3");
-        let info = cursor_pos_info("中ab".as_bytes(), BytePos(3), 8);
+        let info = cursor_pos_info("中ab".as_bytes(), BytePos(3), 8, true);
         assert_eq!(
             info,
             "Col 4-3 of 5-4; Line 1 of 1; Word 1 of 1; Char 2 of 4; Byte 4 of 6"
+        );
+    }
+
+    /// nvim v0.12.6 with `'nofixeol'` (RFC-0024, #1298): the bytes follow the written final newline, the
+    /// chars count every line's newline, and `\nh` after `Gx` is two empty lines with the cursor on the second.
+    #[test]
+    fn counts_follow_the_written_final_newline_as_nvim() {
+        assert_eq!(
+            cursor_pos_info(b"\n\n", BytePos(1), 8, false),
+            "Col 1 of 0; Line 2 of 2; Word 0 of 0; Char 2 of 2; Byte 2 of 1"
+        );
+        assert_eq!(
+            cursor_pos_info(b"\n\n", BytePos(0), 8, false),
+            "Col 1 of 0; Line 1 of 2; Word 0 of 0; Char 1 of 2; Byte 1 of 1"
+        );
+        assert_eq!(
+            cursor_pos_info(b"a\nb\n", BytePos(2), 8, false),
+            "Col 1 of 1; Line 2 of 2; Word 2 of 2; Char 3 of 4; Byte 3 of 3"
+        );
+        assert_eq!(
+            cursor_pos_info(b"a\nb\n", BytePos(2), 8, true),
+            "Col 1 of 1; Line 2 of 2; Word 2 of 2; Byte 3 of 4"
         );
     }
 }

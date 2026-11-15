@@ -82,6 +82,15 @@ impl Default for FileFormat {
 
 const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
 
+/// `text` line-terminated (INV-TEXT-TERMINATED, RFC-0024): empty, or ending in `\n`. Every path that brings
+/// outside text in as a buffer's whole text ends here.
+pub fn terminated(mut text: Vec<u8>) -> Vec<u8> {
+    if !text.is_empty() && text.last() != Some(&b'\n') {
+        text.push(b'\n');
+    }
+    text
+}
+
 impl FileFormat {
     /// Read the style of the original file. Like Vim's `fileformats=unix,dos`, a file is CRLF only when
     /// every line break is `\r\n`; one bare `\n` makes it LF, with each `\r` kept as buffer text, so a save
@@ -125,15 +134,39 @@ impl FileFormat {
         };
         // nvim: a DOS file's last byte CTRL-Z is `'endoffile'`, not text.
         let eof = eol == Eol::Crlf && body.last() == Some(&CTRL_Z);
-        let body = if eof { &body[..body.len() - 1] } else { body };
-        let last = if eol == Eol::Cr { b'\r' } else { b'\n' };
-        let final_newline = body.is_empty() || body.last() == Some(&last);
         FileFormat {
             eol,
             bom,
-            final_newline,
+            final_newline: true,
             eof,
             binary: false,
+        }
+        .reading(raw)
+    }
+
+    /// `self` with `'endofline'` as `raw` read in this format ends: after the BOM and `'endoffile'`'s
+    /// CTRL-Z, the file's last byte is its line break (`\r` for mac, else `\n`), or the file is empty. A
+    /// read whose format is forced (`++ff=`, `++bin`, `find-file-literally`) calls it again, because the
+    /// buffer is line-terminated (RFC-0024) and a wrong flag would drop or add a byte on the next write.
+    #[must_use]
+    pub fn reading(self, raw: &[u8]) -> FileFormat {
+        let body = if !self.binary && self.bom && raw.starts_with(&BOM) {
+            &raw[BOM.len()..]
+        } else {
+            raw
+        };
+        let body = match body.split_last() {
+            Some((&CTRL_Z, rest)) if !self.binary && self.eof => rest,
+            _ => body,
+        };
+        let last = if !self.binary && self.eol == Eol::Cr {
+            b'\r'
+        } else {
+            b'\n'
+        };
+        FileFormat {
+            final_newline: body.is_empty() || body.last() == Some(&last),
+            ..self
         }
     }
 
@@ -143,15 +176,24 @@ impl FileFormat {
         FileFormat {
             eol: Eol::Lf,
             bom: false,
-            final_newline: raw.is_empty() || raw.ends_with(b"\n"),
+            final_newline: true,
             eof: false,
             binary: true,
         }
+        .reading(raw)
     }
 
     /// Normalise raw file bytes into clean editor bytes: drop the BOM, fold `\r\n` → `\n`. The
-    /// editor never sees `^M` or a BOM char; the style is remembered in `self` for save.
+    /// editor never sees `^M` or a BOM char; the style is remembered in `self` for save. The result is
+    /// line-terminated (INV-TEXT-TERMINATED, RFC-0024): a last line without a newline gets one, and
+    /// `'endofline'` (`final_newline`, from [`FileFormat::detect`]) remembers that the file had none.
     pub fn to_buffer(self, raw: &[u8]) -> Vec<u8> {
+        terminated(self.decode(raw))
+    }
+
+    /// [`FileFormat::to_buffer`] before the final newline is added: the buffer text a build before RFC-0024
+    /// started from, which a trace recorded then hashes (`ruse --replay`).
+    pub fn decode(self, raw: &[u8]) -> Vec<u8> {
         if self.binary {
             return raw.to_vec();
         }
@@ -193,9 +235,14 @@ impl FileFormat {
         FileFormat::detect(raw).to_buffer(raw)
     }
 
-    /// Restore the original style for writing to disk: re-expand `\n` → `\r\n` for a CRLF file and
-    /// re-prepend the BOM. The inverse of [`to_buffer`].
+    /// Restore the original style for writing to disk: drop the buffer's final newline without
+    /// `'endofline'`, re-expand `\n` → `\r\n` for a CRLF file and re-prepend the BOM. The inverse of
+    /// [`to_buffer`].
     pub fn to_disk(self, buffer: &[u8]) -> Vec<u8> {
+        let buffer = match buffer.strip_suffix(b"\n") {
+            Some(body) if !self.final_newline => body,
+            _ => buffer,
+        };
         if self.binary {
             return buffer.to_vec();
         }
@@ -236,14 +283,25 @@ mod tests {
         #[test]
         fn an_unmodified_buffer_writes_back_its_bytes(
             raw in proptest::collection::vec(
-                proptest::sample::select(b"a\r\n\r\n\xEF\xBB\xBF\x00\xFF".to_vec()), 0..24),
+                proptest::sample::select(b"a\r\n\r\n\xEF\xBB\xBF\x00\xFF\x1A".to_vec()), 0..24),
             bom in proptest::prelude::any::<bool>(),
+            ffs in proptest::sample::select(vec!["unix,dos", "unix,dos,mac", "mac", "dos", "unix"]),
         ) {
             let raw = if bom { [BOM.as_slice(), &raw].concat() } else { raw };
-            let fmt = FileFormat::detect(&raw);
-            let buffer = fmt.to_buffer(&raw);
-            proptest::prop_assert!(!fmt.final_newline || buffer.is_empty() || buffer.ends_with(b"\n"));
-            proptest::prop_assert_eq!(fmt.to_disk(&buffer), raw);
+            // Every read: detected under any 'fileformats', and `++bin`.
+            for fmt in [FileFormat::detect_with(&raw, ffs, Eol::Lf), FileFormat::binary(&raw)] {
+                let buffer = fmt.to_buffer(&raw);
+                // INV-TEXT-TERMINATED (RFC-0024): the buffer is empty or ends in a newline.
+                proptest::prop_assert!(buffer.is_empty() || buffer.ends_with(b"\n"), "{:?}", buffer);
+                // Byte for byte when the format was detected (several 'fileformats') or `++bin`; one forced
+                // format converts on write, as Vim's does. A mac read of a file with a bare `\n` cannot
+                // round-trip either, before RFC-0024 too: the buffer's `\n` is the line break, which a mac
+                // write turns into `\r` (Vim keeps such a byte as NUL).
+                let detected = fmt.binary || ffs.contains(',');
+                if detected && !(fmt.eol == Eol::Cr && !fmt.binary && raw.contains(&b'\n')) {
+                    proptest::prop_assert_eq!(fmt.to_disk(&buffer), raw.clone(), "{:?}", fmt);
+                }
+            }
         }
     }
 
@@ -254,7 +312,9 @@ mod tests {
         assert_eq!(fmt.eol, Eol::Crlf);
         assert!(!fmt.bom);
         let buf = fmt.to_buffer(raw);
-        assert_eq!(buf, b"one\ntwo\nthree"); // clean LF in the editor
+        // Clean LF in the editor, line-terminated (RFC-0024): the missing final newline is `'endofline'`.
+        assert!(!fmt.final_newline);
+        assert_eq!(buf, b"one\ntwo\nthree\n");
         assert_eq!(fmt.to_disk(&buf), raw); // exact original on save
     }
 
@@ -350,14 +410,15 @@ mod tests {
         );
     }
 
-    /// `'binary'`: the buffer is the file's bytes, BOM and CR included, and a write gives them back.
+    /// `'binary'`: the buffer is the file's bytes, BOM and CR included, and a write gives them back. Only
+    /// the missing final newline becomes `'endofline'`, as in any buffer (RFC-0024).
     #[test]
     fn binary_converts_nothing() {
         let raw = b"\xEF\xBB\xBFa\r\nb";
         let f = FileFormat::binary(raw);
         assert!(!f.final_newline);
-        assert_eq!(f.to_buffer(raw), raw);
-        assert_eq!(f.to_disk(raw), raw);
+        assert_eq!(f.to_buffer(raw), b"\xEF\xBB\xBFa\r\nb\n");
+        assert_eq!(f.to_disk(&f.to_buffer(raw)), raw);
     }
 
     /// nvim v0.12.6: a DOS file ending in CTRL-Z has `'endoffile'`; the byte is not text and comes back on
@@ -371,7 +432,11 @@ mod tests {
         assert_eq!(fmt.to_disk(&fmt.to_buffer(raw)), raw);
         let unix = FileFormat::detect(b"one\ntwo\n\x1a");
         assert!(!unix.eof && !unix.final_newline);
-        assert_eq!(unix.to_buffer(b"one\ntwo\n\x1a"), b"one\ntwo\n\x1a");
+        assert_eq!(unix.to_buffer(b"one\ntwo\n\x1a"), b"one\ntwo\n\x1a\n");
+        assert_eq!(
+            unix.to_disk(&unix.to_buffer(b"one\ntwo\n\x1a")),
+            b"one\ntwo\n\x1a"
+        );
     }
 
     /// #860: `:r` text is cleaned by its own format, so the target buffer's save adds exactly one `\r`.
