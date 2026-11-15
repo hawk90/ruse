@@ -71,6 +71,50 @@ pub(crate) mod viewport;
 
 pub use app::cli::run;
 
+/// A temp dir of one test: empty when made and removed when dropped, so no later run, even one whose
+/// process gets the same pid, sees its files (#1366). It derefs to its [`Path`](std::path::Path).
+#[cfg(test)]
+pub(crate) struct TestDir(std::path::PathBuf);
+
+#[cfg(test)]
+impl TestDir {
+    /// A fresh `ruse-{tag}-{pid}-{n}` under the OS temp dir.
+    pub(crate) fn new(tag: &str) -> TestDir {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let d = std::env::temp_dir().join(format!(
+            "ruse-{tag}-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).expect("create the test dir");
+        TestDir(d)
+    }
+}
+
+#[cfg(test)]
+impl std::ops::Deref for TestDir {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+#[cfg(test)]
+impl AsRef<std::path::Path> for TestDir {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// `n` proptest cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920), with the reject
 /// budget scaled alike so a filtering test does not abort a long run.
 #[cfg(test)]

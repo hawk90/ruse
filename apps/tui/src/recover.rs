@@ -155,10 +155,8 @@ mod tests {
     use crate::persist::journal::Journals;
 
     /// A journal directory of the test's own, never the user's state directory.
-    fn journals(tag: &str) -> (Journals, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("ruse-recover-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+    fn journals(tag: &str) -> (Journals, crate::TestDir) {
+        let dir = crate::TestDir::new(&format!("recover-{tag}"));
         (Journals::in_state_home(&dir.join("state")), dir)
     }
 

@@ -879,19 +879,8 @@ mod tests {
     use super::*;
     use std::io::Read;
 
-    fn tmpdir() -> PathBuf {
-        // A unique-enough dir under the OS temp root without external crates or Instant/random:
-        // the process id + a static counter keep concurrent test cases disjoint.
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static N: AtomicU32 = AtomicU32::new(0);
-        let mut d = std::env::temp_dir();
-        d.push(format!(
-            "ruse-atomic-{}-{}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&d).unwrap();
-        d
+    fn tmpdir() -> crate::TestDir {
+        crate::TestDir::new("atomic")
     }
 
     fn read(p: &Path) -> Vec<u8> {
@@ -946,7 +935,7 @@ mod tests {
         #[cfg(unix)]
         assert_eq!(
             take_synced_dirs(),
-            vec![dir.clone()],
+            vec![dir.to_path_buf()],
             "the rename is fsynced"
         );
     }
@@ -991,7 +980,7 @@ mod tests {
                 write(&f, b"new", false).unwrap_err()
             };
             assert!(
-                matches!(&e, SaveError::NotDurable { path, .. } if path == &dir),
+                matches!(&e, SaveError::NotDurable { path, .. } if **path == *dir),
                 "{step:?}: {e:?}"
             );
             assert!(e.to_string().starts_with("E667: Fsync failed"), "{e}");

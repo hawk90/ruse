@@ -1554,6 +1554,9 @@ mod dispatch_tests {
             std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ));
+        // The file outlives this helper, so no `TestDir` guard: a dir left by an earlier run of the
+        // same pid is emptied instead (#1366).
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(name);
         std::fs::write(&path, text).unwrap();

@@ -1440,10 +1440,8 @@ mod tests {
     use ruse_core::{BytePos, DocumentId, Edit, EditList, Transaction, TransactionOrigin};
 
     /// A state home of the test's own.
-    fn scratch(tag: &str) -> (Journals, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("ruse-journal-{tag}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+    fn scratch(tag: &str) -> (Journals, crate::TestDir) {
+        let dir = crate::TestDir::new(&format!("journal-{tag}"));
         (Journals::in_state_home(&dir.join("state")), dir)
     }
 

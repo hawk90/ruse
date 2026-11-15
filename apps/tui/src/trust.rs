@@ -265,8 +265,8 @@ impl TrustStore {
 mod tests {
     use super::*;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("ruse-trust-{}-{name}", std::process::id()));
+    fn scratch(name: &str) -> crate::TestDir {
+        let d = crate::TestDir::new(&format!("trust-{name}"));
         std::fs::create_dir_all(d.join("sub/deeper")).unwrap();
         d
     }
@@ -309,7 +309,7 @@ mod tests {
         let link = trusted.join("escape");
         let _ = std::fs::remove_file(&link);
         std::os::unix::fs::symlink(&other, &link).unwrap();
-        assert!(!is_trusted(&link, vec![trusted.clone()]));
+        assert!(!is_trusted(&link, vec![trusted.to_path_buf()]));
         let _ = std::fs::remove_dir_all(&trusted);
         let _ = std::fs::remove_dir_all(&other);
     }

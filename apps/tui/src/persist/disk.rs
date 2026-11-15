@@ -168,9 +168,7 @@ mod tests {
     /// The registry follows a read, a check and a save of one path.
     #[test]
     fn the_registry_tracks_reads_and_saves() {
-        let dir = std::env::temp_dir().join(format!("ruse-disk-reg-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = crate::TestDir::new("disk-reg");
         let f = dir.join("g.txt");
         assert_eq!(check(&f), State::Same, "never seen");
         fs::write(&f, b"one\n").unwrap();
@@ -195,9 +193,7 @@ mod tests {
     /// hide that change.
     #[test]
     fn an_own_append_is_not_a_change() {
-        let dir = std::env::temp_dir().join(format!("ruse-disk-app-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = crate::TestDir::new("disk-app");
         let f = dir.join("a.txt");
         fs::write(&f, b"one\n").unwrap();
         saw(&f, b"one\n");
@@ -215,9 +211,7 @@ mod tests {
 
     #[test]
     fn a_change_counts_and_a_touch_does_not() {
-        let dir = std::env::temp_dir().join(format!("ruse-disk-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = crate::TestDir::new("disk");
         let f = dir.join("f.txt");
         fs::write(&f, b"one\n").unwrap();
         let mut seen = Seen::of(&f, b"one\n");
