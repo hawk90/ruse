@@ -1098,4 +1098,180 @@ impl Session {
             None => status.error("E486: invalid copy"),
         }
     }
+
+    /// `:file` (#610): show the file information, rename the buffer, or remove its name. The old name
+    /// becomes the alternate file.
+    pub(super) fn ex_file(&mut self, cmd: crate::input::FileCmd) {
+        let Session {
+            ws,
+            files,
+            highlighters,
+            status,
+            alt_file,
+            ..
+        } = self;
+        let id = ws.focused_buffer();
+        let old = files.get(&id).map(|bf| bf.path.display().to_string());
+        match cmd {
+            crate::input::FileCmd::Info => {
+                if let Some(msg) = info_status(&Command::FileInfo, ws, true) {
+                    status.give(msg);
+                }
+            }
+            // The name is expanded with the other file arguments above.
+            crate::input::FileCmd::Rename(name) => {
+                let fmt = files.get(&id).map(|bf| bf.fmt).unwrap_or_default();
+                crate::app::file_cmds::adopt_file(ws, files, highlighters, id, &name, fmt);
+                if let Some(old) = old.filter(|o| *o != name) {
+                    *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
+                }
+            }
+            crate::input::FileCmd::Clear => {
+                files.remove(&id);
+                highlighters.remove(&id);
+                ws.clear_focused_buffer_name();
+                if let Some(old) = old {
+                    *alt_file = Some(crate::app::ex_more::AltFile::new(ws, old));
+                }
+            }
+        }
+    }
+
+    /// The directory is expanded with the other file arguments above.
+    pub(super) fn ex_cd(&mut self, dir: Option<String>) {
+        let Session {
+            ws,
+            files,
+            status,
+            prev_dir,
+            ..
+        } = self;
+        match crate::app::ex_more::cd_target(dir.as_deref(), prev_dir.as_deref()) {
+            Ok(target) => {
+                let shown = dir.as_deref().unwrap_or("~");
+                match crate::app::ex_more::change_dir(&target, shown, ws, files) {
+                    Ok(old) => *prev_dir = Some(old),
+                    Err(e) => status.error(e.to_string()),
+                }
+            }
+            Err(e) => status.error(e.to_string()),
+        }
+    }
+
+    /// `:find` / `:sfind` (#610): edit the file found in `'path'` (`.,,`), in a new window for `:sf`.
+    pub(super) fn ex_find(&mut self, split: bool, spec: EditSpec) -> Option<String> {
+        let Session {
+            ws,
+            files,
+            highlighters,
+            status,
+            ..
+        } = self;
+        let mut then_run = None;
+        let name = spec.file.clone().unwrap_or_default();
+        let current = files.get(&ws.focused_buffer()).map(|bf| bf.path.clone());
+        match crate::app::ex_more::find_in_path(&name, current.as_deref()) {
+            Some(found) => {
+                if split {
+                    ws.split(SplitDir::Horizontal);
+                }
+                let spec = EditSpec {
+                    file: Some(found),
+                    ..spec
+                };
+                if crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status) {
+                    then_run = spec
+                        .cmd
+                        .as_deref()
+                        .map(crate::app::file_cmds::plus_cmd_line);
+                }
+            }
+            None => status.error(format!("E345: Can't find file \"{name}\" in path")),
+        }
+        then_run
+    }
+
+    /// `:drop {file}` (#610): go to a window that shows the file, or edit it here.
+    pub(super) fn ex_drop(&mut self, spec: EditSpec) -> Option<String> {
+        let Session {
+            ws,
+            files,
+            highlighters,
+            status,
+            ..
+        } = self;
+        let mut then_run = None;
+        let name = spec.file.clone().unwrap_or_default();
+        let shown = crate::app::dispatch::buffer_for_path(files, std::path::Path::new(&name))
+            .and_then(|id| (0..ws.window_count()).find(|&i| ws.pane(i).doc.id() == id));
+        let opened = match shown {
+            Some(i) => {
+                ws.focus_window(i);
+                true
+            }
+            None => crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status),
+        };
+        if opened {
+            then_run = spec
+                .cmd
+                .as_deref()
+                .map(crate::app::file_cmds::plus_cmd_line);
+        }
+        then_run
+    }
+
+    /// `:e[!] [++ff] [+cmd] [{file}]` (F-007, #610): open a file into a buffer (shared with the file
+    /// picker), or re-read the focused buffer's own file, which unsaved changes block (`E37`) without `!`.
+    /// A `+cmd` runs once the file is open (after this dispatch, which holds the session's fields).
+    pub(super) fn ex_edit(&mut self, spec: EditSpec) -> Option<String> {
+        let Session {
+            ws,
+            files,
+            highlighters,
+            status,
+            ..
+        } = self;
+        let mut then_run = None;
+        if crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status) {
+            then_run = spec
+                .cmd
+                .as_deref()
+                .map(crate::app::file_cmds::plus_cmd_line);
+        }
+        then_run
+    }
+
+    /// `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
+    pub(super) fn ex_yank(&mut self, range: SubRange, reg: Option<char>) {
+        let Session {
+            ws,
+            recorded,
+            ui_opts,
+            status,
+            ..
+        } = self;
+        let (first, last) = ws.resolve_range(range);
+        let n = lines_outcome(&run_ex(ExCmd::Yank { first, last, reg }, ws, recorded));
+        give_report(status, report::yanked(n, false, reg, ui_opts.report));
+    }
+
+    /// `:=` (#609): the last line number of the range, or of the buffer.
+    pub(super) fn ex_line_number(&mut self, range: Option<SubRange>) {
+        let Session { ws, status, .. } = self;
+        let n = match range {
+            Some(r) => crate::app::dispatch::resolve_normal_range(ws, r).1,
+            None => crate::app::dispatch::line_count(ws.focused().doc.bytes()),
+        };
+        status.info(n.to_string());
+    }
+
+    /// `:only`.
+    pub(super) fn ex_only(&mut self) {
+        let Session { ws, status, .. } = self;
+        status.echo(match ws.only() {
+            0 => "already one window".into(),
+            1 => "1 window closed".into(),
+            n => format!("{n} windows closed"),
+        });
+    }
 }
