@@ -378,7 +378,12 @@ pub(crate) mod tests {
                 .with_target(false)
                 .with_max_level(tracing::Level::TRACE)
                 .finish();
-            tracing::subscriber::with_default(sub, f);
+            tracing::subscriber::with_default(sub, || {
+                // A callsite another test thread registered while no capture was listening cached that no one
+                // listens; with this subscriber the default here, recompute it so no event is dropped (#1371).
+                tracing::callsite::rebuild_interest_cache();
+                f();
+            });
             let bytes = cap.0.lock().expect("capture").clone();
             String::from_utf8_lossy(&bytes)
                 .lines()
