@@ -3198,6 +3198,16 @@ impl EditorState {
             .iter()
             .map(|(s, e, t)| Edit::replace(*s, e.0 - s.0, t.clone().into_bytes()))
             .collect();
+        // The cursor follows the edits as given: it stays before the newline added below.
+        let Ok(given) = EditList::new(es.clone()) else {
+            return false; // overlapping edits — refuse rather than corrupt the buffer
+        };
+        let cursor = crate::anchor::map_byte(
+            &given,
+            BytePos(self.view.cursor),
+            crate::anchor::Bias::After,
+        )
+        .0;
         // The edits address the bytes, so the emptied buffer's text is the empty text they were made
         // against; what they give it ends with the line's newline (RFC-0024 §5), as typing there would.
         if self.makes_the_emptied_line() {
@@ -3208,10 +3218,8 @@ impl EditorState {
             }
         }
         let Ok(list) = EditList::new(es) else {
-            return false; // overlapping edits — refuse rather than corrupt the buffer
+            return false;
         };
-        let cursor =
-            crate::anchor::map_byte(&list, BytePos(self.view.cursor), crate::anchor::Bias::After).0;
         let txn =
             Transaction::new(self.doc.revision(), list, origin).with_hint(GroupHint::BreakBefore);
         if self.apply_txn(txn).is_err() {

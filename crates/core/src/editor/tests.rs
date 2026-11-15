@@ -2972,6 +2972,15 @@ mod insert_entry_tests {
             ));
             assert_eq!(text(&st), want, "{ins:?}");
         }
+        // The cursor stays before the added newline: a completion accepted in Insert mode types on.
+        let mut st = EditorState::new(Vec::new());
+        apply_command(&mut st, &Command::EnterInsert);
+        st.apply_edits(
+            &[(crate::BytePos(0), crate::BytePos(0), "foo".to_string())],
+            crate::TransactionOrigin::Lsp,
+        );
+        apply_command(&mut st, &Command::InsertChar('x'));
+        assert_eq!(text(&st), "foox\n");
     }
 
     #[test]
