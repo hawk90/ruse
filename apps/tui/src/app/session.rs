@@ -5896,7 +5896,7 @@ pub(crate) fn run(
         || "the unnamed buffer".to_string(),
         |p| p.display().to_string(),
     );
-    let (recovered, read_only, status) = match crate::ui::recovery::resolve(
+    let (recovered, read_only, status, recovered_format) = match crate::ui::recovery::resolve(
         &mut out,
         offer,
         &shown,
@@ -5909,6 +5909,7 @@ pub(crate) fn run(
             recovered,
             read_only,
             note,
+            format,
         } => (
             recovered,
             read_only,
@@ -5916,10 +5917,13 @@ pub(crate) fn run(
                 || String::from("ruse — :q to quit"),
                 |n| format!("ruse — {n}"),
             ),
+            format,
         ),
         // The journal stays for the next start.
         crate::ui::recovery::Resolved::Quit { .. } => return Ok(()),
     };
+    // A recovered buffer takes the format its journal recorded over the disk file's (#1286).
+    let fmt = recovered_format.unwrap_or(fmt);
     let initial = disk;
 
     // The config layers (#614): machine, user, and the workspace's `.ruse/config.toml` when its trust record

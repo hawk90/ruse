@@ -524,11 +524,9 @@ fn decode_edit(c: &mut Cursor) -> Option<EditRecord> {
     };
     let forward = c.list()?;
     let inverse = c.list()?;
-    // 1.1: the full origin follows; a 1.0 record ends here and keeps its 1.0 origin.
-    let origin = match c.optional_u8() {
-        Some(b) => origin_from(b)?,
-        None => origin,
-    };
+    // 1.1: the full origin follows; a 1.0 record ends here and keeps its 1.0 origin. A code this build does
+    // not know (a newer minor's origin) also falls back to the 1.0 byte, which holds the nearest one.
+    let origin = c.optional_u8().and_then(origin_from).unwrap_or(origin);
     Some(EditRecord {
         meta: EditMeta { seq, timestamp_ms },
         base_revision,
@@ -1188,6 +1186,61 @@ mod tests {
             TransactionOrigin::UserInput,
             "1.0 had no reload origin"
         );
+    }
+
+    #[test]
+    fn a_1_1_record_is_the_1_0_record_plus_appended_bytes() {
+        // Every 1.1 record kind that gained a field, with the field removed, is a valid record that reads
+        // with the 1.0 meaning; with it, a 1.0 reader skips it as a newer minor's
+        // (a_newer_minor_version_with_extra_payload_is_read). So 1.1 changes no 1.0 byte (INV-ADDITIVE).
+        let lf = FileFormat {
+            eol: Eol::Lf,
+            bom: false,
+            final_newline: false,
+            eof: false,
+            binary: false,
+        };
+        let disk = Base::Disk {
+            len: 9,
+            sha256: sha256(b"disk text"),
+        };
+        for base in [Base::Checkpoint, disk] {
+            let mut h = header(base);
+            h.format = mac_eof_binary();
+            let mut j = Vec::new();
+            encode_header(&mut j, &h).unwrap();
+            let Record::Header(old) = read_record(&as_v10(&j, 0, 1), 0).unwrap().0 else {
+                panic!()
+            };
+            assert_eq!((old.format, old.base), (lf, base));
+        }
+        let mut j = Vec::new();
+        encode_meta(&mut j, &Meta::Format(mac_eof_binary())).unwrap();
+        assert_eq!(
+            read_record(&as_v10(&j, 0, 1), 0).unwrap().0,
+            Record::Meta(Meta::Format(lf))
+        );
+        // An origin this build does not know (a newer minor's) falls back to the 1.0 byte.
+        let mut e = entry(1, vec![Edit::insert(BytePos(0), "x")], b"a");
+        e.origin = TransactionOrigin::Macro;
+        let mut j = Vec::new();
+        encode_edit(
+            &mut j,
+            EditMeta {
+                seq: 1,
+                timestamp_ms: 1,
+            },
+            &e,
+        )
+        .unwrap();
+        let len = le32(&j[8..12]) as usize;
+        j[HEAD + len - 1] = 200;
+        let crc = crc32c(&j[HEAD..HEAD + len]);
+        j[HEAD + len..HEAD + len + 4].copy_from_slice(&crc.to_le_bytes());
+        let Record::Edit(rec) = read_record(&j, 0).unwrap().0 else {
+            panic!()
+        };
+        assert_eq!(rec.origin, TransactionOrigin::Macro);
     }
 
     #[test]
