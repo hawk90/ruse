@@ -3,6 +3,7 @@ name = "ruse-tui"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+publish.workspace = true
 
 # `bench = false` on the lib+bin so `cargo bench` runs ONLY the criterion `[[bench]]` targets (which
 # accept criterion's flags), not the unit tests under the std harness (`ruse bench` relies on this).

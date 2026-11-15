@@ -3,6 +3,7 @@ name = "ruse-core"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+publish.workspace = true
 
 # Don't run the lib's unit tests under `cargo bench` — only the criterion `[[bench]]` targets, which
 # accept criterion's flags (`ruse bench` relies on this).

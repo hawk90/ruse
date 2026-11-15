@@ -16,3 +16,5 @@ exclude = ["fuzz"]
 edition = "2021"
 version = "0.0.0"
 license = "MIT"
+# Not published to crates.io; cargo-deny (deny.toml) relies on it for path dependencies.
+publish = false
