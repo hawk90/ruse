@@ -126,6 +126,9 @@ optional field**, and **ignored new capability** (the additive rules in
 
 ## 6. Release = Build separated from Publish
 
+**Status: not built.** `release.yml` fails on any `v*` tag on purpose (#887). The pipeline below is deferred
+to the first public release, milestone v1.0.0 (#926); §6.1 says what stands in for it until then.
+
 ```
 Tag → Release Build → all-platform binaries → test + sign + checksum → Draft Release → review → Publish
 ```
@@ -148,6 +151,18 @@ provenance.json
 ```
 
 Checksums are the baseline; because ruse has plugin + remote execution, ship **SBOM and provenance** too.
+
+### 6.1 Versions before the first public release (#1312)
+
+- The workspace version stays `0.0.0` (`Cargo.toml`) and no crate is published (`publish = false`).
+- Milestones are planning units named by version (D-059, D-060). Closing one is not a release: no `v*` tag is
+  pushed, because a tag claims a built, tested, published artifact and nothing builds one yet.
+- The record of a closed milestone is the GitHub milestone itself plus its review report,
+  `docs/reviews/<date>-<version>.md`, written at close.
+- The first public release sets the workspace version, pushes the first `v*` tag, starts `CHANGELOG.md`
+  and builds the §6 pipeline in one step (#926). From then on every tag is a release.
+- **Re-evaluate if:** someone outside the project needs to name a build (a packager, a bug report against a
+  binary): then tag earlier, with the pipeline, not without it.
 
 ## 7. Release Channels
 
