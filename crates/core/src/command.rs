@@ -100,12 +100,15 @@ impl SearchOffset {
         if s == "none" {
             return Some(SearchOffset::None);
         }
-        let (tag, num) = s.split_at(1);
-        let n: i32 = num.parse().ok()?;
+        // Split on the first char, not byte 1: a malformed trace may start the token with a multi-byte
+        // char, or leave it empty (#720). Either is a parse error, never a panic.
+        let mut chars = s.chars();
+        let tag = chars.next()?;
+        let n: i32 = chars.as_str().parse().ok()?;
         match tag {
-            "s" => Some(SearchOffset::Start(n)),
-            "e" => Some(SearchOffset::End(n)),
-            "l" => Some(SearchOffset::Line(n)),
+            's' => Some(SearchOffset::Start(n)),
+            'e' => Some(SearchOffset::End(n)),
+            'l' => Some(SearchOffset::Line(n)),
             _ => None,
         }
     }
@@ -2345,8 +2348,8 @@ mod tests {
         assert!(Command::from_line("search_word_under fwd whole bogus 1").is_err());
     }
 
-    #[test]
-    fn round_trips_every_variant() {
+    /// One of each trace verb, plus every resolved Ex edit (RFC-0020; `editor/ex_cmd.rs` lists one of each).
+    fn samples() -> Vec<Command> {
         let cases = [
             Command::MoveLeft,
             Command::MoveRight,
@@ -3076,11 +3079,44 @@ mod tests {
             Command::EmacsDeleteIndentation,
         ];
         // Every resolved Ex edit (RFC-0020); `editor/ex_cmd.rs` lists one of each.
-        let cases = cases
+        cases
             .into_iter()
-            .chain(crate::editor::ex_cmd_samples().into_iter().map(Command::Ex));
-        for c in cases {
+            .chain(crate::editor::ex_cmd_samples().into_iter().map(Command::Ex))
+            .collect()
+    }
+
+    #[test]
+    fn round_trips_every_variant() {
+        for c in samples() {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn a_corrupted_token_never_panics_the_parser() {
+        // #720: `--replay` reads untrusted trace files. Replace each token of every verb's line with a
+        // hostile one; from_line may reject it but must not panic.
+        const HOSTILE: [&str; 9] = [
+            "",
+            "가",
+            "é5",
+            "\u{0}",
+            "-",
+            "+",
+            "99999999999999999999",
+            "s가",
+            "none가",
+        ];
+        for c in samples() {
+            let line = c.to_line();
+            let toks: Vec<&str> = line.split(' ').collect();
+            for i in 0..toks.len() {
+                for h in HOSTILE {
+                    let mut t = toks.clone();
+                    t[i] = h;
+                    let _ = Command::from_line(&t.join(" "));
+                }
+            }
         }
     }
 
@@ -3125,5 +3161,17 @@ mod tests {
             Command::from_line("insert_char zzz"),
             Err(CommandParseError::BadArgument(_))
         ));
+    }
+
+    #[test]
+    fn a_malformed_search_offset_is_an_error_not_a_panic() {
+        // #720: a multi-byte first char and an empty token used to panic in from_token.
+        for line in [
+            "search move 1 fwd 가 x",
+            "search move 1 fwd  x",
+            "search move 1 fwd é5 x",
+        ] {
+            assert!(Command::from_line(line).is_err(), "{line:?}");
+        }
     }
 }
