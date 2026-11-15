@@ -239,7 +239,7 @@ struct TransactionMetadata {
     id: TransactionId,             // = stability §5 transaction_id; process-unique, ordered by seq (ID §7)
     correlation: CorrelationId,    // = stability §5 correlation_id (user gesture / LSP request / AI proposal)
     command_id: CommandId,         // = stability §5 command_id — the semantic command (INV-CMD-SEMANTIC)
-    origin: TransactionOrigin,     // UserInput | Macro | Plugin | Lsp | AiAgent | RemotePeer (INV-ORIGIN)
+    origin: TransactionOrigin,     // UserInput | Macro | Plugin | Lsp | AiAgent | RemotePeer | Reload (INV-ORIGIN)
     base_revision: Revision,       // the revision this applied onto (INV-TXN)
     result_revision: Revision,     // = base_revision's successor; the revision after apply
     timestamp: WallClockUtc,       // DISPLAY ONLY (":earlier 5m", audit) — never used for ordering
@@ -428,8 +428,8 @@ CTRL-Z, the final newline only as `'endofline'` says, whatever `'fixeol'`), and 
 A file read past the large-file threshold (32 MiB, `rj01::LARGE_FILE`, the incremental-journal one) enters
 the **degraded profile** (RFC-0008 §7): no syntax highlighting, and `[large]` on the status line. Still to
 come for the profile: bounded undo, streaming search and the long-line guard (the core has no undo-window
-bound yet). The journal's format byte carries neither `mac` nor `'binary'`: a recovered buffer of such a file
-comes back unix (with #1286's `'endoffile'`). The startup file is not asked about with the Emacs
+bound yet). Since RJ01 schema 1.1 (#1286) the journal keeps `mac`, `'binary'` and `'endoffile'`, so a recovered
+buffer of such a file comes back with its format; a journal a 1.0 build wrote still recovers as unix. The startup file is not asked about with the Emacs
 large-file question (the question needs the session, which starts after the file is read).
 
 ### 4. Three-way crash recovery

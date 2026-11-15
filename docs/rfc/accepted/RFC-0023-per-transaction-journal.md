@@ -300,6 +300,27 @@ written only by archiving, so the sweep owns every `<stem>@<digits>` file, a nam
 too, and nothing else (plus the exact `<journal name>.<unix ms>` names of the first build). Only regular files
 are removed, and no symlink is followed. `:checkhealth` reports the archive's size and last sweep.
 
+## Amendment 1 — schema 1.1 (#1286, #1326)
+
+Schema 1.0 could not say three things, so recovery lost them: a DOS file's final CTRL-Z (`'endoffile'`), and
+`'fileformat'` mac and `'binary'` (all #619, after this RFC). And an `'autoread'` reload was journaled as user
+input, because the core had no origin for it. Schema **1.1** adds them, strictly by appending fields
+(INV-ADDITIVE):
+
+- **Header** and **Meta** file format: a `format_ext u8` after the existing fields: bit 0 `'endoffile'`, bit 1
+  `'binary'`, bit 2 `'fileformat'` mac. The 1.0 `format` byte is unchanged; for mac it says LF.
+- **Edit**: an `origin_full u8` after the inverse list, the origin with codes 1.0 lacks (6 = `Reload`, the new
+  `TransactionOrigin` variant). The 1.0 `origin` byte keeps the nearest 1.0 code (`UserInput` for `Reload`).
+
+**Compatibility.** A 1.1 reader reads a 1.0 record (no appended bytes) with the 1.0 meaning: no
+`'endoffile'`, no `'binary'`, LF or CRLF, and the 1.0 origin. A 1.0 reader reads a 1.1 record as a newer minor:
+it skips the appended bytes using `payload_len`, so it recovers the text, with the 1.0 format and origin. No
+migration is needed and no record is rewritten. The trace format gains the origin token `reload`
+(`editor/ex_cmd.rs`); an older build rejects a trace line that carries it, which is acceptable because traces
+are test and debugging artifacts, not user data. Tests: `rj01::tests::schema_1_1_keeps_endoffile_binary_mac_and_a_reload_origin`,
+`a_1_0_record_reads_with_the_1_0_defaults`, `a_1_0_reader_still_replays_a_1_1_record`, and the existing
+`a_newer_minor_version_with_extra_payload_is_read`.
+
 ## Slices
 
 1. Core change log and `drain_changes` with bound and overflow (no format change yet).

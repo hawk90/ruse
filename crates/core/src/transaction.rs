@@ -19,6 +19,9 @@ pub enum TransactionOrigin {
     AiAgent,
     /// An edit replayed from a remote peer.
     RemotePeer,
+    /// The file re-read from disk (`'autoread'`, #1326): not typed, so trace, journal and logs can tell it
+    /// from user input.
+    Reload,
 }
 
 /// A proposed mutation: a disjoint edit set (INV-TXN) applied onto a specific `base_revision`.

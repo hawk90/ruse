@@ -644,7 +644,7 @@ impl Document {
         let Ok(edits) = EditList::new(vec![edit]) else {
             return false;
         };
-        let txn = Transaction::new(self.revision, edits, TransactionOrigin::UserInput);
+        let txn = Transaction::new(self.revision, edits, TransactionOrigin::Reload);
         self.sync_undo();
         let ok = self.apply_tracked(txn, tracked).is_ok();
         self.sync_undo();

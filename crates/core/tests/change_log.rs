@@ -378,3 +378,21 @@ fn entries_name_the_undo_nodes() {
     );
     assert_eq!(doc.bytes(), b"Aabc");
 }
+
+#[test]
+fn an_autoread_reload_is_logged_as_a_reload_not_as_typing() {
+    // #1326: trace, journal and logs read the origin; a re-read from disk is not user input.
+    let mut doc = Document::new(DocumentId(1), b"one\n".to_vec());
+    start(&mut doc);
+    insert(&mut doc, 0, b"x");
+    assert!(doc.reload_tracked(b"two\n".to_vec(), &mut []));
+    let origins: Vec<_> = changes(doc.drain_changes())
+        .iter()
+        .map(|e| e.origin)
+        .collect();
+    assert_eq!(
+        origins,
+        [TransactionOrigin::UserInput, TransactionOrigin::Reload]
+    );
+    assert_eq!(doc.bytes(), b"two\n");
+}
