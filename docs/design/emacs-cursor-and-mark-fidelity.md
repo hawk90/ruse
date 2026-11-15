@@ -58,7 +58,7 @@ slice: a closed finding is a fixture that flips divergent → verified with no r
 ruse's core inherits Vim's **on-character** cursor: in Normal mode the caret rests *on* a character, and the
 line-/buffer-end position is the *last character*, not the slot after it. Emacs is non-modal and its **point
 is between-character**: the end position is the empty slot *after* the last character. Concretely, the seam
-is the Normal-mode edit clamp in `commit()` (`crates/core/src/editor/mod.rs`):
+is the Normal-mode edit clamp in `commit()` (`crates/core/src/editor/commit.rs`):
 
 ```rust
 // Vim never rests the Normal-mode cursor on the newline: after an edit that leaves it beyond the final
