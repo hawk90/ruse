@@ -1,10 +1,14 @@
-# Verification registry — the ONE source of verify steps that `ruse verify`, lefthook, and CI all read, so
+# Verification registry — the ONE source of verify steps that `ruse verify`, lefthook, and CI all run, so
 # the three surfaces cannot drift (RA-RUSE-006: CI == local verification). tools/rusekit/verify/run.py iterates this.
+# CI does not call `ruse verify` (it splits steps across jobs and caches), so the match is enforced instead:
+# tools/tests/test_ci_registry.py fails when a CI step runs a command that is neither a step here nor listed
+# under `ci_only`, or when a step here has no CI counterpart (#1310).
 #
 # PORTABILITY (Repository Governance Plane): this file is per-repo POLICY; the runner is the reusable ENGINE.
 # Fields — name · scope: spec_docs | rust · needs: tool that must exist · heavy: excluded from --changed
 # unless --heavy · gate_on: a file that must exist or the step is skipped · cmd: argv ("python3" → this
-# interpreter). `gov-check` fans out to every tools/rusekit/gov/*.py checker (auto-discovered), so adding a governance
+# interpreter) · ci: `<workflow file>#<step name>` when CI runs the step through an action instead of
+# `run:` with the same command. `-q` is ignored when a cmd is compared with CI. `gov-check` fans out to every tools/rusekit/gov/*.py checker (auto-discovered), so adding a governance
 # checker needs NO edit here.
 
 version: 1
@@ -13,7 +17,21 @@ steps:
   - { name: spec-validate,    scope: spec_docs, needs: python3, cmd: [python3, tools/spec-validate.py] }
   - { name: docs-check,       scope: spec_docs, needs: python3, cmd: [python3, tools/ruse.py, docs, check] }
   - { name: gov-check,        scope: spec_docs, needs: python3, cmd: [python3, tools/ruse.py, gov, check] }
+  - { name: tools-tests,      scope: spec_docs, needs: python3, cmd: [python3, -m, unittest, discover, -s, tools/tests, -t, .] }
+  - { name: actionlint,       scope: spec_docs, needs: actionlint, cmd: [actionlint, -color, -shellcheck=],
+      ci: "spec-check.yml#workflow lint (actionlint 1.7.12)" }
   - { name: dependency-check, scope: rust,      needs: cargo,   cmd: [python3, tools/ruse.py, arch, deps] }
+  - { name: cargo-lock,       scope: rust,      needs: cargo,   gate_on: Cargo.toml, cmd: [cargo, fetch, --locked] }
   - { name: cargo-fmt,        scope: rust,      needs: cargo,   gate_on: Cargo.toml, cmd: [cargo, fmt, --all, --check] }
-  - { name: cargo-clippy,     scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, clippy, --workspace, --all-targets, -q] }
+  - { name: cargo-clippy,     scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, clippy, --workspace, --all-targets, -q, --, -D, warnings] }
   - { name: cargo-test,       scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, test, --workspace, -q] }
+  - { name: fuzz-check,       scope: rust,      needs: cargo,   heavy: true, gate_on: fuzz/Cargo.toml,
+      cmd: [cargo, check, --locked, --manifest-path, fuzz/Cargo.toml, --all-targets, --target-dir, target/fuzz-check,
+            --config, 'build.rustflags=["--cfg","fuzzing"]'] }
+
+# ci_only — CI steps with no local counterpart, each with the reason. Keyed by the CI step's `name:`, else its
+# `id:`, else its whole `run:` line. test_ci_registry.py fails on a CI command missing from both lists.
+ci_only:
+  "detect": "CI job plumbing: decides whether the rust job's steps run for this diff"
+  "install smoke": "installs the binary into a temporary prefix; local verify must not install anything"
+  "cargo test --workspace --release": "release-profile tests run on pushes only (#899), never on a PR or locally"

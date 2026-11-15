@@ -55,8 +55,10 @@ entries. Governance checkers are **auto-discovered**: dropping a `tools/rusekit/
 1. **`ruse verify`** — reads `spec/verification.yaml`; run `python3 tools/ruse.py verify --full`.
 2. **lefthook** — copy `lefthook.yml`; `commit-msg` validates the subject convention, `pre-commit` runs the
    fast checks, `pre-push` runs `ruse verify --full`. `lefthook install`.
-3. **CI** — one job runs `python3 tools/ruse.py verify --full`; because CI reads the same
-   `spec/verification.yaml`, CI and local cannot drift (the RA-RUSE-006 property).
+3. **CI** — either one job runs `python3 tools/ruse.py verify --full`, or (as ruse does, to split jobs and
+   cache) CI runs each step itself and a test checks that every CI command is a registry step or a listed
+   `ci_only` one, and every step runs in CI (`tools/tests/test_ci_registry.py`). Either way CI and local
+   cannot drift (the RA-RUSE-006 property).
 
 ## What is ruse-specific vs. generic
 

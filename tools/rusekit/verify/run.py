@@ -75,7 +75,8 @@ def _scope(files: list[str], full: bool) -> set[str]:
     s: set[str] = set()
     for f in files:
         hit = False
-        if f.startswith(("spec/", "docs/")) or f.endswith((".md", ".yaml", ".yml")):
+        # tools/ is in both scopes: the tools-tests step (spec_docs) tests the tools themselves.
+        if f.startswith(("spec/", "docs/", "tools/")) or f.endswith((".md", ".yaml", ".yml")):
             s.add("spec_docs")
             hit = True
         if f.startswith(RUST_DIRS) or f.endswith(".rs") or f.rsplit("/", 1)[-1] in RUST_CONFIG:
