@@ -78,8 +78,11 @@ features:
     status: done
     depends_on: [C-DOCUMENT, C-TRANSACTION]
     summary: Every document change is applied as a tracked, reversible transaction.
+    # Census-N/A (D-043, #1315): transactions are ruse kernel ARCHITECTURE (C-TRANSACTION), like F-005's
+    # undo model; no upstream source tree tabulates them. The legacy cross-editor undo facts (COM-7,
+    # VIM-UNDO-1, EMACS-EDIT-1) are tracked in spec/parity-backlog.yaml where gov parity_coverage needs it.
     trace:
-      parity: [COM-7, VIM-UNDO-1, EMACS-EDIT-1]
+      parity: []
       design: [../docs/architecture/architecture.md#3]
       verify: [../crates/core/tests/properties.rs, ../crates/core/tests/reference_model.rs, ../crates/core/tests/change_log.rs, ../crates/core/src/document.rs]
     acceptance:
@@ -552,7 +555,7 @@ features:
     # new_edit_branched_away + undo::g_minus_then_g_plus_round_trips.
     # Census-N/A (D-043): no upstream source tree TABULATES the undo model — it is architecture,
     # design-backed (architecture.md#3). The 4 legacy ids are cross-editor "all editors undo"
-    # facts: COM-7/VIM-UNDO-1/EMACS-EDIT-1 stay derived via F-001; COM-8 (undo tree) is backlogged.
+    # facts, backlogged with COM-8 (undo tree) since F-001 went Census-N/A (#1315).
     status: done
     depends_on: [C-UNDO, C-TRANSACTION]
     summary: Undo recorded by logical unit (e.g. one insert session), not per keystroke.
