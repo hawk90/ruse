@@ -295,11 +295,7 @@ impl Session {
     pub(super) fn terminal_owns(&mut self, key: KeyEvent) -> bool {
         let Session {
             ws,
-            files,
-            recorded,
-            quit,
             prefix,
-            status,
             #[cfg(unix)]
             terminals,
             ..
@@ -317,14 +313,7 @@ impl Session {
                         if matches!(prefix, Prefix::TermEscape) {
                             *prefix = Prefix::None;
                             if is_ctrl(key, 'n') {
-                                run_cmd(
-                                    Command::EnterTerminalNormal,
-                                    ws,
-                                    files,
-                                    recorded,
-                                    status,
-                                    quit,
-                                );
+                                self.run_cmd(Command::EnterTerminalNormal);
                                 return true;
                             }
                             // Not the escape: the swallowed `CTRL-\` is dropped; fall through to send `key`.
@@ -346,7 +335,7 @@ impl Session {
                         if matches!(key.code, KeyCode::Char('i' | 'a' | 'A'))
                             && !crate::input::is_chord(key) =>
                     {
-                        run_cmd(Command::EnterTerminal, ws, files, recorded, status, quit);
+                        self.run_cmd(Command::EnterTerminal);
                         return true;
                     }
                     _ => {}
