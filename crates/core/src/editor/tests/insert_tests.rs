@@ -507,6 +507,88 @@ mod insert_entry_tests {
             "cursor rests on the inserted X after <Esc>"
         );
     }
+
+    #[test]
+    fn insert_ctrl_w_deletes_the_word_before_the_caret() {
+        // `A<C-w>` at end of "foo bar" removes "bar", staying in Insert.
+        let st = run(
+            "foo bar",
+            &[Command::AppendLineEnd, Command::InsertDeleteWordBack],
+        );
+        assert_eq!(text(&st), "foo ");
+        assert_eq!(st.mode(), Mode::Insert);
+        assert_eq!(st.cursor().0, 4);
+        // At column 0 it is a no-op.
+        let st = run("hi", &[Command::EnterInsert, Command::InsertDeleteWordBack]);
+        assert_eq!(text(&st), "hi");
+    }
+
+    #[test]
+    fn insert_ctrl_u_deletes_to_first_non_blank_then_indent() {
+        // First `<C-u>` deletes back to the first non-blank (keeps the indent); a second deletes the indent.
+        let st = run(
+            "    hello",
+            &[Command::AppendLineEnd, Command::InsertDeleteToLineStart],
+        );
+        assert_eq!(text(&st), "    ", "indent preserved on the first C-u");
+        assert_eq!(st.cursor().0, 4);
+        let st = run(
+            "    hello",
+            &[
+                Command::AppendLineEnd,
+                Command::InsertDeleteToLineStart,
+                Command::InsertDeleteToLineStart,
+            ],
+        );
+        assert_eq!(text(&st), "", "the second C-u removes the indent too");
+    }
+
+    #[test]
+    fn insert_ctrl_t_and_ctrl_d_indent_the_line() {
+        // Default indent is 4 spaces. `A<C-t>` indents "x" → "    x" and the caret rides right.
+        let st = run("x", &[Command::AppendLineEnd, Command::InsertIndent]);
+        assert_eq!(text(&st), "    x");
+        assert_eq!(st.mode(), Mode::Insert);
+        assert_eq!(st.cursor().0, 5, "caret moved right by the inserted indent");
+        // `<C-d>` on an indented line removes one shiftwidth; the caret rides left.
+        let st = run("    x", &[Command::AppendLineEnd, Command::InsertDedent]);
+        assert_eq!(text(&st), "x");
+        assert_eq!(st.cursor().0, 1);
+        // `<C-d>` with no indent is a no-op.
+        let st = run("x", &[Command::EnterInsert, Command::InsertDedent]);
+        assert_eq!(text(&st), "x");
+    }
+
+    #[test]
+    fn insert_eval_splices_arithmetic_result_at_the_caret() {
+        // `i` then `<C-r>=1+2*3<CR>` inserts "7" at the caret, staying in Insert (`:help i_CTRL-R`).
+        let st = run(
+            "xy",
+            &[Command::EnterInsert, Command::InsertEval("1+2*3".into())],
+        );
+        assert_eq!(text(&st), "7xy");
+        assert_eq!(st.mode(), Mode::Insert, "stays in Insert after <C-r>=");
+        assert_eq!(st.cursor().0, 1, "cursor lands after the inserted result");
+    }
+
+    #[test]
+    fn insert_eval_string_concat_and_empty_on_error() {
+        // A string-concat expression inserts its result; a malformed one inserts nothing (Vim's degrade).
+        let st = run(
+            "",
+            &[
+                Command::EnterInsert,
+                Command::InsertEval("'n='.5".into()),
+                Command::InsertEval("1 +".into()), // parse error → empty → no-op
+                Command::InsertEval("7 / 0".into()), // div-by-zero → empty → no-op
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "n=5\n",
+            "only the valid expression inserted text"
+        );
+    }
 }
 
 #[cfg(test)]

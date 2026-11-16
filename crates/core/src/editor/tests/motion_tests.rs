@@ -466,6 +466,27 @@ mod line_jump_tests {
         let st = run("abcdef", &[Command::Delete(3, Motion::GotoByte)]);
         assert_eq!(text(&st), "cdef");
     }
+
+    // Emacs back-to-indentation (M-m) / Vim `^` share Motion::LineFirstNonBlank: land on the first
+    // non-blank of the line, or the line end when it is all blank.
+    #[test]
+    fn line_first_non_blank_lands_on_first_non_blank() {
+        let mut st = EditorState::new(b"  foo".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_cursor(BytePos(5)); // end of line
+        apply_command(&mut st, &Command::Move(1, Motion::LineFirstNonBlank));
+        assert_eq!(
+            st.view.cursor, 2,
+            "lands on 'f' past the two leading spaces"
+        );
+
+        // An all-blank line: land at the line end (no non-blank to find).
+        let mut blank = EditorState::new(b"   \nx".to_vec());
+        blank.set_caret_gravity(CaretGravity::BetweenChar);
+        blank.set_cursor(BytePos(0));
+        apply_command(&mut blank, &Command::Move(1, Motion::LineFirstNonBlank));
+        assert_eq!(blank.view.cursor, 3, "all-blank line: land at its end");
+    }
 }
 
 #[cfg(test)]

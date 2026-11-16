@@ -1456,6 +1456,40 @@ mod format_tests {
         );
         assert_eq!(text(&st), "short line of words\n");
     }
+
+    /// #617: the options a trace header writes include the indent options, so replay does not depend
+    /// on the replaying machine's config.
+    #[test]
+    fn editing_options_carry_the_indent_options() {
+        let mut st = EditorState::new(b"x".to_vec());
+        st.set_option(EditorOption::SoftTabStop(-1));
+        st.set_option(EditorOption::AutoIndent(false));
+        let opts = st.view.editing_options();
+        assert!(opts.contains(&EditorOption::SoftTabStop(-1)));
+        assert!(opts.contains(&EditorOption::AutoIndent(false)));
+        assert!(opts.contains(&EditorOption::SmartTab(true)));
+    }
+
+    /// #618: the trace header records the formatting options, string ones included, and they round-trip
+    /// through the `ex_set` codec.
+    #[test]
+    fn formatting_options_round_trip_through_the_trace_codec() {
+        let mut st = EditorState::new(b"x".to_vec());
+        st.set_option(EditorOption::Comments("b:#,://".into()));
+        st.set_option(EditorOption::WrapMargin(-3));
+        let opts = st.view.editing_options();
+        assert!(opts.contains(&EditorOption::FormatOptions("tcqj".into())));
+        assert!(opts.contains(&EditorOption::Comments("b:#,://".into())));
+        assert!(opts.contains(&EditorOption::WrapMargin(-3)));
+        for o in opts {
+            let line = ExCmd::Set(o.clone()).to_line();
+            let mut toks = line.splitn(2, ' ');
+            let verb = toks.next().unwrap();
+            let back = ExCmd::from_parts(verb, toks.next().unwrap_or(""), &line)
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(back, ExCmd::Set(o), "{line}");
+        }
+    }
 }
 
 /// Operator spans and their cursor rules (#693, #696, #706, #711, #712), beside the oracle rows.
@@ -1583,5 +1617,39 @@ mod operator_span_tests {
             &[forced(Motion::WordFwd, ForcedWise::Linewise)],
         );
         assert_eq!(st.bytes(), b"def");
+    }
+
+    /// The cursor after a linewise operator that `"/` refuses (#1174), as nvim v0.12.6 leaves it: a delete at
+    /// the wanted column on the range's first line, a yank at the range's start.
+    #[test]
+    fn a_refused_linewise_operator_stays_at_the_start_of_its_range() {
+        const WORDS: &[u8] = b"one two three\nfour five six\nseven eight\n";
+        let at = |cmds: &[Command], op: Command| {
+            let mut st = EditorState::new(WORDS.to_vec());
+            for c in cmds {
+                apply_command(&mut st, c);
+            }
+            apply_command(&mut st, &Command::SetRegister(Some('/')));
+            apply_command(&mut st, &op);
+            assert_eq!(st.bytes(), WORDS, "{op:?}: nothing is deleted");
+            st.cursor().0
+        };
+        let line2_w = [
+            Command::Move(1, Motion::Down),
+            Command::Move(1, Motion::WordFwd),
+        ];
+        let line3_w = [
+            Command::Move(1, Motion::LastLine),
+            Command::Move(1, Motion::WordFwd),
+        ];
+        // `jw"/dd` keeps [2,5]; `jw"/dk` goes up to [1,5]; `jw"/yk` too.
+        assert_eq!(at(&line2_w, Command::Delete(1, Motion::Line)), 14 + 5);
+        assert_eq!(at(&line2_w, Command::Delete(1, Motion::Up)), 5);
+        assert_eq!(at(&line2_w, Command::Yank(1, Motion::Up)), 5);
+        // On the last line, whose delete span starts at the newline before it: `Gw"/dd` keeps [3,6].
+        assert_eq!(at(&line3_w, Command::Delete(1, Motion::Line)), 28 + 6);
+        assert_eq!(at(&line3_w, Command::Delete(1, Motion::Up)), 14 + 6);
+        // `Gw"/dgg` lands at the wanted column 6 on line 1.
+        assert_eq!(at(&line3_w, Command::Delete(1, Motion::GotoLine)), 6);
     }
 }
