@@ -870,6 +870,7 @@ pub enum WordCase {
 }
 
 mod line_form;
+pub(crate) use line_form::hex_lower;
 pub use line_form::CommandParseError;
 
 #[cfg(test)]

@@ -23,11 +23,7 @@ fn hex(bytes: &[u8]) -> String {
     if bytes.is_empty() {
         return "-".into();
     }
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(s, "{b:02x}");
-    }
-    s
+    crate::command::hex_lower(bytes)
 }
 
 fn reg_token(reg: Option<char>) -> String {
