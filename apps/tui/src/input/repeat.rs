@@ -203,9 +203,114 @@ pub(crate) enum ChangeKind {
 ///
 /// The match is EXHAUSTIVE on purpose (#793): a wildcard silently filed every new `Command` as
 /// `NotAChange`, so `.` replayed an OLDER change after `d/pat`, `` d`a ``, `R`, `gi`. Adding a variant
-/// now forces a decision here. The commands that carry an operator (forced-wise, Visual, search, mark) are
-/// classified by that operator in a helper whose own match is exhaustive over the operator enum.
+/// now forces a decision here. Each arm is one command family. The commands that carry an operator
+/// (forced-wise, Visual, search, mark) are classified by that operator in [`operator_change_kind`].
+///
+/// Insert-entering commands are the change PLUS the text typed until `<Esc>`. `gi` is recorded as a plain
+/// `i` (Vim's `nv_edit` rewrites `gi` to `i` after the jump), see `InputEngine::record`. `R` / `gR`: the
+/// typed overwrites are the change body, replayed at the new cursor. Visual-block `I`/`A`/`c` (`CTRL-V`
+/// then the key): the change is the block-insert entry plus the text typed until `<Esc>`. On replay the
+/// block has no live selection, so the planner rebuilds an equivalent block (stored WIDTH x HEIGHT) at the
+/// caret — nvim repeats a block insert over the same geometry positioned at the new cursor (verified vs
+/// nvim v0.12.4). `[count].` is a no-op there (nvim ignores the count for block insert), which falls out
+/// naturally: `BlockInsert` is not a plain insert-entry, so `replay` neither re-times the text nor (via
+/// `with_count`) rewrites the command.
+///
+/// Not a change: yanks, motions and jumps, mode switches, searches, undo/redo, marks/registers, info
+/// displays, `&`/`g&` (Vim does not dot-repeat them), and the insert-session-only commands — those reach
+/// the recorder only inside Insert/Replace, where they are appended to the open change's body instead of
+/// being classified here.
 pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
+    use ChangeKind as K;
+    use Command as C;
+    match cmd {
+        // Operator-carrying: `dvj`, Visual `C`/`D`/`>`, `d/pat<CR>`, `cgn`, `c*`, `` d`a ``, ...
+        C::OpForced { .. } | C::VisualOp(_) | C::OpToMark { .. } => operator_change_kind(cmd),
+        C::Search { .. } | C::SearchObject { .. } | C::SearchWordUnder { .. } => {
+            operator_change_kind(cmd)
+        }
+        // Insert-entering: `i`/`a`/`I`/`gI`/`A`/`o`/`O`, `gi`, `R`/`gR`, `c`, Visual `c`/`s`/`R`, block `I`.
+        C::EnterInsert | C::EnterInsertAfter | C::InsertLineStart | C::InsertColumnZero => {
+            K::InsertEntering
+        }
+        C::AppendLineEnd | C::OpenBelow | C::OpenAbove | C::InsertAtLastInsert => K::InsertEntering,
+        C::EnterReplace | C::EnterVirtualReplace => K::InsertEntering,
+        C::Change(..) | C::ChangeSelection | C::ReplaceSelection(_) => K::InsertEntering,
+        C::BlockInsert(_) => K::InsertEntering,
+        // Immediate Vim edits — dot-repeatable as a single command.
+        C::Delete(..) | C::DeleteUnder(_) | C::DeleteForward(_) | C::DeleteBack => K::Immediate,
+        C::ReplaceChar(..) | C::VirtualReplaceChar(..) | C::ReplaceSelectionChar(_) => K::Immediate,
+        C::ToggleCase(_) | C::CaseMotion { .. } | C::CaseSelection(_) => K::Immediate,
+        C::JoinLines(_) | C::JoinLinesNoSpace(_) => K::Immediate,
+        C::IncrementNumber(_) | C::IncrementSelection { .. } => K::Immediate,
+        C::ShiftRight(_) | C::ShiftLeft(_) | C::ShiftMotion { .. } => K::Immediate,
+        C::Reindent { .. } | C::Format { .. } | C::Comment { .. } => K::Immediate,
+        C::DeleteSelection => K::Immediate,
+        // Immediate puts.
+        C::Paste { .. } | C::PasteIndent { .. } | C::PasteBlockInner { .. } => K::Immediate,
+        C::PasteSelection { .. } | C::EmacsYank { .. } => K::Immediate,
+        // Immediate Emacs edits.
+        C::EmacsKillLine | C::EmacsKillWord { .. } | C::EmacsBackwardKillWord { .. } => {
+            K::Immediate
+        }
+        C::EmacsKillWholeLine | C::EmacsTransposeChars | C::EmacsTransposeWords => K::Immediate,
+        C::EmacsCaseWord { .. } | C::EmacsCaseRegion { .. } => K::Immediate,
+        C::EmacsDeleteIndentation | C::EmacsHorizontalSpace { .. } | C::EmacsOpenLine => {
+            K::Immediate
+        }
+        // Not a change — yanks and motions.
+        C::Yank(..) | C::YankSelection => K::NotAChange,
+        C::Move(..) | C::MoveLeft | C::MoveRight | C::MoveUp | C::MoveDown => K::NotAChange,
+        C::MoveLineStart | C::MoveLineEnd => K::NotAChange,
+        // Not a change — mode switches and Visual selection state.
+        C::EnterNormal | C::EnterTerminal | C::EnterTerminalNormal => K::NotAChange,
+        C::EnterVisual { .. } | C::EnterSelect { .. } => K::NotAChange,
+        C::ReselectVisual | C::SwapSelectionEnds => K::NotAChange,
+        // Not a change — insert-session-only commands (appended to the open change's body).
+        C::ReplaceType(_) | C::ReplaceBackspace | C::VirtualReplaceType(_) => K::NotAChange,
+        C::InsertChar(_) | C::InsertRegister(_) | C::InsertEval(_) => K::NotAChange,
+        C::InsertPaste(_) | C::ReplacePaste(_) | C::EmacsPaste(_) => K::NotAChange,
+        C::InsertDeleteWordBack | C::InsertDeleteToLineStart | C::CompleteWord { .. } => {
+            K::NotAChange
+        }
+        C::InsertIndent | C::InsertDedent => K::NotAChange,
+        C::InsertDeleteIndent | C::InsertDeleteIndentRestore => K::NotAChange,
+        C::InsertStartColumnLine { .. } | C::InsertCaretStep { .. } => K::NotAChange,
+        C::InsertTab | C::InsertNewline | C::OpenLineIndent { .. } => K::NotAChange,
+        C::InsertCloser { .. } | C::BreakUndo | C::InsertReindent => K::NotAChange,
+        C::SetIndents { .. } | C::SetIndentCols { .. } => K::NotAChange,
+        // Not a change — change-list, mark and jump-list jumps.
+        C::GotoLastChange | C::GotoLastChangeLine => K::NotAChange,
+        C::GotoChangeMarkStart | C::GotoChangeMarkEnd => K::NotAChange,
+        C::GotoChangeMarkStartLine | C::GotoChangeMarkEndLine => K::NotAChange,
+        C::GotoVisualMarkStart | C::GotoVisualMarkEnd => K::NotAChange,
+        C::GotoVisualMarkStartLine | C::GotoVisualMarkEndLine => K::NotAChange,
+        C::GotoContextMark | C::GotoContextMarkLine => K::NotAChange,
+        C::GotoOlderChange | C::GotoNewerChange | C::GotoOlderJump | C::GotoNewerJump => {
+            K::NotAChange
+        }
+        // Not a change — info displays, marks and registers.
+        C::AsciiInfo | C::Utf8Info | C::FileInfo | C::CursorInfo => K::NotAChange,
+        C::SetNamedMark(_) | C::GotoNamedMark(_) | C::GotoNamedMarkLine(_) => K::NotAChange,
+        C::SetRegister(_) | C::SetExprRegister(_) => K::NotAChange,
+        // Not a change — searches, `&`/`g&`, Ex, keyword lookups.
+        C::SearchNext(_) | C::SearchPrev(_) => K::NotAChange,
+        C::RepeatSubstituteGlobal | C::RepeatSubstituteLine | C::Ex(_) => K::NotAChange,
+        C::GotoDeclaration { .. } | C::GotoFirstMatch(_) | C::ShowKeywordLines { .. } => {
+            K::NotAChange
+        }
+        // Not a change — undo/redo, file and session.
+        C::Undo | C::Redo | C::UndoOlder | C::UndoNewer | C::LineUndo => K::NotAChange,
+        C::Save | C::Quit => K::NotAChange,
+        // Not a change — Emacs mark and region commands.
+        C::SetMark | C::KillRegion | C::CopyRegion | C::ExchangePointMark => K::NotAChange,
+        C::EmacsBufferEdge { .. } | C::EmacsMarkWord => K::NotAChange,
+    }
+}
+
+/// [`change_kind`] of the operator-carrying family: each command is classified by the operator it carries,
+/// in a helper whose own match is exhaustive over that operator enum.
+fn operator_change_kind(cmd: &Command) -> ChangeKind {
     use Command as C;
     match cmd {
         C::OpForced { op, .. } => op_change_kind(*op),
@@ -217,160 +322,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         }
         // `` c`a ``, `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, ... — the mark is re-resolved on replay.
         C::OpToMark { op, .. } => mark_op_change_kind(*op),
-        // Insert-entering: the change includes the text typed until `<Esc>`.
-        C::EnterInsert
-        | C::EnterInsertAfter
-        | C::InsertLineStart
-        | C::InsertColumnZero
-        | C::AppendLineEnd
-        | C::OpenBelow
-        | C::OpenAbove
-        // `gi` — recorded as a plain `i` (Vim's `nv_edit` rewrites `gi` to `i` after the jump), see
-        // `InputEngine::record`.
-        | C::InsertAtLastInsert
-        // `R` / `gR`: the typed overwrites are the change body, replayed at the new cursor.
-        | C::EnterReplace
-        | C::EnterVirtualReplace
-        | C::Change(..)
-        | C::ChangeSelection
-        | C::ReplaceSelection(_)
-        // Visual-block `I`/`A`/`c` (`CTRL-V` then the key): the change is the block-insert entry plus the
-        // text typed until `<Esc>`. On replay the block has no live selection, so the planner rebuilds an
-        // equivalent block (stored WIDTH x HEIGHT) at the caret — nvim repeats a block insert over the same
-        // geometry positioned at the new cursor (verified vs nvim v0.12.4). `[count].` is a no-op here (nvim
-        // ignores the count for block insert), which falls out naturally: `BlockInsert` is not a plain
-        // insert-entry, so `replay` neither re-times the text nor (via `with_count`) rewrites the command.
-        | C::BlockInsert(_) => ChangeKind::InsertEntering,
-        // Self-contained buffer edits — dot-repeatable as a single command.
-        C::Delete(..)
-        | C::DeleteUnder(_)
-        | C::DeleteForward(_)
-        | C::DeleteBack
-        | C::ReplaceChar(..)
-        | C::VirtualReplaceChar(..)
-        | C::ReplaceSelectionChar(_)
-        | C::ToggleCase(_)
-        | C::CaseMotion { .. }
-        | C::JoinLines(_)
-        | C::JoinLinesNoSpace(_)
-        | C::CaseSelection(_)
-        | C::IncrementNumber(_)
-        | C::IncrementSelection { .. }
-        | C::ShiftRight(_)
-        | C::ShiftLeft(_)
-        | C::ShiftMotion { .. }
-        | C::Reindent { .. }
-        | C::Format { .. }
-        | C::Comment { .. }
-        | C::Paste { .. }
-        | C::PasteIndent { .. }
-        | C::PasteBlockInner { .. }
-        | C::EmacsYank { .. }
-        | C::EmacsKillLine
-        | C::EmacsKillWord { .. }
-        | C::EmacsBackwardKillWord { .. }
-        | C::EmacsKillWholeLine
-        | C::EmacsTransposeChars
-        | C::EmacsTransposeWords
-        | C::EmacsCaseWord { .. }
-        | C::EmacsCaseRegion { .. }
-        | C::EmacsDeleteIndentation
-        | C::EmacsHorizontalSpace { .. }
-        | C::EmacsOpenLine
-        | C::DeleteSelection
-        | C::PasteSelection { .. } => ChangeKind::Immediate,
-        // Not a change: yanks, motions and jumps, mode switches, searches, undo/redo, marks/registers, info
-        // displays, `&`/`g&` (Vim does not dot-repeat them), and the insert-session-only commands — those
-        // reach the recorder only inside Insert/Replace, where they are appended to the open change's body
-        // instead of being classified here.
-        C::Yank(..)
-        | C::YankSelection
-        | C::Move(..)
-        | C::MoveLeft
-        | C::MoveRight
-        | C::MoveUp
-        | C::MoveDown
-        | C::MoveLineStart
-        | C::MoveLineEnd
-        | C::EnterNormal
-        | C::EnterTerminal
-        | C::EnterTerminalNormal
-        | C::EnterVisual { .. }
-        | C::EnterSelect { .. }
-        | C::ReselectVisual
-        | C::SwapSelectionEnds
-        | C::ReplaceType(_)
-        | C::ReplaceBackspace
-        | C::VirtualReplaceType(_)
-        | C::InsertChar(_)
-        | C::InsertRegister(_)
-        | C::InsertEval(_)
-        | C::InsertPaste(_)
-        | C::ReplacePaste(_)
-        | C::EmacsPaste(_)
-        | C::InsertDeleteWordBack
-        | C::InsertDeleteToLineStart
-        | C::CompleteWord { .. }
-        | C::InsertIndent
-        | C::InsertDedent
-        | C::InsertDeleteIndent
-        | C::InsertDeleteIndentRestore
-        | C::InsertStartColumnLine { .. }
-        | C::InsertCaretStep { .. }
-        | C::InsertTab
-        | C::InsertNewline
-        | C::OpenLineIndent { .. }
-        | C::InsertCloser { .. }
-        | C::BreakUndo
-        | C::SetIndents { .. }
-        | C::SetIndentCols { .. }
-        | C::InsertReindent
-        | C::GotoLastChange
-        | C::GotoLastChangeLine
-        | C::GotoChangeMarkStart
-        | C::GotoChangeMarkEnd
-        | C::GotoChangeMarkStartLine
-        | C::GotoChangeMarkEndLine
-        | C::GotoVisualMarkStart
-        | C::GotoVisualMarkEnd
-        | C::GotoVisualMarkStartLine
-        | C::GotoVisualMarkEndLine
-        | C::GotoContextMark
-        | C::GotoContextMarkLine
-        | C::GotoOlderChange
-        | C::GotoNewerChange
-        | C::GotoOlderJump
-        | C::GotoNewerJump
-        | C::AsciiInfo
-        | C::Utf8Info
-        | C::FileInfo
-        | C::CursorInfo
-        | C::SetNamedMark(_)
-        | C::GotoNamedMark(_)
-        | C::GotoNamedMarkLine(_)
-        | C::SetRegister(_)
-        | C::SetExprRegister(_)
-        | C::SearchNext(_)
-        | C::SearchPrev(_)
-        | C::RepeatSubstituteGlobal
-        | C::RepeatSubstituteLine
-        | C::Ex(_)
-        | C::GotoDeclaration { .. }
-        | C::GotoFirstMatch(_)
-        | C::ShowKeywordLines { .. }
-        | C::Undo
-        | C::Redo
-        | C::UndoOlder
-        | C::UndoNewer
-        | C::LineUndo
-        | C::Save
-        | C::Quit
-        | C::SetMark
-        | C::KillRegion
-        | C::CopyRegion
-        | C::ExchangePointMark
-        | C::EmacsBufferEdge { .. }
-        | C::EmacsMarkWord => ChangeKind::NotAChange,
+        _ => unreachable!("operator_change_kind called with a command that carries no operator"),
     }
 }
 
