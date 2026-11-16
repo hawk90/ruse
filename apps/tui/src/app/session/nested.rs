@@ -449,3 +449,41 @@ impl Session {
         s
     }
 }
+
+/// How deep `:normal` may nest (`:normal :normal …`, or a macro that runs `:normal @a` on itself) before it
+/// fails with E192. Vim's limit is 'maxmapdepth' (1000); each level here is a few session frames on the
+/// Rust stack, so ruse stops earlier.
+const MAX_NORMAL_DEPTH: usize = 20;
+
+/// Where Insert resumes after a `:normal` run from `i_CTRL-O` (#1097): the caret's line, and whether it
+/// sat past the end of that line.
+pub(super) struct InsertReturn {
+    line: usize,
+    at_eol: bool,
+}
+
+/// The start of the UTF-8 char before byte `at` (`0` at the start).
+fn prev_char_start(b: &[u8], at: usize) -> usize {
+    let mut i = at.saturating_sub(1);
+    while i > 0 && b.get(i).is_some_and(|&c| c & 0xC0 == 0x80) {
+        i -= 1;
+    }
+    i
+}
+
+/// The start of the UTF-8 char after the one at byte `at`.
+fn next_char_start(b: &[u8], at: usize) -> usize {
+    let mut i = at + 1;
+    while b.get(i).is_some_and(|&c| c & 0xC0 == 0x80) {
+        i += 1;
+    }
+    i
+}
+
+/// The offsets of every `\n` in `b`, in order.
+fn newline_offsets(b: &[u8]) -> impl Iterator<Item = usize> + '_ {
+    b.iter()
+        .enumerate()
+        .filter(|&(_, &c)| c == b'\n')
+        .map(|(i, _)| i)
+}

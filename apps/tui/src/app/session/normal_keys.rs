@@ -613,3 +613,39 @@ impl Session {
         );
     }
 }
+
+/// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split
+/// horizontally, `v` split vertically, `c` close focused, `q` = `:quit`. An unrecognised key is ignored
+/// (Vim beeps). The full `C-w` family is post-MVP.
+fn dispatch_window(
+    key: crossterm::event::KeyEvent,
+    count: u32,
+    ws: &mut Workspace,
+    window_ex: &mut Option<&'static str>,
+) {
+    // `{count}C-w w` / `{count}C-w W` go to window `count`, the last one when there are fewer (nvim 0.12.6:
+    // `9<C-w>w` with three windows lands in window 3); without a count they step to the next / previous.
+    let nth = |ws: &mut Workspace| {
+        let n = (count as usize).min(ws.window_count());
+        ws.focus_window(n - 1);
+    };
+    match key.code {
+        KeyCode::Char('w' | 'W') if count > 0 => nth(ws),
+        _ if is_ctrl(key, 'w') && count > 0 => nth(ws),
+        _ if is_ctrl(key, 'w') => ws.focus_next(),
+        KeyCode::Char('w') if key.modifiers.is_empty() => ws.focus_next(),
+        KeyCode::Char('W') => ws.focus_prev(),
+        KeyCode::Char('s') => {
+            ws.split(SplitDir::Horizontal);
+        }
+        KeyCode::Char('v') => {
+            ws.split(SplitDir::Vertical);
+        }
+        // `C-w c` is `:close` and `C-w q` (`C-w C-q`) is `:quit` (`:help CTRL-W_c`): they run as those Ex
+        // commands once routing is done, so 'hidden', 'autowrite' and 'confirm' apply as they do (#619).
+        KeyCode::Char('c') if key.modifiers.is_empty() => *window_ex = Some("close"),
+        KeyCode::Char('q') if key.modifiers.is_empty() => *window_ex = Some("quit"),
+        _ if is_ctrl(key, 'q') => *window_ex = Some("quit"),
+        _ => {}
+    }
+}
