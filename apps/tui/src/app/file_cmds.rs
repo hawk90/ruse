@@ -266,6 +266,101 @@ fn append_to(path: &Path, bytes: &[u8]) -> io::Result<()> {
     f.sync_all()
 }
 
+/// Why a `:w`-family command failed. `Display` is the status line: nvim's message where it has one.
+#[derive(Debug)]
+enum WriteFailure {
+    /// `E32`: no file argument and the buffer has no file.
+    NoFileName,
+    /// `E45`: the buffer is 'readonly' and there is no `!`.
+    ReadOnly,
+    /// `E140`: a range that is not the whole buffer, to its own file, without `!`.
+    Partial,
+    /// `E212`: the `:w >>` append failed.
+    Append(io::Error),
+    /// The `:w !cmd` command could not be run.
+    Shell(crate::shell::ShellError),
+    /// The target check or the durable write failed.
+    File(FileError),
+}
+
+impl std::fmt::Display for WriteFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WriteFailure::NoFileName => f.write_str("E32: No file name"),
+            WriteFailure::ReadOnly => f.write_str(crate::app::dispatch::E45),
+            WriteFailure::Partial => f.write_str("E140: Use ! to write partial buffer"),
+            WriteFailure::Append(e) => write!(f, "E212: Can't open file for writing: {e}"),
+            WriteFailure::Shell(e) => write!(f, "{e}"),
+            WriteFailure::File(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+/// What a `:w`-family command writes, resolved once before the write (target resolution): the focused
+/// buffer, the text the range selects, the buffer's own file and the format the write uses.
+struct WriteSource {
+    id: DocumentId,
+    /// The range covers the whole buffer (or there is none): the write marks the buffer saved.
+    whole: bool,
+    /// The range reaches the last line, so the text ends as the file does (RFC-0024 §3).
+    to_end: bool,
+    text: Vec<u8>,
+    /// The buffer's own file and its format.
+    own: Option<(PathBuf, FileFormat)>,
+    read_only: bool,
+    fmt: FileFormat,
+}
+
+impl WriteSource {
+    fn resolve(spec: &WriteSpec, ws: &mut Workspace, files: &Files, w: &WriteOptions) -> Self {
+        let id = ws.focused_buffer();
+        let whole = spec.range.is_none_or(|r| covers_whole(ws, r));
+        let to_end = spec.range.is_none_or(|r| reaches_last_line(ws, r));
+        let text = match spec.range {
+            Some(r) if !whole => ws.range_text(r).unwrap_or_default(),
+            _ => ws.focused().doc.bytes().to_vec(),
+        };
+        let own = files.get(&id).map(|bf| (bf.path.clone(), bf.fmt));
+        let read_only = files.get(&id).is_some_and(|bf| bf.read_only);
+        let fmt = with_ff(
+            own.as_ref()
+                .map(|o| o.1)
+                .or_else(|| w.nofile_fmt.get(&id).copied())
+                .unwrap_or_else(|| w.new_format()),
+            spec.opts,
+        );
+        WriteSource {
+            id,
+            whole,
+            to_end,
+            text,
+            own,
+            read_only,
+            fmt,
+        }
+    }
+
+    /// The bytes a file write puts on disk: the text as the file ends when it reaches the last line, else
+    /// whole lines (RFC-0024 §3).
+    fn encode(&self, w: &WriteOptions) -> crate::app::write_opts::Encoded {
+        if self.to_end {
+            w.encode(&self.text, self.fmt)
+        } else {
+            w.encode_lines(&self.text, self.fmt)
+        }
+    }
+
+    /// Whether the file argument `name` names this buffer's own file.
+    fn names_own(&self, files: &Files, name: Option<&str>) -> bool {
+        names_own(
+            files,
+            self.id,
+            name,
+            self.own.as_ref().map(|o| o.0.as_path()),
+        )
+    }
+}
+
 /// Run one `:w`-family command on the focused buffer (`:help :w`). Returns whether it succeeded (a skipped
 /// `:up`/`:x` write of an unmodified buffer counts), so `:wq`/`:x` know whether to close the window.
 pub(crate) fn ex_write(
@@ -276,7 +371,6 @@ pub(crate) fn ex_write(
     status: &mut Status,
 ) -> bool {
     let w = &files.write.clone();
-    let id = ws.focused_buffer();
     if spec.if_modified && !ws.focused().doc.is_modified() {
         return true;
     }
@@ -286,140 +380,12 @@ pub(crate) fn ex_write(
             return false;
         }
     }
-    let whole = spec.range.is_none_or(|r| covers_whole(ws, r));
-    let to_end = spec.range.is_none_or(|r| reaches_last_line(ws, r));
-    let text = match spec.range {
-        Some(r) if !whole => ws.range_text(r).unwrap_or_default(),
-        _ => ws.focused().doc.bytes().to_vec(),
-    };
-    let own = files.get(&id).map(|bf| (bf.path.clone(), bf.fmt));
-    let read_only = files.get(&id).is_some_and(|bf| bf.read_only);
-    let fmt = with_ff(
-        own.as_ref()
-            .map(|o| o.1)
-            .or_else(|| w.nofile_fmt.get(&id).copied())
-            .unwrap_or_else(|| w.new_format()),
-        spec.opts,
-    );
+    let src = WriteSource::resolve(spec, ws, files, w);
     let result = match &spec.target {
-        // `:w !cmd`: the lines go to the command's stdin; its output is shown and the buffer is untouched.
-        // A range that reaches the last line ends as the file does (nvim: `:w !od -c` of `a\nb` without
-        // `'eol'` sends three bytes, RFC-0024 §3).
-        WriteTarget::Command(cmd) => match crate::shell::filter(
-            cmd,
-            if to_end {
-                w.lines_out(&text, fmt)
-            } else {
-                &text
-            },
-        ) {
-            Ok(out) => {
-                let shown = out.text.trim_end_matches('\n').replace('\n', " | ");
-                Ok(match out.failure() {
-                    Some(note) if shown.is_empty() => note,
-                    Some(note) => format!("{shown} | {note}"),
-                    None => shown,
-                })
-            }
-            Err(e) => Err(e.to_string()),
-        },
-        WriteTarget::Append(name) => {
-            let path = match (name, &own) {
-                (Some(n), _) => PathBuf::from(n),
-                (None, Some((p, _))) => p.clone(),
-                (None, None) => {
-                    status.error("E32: No file name");
-                    return false;
-                }
-            };
-            let enc = if to_end {
-                w.encode(&text, fmt)
-            } else {
-                w.encode_lines(&text, fmt)
-            };
-            // An append to the buffer's own file is ruse's own write, not a change on disk (#1221).
-            let before = names_own(
-                files,
-                id,
-                name.as_deref(),
-                own.as_ref().map(|o| o.0.as_path()),
-            )
-            .then(|| persist::disk::check(&path));
-            match append_to(&path, &enc.disk) {
-                Ok(()) => {
-                    if let Some(before) = before {
-                        persist::disk::appended(&path, before);
-                    }
-                    Ok(write_report(
-                        &path.display().to_string(),
-                        false,
-                        &enc,
-                        "appended",
-                        fmt,
-                    ))
-                }
-                Err(e) => Err(format!("E212: Can't open file for writing: {e}")),
-            }
-        }
+        WriteTarget::Command(cmd) => write_command(cmd, &src, w),
+        WriteTarget::Append(name) => write_append(name.as_deref(), &src, files, w),
         WriteTarget::File(name) => {
-            let to_own = name.is_none()
-                || names_own(
-                    files,
-                    id,
-                    name.as_deref(),
-                    own.as_ref().map(|o| o.0.as_path()),
-                );
-            let enc = if to_end {
-                w.encode(&text, fmt)
-            } else {
-                w.encode_lines(&text, fmt)
-            };
-            let disk = &enc.disk;
-            if to_own {
-                match &own {
-                    None => Err("E32: No file name".to_string()),
-                    Some(_) if read_only && !spec.bang => {
-                        Err(crate::app::dispatch::E45.to_string())
-                    }
-                    Some(_) if !whole && !spec.bang => {
-                        Err("E140: Use ! to write partial buffer".to_string())
-                    }
-                    Some((path, _)) => {
-                        let written = write_own(ws, id, path, &enc, whole, spec.bang, fmt, w)
-                            .map_err(|e| e.to_string());
-                        // `:w!` over a 'readonly' buffer's own file resets 'readonly' (nvim, without
-                        // 'cpoptions' `Z`).
-                        if written.is_ok() && spec.bang {
-                            if let Some(bf) = files.get_mut(&id) {
-                                bf.read_only = false;
-                            }
-                        }
-                        written
-                    }
-                }
-            } else {
-                let name = name.as_deref().expect("a write to another file names it");
-                let target = PathBuf::from(name);
-                match check_other_target(files, id, &target, name, spec.bang, w.writeany) {
-                    Err(e) => Err(e.to_string()),
-                    Ok(new) => match write_file(w, &target, disk, spec.bang) {
-                        Ok(written) => {
-                            // A buffer with no file takes the name it is first written to (Vim's
-                            // 'cpoptions' `F`); written whole, it is then saved.
-                            if own.is_none() {
-                                persist::disk::saw(&target, disk);
-                                adopt_file(ws, files, highlighters, id, name, fmt);
-                                if whole {
-                                    ws.focused_doc_mut().mark_saved();
-                                    persist::journal::clear(Some(&target));
-                                }
-                            }
-                            Ok(write_report(name, new, &enc, "written", fmt) + &written.note())
-                        }
-                        Err(e) => Err(e.to_string()),
-                    },
-                }
-            }
+            write_to_file(spec, name.as_deref(), &src, ws, files, highlighters, w)
         }
     };
     match result {
@@ -427,10 +393,152 @@ pub(crate) fn ex_write(
             status.echo(msg);
             true
         }
-        Err(msg) => {
-            status.error(msg);
+        Err(e) => {
+            status.error(e.to_string());
             false
         }
+    }
+}
+
+/// `:w !cmd`: the lines go to the command's stdin; its output is shown and the buffer is untouched. A range
+/// that reaches the last line ends as the file does (nvim: `:w !od -c` of `a\nb` without `'eol'` sends three
+/// bytes, RFC-0024 §3).
+fn write_command(cmd: &str, src: &WriteSource, w: &WriteOptions) -> Result<String, WriteFailure> {
+    match crate::shell::filter(
+        cmd,
+        if src.to_end {
+            w.lines_out(&src.text, src.fmt)
+        } else {
+            &src.text
+        },
+    ) {
+        Ok(out) => {
+            let shown = out.text.trim_end_matches('\n').replace('\n', " | ");
+            Ok(match out.failure() {
+                Some(note) if shown.is_empty() => note,
+                Some(note) => format!("{shown} | {note}"),
+                None => shown,
+            })
+        }
+        Err(e) => Err(WriteFailure::Shell(e)),
+    }
+}
+
+/// `:w >> [file]`: append to `name`, else the buffer's own file (`E32` with neither).
+fn write_append(
+    name: Option<&str>,
+    src: &WriteSource,
+    files: &Files,
+    w: &WriteOptions,
+) -> Result<String, WriteFailure> {
+    let path = match (name, &src.own) {
+        (Some(n), _) => PathBuf::from(n),
+        (None, Some((p, _))) => p.clone(),
+        (None, None) => return Err(WriteFailure::NoFileName),
+    };
+    let enc = src.encode(w);
+    // An append to the buffer's own file is ruse's own write, not a change on disk (#1221).
+    let before = src
+        .names_own(files, name)
+        .then(|| persist::disk::check(&path));
+    match append_to(&path, &enc.disk) {
+        Ok(()) => {
+            if let Some(before) = before {
+                persist::disk::appended(&path, before);
+            }
+            Ok(write_report(
+                &path.display().to_string(),
+                false,
+                &enc,
+                "appended",
+                src.fmt,
+            ))
+        }
+        Err(e) => Err(WriteFailure::Append(e)),
+    }
+}
+
+/// `:[range]w[!] [file]`: a replacing write, to the buffer's own file or to another one.
+fn write_to_file(
+    spec: &WriteSpec,
+    name: Option<&str>,
+    src: &WriteSource,
+    ws: &mut Workspace,
+    files: &mut Files,
+    highlighters: &mut Highlighters,
+    w: &WriteOptions,
+) -> Result<String, WriteFailure> {
+    let to_own = name.is_none() || src.names_own(files, name);
+    let enc = src.encode(w);
+    if to_own {
+        write_to_own(spec, src, &enc, ws, files, w)
+    } else {
+        let name = name.expect("a write to another file names it");
+        write_to_other(spec, name, src, &enc, ws, files, highlighters, w)
+    }
+}
+
+/// The write to the buffer's own file: `E32` with none, `E45` for a 'readonly' one and `E140` for part of the
+/// buffer without `!`.
+fn write_to_own(
+    spec: &WriteSpec,
+    src: &WriteSource,
+    enc: &crate::app::write_opts::Encoded,
+    ws: &mut Workspace,
+    files: &mut Files,
+    w: &WriteOptions,
+) -> Result<String, WriteFailure> {
+    match &src.own {
+        None => Err(WriteFailure::NoFileName),
+        Some(_) if src.read_only && !spec.bang => Err(WriteFailure::ReadOnly),
+        Some(_) if !src.whole && !spec.bang => Err(WriteFailure::Partial),
+        Some((path, _)) => {
+            let written = write_own(ws, src.id, path, enc, src.whole, spec.bang, src.fmt, w)
+                .map_err(WriteFailure::File);
+            // `:w!` over a 'readonly' buffer's own file resets 'readonly' (nvim, without 'cpoptions' `Z`).
+            if written.is_ok() && spec.bang {
+                if let Some(bf) = files.get_mut(&src.id) {
+                    bf.read_only = false;
+                }
+            }
+            written
+        }
+    }
+}
+
+/// The write to a file other than the buffer's own, after [`check_other_target`]. A buffer with no file
+/// takes the name it is first written to.
+#[allow(clippy::too_many_arguments)]
+fn write_to_other(
+    spec: &WriteSpec,
+    name: &str,
+    src: &WriteSource,
+    enc: &crate::app::write_opts::Encoded,
+    ws: &mut Workspace,
+    files: &mut Files,
+    highlighters: &mut Highlighters,
+    w: &WriteOptions,
+) -> Result<String, WriteFailure> {
+    let disk = &enc.disk;
+    let target = PathBuf::from(name);
+    match check_other_target(files, src.id, &target, name, spec.bang, w.writeany) {
+        Err(e) => Err(WriteFailure::File(e)),
+        Ok(new) => match write_file(w, &target, disk, spec.bang) {
+            Ok(written) => {
+                // A buffer with no file takes the name it is first written to (Vim's 'cpoptions' `F`);
+                // written whole, it is then saved.
+                if src.own.is_none() {
+                    persist::disk::saw(&target, disk);
+                    adopt_file(ws, files, highlighters, src.id, name, src.fmt);
+                    if src.whole {
+                        ws.focused_doc_mut().mark_saved();
+                        persist::journal::clear(Some(&target));
+                    }
+                }
+                Ok(write_report(name, new, enc, "written", src.fmt) + &written.note())
+            }
+            Err(e) => Err(WriteFailure::File(FileError::Write(e))),
+        },
     }
 }
 
