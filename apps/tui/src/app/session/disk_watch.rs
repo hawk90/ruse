@@ -14,7 +14,7 @@ impl Session {
         let Some(j) = self.journals else {
             return;
         };
-        for bf in self.files.values() {
+        for bf in self.ed.files.values() {
             j.discard(Some(bf.path.as_path()));
         }
         if self.unnamed_start.is_some() {
@@ -27,11 +27,11 @@ impl Session {
     /// (RFC-0023 §4).
     pub(crate) fn sync_journals(&mut self) {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             journal_writers,
             journal_failed,
-            status,
             ..
         } = self;
         sync_journals(ws, files, journal_writers, journal_failed, status);
@@ -57,16 +57,16 @@ impl Session {
         self.disk_checked = std::time::Instant::now();
         // The config layer files too (#1152); a file's own warning, below, is shown over its report.
         self.watch_config();
-        let focused = self.ws.focused_buffer();
-        let mut ids: Vec<DocumentId> = self.files.keys().copied().collect();
+        let focused = self.ed.ws.focused_buffer();
+        let mut ids: Vec<DocumentId> = self.ed.files.keys().copied().collect();
         ids.sort_by_key(|id| (*id != focused, id.0));
         let mut first = None;
         for id in ids {
-            let Some(bf) = self.files.get(&id) else {
+            let Some(bf) = self.ed.files.get(&id) else {
                 continue;
             };
             let mut state = persist::disk::check(&bf.path);
-            let clean = self.ws.document(id).is_some_and(|d| !d.is_modified());
+            let clean = self.ed.ws.document(id).is_some_and(|d| !d.is_modified());
             if state == persist::disk::State::Changed
                 && clean
                 && self.ui_opts.buffers.autoread
@@ -85,27 +85,30 @@ impl Session {
                 first = Some((id, state));
             }
         }
-        self.disk_changed.retain(|id| self.files.contains_key(id));
-        self.disk_warned.retain(|id, _| self.files.contains_key(id));
+        self.disk_changed
+            .retain(|id| self.ed.files.contains_key(id));
+        self.disk_warned
+            .retain(|id, _| self.ed.files.contains_key(id));
         // Emacs says nothing until the buffer is visited or edited again (find-file, #619): the W11/W12/E211
         // messages are nvim's.
         let Some((id, state)) = first.filter(|_| announce && !self.emacs_profile) else {
             return;
         };
         self.disk_warned.insert(id, state);
-        let (Some(bf), Some(doc)) = (self.files.get(&id), self.ws.document(id)) else {
+        let (Some(bf), Some(doc)) = (self.ed.files.get(&id), self.ed.ws.document(id)) else {
             return;
         };
         let name = bf.path.display();
         if state == persist::disk::State::Gone {
-            self.status
+            self.ed
+                .status
                 .error(format!("E211: File \"{name}\" no longer available"));
         } else if doc.is_modified() {
-            self.status.warn(format!(
+            self.ed.status.warn(format!(
                 "W12: Warning: File \"{name}\" has changed and the buffer was changed in Vim as well"
             ));
         } else {
-            self.status.warn(format!(
+            self.ed.status.warn(format!(
                 "W11: Warning: File \"{name}\" has changed since editing started"
             ));
         }
@@ -115,16 +118,16 @@ impl Session {
     /// the file's new line endings and BOM. Returns whether it did (an unreadable file is left to the
     /// warning).
     pub(super) fn autoread(&mut self, id: DocumentId) -> bool {
-        let Some(path) = self.files.get(&id).map(|bf| bf.path.clone()) else {
+        let Some(path) = self.ed.files.get(&id).map(|bf| bf.path.clone()) else {
             return false;
         };
         let Ok(raw) = persist::read_file(&path) else {
             return false;
         };
         persist::disk::saw(&path, &raw);
-        let fmt = self.files.write.read_format(&raw);
-        self.ws.reload_undoable(id, fmt.to_buffer(&raw));
-        if let Some(bf) = self.files.get_mut(&id) {
+        let fmt = self.ed.files.write.read_format(&raw);
+        self.ed.ws.reload_undoable(id, fmt.to_buffer(&raw));
+        if let Some(bf) = self.ed.files.get_mut(&id) {
             bf.fmt = fmt;
             bf.reloads = bf.reloads.saturating_add(1);
         }
@@ -137,7 +140,7 @@ impl Session {
     pub(crate) fn idle_disk_check(&mut self) {
         let idle = persist::journal::IDLE;
         if self.rescue
-            && (!self.files.is_empty() || self.config_paths.is_some())
+            && (!self.ed.files.is_empty() || self.config_paths.is_some())
             && self.last_input.elapsed() >= idle
             && self.disk_checked.elapsed() >= idle
         {
@@ -157,15 +160,24 @@ impl Session {
         }
         self.auto_saved_since_input = true;
         let skip: Vec<DocumentId> = self
+            .ed
             .files
             .iter()
             .filter(|(id, bf)| {
-                bf.read_only || self.ws.document(**id).is_some_and(|d| !d.is_modifiable())
+                bf.read_only
+                    || self
+                        .ed
+                        .ws
+                        .document(**id)
+                        .is_some_and(|d| !d.is_modifiable())
             })
             .map(|(id, _)| *id)
             .collect();
         let Session {
-            ws, files, status, ..
+            ed: Editing {
+                ws, files, status, ..
+            },
+            ..
         } = self;
         if ws
             .buffers()
@@ -178,7 +190,7 @@ impl Session {
 
     /// `auto-save-visited-interval` while `auto-save-visited-mode` is on (Emacs profile), else `None`.
     pub(super) fn auto_save_interval(&self) -> Option<std::time::Duration> {
-        let e = self.files.write.emacs.as_ref()?;
+        let e = self.ed.files.write.emacs.as_ref()?;
         (e.auto_save_visited_mode && self.rescue)
             .then(|| std::time::Duration::from_secs(e.auto_save_visited_interval.max(1)))
     }
@@ -195,7 +207,7 @@ impl Session {
 
     /// How long until [`Session::idle_disk_check`] is due, for the poll timeout.
     pub(super) fn disk_wake_ms(&self) -> Option<u64> {
-        if !self.rescue || (self.files.is_empty() && self.config_paths.is_none()) {
+        if !self.rescue || (self.ed.files.is_empty() && self.config_paths.is_none()) {
             return None;
         }
         let idle = persist::journal::IDLE;

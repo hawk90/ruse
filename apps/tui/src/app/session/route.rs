@@ -3,10 +3,10 @@
 //! order they claim it. Split from `session.rs`.
 
 use crossterm::event::{KeyEvent, KeyEventKind};
-use ruse_core::{BytePos, Command, ExCmd, GroupKind, Mode};
+use ruse_core::{BytePos, ExCmd, GroupKind, Mode};
 
-use super::{scrolloff_for, Flow, FrameCtx, Prefix, Session};
-use crate::app::dispatch::{note_ex, run_cmd, run_repeat};
+use super::{scrolloff_for, Editing, Flow, FrameCtx, Prefix, Session};
+use crate::app::dispatch::{note_ex, run_repeat};
 use crate::input::Feed;
 
 impl Session {
@@ -25,11 +25,11 @@ impl Session {
         match answer {
             Answer::Stay => true,
             Answer::Done => {
-                self.status.clear();
+                self.ed.status.clear();
                 true
             }
             Answer::DoneThenRun => {
-                self.status.clear();
+                self.ed.status.clear();
                 false
             }
         }
@@ -45,7 +45,7 @@ impl Session {
         from_replay: bool,
         frame: &FrameCtx,
     ) -> Flow {
-        let status_before = self.status.serial();
+        let status_before = self.ed.status.serial();
         self.last_input = std::time::Instant::now();
         self.auto_saved_since_input = false;
         if !from_replay {
@@ -53,21 +53,22 @@ impl Session {
             self.end_macro_undo();
             self.sync_undo_before_typed();
         }
-        let ro_watch = self.readonly.watch(&self.ws, &self.files);
-        let trace_before = (self.recorded.len(), self.ws.focused_buffer());
+        let ro_watch = self.readonly.watch(&self.ed.ws, &self.ed.files);
+        let trace_before = (self.ed.recorded.len(), self.ed.ws.focused_buffer());
         // A replayed key's edits are the macro's (INV-ORIGIN, #880).
         self.key_typed = !from_replay;
         self.route_as(raw_key, from_replay, frame);
         self.key_typed = false;
-        self.readonly.warn(ro_watch, &self.ws, &mut self.status);
+        self.readonly
+            .warn(ro_watch, &self.ed.ws, &mut self.ed.status);
         self.trace_watch
-            .after_input(trace_before, &mut self.ws, &mut self.recorded);
+            .after_input(trace_before, &mut self.ed.ws, &mut self.ed.recorded);
         if !from_replay && !self.emacs_profile {
             // A typed `@{reg}` (or `@:`, `Q`) queued its replay: one undo step for all of it (#939).
-            if self.macros.replay_pending() && !self.ws.focused().doc.in_undo_block() {
-                self.ws.focused_doc_mut().begin_undo_block();
-                self.macro_undo = Some(self.ws.focused_buffer());
-                note_ex(ExCmd::Begin(GroupKind::Macro), &mut self.recorded);
+            if self.macros.replay_pending() && !self.ed.ws.focused().doc.in_undo_block() {
+                self.ed.ws.focused_doc_mut().begin_undo_block();
+                self.macro_undo = Some(self.ed.ws.focused_buffer());
+                note_ex(ExCmd::Begin(GroupKind::Macro), &mut self.ed.recorded);
             }
         }
         if let Some(key) = self.swap_answer.take() {
@@ -84,7 +85,7 @@ impl Session {
             self.macros.flush_replay();
         }
         self.settle_interrupt();
-        if self.quit {
+        if self.ed.quit {
             Flow::Quit
         } else {
             Flow::Continue
@@ -107,13 +108,13 @@ impl Session {
         self.prefix = Prefix::None;
         self.meta_tail = None;
         if self.overlay_open() {
-            self.status.warn("paste ignored: close the picker first");
+            self.ed.status.warn("paste ignored: close the picker first");
             return Flow::Continue;
         }
-        let mode = self.ws.focused().view.mode();
+        let mode = self.ed.ws.focused().view.mode();
         #[cfg(unix)]
         if matches!(mode, Mode::Terminal | Mode::TerminalNormal) {
-            if let Some(t) = self.terminals.get_mut(&self.ws.focused_buffer()) {
+            if let Some(t) = self.terminals.get_mut(&self.ed.ws.focused_buffer()) {
                 t.paste(&text);
                 return Flow::Continue;
             }
@@ -121,32 +122,36 @@ impl Session {
         self.sync_undo_before_typed();
         let visual_append = self.visual_paste_appends(mode, &frame.snapshot);
         let out = self.engine.paste(&text, mode, visual_append);
-        let ro_watch = self.readonly.watch(&self.ws, &self.files);
+        let ro_watch = self.readonly.watch(&self.ed.ws, &self.ed.files);
         let report = self.ui_opts.report;
-        let trace_before = (self.recorded.len(), self.ws.focused_buffer());
+        let trace_before = (self.ed.recorded.len(), self.ed.ws.focused_buffer());
         let Session {
-            ws,
-            files,
-            recorded,
-            status,
-            quit,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    quit,
+                },
             ..
         } = self;
         match out {
-            Feed::Cmd(cmd) => self.run_cmd(cmd),
+            Feed::Cmd(cmd) => self.ed.run(cmd),
             Feed::Replay(cmds) => {
                 for cmd in cmds {
-                    self.run_cmd(cmd);
+                    self.ed.run(cmd);
                 }
             }
             Feed::Repeat(r) => run_repeat(r, ws, files, recorded, status, quit, report),
             _ => {}
         }
-        self.readonly.warn(ro_watch, &self.ws, &mut self.status);
+        self.readonly
+            .warn(ro_watch, &self.ed.ws, &mut self.ed.status);
         self.trace_watch
-            .after_input(trace_before, &mut self.ws, &mut self.recorded);
+            .after_input(trace_before, &mut self.ed.ws, &mut self.ed.recorded);
         self.settle_interrupt();
-        if self.quit {
+        if self.ed.quit {
             Flow::Quit
         } else {
             Flow::Continue
@@ -164,6 +169,7 @@ impl Session {
             return false;
         }
         let span = self
+            .ed
             .ws
             .focused()
             .view
@@ -189,7 +195,7 @@ impl Session {
 
     /// The focused window's `'scrolloff'` as the rows of context the viewport keeps.
     pub(super) fn scrolloff_rows(&self) -> usize {
-        scrolloff_for(self.ws.focused().view, self.scrolloff)
+        scrolloff_for(self.ed.ws.focused().view, self.scrolloff)
     }
 
     pub(super) fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
@@ -203,37 +209,29 @@ impl Session {
         }
         self.route_key(raw_key, from_replay, frame);
         // A read-only buffer refuses a change in Emacs's words (#619).
-        if self.emacs_profile && self.status.is_error() && self.status.text() == ruse_core::E21 {
+        if self.emacs_profile
+            && self.ed.status.is_error()
+            && self.ed.status.text() == ruse_core::E21
+        {
             let name = self
+                .ed
                 .ws
-                .buffer_name(self.ws.focused_buffer())
+                .buffer_name(self.ed.ws.focused_buffer())
                 .unwrap_or("*scratch*");
             let base = std::path::Path::new(name)
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            self.status
+            self.ed
+                .status
                 .error(format!("Buffer is read-only: #<buffer {base}>"));
         }
         // A window key that stands for an Ex command (`CTRL-W q` = `:quit`) runs it now, before the next
         // key, through the Ex dispatch and its unsaved-changes gate (#619).
         if let Some(line) = self.window_ex.take() {
-            self.status.clear();
+            self.ed.status.clear();
             self.run_ex_pieces(vec![line.to_string()], frame);
         }
-    }
-
-    /// Run `cmd` through [`run_cmd`] with the session's own workspace, files, recording, status line and
-    /// quit flag.
-    pub(super) fn run_cmd(&mut self, cmd: Command) {
-        run_cmd(
-            cmd,
-            &mut self.ws,
-            &self.files,
-            &mut self.recorded,
-            &mut self.status,
-            &mut self.quit,
-        );
     }
 
     pub(super) fn route_key(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
@@ -275,7 +273,7 @@ impl Session {
     pub(super) fn focused_height(&self, frame: &FrameCtx) -> usize {
         frame
             .rects
-            .get(self.ws.focus())
+            .get(self.ed.ws.focus())
             .map_or(frame.text_rows as usize, |r| r.h as usize)
     }
 }

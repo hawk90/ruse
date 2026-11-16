@@ -6,19 +6,19 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::DocumentId;
 
 use super::{plain, EmacsPrompt, ReadFor, Then};
-use crate::app::session::Session;
+use crate::app::session::{Editing, Session};
 
 /// The `save-some-buffers` question for `id`.
 pub(super) fn save_question(s: &Session, id: DocumentId) -> String {
     let keys = "(y, n, !, ., q, M-~, C-r, C-f, d or C-h) ";
-    match s.files.get(&id) {
+    match s.ed.files.get(&id) {
         Some(bf) => {
             let file = std::path::absolute(&bf.path).unwrap_or_else(|_| bf.path.clone());
             let base = file
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let name = s.ws.buffer_name(id).unwrap_or_default();
+            let name = s.ed.ws.buffer_name(id).unwrap_or_default();
             let shown = std::path::Path::new(name)
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -31,7 +31,7 @@ pub(super) fn save_question(s: &Session, id: DocumentId) -> String {
         }
         None => format!(
             "Save buffer {}? {keys}",
-            s.ws.buffer_name(id).unwrap_or("*scratch*")
+            s.ed.ws.buffer_name(id).unwrap_or("*scratch*")
         ),
     }
 }
@@ -43,11 +43,12 @@ impl Session {
     pub(super) fn buffers_needing_save(&self, pred_t: bool) -> Vec<DocumentId> {
         let vars = self.emacs_vars();
         let root = (!pred_t && vars.save_some_buffers_default_predicate_root).then(project_root);
-        self.ws
+        self.ed
+            .ws
             .buffers()
             .into_iter()
             .filter(|b| b.modified && !self.terminals.contains_key(&b.id))
-            .filter(|b| match self.files.get(&b.id) {
+            .filter(|b| match self.ed.files.get(&b.id) {
                 Some(bf) => root.as_ref().is_none_or(|r| {
                     std::path::absolute(&bf.path)
                         .ok()
@@ -56,7 +57,7 @@ impl Session {
                 }),
                 None => {
                     let offer = vars.buffer_offer_save.as_str();
-                    let size = self.ws.document(b.id).map_or(0, |d| d.len());
+                    let size = self.ed.ws.document(b.id).map_or(0, |d| d.len());
                     offer == "always" || (pred_t && offer == "t" && size > 0)
                 }
             })
@@ -80,7 +81,7 @@ impl Session {
     /// Save buffer `id` (`save-buffer`); a buffer without a file reads one first. Returns false while a
     /// file name is being read.
     fn save_one(&mut self, id: DocumentId, rest: EmacsPrompt) -> bool {
-        if !self.files.contains_key(&id) {
+        if !self.ed.files.contains_key(&id) {
             self.ask(EmacsPrompt::ReadFile {
                 prompt: "File to save in: ".into(),
                 typed: String::new(),
@@ -92,7 +93,10 @@ impl Session {
             return false;
         }
         let Session {
-            ws, files, status, ..
+            ed: Editing {
+                ws, files, status, ..
+            },
+            ..
         } = self;
         crate::app::abandon::write_buffer(ws, files, id, status);
         true
@@ -114,7 +118,7 @@ impl Session {
                 then,
             });
         } else {
-            self.status.clear();
+            self.ed.status.clear();
             self.emacs_then(then, true);
         }
     }
@@ -124,10 +128,11 @@ impl Session {
         let vars = self.emacs_vars();
         if stage <= 1 {
             let unsaved = self
+                .ed
                 .ws
                 .buffers()
                 .iter()
-                .any(|b| b.modified && self.files.contains_key(&b.id));
+                .any(|b| b.modified && self.ed.files.contains_key(&b.id));
             if unsaved {
                 return self.ask_yes(
                     "Modified buffers exist; exit anyway? ".into(),
@@ -167,7 +172,7 @@ impl Session {
                 _ => {}
             }
         }
-        self.quit = true;
+        self.ed.quit = true;
     }
 
     /// `save-some-buffers`: one buffer at a time, `!` for the rest, `.` for this one only, `q` to stop.
@@ -199,20 +204,24 @@ impl Session {
         } else if plain(key, 'n') || key.code == KeyCode::Backspace {
             self.save_some_next(queue, at, saved, then);
         } else if key.code == KeyCode::Char('~') && key.modifiers.contains(KeyModifiers::ALT) {
-            if let Some(d) = self.ws.document_mut(id) {
+            if let Some(d) = self.ed.ws.document_mut(id) {
                 d.mark_saved();
             }
             self.save_some_next(queue, at, saved, then);
         } else if plain(key, '!') {
             for &b in &queue[at..] {
-                if self.files.contains_key(&b) {
+                if self.ed.files.contains_key(&b) {
                     let Session {
-                        ws, files, status, ..
+                        ed:
+                            Editing {
+                                ws, files, status, ..
+                            },
+                        ..
                     } = self;
                     crate::app::abandon::write_buffer(ws, files, b, status);
                 }
             }
-            self.status.clear();
+            self.ed.status.clear();
             self.emacs_then(then, true);
         } else if plain(key, '.') {
             let done = EmacsPrompt::SaveSome {
@@ -222,11 +231,11 @@ impl Session {
                 then: then.clone(),
             };
             if self.save_one(id, done) {
-                self.status.clear();
+                self.ed.status.clear();
                 self.emacs_then(then, true);
             }
         } else if plain(key, 'q') || key.code == KeyCode::Enter {
-            self.status.clear();
+            self.ed.status.clear();
             self.emacs_then(then, true);
         } else {
             // `C-r`, `C-f`, `d` and `C-h` are Emacs's view, diff and help actions, which ruse does

@@ -162,11 +162,11 @@ impl Headless {
     /// for comparing against an oracle run with `-u NONE`. Applies to every buffer.
     #[must_use]
     pub fn vanilla_search_case(mut self) -> Headless {
-        self.s.ws.set_default_search_case(false, false);
+        self.s.ed.ws.set_default_search_case(false, false);
         // Set before any key, so it is part of where a saved trace starts.
-        if self.s.recorded.is_empty() {
-            self.s.start_options = self.s.ws.focused().view.editing_options();
-            self.s.start_registers = self.s.ws.registers().filled();
+        if self.s.ed.recorded.is_empty() {
+            self.s.start_options = self.s.ed.ws.focused().view.editing_options();
+            self.s.start_registers = self.s.ed.ws.registers().filled();
         }
         self
     }
@@ -174,7 +174,7 @@ impl Headless {
     /// Install `clipboard` as the system clipboard behind `"+`/`"*` (the binary installs the OS one).
     #[must_use]
     pub fn with_clipboard(mut self, clipboard: ruse_core::MemClipboard) -> Headless {
-        self.s.ws.set_clipboard(Box::new(clipboard));
+        self.s.ed.ws.set_clipboard(Box::new(clipboard));
         self
     }
 
@@ -184,12 +184,13 @@ impl Headless {
     /// R4, R6). For checking the start of a trace that begins with registers already filled.
     pub fn restart_trace(&mut self) {
         self.stale = true;
-        self.s.ws.place_focused_cursor(ruse_core::BytePos(0));
-        self.s.initial = self.s.ws.focused().doc.bytes().to_vec();
-        self.s.recorded.clear();
-        self.s.start_options = self.s.ws.focused().view.editing_options();
-        self.s.start_registers = self.s.ws.registers().filled();
-        self.s.trace_watch = crate::app::trace_check::TraceWatch::new(&self.s.ws, &self.s.files);
+        self.s.ed.ws.place_focused_cursor(ruse_core::BytePos(0));
+        self.s.initial = self.s.ed.ws.focused().doc.bytes().to_vec();
+        self.s.ed.recorded.clear();
+        self.s.start_options = self.s.ed.ws.focused().view.editing_options();
+        self.s.start_registers = self.s.ed.ws.registers().filled();
+        self.s.trace_watch =
+            crate::app::trace_check::TraceWatch::new(&self.s.ed.ws, &self.s.ed.files);
     }
 
     /// Apply `edits` (`(start, end, text)` byte edits) to the focused buffer the way a language server's
@@ -202,9 +203,9 @@ impl Headless {
             .iter()
             .map(|&(s, e, t)| (ruse_core::BytePos(s), ruse_core::BytePos(e), t.to_string()))
             .collect();
-        let recorded = &mut self.s.recorded;
+        let recorded = &mut self.s.ed.recorded;
         crate::app::lsp_coordinator::apply_lsp_edits(
-            &mut self.s.ws,
+            &mut self.s.ed.ws,
             &mut |ws, ex| crate::app::dispatch::run_ex(ex, ws, recorded),
             edits,
         )
@@ -215,7 +216,7 @@ impl Headless {
         let frame = s.pre_frame(cols, rows);
         // The paint reparses the focused buffer's syntax tree, which the tree-aware indent reads (#1142);
         // nothing is drawn, so the whole buffer stands for the viewport.
-        if let Some(h) = s.highlighters.get_mut(&s.ws.focused_buffer()) {
+        if let Some(h) = s.highlighters.get_mut(&s.ed.ws.focused_buffer()) {
             h.spans(frame.revision, &frame.snapshot, 0..frame.snapshot.len());
         }
         s.post_render(&frame);
@@ -226,7 +227,7 @@ impl Headless {
     /// frame per key, as the binary does.
     /// Keys after the session quit are ignored. Returns whether the session is still running.
     pub fn key(&mut self, key: KeyEvent) -> bool {
-        if self.s.quit {
+        if self.s.ed.quit {
             return false;
         }
         if self.stale {
@@ -250,7 +251,7 @@ impl Headless {
     /// Deliver a bracketed paste of `text`, as the binary does for a terminal's `CSI 200 ~ … CSI 201 ~`.
     /// Returns whether the session is still running.
     pub fn paste(&mut self, text: &str) -> bool {
-        if self.s.quit {
+        if self.s.ed.quit {
             return false;
         }
         if self.stale {
@@ -273,25 +274,25 @@ impl Headless {
     /// The focused buffer's text (lossy UTF-8).
     #[must_use]
     pub fn text(&self) -> String {
-        String::from_utf8_lossy(self.s.ws.focused().doc.bytes()).into_owned()
+        String::from_utf8_lossy(self.s.ed.ws.focused().doc.bytes()).into_owned()
     }
 
     /// The focused buffer's bytes, as they are (not necessarily UTF-8).
     #[must_use]
     pub fn bytes(&self) -> Vec<u8> {
-        self.s.ws.focused().doc.bytes().to_vec()
+        self.s.ed.ws.focused().doc.bytes().to_vec()
     }
 
     /// The focused view's cursor, a byte offset.
     #[must_use]
     pub fn cursor(&self) -> usize {
-        self.s.ws.focused().view.cursor().0
+        self.s.ed.ws.focused().view.cursor().0
     }
 
     /// The focused view's cursor as Neovim reports it: 1-based row, 0-based byte column.
     #[must_use]
     pub fn cursor_row_col(&self) -> (usize, usize) {
-        let bytes = self.s.ws.focused().doc.bytes();
+        let bytes = self.s.ed.ws.focused().doc.bytes();
         let off = self.cursor().min(bytes.len());
         let line_start = bytes[..off]
             .iter()
@@ -306,7 +307,7 @@ impl Headless {
     /// parity oracle records the same for a fixture that observes folds (#903).
     #[must_use]
     pub fn fold_lines(&self) -> Vec<[i64; 3]> {
-        let bytes = self.s.ws.focused().doc.bytes();
+        let bytes = self.s.ed.ws.focused().doc.bytes();
         let lines = crate::app::dispatch::line_count(bytes);
         let folds = self.folds();
         (0..lines)
@@ -323,50 +324,51 @@ impl Headless {
     /// The focused window's first line (0-based).
     #[must_use]
     pub fn topline(&self) -> usize {
-        self.s.ws.focused().view.top()
+        self.s.ed.ws.focused().view.top()
     }
 
     /// The focused buffer's folds.
     #[must_use]
     pub fn folds(&self) -> &[crate::folds::Fold] {
-        crate::folds::for_buffer(&self.s.folds, self.s.ws.focused_buffer())
+        crate::folds::for_buffer(&self.s.folds, self.s.ed.ws.focused_buffer())
     }
 
     /// The whole-state invariant walker (#906): the workspace's, and the session's folds — every fold set
     /// well formed over its buffer, and every fold anchor live in its document.
     pub fn assert_invariants(&self) {
-        self.s.ws.assert_invariants();
+        self.s.ed.ws.assert_invariants();
         self.s.assert_fold_invariants();
     }
 
     /// The editor-global register store.
     #[must_use]
     pub fn registers(&self) -> &ruse_core::RegisterStore {
-        self.s.ws.registers()
+        self.s.ed.ws.registers()
     }
 
     /// The focused view's Emacs mark, a byte offset.
     #[must_use]
     pub fn mark(&self) -> Option<usize> {
-        self.s.ws.focused().view.mark().map(|p| p.0)
+        self.s.ed.ws.focused().view.mark().map(|p| p.0)
     }
 
     /// The focused view's mode.
     #[must_use]
     pub fn mode(&self) -> Mode {
-        self.s.ws.focused().view.mode()
+        self.s.ed.ws.focused().view.mode()
     }
 
     /// The status line's message.
     #[must_use]
     pub fn status(&self) -> &str {
-        self.s.status.text()
+        self.s.ed.status.text()
     }
 
     /// The `:messages` history, oldest first (#1235).
     #[must_use]
     pub fn messages(&self) -> Vec<String> {
         self.s
+            .ed
             .status
             .history()
             .last(None)
@@ -389,7 +391,7 @@ impl Headless {
                 self.emsg = code.to_string();
             }
         }
-        if let Some(code) = emsg_code(&self.s.status) {
+        if let Some(code) = emsg_code(&self.s.ed.status) {
             if code != self.emsg {
                 self.emsg = code.to_string();
             }
@@ -399,7 +401,7 @@ impl Headless {
     /// Whether the session has quit (`:q`, `C-w q` on the last window, …).
     #[must_use]
     pub fn quit(&self) -> bool {
-        self.s.quit
+        self.s.ed.quit
     }
 
     /// The register `name` (`'"'` is the unnamed one) as `(text, kind)`; `kind` is `"charwise"`,
@@ -414,6 +416,7 @@ impl Headless {
     #[must_use]
     pub fn register_bytes(&mut self, name: char) -> (Vec<u8>, &'static str) {
         self.s
+            .ed
             .ws
             .register_snapshot()
             .into_iter()
@@ -431,21 +434,21 @@ impl Headless {
     /// Place the cursor at byte offset `pos` (clamped, snapped, sticky column seeded) — for homing a
     /// fixture's start point. The next key sees a fresh frame.
     pub fn set_cursor(&mut self, pos: usize) {
-        self.s.ws.set_focused_cursor(ruse_core::BytePos(pos));
+        self.s.ed.ws.set_focused_cursor(ruse_core::BytePos(pos));
         self.stale = true;
     }
 
     /// The workspace, for observations the accessors above do not cover.
     #[must_use]
     pub fn workspace(&self) -> &Workspace {
-        &self.s.ws
+        &self.s.ed.ws
     }
 
     /// The workspace, mutably — for checks that act on the core directly after the keys (a full undo).
     /// The next key sees a fresh frame.
     pub fn workspace_mut(&mut self) -> &mut Workspace {
         self.stale = true;
-        &mut self.s.ws
+        &mut self.s.ed.ws
     }
 
     /// The trace `:trace save` would write now: the starting options, then every recorded command
@@ -456,7 +459,7 @@ impl Headless {
             &self.s.initial,
             &self.s.start_options,
             &self.s.start_registers,
-            self.s.recorded.clone(),
+            self.s.ed.recorded.clone(),
         )
     }
 
@@ -661,7 +664,7 @@ mod tests {
             .expect("two buffers shown");
         let other = ws.pane(pane).view.doc();
         let builds = |h: &Headless| {
-            let rev = h.s.ws.pane(pane).doc.revision();
+            let rev = h.s.ed.ws.pane(pane).doc.revision();
             h.s.pane_idx.get(other, rev).map(|ix| ix.builds())
         };
         assert_eq!(builds(&h), Some(1));

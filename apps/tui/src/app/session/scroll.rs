@@ -5,9 +5,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{Command, Workspace};
 
-use super::FrameCtx;
-use crate::app::dispatch::{is_ctrl, place_cursor, run_cmd, Files};
-use crate::app::messages::Status;
+use super::{Editing, FrameCtx};
+use crate::app::dispatch::{is_ctrl, place_cursor};
 use crate::input::{Feed, InputEngine};
 use crate::line_index;
 use crate::ui::window_view::{PaneLines, PaneText, WinView};
@@ -74,7 +73,7 @@ pub(super) enum ScrollKey {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_scroll(
     key: ScrollKey,
-    ws: &mut Workspace,
+    ed: &mut Editing,
     frame: &FrameCtx,
     line_idx: &line_index::LineIndex,
     folds: &[crate::folds::Fold],
@@ -82,18 +81,14 @@ pub(super) fn run_scroll(
     height: usize,
     screen_want: &mut Option<(usize, usize)>,
     valid: &mut Option<ScrollValid>,
-    files: &Files,
-    recorded: &mut Vec<Command>,
-    status: &mut Status,
-    quit: &mut bool,
 ) -> bool {
     use crate::scroll::Scroll;
-    let Some(win) = frame.wins.get(ws.focus()) else {
+    let Some(win) = frame.wins.get(ed.ws.focus()) else {
         return false;
     };
-    let (pos, curswant, mode) = scroll_start(ws, win, line_idx, *screen_want);
+    let (pos, curswant, mode) = scroll_start(&ed.ws, win, line_idx, *screen_want);
     let (done, start) = {
-        let f = ws.focused();
+        let f = ed.ws.focused();
         let text = PaneText {
             bytes: f.doc.bytes(),
             idx: line_idx,
@@ -121,38 +116,31 @@ pub(super) fn run_scroll(
         let start = text.start(done.pos.line);
         (done, start)
     };
-    let i = ws.focus();
-    ws.set_top(i, done.pos.top);
-    ws.set_skipcol(i, done.pos.skipcol);
+    let i = ed.ws.focus();
+    ed.ws.set_top(i, done.pos.top);
+    ed.ws.set_skipcol(i, done.pos.skipcol);
     let at = start + done.pos.byte;
-    let cursor = ws.focused().view.cursor().0;
+    let cursor = ed.ws.focused().view.cursor().0;
     if at != cursor {
         if done.pos.curswant == curswant {
             // The wanted column stays (nvim's scrollup/scrolldown keep `curswant`).
-            place_cursor(ws, recorded, at);
+            place_cursor(&mut ed.ws, &mut ed.recorded, at);
         } else {
             let target = u32::try_from(at + 1).unwrap_or(u32::MAX);
-            run_cmd(
-                Command::Move(target, ruse_core::Motion::GotoByte),
-                ws,
-                files,
-                recorded,
-                status,
-                quit,
-            );
+            ed.run(Command::Move(target, ruse_core::Motion::GotoByte));
         }
     }
-    *screen_want = Some((ws.focused().view.cursor().0, done.pos.curswant));
+    *screen_want = Some((ed.ws.focused().view.cursor().0, done.pos.curswant));
     // nvim marks the top line valid after a scroll: the next redraw keeps it (no 'scrolloff' pull back)
     // until the cursor or the text moves.
     *valid = done.keep_top.then(|| ScrollValid {
         window: i,
-        cursor: ws.focused().view.cursor().0,
+        cursor: ed.ws.focused().view.cursor().0,
         top: done.pos.top,
-        revision: ws.focused().doc.revision(),
+        revision: ed.ws.focused().doc.revision(),
     });
     if done.beep {
-        ws.beep();
+        ed.ws.beep();
     }
     !done.beep
 }

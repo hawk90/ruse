@@ -12,14 +12,18 @@ impl Session {
     pub(super) fn macro_key(&mut self, raw_key: KeyEvent, from_replay: bool) -> Option<KeyEvent> {
         let overlay_open = self.overlay_open();
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             emacs_profile,
             engine,
             prefix,
             macros,
             last_ex_line,
-            status,
             profile_name,
             meta_tail,
             ..
@@ -151,12 +155,16 @@ impl Session {
     /// The completion popup and omni-completion keys (F-014): whether they took `key`.
     pub(super) fn popup_owns(&mut self, key: KeyEvent, frame: &FrameCtx) -> bool {
         let Session {
-            ws,
-            files,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    ..
+                },
             emacs_profile,
             lsp,
-            status,
             ..
         } = self;
         let revision = frame.revision;
@@ -176,14 +184,18 @@ impl Session {
     pub(super) fn prompt_owns(&mut self, key: KeyEvent) -> bool {
         let report = self.ui_opts.report;
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             confirm,
             swap,
             changed_prompt,
             emacs_prompt,
             swap_answer,
-            status,
             ..
         } = self;
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
@@ -202,13 +214,17 @@ impl Session {
     /// An open picker: whether it took `key`, and the action an accepted item runs.
     pub(super) fn picker_owns(&mut self, key: KeyEvent, frame: &FrameCtx) -> bool {
         let Session {
-            ws,
-            files,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    ..
+                },
             highlighters,
-            recorded,
             overlay,
             lsp,
-            status,
             journal_writers,
             journal_failed,
             ..
@@ -294,7 +310,7 @@ impl Session {
     #[cfg(unix)]
     pub(super) fn terminal_owns(&mut self, key: KeyEvent) -> bool {
         let Session {
-            ws,
+            ed: Editing { ws, .. },
             prefix,
             #[cfg(unix)]
             terminals,
@@ -313,7 +329,7 @@ impl Session {
                         if matches!(prefix, Prefix::TermEscape) {
                             *prefix = Prefix::None;
                             if is_ctrl(key, 'n') {
-                                self.run_cmd(Command::EnterTerminalNormal);
+                                self.ed.run(Command::EnterTerminalNormal);
                                 return true;
                             }
                             // Not the escape: the swallowed `CTRL-\` is dropped; fall through to send `key`.
@@ -335,7 +351,7 @@ impl Session {
                         if matches!(key.code, KeyCode::Char('i' | 'a' | 'A'))
                             && !crate::input::is_chord(key) =>
                     {
-                        self.run_cmd(Command::EnterTerminal);
+                        self.ed.run(Command::EnterTerminal);
                         return true;
                     }
                     _ => {}
@@ -373,11 +389,10 @@ impl Session {
     /// where the window's screen rows are known.
     fn engine_feed(&mut self, key: KeyEvent, frame: &FrameCtx) -> Feed {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             line_idx,
             engine,
             folds,
-            status,
             screen_want,
             ..
         } = self;
@@ -401,9 +416,13 @@ impl Session {
     /// The command-line splices: the word or line under the cursor, a register, a completion (F-026, #613).
     fn cmdline_splice(&mut self, fed: Feed) {
         let Session {
-            ws,
-            files,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    ..
+                },
             engine,
             fold_method,
             foldlevel,
@@ -478,10 +497,9 @@ impl Session {
     /// `{count}:`.
     fn seeded_cmdline(&mut self, fed: Feed) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             engine,
             search_hl,
-            status,
             ..
         } = self;
         match fed {
@@ -535,57 +553,51 @@ impl Session {
 
     /// A command the engine finished: a beep, a command, or one under `keepjumps`.
     fn run_fed(&mut self, fed: Feed, frame: &FrameCtx) {
-        let Session {
-            ws,
-            files,
-            recorded,
-            quit,
-            status,
-            ..
-        } = self;
+        let Session { ed, .. } = self;
         match fed {
             // An unknown key (#1111): record the failure, so a macro or `:normal` stops here.
             Feed::Beep { clear_register } => {
                 if clear_register {
-                    run_cmd(
-                        Command::SetRegister(None),
-                        ws,
-                        files,
-                        recorded,
-                        status,
-                        quit,
-                    );
+                    ed.run(Command::SetRegister(None));
                 }
-                ws.beep();
+                ed.ws.beep();
             }
             // A change that fails before nvim saves its redo (`d/zzz<CR>`, `dfz`, `d'a` unset) is no change
             // for `.`: the engine recorded it before the core could tell (#1179). The beep is kept for the
             // macro and `:normal` abort read after the key.
             Feed::Cmd(cmd) => {
-                let beeped_before = self.ws.take_beep();
-                self.ws.take_refused();
+                let beeped_before = self.ed.ws.take_beep();
+                self.ed.ws.take_refused();
                 self.run_resolved_cmd(cmd.clone(), frame);
-                let beeped = self.ws.take_beep();
+                let beeped = self.ed.ws.take_beep();
                 // A refused register beeps after nvim saved the redo; a failed motion before (#1184).
-                let refused = self.ws.take_refused();
+                let refused = self.ed.ws.take_refused();
                 if beeped {
                     self.engine.change_failed(&cmd, refused);
                 }
                 if beeped_before || beeped {
-                    self.ws.beep();
+                    self.ed.ws.beep();
                 }
             }
             // `` g`a `` / `g'a` (#1175): the jump runs under `keepjumps`, switched through the trace (RFC-0020
             // R6) as `:keepjumps` is, so a replay skips the jumplist entry too. Already on (`:keepjumps normal
             // g`a`), it stays on.
             Feed::KeepJumps(cmd) => {
-                let kept = self.ws.keep_jumps();
+                let kept = self.ed.ws.keep_jumps();
                 if !kept {
-                    run_ex(ExCmd::KeepJumps(true), &mut self.ws, &mut self.recorded);
+                    run_ex(
+                        ExCmd::KeepJumps(true),
+                        &mut self.ed.ws,
+                        &mut self.ed.recorded,
+                    );
                 }
                 self.run_resolved_cmd(cmd, frame);
                 if !kept {
-                    run_ex(ExCmd::KeepJumps(false), &mut self.ws, &mut self.recorded);
+                    run_ex(
+                        ExCmd::KeepJumps(false),
+                        &mut self.ed.ws,
+                        &mut self.ed.recorded,
+                    );
                 }
             }
             _ => unreachable!("routed by feed_engine"),
@@ -597,15 +609,11 @@ impl Session {
     fn repeat_fed(&mut self, fed: Feed, frame: &FrameCtx) {
         let report = self.ui_opts.report;
         let Session {
-            ws,
-            files,
+            ed,
             line_idx,
-            recorded,
             engine,
-            quit,
             folds,
             last_ex_line,
-            status,
             alt_file,
             ..
         } = self;
@@ -614,32 +622,62 @@ impl Session {
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
-                sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
+                sync_special_registers(
+                    &mut ed.ws,
+                    &mut ed.recorded,
+                    engine,
+                    last_ex_line,
+                    &ed.files,
+                    alt_file,
+                );
                 // `.` over a closed fold acts on it as the typed command did (#819): its first command
                 // meets the buffer as it is now; the rest follow from where that one leaves it.
-                let fv = focused_folds(folds, ws);
+                let fv = focused_folds(folds, &ed.ws);
                 let mut cmds = cmds.into_iter();
                 let first = cmds.next().and_then(|c| {
-                    crate::app::fold_cmds::prepare(c, ws, fv, line_idx, snapshot, recorded)
+                    crate::app::fold_cmds::prepare(
+                        c,
+                        &mut ed.ws,
+                        fv,
+                        line_idx,
+                        snapshot,
+                        &mut ed.recorded,
+                    )
                 });
                 // Python re-indents on the replayed keys as on the typed ones (nvim's redo re-types them).
                 let can = &mut self.can_cindent;
                 let highlighters = &self.highlighters;
                 if let Some(first) = first {
                     for cmd in std::iter::once(first).chain(cmds) {
-                        let after = crate::app::indent_keys::before(&cmd, ws, highlighters, can);
-                        crate::app::dispatch::run_cmd_reported(
-                            cmd, ws, files, recorded, status, quit, report,
-                        );
-                        if let Some(fix) = crate::app::indent_keys::after(after, ws, highlighters) {
-                            run_cmd(fix, ws, files, recorded, status, quit);
+                        let after =
+                            crate::app::indent_keys::before(&cmd, &ed.ws, highlighters, can);
+                        ed.run_reported(cmd, report);
+                        if let Some(fix) =
+                            crate::app::indent_keys::after(after, &ed.ws, highlighters)
+                        {
+                            ed.run(fix);
                         }
                     }
                 }
             }
             Feed::Repeat(r) => {
-                sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
-                run_repeat(r, ws, files, recorded, status, quit, report);
+                sync_special_registers(
+                    &mut ed.ws,
+                    &mut ed.recorded,
+                    engine,
+                    last_ex_line,
+                    &ed.files,
+                    alt_file,
+                );
+                run_repeat(
+                    r,
+                    &mut ed.ws,
+                    &ed.files,
+                    &mut ed.recorded,
+                    &mut ed.status,
+                    &mut ed.quit,
+                    report,
+                );
             }
             _ => unreachable!("routed by feed_engine"),
         }

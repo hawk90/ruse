@@ -24,5 +24,5 @@ fn is_ctrl_accepts_the_legacy_encoding_of_punctuation_chords() {
 /// Run one ex line against `ws` through the session's Ex dispatch, returning `(status, quit)`.
 pub(super) fn ex_run(ws: &mut Workspace, line: &str) -> (String, bool) {
     let s = crate::app::session::Session::ex_on(ws, line);
-    (s.status.to_string(), s.quit)
+    (s.ed.status.to_string(), s.ed.quit)
 }

@@ -4,8 +4,9 @@
 
 use ruse_core::{Command, ExCmd, Workspace};
 
-use crate::app::dispatch::{lines_outcome, run_ex, Files};
+use crate::app::dispatch::{lines_outcome, run_ex};
 use crate::app::messages::Status;
+use crate::app::session::Editing;
 use crate::input::{Ex, ReadSource, WriteTarget};
 
 /// Give a command's line-count report (#1276), or clear the line when it has none ('report' not passed).
@@ -53,16 +54,9 @@ pub(super) fn with_shell_failure(out: &crate::shell::ShellOutput, lines: String)
 /// Put the cursor on 1-based `line` for an Ex range: Vim `beginline(BL_SOL | BL_FIX)` under
 /// 'nostartofline' keeps the wanted column, so this is `j`/`k` by the distance (nvim v0.12.6 `ll:3` stays
 /// in column 2).
-pub(super) fn goto_line(
-    line: usize,
-    ws: &mut Workspace,
-    files: &Files,
-    recorded: &mut Vec<Command>,
-    status: &mut Status,
-    quit: &mut bool,
-) {
-    let b = ws.focused().doc.bytes();
-    let here = ruse_core::pos::line_of(b, ws.focused().view.cursor()) + 1;
+pub(super) fn goto_line(line: usize, ed: &mut Editing) {
+    let b = ed.ws.focused().doc.bytes();
+    let here = ruse_core::pos::line_of(b, ed.ws.focused().view.cursor()) + 1;
     let (n, motion) = if line >= here {
         (line - here, ruse_core::Motion::Down)
     } else {
@@ -70,7 +64,7 @@ pub(super) fn goto_line(
     };
     if n > 0 {
         let cmd = Command::Move(n as u32, motion);
-        crate::app::dispatch::run_cmd(cmd, ws, files, recorded, status, quit);
+        ed.run(cmd);
     }
 }
 

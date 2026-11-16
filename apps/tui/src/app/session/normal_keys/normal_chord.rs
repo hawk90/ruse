@@ -10,8 +10,8 @@ use crate::app::dispatch::{is_ctrl, place_cursor};
 use crate::app::session::commands::repeat_substitute_lines;
 // The pickers come through the session's own imports; this module is their only user.
 use crate::app::session::{
-    buffer_picker, file_picker, focused_context, line_picker, page_key, palette, FrameCtx, Prefix,
-    ScrollKey, Session,
+    buffer_picker, file_picker, focused_context, line_picker, page_key, palette, Editing, FrameCtx,
+    Prefix, ScrollKey, Session,
 };
 use crate::input::Pending;
 use crate::ui::overlay::Overlay;
@@ -77,9 +77,8 @@ impl Session {
             return false;
         }
         let Session {
-            ws,
+            ed: Editing { ws, recorded, .. },
             line_idx,
-            recorded,
             engine,
             folds,
             ..
@@ -127,8 +126,7 @@ impl Session {
     /// fall through, unbound in the grammar). The coordinator sends the request.
     fn lsp_chord_owns(&mut self, key: KeyEvent, at: KeyCtx, frame: &FrameCtx) -> bool {
         let Session {
-            ws,
-            files,
+            ed: Editing { ws, files, .. },
             engine,
             lsp,
             ..
@@ -147,7 +145,7 @@ impl Session {
             return false;
         }
         let Session {
-            ws,
+            ed: Editing { ws, .. },
             engine,
             overlay,
             ..
@@ -219,11 +217,15 @@ impl Session {
         }
         let report = self.ui_opts.report;
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             engine,
             last_substitute,
-            status,
             ..
         } = self;
         let count = engine.take_count().max(1) as usize;
@@ -251,7 +253,7 @@ impl Session {
             return false;
         }
         let count = self.engine.take_count() as usize;
-        let ws = &mut self.ws;
+        let ws = &mut self.ed.ws;
         if count > 0 {
             ws.set_scroll(ws.focus(), count.min(focused_h.max(1)), focused_h);
         }

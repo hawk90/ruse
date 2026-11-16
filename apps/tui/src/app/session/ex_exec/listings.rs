@@ -3,7 +3,7 @@
 
 use crate::app::session::disk_watch::journal_health;
 // The pickers come through the session's own imports; this module is their only user.
-use crate::app::session::{diag_picker, marks_picker, register_picker, FrameCtx, Session};
+use crate::app::session::{diag_picker, marks_picker, register_picker, Editing, FrameCtx, Session};
 use crate::health;
 use crate::ui::overlay::Overlay;
 
@@ -12,16 +12,20 @@ impl Session {
     /// the report's one-line summary into status.
     pub(in crate::app::session) fn ex_checkhealth(&mut self) {
         let Session {
-            ws,
-            files,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    ..
+                },
             highlighters,
-            recorded,
             profile_name,
             emacs_profile,
             term,
             config,
             overlay,
-            status,
             rescue,
             journals,
             journal_writers,
@@ -58,7 +62,7 @@ impl Session {
         let Session {
             config,
             overlay,
-            status,
+            ed: Editing { status, .. },
             ..
         } = self;
         let rows = match key.as_deref() {
@@ -76,9 +80,8 @@ impl Session {
     /// `:marks` (F-003): open a picker over the set marks; Enter jumps to the selected one.
     pub(in crate::app::session) fn ex_marks(&mut self) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             overlay,
-            status,
             ..
         } = self;
         let snapshot = ws.marks_snapshot();
@@ -97,10 +100,9 @@ impl Session {
     /// diagnostics (no server round-trip); Enter jumps to the selected one.
     pub(in crate::app::session) fn ex_diagnostics(&mut self, frame: &FrameCtx) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             overlay,
             lsp,
-            status,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -117,9 +119,8 @@ impl Session {
     /// recorded macro (`"a`) or a yank is inspectable.
     pub(in crate::app::session) fn ex_registers(&mut self) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             overlay,
-            status,
             ..
         } = self;
         let snapshot = ws.register_snapshot();

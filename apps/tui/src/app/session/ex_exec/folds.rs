@@ -3,7 +3,7 @@
 
 use ruse_core::SubRange;
 
-use crate::app::session::{FrameCtx, Session, E350};
+use crate::app::session::{Editing, FrameCtx, Session, E350};
 
 impl Session {
     /// `:{range}foldopen[!]` / `:{range}foldclose[!]` (#1141): `zo`/`zc` (`zO`/`zC`) on each line of
@@ -15,7 +15,9 @@ impl Session {
         recursive: bool,
     ) {
         let Session {
-            ws, folds, status, ..
+            ed: Editing { ws, status, .. },
+            folds,
+            ..
         } = self;
         let (a, b) = ws.resolve_range(range);
         let fv = folds.entry(ws.focused_buffer()).or_default();
@@ -34,7 +36,11 @@ impl Session {
         cmd: String,
         frame: &FrameCtx,
     ) {
-        let Session { ws, folds, .. } = self;
+        let Session {
+            ed: Editing { ws, .. },
+            folds,
+            ..
+        } = self;
         let (a, b) = ws.resolve_range(range);
         let fv = crate::folds::for_buffer(folds, ws.focused_buffer());
         let marked: Vec<usize> = (a.max(1)..=b)
@@ -48,10 +54,9 @@ impl Session {
     /// `:{range}fold` (#1141): a closed manual fold over the range, as `zf`; the cursor stays.
     pub(in crate::app::session) fn ex_fold(&mut self, range: SubRange) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             folds,
             fold_method,
-            status,
             ..
         } = self;
         let buf = ws.focused_buffer();

@@ -21,15 +21,7 @@ impl Session {
     /// `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed
     /// line (a charwise register is still put as whole lines — the linewise-forcing rule).
     pub(super) fn ex_put(&mut self, addr: LineAddr, reg: Option<char>, above: bool) {
-        let Session {
-            ws,
-            files,
-            recorded,
-            quit,
-            ui_opts,
-            status,
-            ..
-        } = self;
+        let Session { ed, ui_opts, .. } = self;
         let put_addr = addr;
         // `:put!` puts above the line (#609).
         let addr = if above {
@@ -38,25 +30,30 @@ impl Session {
             addr
         };
         let target = {
-            let pane = ws.focused();
+            let pane = ed.ws.focused();
             let b = pane.doc.bytes();
             let cur = ruse_core::pos::line_of(b, pane.view.cursor());
             put_addr.insert_index(cur, crate::app::dispatch::line_count(b))
         };
-        let n = ws.resolve_addr(addr).map_or(0, |dest| {
-            lines_outcome(&run_ex(ExCmd::Put { dest, reg }, ws, recorded))
+        let n = ed.ws.resolve_addr(addr).map_or(0, |dest| {
+            lines_outcome(&run_ex(
+                ExCmd::Put { dest, reg },
+                &mut ed.ws,
+                &mut ed.recorded,
+            ))
         });
         if n > 0 {
-            give_report(status, report::more(to_i64(n), ui_opts.report));
+            give_report(&mut ed.status, report::more(to_i64(n), ui_opts.report));
         } else if !matches!(reg, Some('+' | '*')) {
             // An empty register: `E353`, with the cursor already on the addressed line (nvim's
             // `ex_put` moves it there before it reads the register).
             if let Some(line) = target {
-                goto_line(line.max(1), ws, files, recorded, status, quit);
+                goto_line(line.max(1), ed);
             }
-            status.error(format!("E353: Nothing in register {}", reg.unwrap_or('"')));
+            ed.status
+                .error(format!("E353: Nothing in register {}", reg.unwrap_or('"')));
         } else {
-            status.clear();
+            ed.status.clear();
         }
     }
 
@@ -64,10 +61,14 @@ impl Session {
     /// `ex_z` picks, at column 0 when that is another line.
     pub(super) fn ex_z(&mut self, spec: crate::input::ZSpec, frame: &FrameCtx) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             overlay,
-            status,
             ex_filter,
             ..
         } = self;
@@ -134,9 +135,14 @@ impl Session {
     /// reads and writes are behind `set_exec::OptionHost`.
     pub(super) fn ex_set(&mut self, line: crate::input::set_cmd::SetLine, frame: &FrameCtx) {
         let Session {
-            ws,
-            files,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    ..
+                },
             engine,
             folds,
             fold_method,
@@ -151,7 +157,6 @@ impl Session {
             opt_sources,
             ex_verbose,
             overlay,
-            status,
             readonly,
             ..
         } = self;
@@ -186,7 +191,10 @@ impl Session {
 
     /// `:[range]mark {x}` / `:[range]k{x}` (#1088).
     pub(super) fn ex_mark(&mut self, range: SubRange, name: char) {
-        let Session { ws, recorded, .. } = self;
+        let Session {
+            ed: Editing { ws, recorded, .. },
+            ..
+        } = self;
         let line = match range {
             ruse_core::SubRange::WholeFile => {
                 crate::app::dispatch::line_count(ws.focused().doc.bytes())
@@ -205,11 +213,15 @@ impl Session {
     /// reusing the core `>>`/`<<` shift (no range = the current line).
     pub(super) fn ex_shift(&mut self, range: SubRange, left: bool, levels: u32) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             folds,
             ui_opts,
-            status,
             ..
         } = self;
         let (first, last) = ws.resolve_range(range);
@@ -248,10 +260,14 @@ impl Session {
         flags: Option<crate::input::PrintFlags>,
     ) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             ui_opts,
-            status,
             ..
         } = self;
         let (first, last) = ws.resolve_range(range);
@@ -281,24 +297,20 @@ impl Session {
     /// the cursor goes to the last line of the range at the wanted column, as `:N` does.
     pub(super) fn ex_print(&mut self, range: SubRange, flags: crate::input::PrintFlags) {
         let Session {
-            ws,
-            files,
-            recorded,
-            quit,
+            ed,
             overlay,
-            status,
             ex_filter,
             ..
         } = self;
-        let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
+        let keep = match crate::app::ex_more::filter_keep(&ed.ws, ex_filter.as_ref()) {
             Ok(keep) => keep,
             Err(e) => {
-                status.error(regex_error_msg(&e));
+                ed.status.error(regex_error_msg(&e));
                 return;
             }
         };
-        let (first, last) = crate::app::dispatch::resolve_normal_range(ws, range);
-        let pane = ws.focused();
+        let (first, last) = crate::app::dispatch::resolve_normal_range(&ed.ws, range);
+        let pane = ed.ws.focused();
         let rows = crate::app::ex_print::rows(
             pane.doc.bytes(),
             first,
@@ -307,8 +319,8 @@ impl Session {
             pane.view.tabs(),
             &*keep,
         );
-        goto_line(last, ws, files, recorded, status, quit);
-        crate::app::ex_more::show_rows(rows, status, overlay);
+        goto_line(last, ed);
+        crate::app::ex_more::show_rows(rows, &mut ed.status, overlay);
     }
 
     /// `:retab` (#609).
@@ -318,7 +330,10 @@ impl Session {
         bang: bool,
         tabstop: Option<Box<ruse_core::VarStops>>,
     ) {
-        let Session { ws, recorded, .. } = self;
+        let Session {
+            ed: Editing { ws, recorded, .. },
+            ..
+        } = self;
         let (first, last) = ws.resolve_range(range);
         let ex = ExCmd::Retab {
             first,
@@ -333,9 +348,13 @@ impl Session {
     /// the current line, which joins with the next). `bang` is the raw `gJ` form.
     pub(super) fn ex_join(&mut self, range: SubRange, bang: bool) {
         let Session {
-            ws,
-            recorded,
-            status,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             ..
         } = self;
         let (first, last) = ws.resolve_range(range);
@@ -352,10 +371,14 @@ impl Session {
     /// `:[range]t {addr}` / `:copy` — copy the range's lines to after the destination line.
     pub(super) fn ex_copy(&mut self, range: SubRange, dest: LineAddr) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             ui_opts,
-            status,
             ..
         } = self;
         let ((first, last), dest) = (ws.resolve_range(range), ws.resolve_addr(dest));
@@ -375,10 +398,14 @@ impl Session {
     /// `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
     pub(super) fn ex_yank(&mut self, range: SubRange, reg: Option<char>) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             ui_opts,
-            status,
             ..
         } = self;
         let (first, last) = ws.resolve_range(range);
@@ -388,7 +415,10 @@ impl Session {
 
     /// `:=` (#609): the last line number of the range, or of the buffer.
     pub(super) fn ex_line_number(&mut self, range: Option<SubRange>) {
-        let Session { ws, status, .. } = self;
+        let Session {
+            ed: Editing { ws, status, .. },
+            ..
+        } = self;
         let n = match range {
             Some(r) => crate::app::dispatch::resolve_normal_range(ws, r).1,
             None => crate::app::dispatch::line_count(ws.focused().doc.bytes()),
@@ -398,7 +428,10 @@ impl Session {
 
     /// `:only`.
     pub(super) fn ex_only(&mut self) {
-        let Session { ws, status, .. } = self;
+        let Session {
+            ed: Editing { ws, status, .. },
+            ..
+        } = self;
         status.echo(match ws.only() {
             0 => "already one window".into(),
             1 => "1 window closed".into(),

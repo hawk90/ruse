@@ -28,11 +28,15 @@ impl Session {
     pub(super) fn display_cmd(&mut self, cmd: &Command) -> bool {
         let report = self.ui_opts.report;
         let Session {
-            ws,
-            files,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    ..
+                },
             last_substitute,
-            status,
             ..
         } = self;
         // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
@@ -88,9 +92,8 @@ impl Session {
     /// view-only listing of them. `E349` with no keyword under the cursor.
     pub(super) fn show_keyword_lines(&mut self, above: bool, list: bool, count: u32) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             overlay,
-            status,
             ..
         } = self;
         match ws.word_under_cursor() {
@@ -135,19 +138,15 @@ impl Session {
     /// whole-word first-match jump. `None` when nothing more runs.
     pub(super) fn resolve_search(&mut self, cmd: Command) -> Option<Command> {
         let Session {
-            ws,
-            files,
-            recorded,
+            ed,
             engine,
-            quit,
             search_hl,
-            status,
             ..
         } = self;
         // `*`/`#` (word under cursor): the planner resolves the keyword and searches; record the same
         // pattern as the last search (direction too, so `#` then `n` continues backward) and for
         // hlsearch. No keyword on the line → E348 and nothing runs.
-        if !note_word_search(&cmd, ws, engine, search_hl, status) {
+        if !note_word_search(&cmd, &ed.ws, engine, search_hl, &mut ed.status) {
             return None;
         }
         // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
@@ -157,15 +156,15 @@ impl Session {
         // `n`/`N`/`/<CR>` before any search fail with E35 (#1173). The core fails the empty pattern (a beep,
         // nothing moved); it runs, recorded, so the wanted column resets as nvim's `normal_search` resets it.
         if no_previous_pattern(&cmd) {
-            run_cmd(cmd, ws, files, recorded, status, quit);
-            status.error(E35);
+            ed.run(cmd);
+            ed.status.error(E35);
             return None;
         }
-        if search_misses(&cmd, ws, status) {
+        if search_misses(&cmd, &mut ed.ws, &mut ed.status) {
             if matches!(cmd, Command::Search { .. }) {
-                let err = status.take();
-                run_cmd(cmd, ws, files, recorded, status, quit);
-                status.restore(err);
+                let err = ed.status.take();
+                ed.run(cmd);
+                ed.status.restore(err);
             }
             return None;
         }
@@ -175,14 +174,14 @@ impl Session {
         // the whole-word pattern forward so a following `n` continues from the landing spot (nvim's
         // `gd` sets `@/` too). `global` is unused for now — the `gd` block-scope refinement reads it.
         let cmd = if let Command::GotoDeclaration { .. } = cmd {
-            match ws.word_under_cursor() {
+            match ed.ws.word_under_cursor() {
                 Some(word) => {
                     let pat = format!("\\<{word}\\>");
                     engine.set_last_search(pat.clone(), true);
                     Command::GotoFirstMatch(pat)
                 }
                 None => {
-                    status.error("E348: No string under cursor");
+                    ed.status.error("E348: No string under cursor");
                     return None;
                 }
             }
@@ -197,16 +196,12 @@ impl Session {
     pub(super) fn dispatch_resolved(&mut self, cmd: Command, frame: &FrameCtx) {
         let report = self.ui_opts.report;
         let Session {
-            ws,
-            files,
+            ed,
             highlighters,
             line_idx,
-            recorded,
             engine,
-            quit,
             search_hl,
             last_ex_line,
-            status,
             alt_file,
             folds,
             can_cindent,
@@ -219,9 +214,15 @@ impl Session {
         // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
         // Over closed folds (#819): `j`/`k` count a fold as one line, an operator takes it whole, `o`/`p`
         // open and put past it. Before the tree-aware rewrite, which reads the cursor line `o` opens from.
-        let fv = crate::folds::for_buffer(folds, ws.focused_buffer());
-        let Some(cmd) = crate::app::fold_cmds::prepare(cmd, ws, fv, line_idx, snapshot, recorded)
-        else {
+        let fv = crate::folds::for_buffer(folds, ed.ws.focused_buffer());
+        let Some(cmd) = crate::app::fold_cmds::prepare(
+            cmd,
+            &mut ed.ws,
+            fv,
+            line_idx,
+            snapshot,
+            &mut ed.recorded,
+        ) else {
             return;
         };
         // 'foldopen' applies to typed keys only (nvim checks `KeyTyped`): not to a macro, `:normal` or a
@@ -230,27 +231,40 @@ impl Session {
         let opens_fold = crate::app::fold_cmds::shift_opens_fold(&cmd)
             || (typed && crate::app::fold_cmds::opens_fold(&cmd, &ui_opts.foldopen));
         // `gq` under 'formatprg' / `=` under 'equalprg' filter through the program instead (#617, #618).
-        if crate::app::dispatch::run_prg_operator(&cmd, ws, files, recorded, status) {
+        if crate::app::dispatch::run_prg_operator(
+            &cmd,
+            &mut ed.ws,
+            &ed.files,
+            &mut ed.recorded,
+            &mut ed.status,
+        ) {
             return;
         }
-        let indent_after = crate::app::indent_keys::before(&cmd, ws, highlighters, can_cindent);
-        let cmd = resolve_tree_aware(cmd, ws, highlighters, line_idx, snapshot);
+        let indent_after = crate::app::indent_keys::before(&cmd, &ed.ws, highlighters, can_cindent);
+        let cmd = resolve_tree_aware(cmd, &ed.ws, highlighters, line_idx, snapshot);
         // A completed search turns on hlsearch for that pattern (F-009 #1).
         if let Some(p) = search_pattern(&cmd) {
             *search_hl = Some(p);
         }
         // Refresh the read-only special registers `"/ ": ". "%` before dispatch so a `"/p` /
         // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
-        sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
-        crate::app::dispatch::run_cmd_reported(cmd, ws, files, recorded, status, quit, report);
+        sync_special_registers(
+            &mut ed.ws,
+            &mut ed.recorded,
+            engine,
+            last_ex_line,
+            &ed.files,
+            alt_file,
+        );
+        ed.run_reported(cmd, report);
         // Python re-indents the line its 'indentkeys' and opens leave (#1205, #1206).
-        if let Some(fix) = crate::app::indent_keys::after(indent_after, ws, highlighters) {
-            run_cmd(fix, ws, files, recorded, status, quit);
+        if let Some(fix) = crate::app::indent_keys::after(indent_after, &ed.ws, highlighters) {
+            ed.run(fix);
         }
         // 'foldopen': a search, a horizontal move, a mark, undo… open the fold the cursor lands in.
         if opens_fold {
-            if let Some(fv) = folds.get_mut(&ws.focused_buffer()) {
-                let pane = ws.focused();
+            if let Some(fv) = folds.get_mut(&ed.ws.focused_buffer()) {
+                let pane = ed.ws.focused();
                 crate::folds::open_at(
                     fv,
                     ruse_core::pos::line_of(pane.doc.bytes(), pane.view.cursor()),
