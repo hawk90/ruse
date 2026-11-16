@@ -6,7 +6,10 @@
 //!   `open_line`), for `'formatoptions'` `r` / `o` and for a line auto-wrap breaks.
 //! - Auto-wrap ([`FmtBuf::internal_format`]) and `gq` / `gw` ([`FmtBuf::format_lines`]) over a small line
 //!   buffer, with `'textwidth'` / `'wrapmargin'`, the comment leaders, `'joinspaces'`, and the
-//!   `'formatoptions'` flags `t c q 2 n l 1 p` (`formatlistpat` for `n`).
+//!   `'formatoptions'` flags `t c q 2 n l 1 p` (`formatlistpat` for `n`). The phases live in children:
+//!   `internal_format` (auto-wrap) and `format_lines` (`gq` / `gw`); this file keeps the line buffer's
+//!   edit primitives they share (`set_indent`, `do_join`, `open_line`, `get_number_indent`).
+//! - `gc` ([`toggle_comment`], nvim's `vim._comment`) in the `toggle_comment` child.
 //!
 //! Not modelled: the `'formatoptions'` flags `a` (auto-format a paragraph), `w` (trailing blank continues
 //! a paragraph), `v` / `b` (Vi-compatible wrap of blanks typed this insert), `m` / `B`'s break at a
@@ -18,9 +21,12 @@ use super::range::cluster_cells;
 use super::IndentConfig;
 use crate::cells::Tabs;
 
+mod format_lines;
 mod internal_format;
 mod open_leader;
+mod toggle_comment;
 pub(crate) use open_leader::{open_leader, OpenLeader};
+pub(crate) use toggle_comment::toggle_comment;
 
 /// nvim's default `'comments'`.
 pub(crate) const DEFAULT_COMMENTS: &str = "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-,fb:•";
@@ -624,215 +630,6 @@ impl FmtBuf {
         }
         Some(vcol(line, end, o.ind.tabs()))
     }
-
-    fn fmt_check_par(
-        &self,
-        l: usize,
-        do_com: bool,
-        o: &FmtOpts<'_>,
-    ) -> (bool, usize, Option<usize>) {
-        let Some(line) = (if l == usize::MAX {
-            self.before.as_deref()
-        } else {
-            self.line(l)
-        }) else {
-            return (true, 0, None);
-        };
-        let (len, k) = if do_com {
-            leader_len(line, &o.parts, false, true)
-        } else {
-            (0, None)
-        };
-        let end_leader = len > 0 && k.is_some_and(|k| is_end_part(&o.parts, k));
-        let not_par =
-            skipwhite(line, len) >= line.len() || end_leader || line.first() == Some(&0x0c);
-        (not_par, len, k)
-    }
-
-    /// nvim's `same_leader` for lines `l` and `l + 1`.
-    fn same_leader(
-        &self,
-        l: usize,
-        len1: usize,
-        k1: Option<usize>,
-        len2: usize,
-        k2: Option<usize>,
-        o: &FmtOpts<'_>,
-    ) -> bool {
-        if len1 == 0 {
-            return len2 == 0;
-        }
-        let line1 = self.line(l).unwrap_or(&[]);
-        if let Some(k) = k1 {
-            for f in o.parts[k].flags.bytes() {
-                match f {
-                    b'f' => return len2 == 0,
-                    b'e' => return false,
-                    b's' => {
-                        if line1.len() <= len1 {
-                            return false;
-                        }
-                        if len2 == 0 {
-                            return false;
-                        }
-                        return k2.is_some_and(|k| o.parts[k].has('m'));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let line2 = self.line(l + 1).unwrap_or(&[]);
-        let mut i1 = skipwhite(line1, 0);
-        let mut i2 = 0;
-        while i2 < len2 {
-            if !white(line2[i2]) {
-                if line1.get(i1) != Some(&line2[i2]) {
-                    break;
-                }
-                i1 += 1;
-            } else {
-                while line1.get(i1).copied().is_some_and(white) {
-                    i1 += 1;
-                }
-            }
-            i2 += 1;
-        }
-        i2 == len2 && i1 == len1
-    }
-
-    /// `gq` / `gw` over the buffer's `line_count` lines (nvim's `format_lines`). The cursor starts on
-    /// line 0 and ends on the last formatted line.
-    pub(crate) fn format_lines(&mut self, line_count: usize, tw: usize, o: &FmtOpts<'_>) {
-        let do_com = o.has('q');
-        let do_second = o.has('2');
-        let do_number = o.has('n');
-        let max_len = tw * 3;
-        let mut second_indent: i32 = -1;
-        let mut do_com_list = false;
-        let mut first_par_line = true;
-        let mut need_set_indent = true;
-        let mut force_format = false;
-        let mut next_is_start_par = false;
-
-        let (prev_not_par, _, _) = if self.before.is_some() {
-            self.fmt_check_par(usize::MAX, do_com, o)
-        } else {
-            (true, 0, None)
-        };
-        let mut is_not_par = prev_not_par;
-        let (mut next_is_not_par, mut next_len, mut next_k) = self.fmt_check_par(0, do_com, o);
-        let mut is_end_par = is_not_par || next_is_not_par;
-        let mut leader = (0usize, None::<usize>);
-        let mut advance = true;
-        let mut l: isize = -1;
-        let mut count = line_count;
-        let mut prev_is_end_par = false;
-        while count != 0 {
-            if advance {
-                l += 1;
-                prev_is_end_par = is_end_par;
-                is_not_par = next_is_not_par;
-                leader = (next_len, next_k);
-            }
-            let lu = usize::try_from(l).unwrap_or(0);
-            // nvim walks the cursor down the lines, a skipped one (blank, a comment end) included.
-            self.cur.0 = lu;
-            let last = lu + 1 >= self.lines.len();
-            if count == 1 || last {
-                next_is_not_par = true;
-                next_len = 0;
-                next_k = None;
-            } else {
-                (next_is_not_par, next_len, next_k) = self.fmt_check_par(lu + 1, do_com, o);
-                if do_number {
-                    next_is_start_par =
-                        self.number_indent(lu + 1, do_com, o).is_some_and(|n| n > 0);
-                }
-            }
-            advance = true;
-            is_end_par = is_not_par || next_is_not_par || next_is_start_par;
-            if !is_not_par {
-                let has_next_buffer_line = lu + 1 < self.lines.len() || self.after.is_some();
-                if first_par_line
-                    && (do_second || do_number)
-                    && prev_is_end_par
-                    && has_next_buffer_line
-                {
-                    let next_empty = self.line(lu + 1).is_none_or(<[u8]>::is_empty);
-                    if do_second && !next_empty {
-                        if leader.0 == 0 && next_len == 0 {
-                            second_indent = i32::try_from(self.get_indent(lu + 1, o)).unwrap_or(0);
-                        } else {
-                            second_indent = i32::try_from(next_len).unwrap_or(0);
-                            do_com_list = true;
-                        }
-                    } else if do_number {
-                        second_indent = self
-                            .number_indent(lu, do_com, o)
-                            .map_or(-1, |n| i32::try_from(n).unwrap_or(i32::MAX));
-                        if leader.0 != 0 || next_len != 0 {
-                            do_com_list = true;
-                        }
-                    }
-                }
-                if last || !self.same_leader(lu, leader.0, leader.1, next_len, next_k, o) {
-                    is_end_par = true;
-                }
-                if is_end_par || force_format {
-                    if need_set_indent {
-                        let ind = self.get_indent(lu, o);
-                        self.cur = (lu, 0);
-                        self.set_indent(lu, ind, o);
-                    }
-                    // The cursor on the last non-blank.
-                    let line = &self.lines[lu];
-                    let mut col = if line.is_empty() {
-                        0
-                    } else {
-                        prev_col(line, line.len())
-                    };
-                    while col > 0 && line.get(col).is_some_and(|c| c.is_ascii_whitespace()) {
-                        col = prev_col(line, col);
-                    }
-                    self.cur = (lu, col);
-                    let before = self.lines.len();
-                    self.internal_format(
-                        tw,
-                        second_indent,
-                        true,
-                        do_com,
-                        do_com && do_com_list,
-                        None,
-                        o,
-                    );
-                    let grown = self.lines.len() - before;
-                    l += isize::try_from(grown).unwrap_or(0);
-                    second_indent = -1;
-                    need_set_indent = is_end_par;
-                    if is_end_par {
-                        first_par_line = true;
-                    }
-                    force_format = false;
-                }
-                if !is_end_par {
-                    advance = false;
-                    let lu = usize::try_from(l).unwrap_or(0);
-                    if next_len > 0 {
-                        self.del_start(lu + 1, next_len);
-                    } else if second_indent > 0 {
-                        let n = skipwhite(&self.lines[lu + 1], 0);
-                        if n > 0 {
-                            self.del_start(lu + 1, n);
-                        }
-                    }
-                    self.join2(lu, o);
-                    first_par_line = false;
-                    force_format = self.lines[lu].len() > max_len;
-                }
-            }
-            count -= 1;
-        }
-    }
 }
 
 /// nvim's `utf_eat_space`: punctuation a `B` join puts no space around.
@@ -853,111 +650,6 @@ pub(crate) fn check_formatoptions(s: &str) -> Result<(), OptionValueError> {
         Some(c) => Err(OptionValueError::IllegalChar(c)),
         None => Ok(()),
     }
-}
-
-/// nvim's `toggle_lines` for `gc`: comment the lines out with `'commentstring'`'s parts, or uncomment
-/// them when every non-blank one is commented. `None` when `'commentstring'` has no `%s`.
-pub(crate) fn toggle_comment(lines: &[&[u8]], cms: &str) -> Option<Vec<Vec<u8>>> {
-    let at = cms.find("%s")?;
-    let left = &cms.as_bytes()[..at];
-    let right = &cms.as_bytes()[at + 2..];
-    let trim = |s: &[u8]| -> Vec<u8> {
-        let a = s
-            .iter()
-            .position(|c| !c.is_ascii_whitespace())
-            .unwrap_or(s.len());
-        let b = s
-            .iter()
-            .rposition(|c| !c.is_ascii_whitespace())
-            .map_or(a, |p| p + 1);
-        s[a..b.max(a)].to_vec()
-    };
-    let (lt, rt) = (trim(left), trim(right));
-    let is_blank = |l: &[u8]| l.iter().all(u8::is_ascii_whitespace);
-    // A commented line: blanks, the trimmed left part, anything, the trimmed right part, blanks.
-    let commented = |l: &[u8]| {
-        let s = l
-            .iter()
-            .position(|c| !c.is_ascii_whitespace())
-            .unwrap_or(l.len());
-        let e = l
-            .iter()
-            .rposition(|c| !c.is_ascii_whitespace())
-            .map_or(s, |p| p + 1);
-        let body = &l[s..e.max(s)];
-        body.len() >= lt.len() + rt.len() && body.starts_with(&lt) && body.ends_with(&rt)
-    };
-    let mut indent: Option<&[u8]> = None;
-    let mut all = true;
-    for l in lines {
-        let w = l.iter().take_while(|c| c.is_ascii_whitespace()).count();
-        if w < l.len() {
-            if indent.is_none_or(|i| w < i.len()) {
-                indent = Some(&l[..w]);
-            }
-            if all {
-                all = commented(l);
-            }
-        }
-    }
-    let indent = indent.unwrap_or(&[]);
-    let out = if all {
-        lines
-            .iter()
-            .map(|l| uncomment(l, left, right, &lt, &rt))
-            .collect()
-    } else {
-        lines
-            .iter()
-            .map(|l| {
-                if is_blank(l) {
-                    let mut v = indent.to_vec();
-                    v.extend_from_slice(&lt);
-                    v.extend_from_slice(&rt);
-                    v
-                } else {
-                    let mut v = indent.to_vec();
-                    v.extend_from_slice(left);
-                    v.extend_from_slice(&l[indent.len().min(l.len())..]);
-                    v.extend_from_slice(right);
-                    v
-                }
-            })
-            .collect()
-    };
-    Some(out)
-}
-
-/// One line uncommented the way `vim._comment` does (`^(%s*)L(.*)R(%s-)$` with the exact parts, then
-/// with the trimmed ones); a line that matches neither stays.
-fn uncomment(l: &[u8], left: &[u8], right: &[u8], lt: &[u8], rt: &[u8]) -> Vec<u8> {
-    let ws = |c: &u8| c.is_ascii_whitespace();
-    let find = |left: &[u8], right: &[u8]| -> Option<(usize, usize, usize, usize)> {
-        let lead = l.iter().take_while(|c| ws(c)).count();
-        for ind in (0..=lead).rev() {
-            if !l[ind..].starts_with(left) {
-                continue;
-            }
-            let bs = ind + left.len();
-            for be in (bs..=l.len()).rev() {
-                if l[be..].starts_with(right) && l[be + right.len()..].iter().all(ws) {
-                    return Some((ind, bs, be, be + right.len()));
-                }
-            }
-        }
-        None
-    };
-    let Some((ind, bs, be, te)) = find(left, right).or_else(|| find(lt, rt)) else {
-        return l.to_vec();
-    };
-    let body = &l[bs..be];
-    if body.iter().all(ws) {
-        return body.to_vec();
-    }
-    let mut v = l[..ind].to_vec();
-    v.extend_from_slice(body);
-    v.extend_from_slice(&l[te..]);
-    v
 }
 
 #[cfg(test)]
