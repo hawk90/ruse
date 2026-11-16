@@ -190,9 +190,7 @@ impl Session {
                 place_cursor(ws, recorded, start + off);
             }
             // Over closed folds the rows are counted as nvim counts them (a fold is one row).
-            let fv = folds
-                .get(&ws.focused_buffer())
-                .map_or(&[][..], Vec::as_slice);
+            let fv = focused_folds(folds, ws);
             let new_top = match frame.wins.get(ws.focus()) {
                 Some(win) if fv.iter().any(|f| f.closed) => {
                     let lines = PaneLines {
