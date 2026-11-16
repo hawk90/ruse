@@ -612,3 +612,54 @@ fn next_key(s: &mut Session, frame: &FrameCtx) -> io::Result<Option<(KeyEvent, b
     };
     Ok(Some(key))
 }
+
+/// How often the event loop repaints while a macro replay runs (see `run`).
+const REPLAY_PAINT: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// The union of the byte ranges visible in every pane showing the FOCUSED doc — the window syntax
+/// highlighting is bounded to, so a per-keystroke reparse stays O(viewport). Falls back to the whole buffer
+/// when no pane matches. Pure over the layout + revision-cached line index (lifted out of the `run` loop).
+fn visible_byte_range(
+    ws: &Workspace,
+    rects: &[Rect],
+    line_idx: &line_index::LineIndex,
+    buf_len: usize,
+) -> std::ops::Range<usize> {
+    let focus_doc = ws.focused().view.doc();
+    let (mut vis_start, mut vis_end) = (usize::MAX, 0usize);
+    for (i, rect) in rects.iter().enumerate() {
+        let p = ws.pane(i);
+        if p.view.doc() != focus_doc {
+            continue;
+        }
+        vis_start = vis_start.min(line_idx.nth_line_start(p.view.top()));
+        vis_end = vis_end.max(line_idx.nth_line_start(p.view.top() + rect.h as usize + 1));
+    }
+    if vis_start <= vis_end {
+        vis_start..vis_end
+    } else {
+        0..buf_len
+    }
+}
+
+/// Read each on-screen virtual image's pixel dimensions from its PNG IHDR (the 24-byte header only), so the
+/// renderer can size it to its natural aspect. Cheap and only when the terminal is graphics-capable; a
+/// missing/invalid file is silently skipped. Pure over the virt-line set (lifted out of the `run` loop).
+fn read_image_dims(
+    has_graphics: bool,
+    virt_lines: &[highlight::VirtLine],
+) -> HashMap<String, (u32, u32)> {
+    if !has_graphics {
+        return HashMap::new();
+    }
+    use std::io::Read;
+    virt_lines
+        .iter()
+        .filter_map(|v| {
+            let p = v.path.as_ref()?;
+            let mut hdr = [0u8; 24];
+            std::fs::File::open(p).ok()?.read_exact(&mut hdr).ok()?;
+            graphics::png_dimensions(&hdr).map(|d| (p.clone(), d))
+        })
+        .collect()
+}
