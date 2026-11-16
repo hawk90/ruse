@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """gov ratchet — tracked-debt buckets may never exceed their committed ceiling (turns "green" into progress).
 
-Five debt ledgers are designed to keep the build green while their number "trends to zero": config keys with
+Seven debt ledgers are designed to keep the build green while their number "trends to zero": config keys with
 `derives_from: []`, capabilities with an empty `prd:`, hand-authored parity IDs still cited by the PRD, the
-parity backlog, and review axes that claim `method: machine` with no checker wired (`gov review_coverage`).
-Nothing enforced the trend, so "all green" was a stable equilibrium at high debt, not a milestone
+parity backlog, review axes that claim `method: machine` with no checker wired (`gov review_coverage`), and
+the two size buckets of RA-STRUCT-005 (#1476): non-test functions over 150 lines (`fn_over_150`) and files
+over 1,000 non-test lines (`file_over_1000`), measured by rusekit/arch/size_scan.py (rule:
+docs/contributing/size-ceilings.md). When a size bucket rises, the gate lists every offender (path:line name
+size) so the contributor sees what grew. Nothing enforced the trend, so "all green" was a stable equilibrium at high debt, not a milestone
 (architecture-review finding). This gate stores a ceiling per bucket in spec/parity/ratchet.yaml; a bucket
 that RISES above its ceiling FAILS. Lower a ceiling when you burn the debt down and the gate holds the new
 floor.
@@ -29,6 +32,7 @@ import sys
 import yaml
 
 from rusekit import render, repo  # noqa: E402
+from rusekit.arch import size_scan  # noqa: E402
 from rusekit.gov import parity_discovery, review_coverage  # noqa: E402
 
 BASELINE = "spec/parity/ratchet.yaml"
@@ -47,7 +51,9 @@ def _review_unwired() -> int:
     return len(review_coverage.evaluate(axes, review_coverage.valid_checkers())["gaps"])
 
 
-def current_buckets() -> dict:
+def current_buckets(size: dict | None = None) -> dict:
+    """Every bucket's count. `size` is a `size_scan.scan` result, passed in when the caller already has one."""
+    size = size_scan.scan(repo.ROOT) if size is None else size
     settings = (_load("spec/config-schema.yaml").get("settings")) or {}
     config_untraced = sum(1 for v in settings.values()
                           if isinstance(v, dict) and v.get("derives_from") == [])
@@ -57,7 +63,8 @@ def current_buckets() -> dict:
     backlog = len(bl.get("items") or bl.get("backlog") or []) if isinstance(bl, dict) else 0
     legacy = len(parity_discovery.check().get("legacy_in_prd") or [])
     return {"config_untraced": config_untraced, "cap_untraced": cap_untraced,
-            "backlog": backlog, "legacy_in_prd": legacy, "review_machine_unwired": _review_unwired()}
+            "backlog": backlog, "legacy_in_prd": legacy, "review_machine_unwired": _review_unwired(),
+            **{b: len(rows) for b, rows in size.items()}}
 
 
 def base_ref(explicit: str | None) -> str | None:
@@ -115,7 +122,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv or [])
     head = _load(BASELINE)
     baseline = head.get("buckets") or {}
-    current = current_buckets()
+    size = size_scan.scan(repo.ROOT)
+    current = current_buckets(size)
 
     render.heading("gov ratchet (tracked-debt ceilings)")
     if not baseline:
@@ -124,7 +132,7 @@ def main(argv=None) -> int:
             render.field(b, str(v))
         return 1
 
-    rose, tighten = [], []
+    rose, tighten, grown = [], [], []
     for b, cur in sorted(current.items()):
         ceil = baseline.get(b)
         render.field(b, f"{cur} / ceiling {ceil if ceil is not None else '—'}")
@@ -133,6 +141,7 @@ def main(argv=None) -> int:
         elif cur > ceil:
             rose.append(f"{b} rose to {cur}, above ceiling {ceil} — trace/burn it down, or raise the "
                         f"ceiling with a reason in `raised.{b}`")
+            grown.extend(f"{b}: {size_scan.describe(row)}" for row in size.get(b, []))
         elif cur < ceil:
             tighten.append(f"{b}: {cur} is below ceiling {ceil} — lower the ceiling to lock the gain")
 
@@ -150,6 +159,8 @@ def main(argv=None) -> int:
 
     for r in rose + raises:
         render.bullet(r, mark="!")
+    for g in grown:
+        render.bullet(g)
     if rose or raises:
         render.fail(f"{len(rose) + len(raises)} ratchet finding(s): a bucket above its ceiling, "
                     "or a ceiling raised without a reason")
