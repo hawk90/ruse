@@ -26,7 +26,7 @@
           - 'apps/tui/src/keys.rs'
           - 'crates/core/src/keymap.rs'
           - 'crates/core/src/command.rs'
-          - 'crates/core/src/motion.rs'
+          - 'crates/core/src/motion/**'
           - 'crates/core/src/textobj.rs'
           - 'crates/core/src/register.rs'
 'area/render':
