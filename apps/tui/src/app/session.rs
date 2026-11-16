@@ -1571,10 +1571,10 @@ impl Session {
             ..
         } = self;
         match out {
-            Feed::Cmd(cmd) => run_cmd(cmd, ws, files, recorded, status, quit),
+            Feed::Cmd(cmd) => self.run_cmd(cmd),
             Feed::Replay(cmds) => {
                 for cmd in cmds {
-                    run_cmd(cmd, ws, files, recorded, status, quit);
+                    self.run_cmd(cmd);
                 }
             }
             Feed::Repeat(r) => run_repeat(r, ws, files, recorded, status, quit, report),
@@ -1883,6 +1883,19 @@ impl Session {
             self.status.clear();
             self.run_ex_pieces(vec![line.to_string()], frame);
         }
+    }
+
+    /// Run `cmd` through [`run_cmd`] with the session's own workspace, files, recording, status line and
+    /// quit flag.
+    fn run_cmd(&mut self, cmd: Command) {
+        run_cmd(
+            cmd,
+            &mut self.ws,
+            &self.files,
+            &mut self.recorded,
+            &mut self.status,
+            &mut self.quit,
+        );
     }
 
     fn route_key(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
@@ -2979,15 +2992,8 @@ impl Session {
         // The next line's column-0 placement relies on Normal (an Esc leaves Visual too, but not every
         // state a key can leave behind).
         if self.ws.focused().view.mode() != Mode::Normal {
-            let Session {
-                ws,
-                files,
-                recorded,
-                status,
-                quit,
-                ..
-            } = self;
-            run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+            let Session { .. } = self;
+            self.run_cmd(Command::EnterNormal);
         }
     }
 
@@ -3072,15 +3078,8 @@ impl Session {
         } else {
             Command::EnterInsert
         };
-        let Session {
-            ws,
-            files,
-            recorded,
-            status,
-            quit,
-            ..
-        } = self;
-        run_cmd(cmd, ws, files, recorded, status, quit);
+        let Session { .. } = self;
+        self.run_cmd(cmd);
         self.engine.resume_insert_after_one_shot();
     }
 
