@@ -3,7 +3,8 @@
 use crate::pos::raw::{line_end, line_start};
 
 use super::boundary::prev_grapheme;
-use super::line::{content_end, last_line_start};
+use super::line::{content_end, first_non_blank, last_line_start};
+use super::Motion;
 
 /// Whether the line starting at `ls` is blank — empty or (a start pointing at) a newline / end of buffer.
 /// Paragraph boundaries in Vim are truly-empty lines (a whitespace-only line is *not* a boundary).
@@ -257,4 +258,17 @@ pub(super) fn prev_section_line(b: &[u8], pos: usize, count: u32, ends: bool) ->
         }
     }
     ls
+}
+
+/// Section motions (`]]`/`[[`/`][`/`[]`): jump `count` section boundaries and rest on the target line's
+/// first non-blank (column 0 for a brace/form-feed line). The count is a repeat, resolved by the scanner.
+pub(super) fn section_target(b: &[u8], cur0: usize, m: Motion, n: u32) -> usize {
+    let ls = match m {
+        Motion::SectionFwd => next_section_line(b, cur0, n, false),
+        Motion::SectionEndFwd => next_section_line(b, cur0, n, true),
+        Motion::SectionBack => prev_section_line(b, cur0, n, false),
+        Motion::SectionEndBack => prev_section_line(b, cur0, n, true),
+        _ => unreachable!("{m:?} is not a section motion"),
+    };
+    first_non_blank(b, ls)
 }
