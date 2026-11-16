@@ -789,7 +789,7 @@ features:
       # statefulness) is a vim.md prose bullet, never a catalog row — demoted to this annotation.
       parity: []
       design: [../docs/design/persistence-and-recovery.md]
-      verify: [../apps/tui/tests/journal_torn_write.rs, ../apps/tui/tests/journal_roundtrip.rs, ../apps/tui/tests/fs_faults.rs, ../apps/tui/src/persist/atomic.rs, ../apps/tui/tests/pty_recovery.rs]
+      verify: [../apps/tui/tests/journal_torn_write.rs, ../apps/tui/tests/journal_roundtrip.rs, ../apps/tui/tests/fs_faults.rs, ../apps/tui/src/persist/atomic/tests.rs, ../apps/tui/tests/pty_recovery.rs]
     acceptance:
       - 'The "Saved" UI reflects a durable write (fsync), not just a successful syscall.'
       - Save preserves the file's original encoding and line-ending style.
