@@ -203,10 +203,20 @@ pub(crate) enum ChangeKind {
 ///
 /// The match is EXHAUSTIVE on purpose (#793): a wildcard silently filed every new `Command` as
 /// `NotAChange`, so `.` replayed an OLDER change after `d/pat`, `` d`a ``, `R`, `gi`. Adding a variant
-/// now forces a decision here.
+/// now forces a decision here. The commands that carry an operator (forced-wise, Visual, search, mark) are
+/// classified by that operator in a helper whose own match is exhaustive over the operator enum.
 pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
     use Command as C;
     match cmd {
+        C::OpForced { op, .. } => op_change_kind(*op),
+        // Visual `C`/`S`/`R`, `D`/`X`, `>`/`<`, `J`/`gJ`, `=`, `gq`, ...
+        C::VisualOp(op) => visual_op_change_kind(*op),
+        // `c/pat<CR>`, `d/pat<CR>`, `cgn`, `dgn`, `c*`, `d*`, ... — re-searched from the new cursor.
+        C::Search { op, .. } | C::SearchObject { op, .. } | C::SearchWordUnder { op, .. } => {
+            search_op_change_kind(*op)
+        }
+        // `` c`a ``, `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, ... — the mark is re-resolved on replay.
+        C::OpToMark { op, .. } => mark_op_change_kind(*op),
         // Insert-entering: the change includes the text typed until `<Esc>`.
         C::EnterInsert
         | C::EnterInsertAfter
@@ -224,38 +234,13 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::Change(..)
         | C::ChangeSelection
         | C::ReplaceSelection(_)
-        // Visual `C`/`S`/`R` (linewise) and block `C` (to end of line): the change plus the typed text.
-        | C::VisualOp(VisualOp::Lines(OpKind::Change) | VisualOp::BlockToEol(OpKind::Change))
         // Visual-block `I`/`A`/`c` (`CTRL-V` then the key): the change is the block-insert entry plus the
         // text typed until `<Esc>`. On replay the block has no live selection, so the planner rebuilds an
         // equivalent block (stored WIDTH x HEIGHT) at the caret — nvim repeats a block insert over the same
         // geometry positioned at the new cursor (verified vs nvim v0.12.4). `[count].` is a no-op here (nvim
         // ignores the count for block insert), which falls out naturally: `BlockInsert` is not a plain
         // insert-entry, so `replay` neither re-times the text nor (via `with_count`) rewrites the command.
-        | C::BlockInsert(_)
-        | C::OpForced {
-            op: OpKind::Change, ..
-        }
-        // `c/pat<CR>`, `` c`a ``: the change re-searches / re-resolves the mark from the new cursor.
-        | C::Search {
-            op: SearchOp::Change,
-            ..
-        }
-        | C::OpToMark {
-            op: MarkOp::Change,
-            ..
-        }
-        // `cgn`/`cgN` — the gn idiom: dot replays the change (re-searching from the new cursor), so `n.`
-        // (or bare `.`) walks the change through every match. This is why gn matters.
-        | C::SearchObject {
-            op: SearchOp::Change,
-            ..
-        }
-        // `c*` — like `c/pat`; the keyword is re-read at the new cursor (#1071).
-        | C::SearchWordUnder {
-            op: SearchOp::Change,
-            ..
-        } => ChangeKind::InsertEntering,
+        | C::BlockInsert(_) => ChangeKind::InsertEntering,
         // Self-contained buffer edits — dot-repeatable as a single command.
         C::Delete(..)
         | C::DeleteUnder(_)
@@ -293,96 +278,13 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsHorizontalSpace { .. }
         | C::EmacsOpenLine
         | C::DeleteSelection
-        | C::PasteSelection { .. }
-        // Visual `D`/`X`, `>`/`<`, `J`/`gJ`, `=`, `gq` — the repeat re-covers the recorded amount of text.
-        | C::VisualOp(
-            VisualOp::Lines(OpKind::Delete)
-            | VisualOp::BlockToEol(OpKind::Delete)
-            | VisualOp::Shift { .. }
-            | VisualOp::Join { .. }
-            | VisualOp::Reindent
-            | VisualOp::Format
-            | VisualOp::Comment,
-        )
-        | C::OpForced {
-            op: OpKind::Delete, ..
-        }
-        // `d/pat<CR>`, `gU/pat<CR>`, `>/pat<CR>` — the search motion is re-run from the new cursor.
-        | C::Search {
-            op:
-                SearchOp::Delete
-                | SearchOp::Case(_)
-                | SearchOp::Shift { .. }
-                | SearchOp::Reindent
-                | SearchOp::Format { .. }
-                | SearchOp::Comment,
-            ..
-        }
-        // `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``, `` gq`a `` — the mark is re-resolved on replay.
-        | C::OpToMark {
-            op:
-                MarkOp::Delete
-                | MarkOp::Case(_)
-                | MarkOp::Shift { .. }
-                | MarkOp::Reindent
-                | MarkOp::Format { .. }
-                | MarkOp::Comment,
-            ..
-        }
-        // `dgn`/`dgN` — delete the match; dot-repeatable to sweep the next match. Likewise `gUgn`, `>gn`, ...
-        | C::SearchObject {
-            op:
-                SearchOp::Delete
-                | SearchOp::Case(_)
-                | SearchOp::Shift { .. }
-                | SearchOp::Reindent
-                | SearchOp::Format { .. }
-                | SearchOp::Comment,
-            ..
-        }
-        // `d*`, `gU#`, `>g*` — re-searched for the keyword under the new cursor (nvim `d*.`, #1071).
-        | C::SearchWordUnder {
-            op:
-                SearchOp::Delete
-                | SearchOp::Case(_)
-                | SearchOp::Shift { .. }
-                | SearchOp::Reindent
-                | SearchOp::Format { .. }
-                | SearchOp::Comment,
-            ..
-        } => ChangeKind::Immediate,
-        // Not a change: yanks (incl. forced, search and mark yanks), motions and jumps, mode switches,
-        // searches, undo/redo, marks/registers, info displays, `&`/`g&` (Vim does not dot-repeat them),
-        // and the insert-session-only commands — those reach the recorder only inside Insert/Replace,
-        // where they are appended to the open change's body instead of being classified here.
+        | C::PasteSelection { .. } => ChangeKind::Immediate,
+        // Not a change: yanks, motions and jumps, mode switches, searches, undo/redo, marks/registers, info
+        // displays, `&`/`g&` (Vim does not dot-repeat them), and the insert-session-only commands — those
+        // reach the recorder only inside Insert/Replace, where they are appended to the open change's body
+        // instead of being classified here.
         C::Yank(..)
         | C::YankSelection
-        | C::VisualOp(
-            VisualOp::Lines(OpKind::Yank)
-            | VisualOp::BlockToEol(OpKind::Yank)
-            | VisualOp::OtherCorner
-            | VisualOp::YankTrim
-            | VisualOp::LeaveAtStart,
-        )
-        | C::OpForced {
-            op: OpKind::Yank, ..
-        }
-        | C::Search {
-            op: SearchOp::Move | SearchOp::Yank,
-            ..
-        }
-        | C::SearchObject {
-            op: SearchOp::Move | SearchOp::Yank,
-            ..
-        }
-        | C::SearchWordUnder {
-            op: SearchOp::Move | SearchOp::Yank,
-            ..
-        }
-        | C::OpToMark {
-            op: MarkOp::Yank,
-            ..
-        }
         | C::Move(..)
         | C::MoveLeft
         | C::MoveRight
@@ -472,6 +374,66 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
     }
 }
 
+/// [`change_kind`] of a forced-wise operator (`dvj`, `cVk`, `y<C-v>j`), and of the Visual linewise /
+/// block-to-end-of-line forms, which carry the same three operators.
+fn op_change_kind(op: OpKind) -> ChangeKind {
+    match op {
+        OpKind::Change => ChangeKind::InsertEntering,
+        OpKind::Delete => ChangeKind::Immediate,
+        OpKind::Yank => ChangeKind::NotAChange,
+    }
+}
+
+/// [`change_kind`] of a Visual operator. Visual `C`/`S`/`R` (linewise) and block `C` (to end of line) are
+/// the change plus the typed text; `D`/`X`, `>`/`<`, `J`/`gJ`, `=`, `gq` re-cover the recorded amount of
+/// text; the yanks and the cursor-only forms are not changes.
+fn visual_op_change_kind(op: VisualOp) -> ChangeKind {
+    match op {
+        VisualOp::Lines(kind) | VisualOp::BlockToEol(kind) => op_change_kind(kind),
+        VisualOp::Shift { .. }
+        | VisualOp::Join { .. }
+        | VisualOp::Reindent
+        | VisualOp::Format
+        | VisualOp::Comment => ChangeKind::Immediate,
+        VisualOp::OtherCorner | VisualOp::YankTrim | VisualOp::LeaveAtStart => {
+            ChangeKind::NotAChange
+        }
+    }
+}
+
+/// [`change_kind`] of an operator over a search (`c/pat<CR>`, `d/pat<CR>`, `gU/pat<CR>`, `>/pat<CR>`), a
+/// `gn` match or a `*`/`#` keyword — all three are re-searched from the new cursor on replay. `cgn`/`cgN`
+/// is the gn idiom: dot replays the change (re-searching from the new cursor), so `n.` (or bare `.`) walks
+/// the change through every match; `dgn`/`dgN` likewise sweeps the next match. `c*`/`d*` re-read the
+/// keyword under the new cursor (nvim `d*.`, #1071).
+fn search_op_change_kind(op: SearchOp) -> ChangeKind {
+    match op {
+        SearchOp::Change => ChangeKind::InsertEntering,
+        SearchOp::Delete
+        | SearchOp::Case(_)
+        | SearchOp::Shift { .. }
+        | SearchOp::Reindent
+        | SearchOp::Format { .. }
+        | SearchOp::Comment => ChangeKind::Immediate,
+        SearchOp::Move | SearchOp::Yank => ChangeKind::NotAChange,
+    }
+}
+
+/// [`change_kind`] of an operator to a mark (`` c`a ``, `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``,
+/// `` gq`a ``) — the mark is re-resolved from the new cursor on replay.
+fn mark_op_change_kind(op: MarkOp) -> ChangeKind {
+    match op {
+        MarkOp::Change => ChangeKind::InsertEntering,
+        MarkOp::Delete
+        | MarkOp::Case(_)
+        | MarkOp::Shift { .. }
+        | MarkOp::Reindent
+        | MarkOp::Format { .. }
+        | MarkOp::Comment => ChangeKind::Immediate,
+        MarkOp::Yank => ChangeKind::NotAChange,
+    }
+}
+
 /// Whether a failure of `cmd` (the core beeped) cancels it before nvim saves the redo buffer, so the
 /// change it was about to replace stays the one `.` repeats (#1179, [`InputEngine::change_failed`]).
 /// Every operator over a motion, search, `gn`, `*` or mark: its motion handler fails with `clearopbeep`
@@ -507,111 +469,36 @@ pub(crate) fn fails_before_redo(cmd: &Command) -> bool {
 
 /// Rewrite a command's count for `N.` (Vim replaces the change's count with `N`). Commands without a count
 /// are returned unchanged.
+///
+/// Exhaustive like [`change_kind`] (#793): each counted family is rewritten by its own helper, and the
+/// count-free commands are listed one by one.
 pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
     use Command as C;
     match cmd {
-        C::Move(_, m) => C::Move(n, *m),
-        C::Delete(_, m) => C::Delete(n, *m),
-        C::Change(_, m) => C::Change(n, *m),
-        C::Yank(_, m) => C::Yank(n, *m),
-        C::OpForced {
-            op, motion, wise, ..
-        } => C::OpForced {
-            op: *op,
-            count: n,
-            motion: *motion,
-            wise: *wise,
-        },
-        C::DeleteUnder(_) => C::DeleteUnder(n),
-        C::DeleteForward(_) => C::DeleteForward(n),
-        C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
-        C::VirtualReplaceChar(_, c) => C::VirtualReplaceChar(n, *c),
-        C::ToggleCase(_) => C::ToggleCase(n),
-        C::CaseMotion { motion, case, .. } => C::CaseMotion {
-            count: n,
-            motion: *motion,
-            case: *case,
-        },
-        C::ShiftRight(_) => C::ShiftRight(n),
-        C::ShiftLeft(_) => C::ShiftLeft(n),
-        C::ShiftMotion { left, motion, .. } => C::ShiftMotion {
-            left: *left,
-            count: n,
-            motion: *motion,
-        },
-        C::Reindent { motion, .. } => C::Reindent {
-            count: n,
-            motion: *motion,
-        },
-        C::Comment { motion, .. } => C::Comment {
-            count: n,
-            motion: *motion,
-        },
-        C::Paste {
-            after, move_after, ..
-        } => C::Paste {
-            after: *after,
-            count: n,
-            move_after: *move_after,
-        },
-        C::JoinLines(_) => C::JoinLines(n),
-        C::JoinLinesNoSpace(_) => C::JoinLinesNoSpace(n),
-        // `CTRL-A`/`CTRL-X` carry the count as a signed delta; `5.` keeps the direction.
-        C::IncrementNumber(d) => {
-            C::IncrementNumber(if *d < 0 { -i64::from(n) } else { i64::from(n) })
+        C::Move(..) | C::Delete(..) | C::Change(..) | C::Yank(..) | C::OpForced { .. } => {
+            motion_op_with_count(cmd, n)
         }
-        C::PasteIndent { after, .. } => C::PasteIndent {
-            after: *after,
-            count: n,
-        },
-        C::PasteBlockInner { after, .. } => C::PasteBlockInner {
-            after: *after,
-            count: n,
-        },
-        C::Format {
-            motion,
-            keep_cursor,
-            ..
-        } => C::Format {
-            count: n,
-            motion: *motion,
-            keep_cursor: *keep_cursor,
-        },
-        C::Search {
-            op,
-            pattern,
-            backward,
-            offset,
-            ..
-        } => C::Search {
-            op: *op,
-            count: n,
-            pattern: pattern.clone(),
-            backward: *backward,
-            offset: *offset,
-        },
-        C::SearchObject {
-            op,
-            pattern,
-            backward,
-            ..
-        } => C::SearchObject {
-            op: *op,
-            count: n,
-            pattern: pattern.clone(),
-            backward: *backward,
-        },
-        C::SearchWordUnder {
-            forward,
-            whole_word,
-            op,
-            ..
-        } => C::SearchWordUnder {
-            forward: *forward,
-            whole_word: *whole_word,
-            op: *op,
-            count: n,
-        },
+        C::DeleteUnder(_)
+        | C::DeleteForward(_)
+        | C::ReplaceChar(..)
+        | C::VirtualReplaceChar(..)
+        | C::ToggleCase(_)
+        | C::ShiftRight(_)
+        | C::ShiftLeft(_)
+        | C::JoinLines(_)
+        | C::JoinLinesNoSpace(_)
+        | C::IncrementNumber(_) => counted_edit_with_count(cmd, n),
+        C::CaseMotion { .. }
+        | C::ShiftMotion { .. }
+        | C::Reindent { .. }
+        | C::Comment { .. }
+        | C::Format { .. } => line_op_with_count(cmd, n),
+        C::Paste { .. } | C::PasteIndent { .. } | C::PasteBlockInner { .. } => {
+            put_with_count(cmd, n)
+        }
+        C::Search { .. } | C::SearchObject { .. } | C::SearchWordUnder { .. } => {
+            search_with_count(cmd, n)
+        }
         // No count to rewrite. Listed (not a wildcard) so a new counted variant cannot silently drop
         // `N.` (#793). The Visual-selection changes are here by design: nvim ignores a count on `.` of a
         // Visual change (the repeat re-covers the recorded AMOUNT of text, `:help visual-repeat`).
@@ -734,5 +621,150 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::EmacsKillWholeLine
         | C::EmacsCaseRegion { .. }
         | C::EmacsDeleteIndentation => cmd.clone(),
+    }
+}
+
+/// [`with_count`] of a motion and of the `d`/`c`/`y` operators over one, plain or forced-wise.
+fn motion_op_with_count(cmd: &Command, n: u32) -> Command {
+    use Command as C;
+    match cmd {
+        C::Move(_, m) => C::Move(n, *m),
+        C::Delete(_, m) => C::Delete(n, *m),
+        C::Change(_, m) => C::Change(n, *m),
+        C::Yank(_, m) => C::Yank(n, *m),
+        C::OpForced {
+            op, motion, wise, ..
+        } => C::OpForced {
+            op: *op,
+            count: n,
+            motion: *motion,
+            wise: *wise,
+        },
+        _ => unreachable!("with_count routes only motions and d/c/y operators here"),
+    }
+}
+
+/// [`with_count`] of a counted edit with no motion (`x`, `X`, `r`, `gr`, `~`, `>>`, `<<`, `J`, `gJ`,
+/// `CTRL-A`/`CTRL-X`).
+fn counted_edit_with_count(cmd: &Command, n: u32) -> Command {
+    use Command as C;
+    match cmd {
+        C::DeleteUnder(_) => C::DeleteUnder(n),
+        C::DeleteForward(_) => C::DeleteForward(n),
+        C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
+        C::VirtualReplaceChar(_, c) => C::VirtualReplaceChar(n, *c),
+        C::ToggleCase(_) => C::ToggleCase(n),
+        C::ShiftRight(_) => C::ShiftRight(n),
+        C::ShiftLeft(_) => C::ShiftLeft(n),
+        C::JoinLines(_) => C::JoinLines(n),
+        C::JoinLinesNoSpace(_) => C::JoinLinesNoSpace(n),
+        // `CTRL-A`/`CTRL-X` carry the count as a signed delta; `5.` keeps the direction.
+        C::IncrementNumber(d) => {
+            C::IncrementNumber(if *d < 0 { -i64::from(n) } else { i64::from(n) })
+        }
+        _ => unreachable!("with_count routes only motionless counted edits here"),
+    }
+}
+
+/// [`with_count`] of a case, shift, reindent, comment or format operator over a motion.
+fn line_op_with_count(cmd: &Command, n: u32) -> Command {
+    use Command as C;
+    match cmd {
+        C::CaseMotion { motion, case, .. } => C::CaseMotion {
+            count: n,
+            motion: *motion,
+            case: *case,
+        },
+        C::ShiftMotion { left, motion, .. } => C::ShiftMotion {
+            left: *left,
+            count: n,
+            motion: *motion,
+        },
+        C::Reindent { motion, .. } => C::Reindent {
+            count: n,
+            motion: *motion,
+        },
+        C::Comment { motion, .. } => C::Comment {
+            count: n,
+            motion: *motion,
+        },
+        C::Format {
+            motion,
+            keep_cursor,
+            ..
+        } => C::Format {
+            count: n,
+            motion: *motion,
+            keep_cursor: *keep_cursor,
+        },
+        _ => {
+            unreachable!("with_count routes only case/shift/reindent/comment/format operators here")
+        }
+    }
+}
+
+/// [`with_count`] of a put (`p`/`P`, `gp`/`gP`, `]p`/`[p`, and the block-inner put).
+fn put_with_count(cmd: &Command, n: u32) -> Command {
+    use Command as C;
+    match cmd {
+        C::Paste {
+            after, move_after, ..
+        } => C::Paste {
+            after: *after,
+            count: n,
+            move_after: *move_after,
+        },
+        C::PasteIndent { after, .. } => C::PasteIndent {
+            after: *after,
+            count: n,
+        },
+        C::PasteBlockInner { after, .. } => C::PasteBlockInner {
+            after: *after,
+            count: n,
+        },
+        _ => unreachable!("with_count routes only puts here"),
+    }
+}
+
+/// [`with_count`] of a search motion or an operator over one: `/pat`, `gn`, `*`/`#`.
+fn search_with_count(cmd: &Command, n: u32) -> Command {
+    use Command as C;
+    match cmd {
+        C::Search {
+            op,
+            pattern,
+            backward,
+            offset,
+            ..
+        } => C::Search {
+            op: *op,
+            count: n,
+            pattern: pattern.clone(),
+            backward: *backward,
+            offset: *offset,
+        },
+        C::SearchObject {
+            op,
+            pattern,
+            backward,
+            ..
+        } => C::SearchObject {
+            op: *op,
+            count: n,
+            pattern: pattern.clone(),
+            backward: *backward,
+        },
+        C::SearchWordUnder {
+            forward,
+            whole_word,
+            op,
+            ..
+        } => C::SearchWordUnder {
+            forward: *forward,
+            whole_word: *whole_word,
+            op: *op,
+            count: n,
+        },
+        _ => unreachable!("with_count routes only searches here"),
     }
 }
