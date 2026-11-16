@@ -2,7 +2,20 @@
 //!
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
-use super::*;
+use super::{
+    block_insert_point, block_op, captured, edit, edit_yank, nop, one, plan_comment,
+    plan_format_lines, plan_join, plan_linewise_change, plan_paste_selection, plan_reindent,
+    plan_shift_times, recase, recase_bytes, recase_span, replace_selection_with,
+};
+use crate::editor::{
+    at_vcol, block_at, block_geom, cluster_cells, range, selection_range, vcols_at, want_col,
+    Action, Block, BlockInsert, RegWrite, MAXCOL,
+};
+use crate::motion::{self, at_col, col_of, line_end, line_start, prev_grapheme};
+use crate::{
+    BlockInsertKind, BytePos, CaretGravity, Command, Edit, EditList, EditorState, GroupHint,
+    IndentStyle, Mode, OpKind, Plan, Register, SelectKind, VisualOp,
+};
 
 pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
     match cmd {

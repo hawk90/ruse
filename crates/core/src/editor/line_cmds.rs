@@ -9,7 +9,9 @@
 //! - `sort` — `:sort` and its key readers,
 //! - `batch` — the LSP/completion edit batch (`apply_edits`).
 
-use super::*;
+use super::{line_count, line_span, range, resolve_lines};
+use crate::motion::{self, line_end, line_start, snap};
+use crate::{apply_command, BytePos, Command, Edit, EditList, EditorState, Register, SubRange};
 
 mod batch;
 mod global;

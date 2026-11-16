@@ -1,9 +1,10 @@
 //! The Ex line-command facade: each method runs one `EditorState` line command on the focused
 //! `(Document, View)` through the swap-trick.
 
-use super::*;
+use super::pull_clipboard;
 use crate::editor::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substitution};
 use crate::pattern::RegexError;
+use crate::{BytePos, TransactionOrigin, Workspace};
 
 impl Workspace {
     /// Run `:[range]s/pat/rep/flags` against the FOCUSED Window (the swap-trick, like [`Workspace::apply`]),

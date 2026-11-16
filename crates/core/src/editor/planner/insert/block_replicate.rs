@@ -1,10 +1,11 @@
 //! `<Esc>` closing a blockwise insert-replicate session (`CTRL-V` `I`/`A`/`c`): the top row's typed
 //! text replicated down the block, or a block change broken by a `<CR>`.
 
-use super::{
-    block_insert_point, edit, line_cells, line_end, line_start, motion, nop, range, BlockInsert,
-    BytePos, Edit, EditList, GroupHint, Mode, Plan, Tabs,
-};
+use super::{edit, motion, nop, BytePos, Edit, GroupHint, Mode, Plan};
+use crate::editor::planner::block_insert_point;
+use crate::editor::{line_cells, range, BlockInsert};
+use crate::motion::{line_end, line_start};
+use crate::{EditList, Tabs};
 
 /// Finish a blockwise insert-replicate session (`<Esc>` after `CTRL-V` `I`/`A`/`c`): take the text typed
 /// on the top row since `session.insert_start` and insert it at `session.target_col` on each of the

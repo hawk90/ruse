@@ -2,9 +2,12 @@
 //! one-shot `{count}gr{char}`.
 
 use super::{
-    edit, line_end, line_start, motion, next_boundary, nop, one, prev_boundary, prev_grapheme,
-    Action, BytePos, Command, Edit, EditorState, GroupHint, Mode, Plan, MAX_PUT_BYTES,
+    edit, motion, next_boundary, nop, one, prev_boundary, prev_grapheme, BytePos, Command, Edit,
+    EditorState, GroupHint, Mode, Plan,
 };
+use crate::editor::planner::MAX_PUT_BYTES;
+use crate::editor::Action;
+use crate::motion::{line_end, line_start};
 
 /// What is typed (or backspaced) in Replace and Virtual Replace mode.
 pub(super) fn plan_replace_typed(

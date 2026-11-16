@@ -1,7 +1,7 @@
 //! Window layout and focus: the flat MVP window list, its split direction, and the `C-w` moves
 //! (focus next/prev, split, close, only).
 
-use super::*;
+use crate::{DocumentId, Pane, SplitDir, View, ViewId, Window, Workspace};
 
 impl Workspace {
     /// Number of Windows currently in the layout.

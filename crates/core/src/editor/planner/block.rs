@@ -2,7 +2,10 @@
 //!
 //! Split out of `planner/mod.rs` (#1392); the items are as they were there.
 
-use super::*;
+use super::{edit_yank, nop};
+use crate::editor::{cluster_cells, Action, Block, BlockInsert, RegWrite};
+use crate::motion::line_end;
+use crate::{BytePos, Edit, EditList, GroupHint, Mode, OpKind, Plan, Register, Tabs};
 
 /// Blockwise (`CTRL-V`) yank/delete/change over the rectangle whose corners are the byte offsets `c1` and
 /// `c2` (a Visual-block selection's anchor+cursor, or an operator's cursor+motion-target — e.g.

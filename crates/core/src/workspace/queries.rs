@@ -1,7 +1,7 @@
 //! Read-only text queries at the focused cursor: the word under it, completion candidates, and the
 //! line spans a motion or command covers.
 
-use super::*;
+use crate::Workspace;
 
 impl Workspace {
     /// The 0-based inclusive line range a `=`/`Reindent` motion covers on the focused buffer (its op-span's

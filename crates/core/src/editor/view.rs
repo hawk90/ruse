@@ -2,7 +2,15 @@
 //! and the per-window option accessors. Moved out of `editor/mod.rs` (#1379); a child module, so it reads
 //! the private `View` fields as before.
 
-use super::*;
+use super::{
+    block_geom, cindent, indent, mark_slot, planner, selection_range, ViewOptions, Want, MAXCOL,
+    MAX_CHANGES, TRACKED_FIXED,
+};
+use crate::motion::{line_start, snap};
+use crate::{
+    BytePos, CaretGravity, CinKey, Command, DocumentId, EditorOption, Mode, RegisterStore,
+    SelectKind, Tabs, Tracked, View,
+};
 
 impl View {
     /// Clamp and snap every stored offset (change list, marks, `gi`, `gv`, `[`/`]`, jumps) into `bytes`, so an

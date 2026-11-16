@@ -3,7 +3,15 @@
 //!
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
-use super::*;
+use super::{edit, indent_cols, nop, one, replace_selection_with};
+use crate::editor::{MarkWrite, RegWrite};
+use crate::motion::{
+    self, at_col, line_end, line_start, next_boundary, next_grapheme, prev_boundary, prev_grapheme,
+};
+use crate::{
+    BytePos, CaretGravity, Command, Edit, EditorState, GroupHint, Mode, Motion, Plan, Register,
+    SelectKind,
+};
 
 mod block_replicate;
 mod replace;

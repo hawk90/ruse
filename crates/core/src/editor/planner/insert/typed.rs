@@ -2,9 +2,13 @@
 //! `<CR>`, a line opened at an indent level, and an auto-closer.
 
 use super::{
-    auto_indents, edit, fmt_opts, format, insert_text, line_end, line_start, motion, one, BytePos,
-    CaretGravity, Command, Edit, EditorState, GroupHint, Mode, OpenKind, Plan,
+    auto_indents, edit, insert_text, motion, one, BytePos, CaretGravity, Command, Edit,
+    EditorState, GroupHint, Mode, Plan,
 };
+use crate::editor::format;
+use crate::editor::planner::fmt_opts;
+use crate::motion::{line_end, line_start};
+use crate::OpenKind;
 
 /// What is typed in Insert mode: a char, `<CR>`, an opened line at an indent level, an auto-closer.
 pub(super) fn plan_typed(

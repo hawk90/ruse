@@ -1,8 +1,8 @@
 //! Per-view state setters and snapshots: cursor placement, scroll and window-local options, and the
 //! mark, jump and change lists of the focused View.
 
-use super::*;
 use crate::editor::{CaretGravity, SubRange};
+use crate::{BytePos, OptionLevel, Workspace};
 
 impl Workspace {
     /// `:[range]mark {name}`: set the focused view's named mark at column 0 of the range's last line (the
