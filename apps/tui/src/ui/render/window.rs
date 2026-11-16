@@ -523,3 +523,201 @@ pub(crate) fn paint_pane(
     };
     paint_window(cur, rect, &p, out_images);
 }
+
+/// What the frame paints into every window from the focused buffer: its faces, conceal, signs, folds and
+/// virtual blocks, which only the focused pane shows, and the per-window layout.
+pub(super) struct Focused<'a> {
+    pub(super) ws: &'a Workspace,
+    /// The focused buffer.
+    pub(super) doc: ruse_core::DocumentId,
+    pub(super) byte_style: Vec<screen::CellStyle>,
+    pub(super) conceal: Vec<(usize, usize, Option<&'static str>)>,
+    /// The focused caret's buffer line (reveal-at-point).
+    pub(super) caret_line: usize,
+    pub(super) signs: Vec<(usize, char, crossterm::style::Color)>,
+    pub(super) focus_hl: &'a [(usize, usize)],
+    pub(super) virt_lines: &'a [highlight::VirtLine],
+    pub(super) folds: &'a [crate::folds::Fold],
+    pub(super) diagnostics: &'a [crate::lsp::Diag],
+    pub(super) line_idx: &'a crate::line_index::LineIndex,
+    pub(super) pane_idx: &'a crate::line_index::PaneIndexes,
+    pub(super) wins: &'a [WinView],
+    pub(super) terminals: &'a TermViews<'a>,
+    pub(super) graphics_on: bool,
+    pub(super) image_dims: &'a std::collections::HashMap<String, (u32, u32)>,
+}
+
+/// Flatten the focused buffer's highlight spans into a per-byte FACE (spans index into it). Panes
+/// showing the SAME buffer reuse it; a pane on a different buffer (post-MVP) renders unstyled. Longest
+/// spans come first (highlight orders them), so this last-wins flatten lets the shortest/most-specific
+/// capture win — the slice-0 stand-in for the decoration model's priority resolution (F-031).
+pub(super) fn face_map(spans: &[highlight::Span], len: usize) -> Vec<screen::CellStyle> {
+    // Size the per-byte face array to the LAST styled byte, not the whole buffer: the highlighter clips
+    // `spans` to the viewport, so this is ~O(viewport) instead of an O(buffer) alloc+zero every frame.
+    // paint_pane reads any unstyled index (`byte_style.get(i)`) as the default face, so an array that stops
+    // at the last span is byte-for-byte identical to a whole-buffer one — just without the below-viewport tail.
+    let style_len = spans.iter().map(|s| s.end).max().unwrap_or(0).min(len);
+    let mut byte_style = vec![screen::CellStyle::default(); style_len];
+    for s in spans {
+        for slot in byte_style
+            .iter_mut()
+            .take(s.end.min(style_len))
+            .skip(s.start)
+        {
+            *slot = s.style;
+        }
+    }
+    byte_style
+}
+
+/// F-031 conceal: the byte ranges the providers marked hidden (Markdown heading `# ` prefixes today).
+/// Off with `render.conceal = false` in the config (`conceal_on`), or `RUSE_CONCEAL=off` for one run.
+/// The revealed line is the focused caret's buffer line (reveal-at-point).
+pub(super) fn concealed(
+    spans: &[highlight::Span],
+    conceal_on: bool,
+) -> Vec<(usize, usize, Option<&'static str>)> {
+    let conceal_on = conceal_on && std::env::var("RUSE_CONCEAL").as_deref() != Ok("off");
+    if conceal_on {
+        spans
+            .iter()
+            .filter(|s| s.conceal)
+            .map(|s| (s.start, s.end, s.virt))
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// #616: the focused buffer's diagnostics as signs, the most severe one on each line.
+pub(super) fn diagnostic_signs(
+    diagnostics: &[crate::lsp::Diag],
+    line_idx: &crate::line_index::LineIndex,
+    len: usize,
+) -> Vec<(usize, char, crossterm::style::Color)> {
+    use crate::lsp::model::Severity;
+    use crossterm::style::Color;
+    let mut by_line: std::collections::BTreeMap<usize, Severity> = Default::default();
+    let rank = |s: &Severity| match s {
+        Severity::Error => 0,
+        Severity::Warning => 1,
+        Severity::Info => 2,
+        Severity::Hint => 3,
+    };
+    for d in diagnostics {
+        let l = line_idx.line_of(d.start.min(len));
+        let e = by_line.entry(l).or_insert(d.severity);
+        if rank(&d.severity) < rank(e) {
+            *e = d.severity;
+        }
+    }
+    by_line
+        .into_iter()
+        .map(|(l, s)| match s {
+            Severity::Error => (l, 'E', Color::Red),
+            Severity::Warning => (l, 'W', Color::Yellow),
+            Severity::Info => (l, 'I', Color::Blue),
+            Severity::Hint => (l, 'H', Color::Cyan),
+        })
+        .collect()
+}
+
+/// Paint every window into its sub-rectangle; the focused view owns the terminal cursor below.
+pub(super) fn paint_windows(
+    cur: &mut screen::Screen,
+    rects: &[Rect],
+    f: &Focused<'_>,
+    images: &mut Vec<(String, graphics::Placement)>,
+) {
+    for (i, &rect) in rects.iter().enumerate().take(f.ws.window_count()) {
+        let p = f.ws.pane(i);
+        // F-011 slice 2: a terminal window paints its VT grid (colors, cursor, styles), not the empty
+        // placeholder document.
+        #[cfg(unix)]
+        if let Some(&grid) = f.terminals.get(&p.view.doc()) {
+            paint_grid(cur, rect, grid);
+            continue;
+        }
+        let pbytes = p.doc.bytes();
+        let style: &[screen::CellStyle] = if p.view.doc() == f.doc {
+            &f.byte_style
+        } else {
+            &[]
+        };
+        let sel = p.view.selection_span(pbytes).map(|(s, e)| (s.0, e.0));
+        let block: Option<Vec<(usize, usize)>> = p
+            .view
+            .block_spans(pbytes)
+            .map(|rows| rows.into_iter().map(|(s, e)| (s.0, e.0)).collect());
+        // The focused pane also paints the `:s///c` confirm match / incsearch+hlsearch matches (F-009
+        // #1) in reverse video, on top of any live Visual selection.
+        let hl: &[(usize, usize)] = if i == f.ws.focus() { f.focus_hl } else { &[] };
+        // Conceal applies to the focused pane's view of the focused doc (F-031); other panes render markup.
+        let pane_conceal: &[(usize, usize, Option<&'static str>)] =
+            if i == f.ws.focus() && p.view.doc() == f.doc {
+                &f.conceal
+            } else {
+                &[]
+            };
+        // Virtual blocks (image placeholders) likewise paint into the focused pane's view (F-031 slice 3a).
+        let pane_virt: &[highlight::VirtLine] = if i == f.ws.focus() && p.view.doc() == f.doc {
+            f.virt_lines
+        } else {
+            &[]
+        };
+        // Folds are per-view; slice 1 collapses only the FOCUSED pane's folds (no dedicated F-*; F-007 carve-out).
+        let pane_folds: &[crate::folds::Fold] = if i == f.ws.focus() { f.folds } else { &[] };
+        // F-014: underline the focused buffer's diagnostic ranges.
+        let underline: Vec<(usize, usize)> = if i == f.ws.focus() {
+            f.diagnostics.iter().map(|d| (d.start, d.end)).collect()
+        } else {
+            Vec::new()
+        };
+        // A pane on another buffer than the focused one reads that buffer's cached line index (#1182),
+        // which the frame's viewport pass refreshed.
+        let mut own_idx = crate::line_index::LineIndex::default();
+        let idx = if p.view.doc() == f.doc {
+            f.line_idx
+        } else if let Some(ix) = f.pane_idx.get(p.view.doc(), p.doc.revision()) {
+            ix
+        } else {
+            own_idx.refresh_for(p.view.doc(), p.doc.revision(), pbytes);
+            &own_idx
+        };
+        let fallback;
+        let win = match f.wins.get(i) {
+            Some(w) => w,
+            None => {
+                fallback = WinView::resolve(
+                    p.view,
+                    &crate::ui::window_view::DisplayGlobals::default(),
+                    usize::from(rect.w),
+                    usize::from(rect.h),
+                    1,
+                    false,
+                );
+                &fallback
+            }
+        };
+        let input = PaneInput {
+            text: PaneText { bytes: pbytes, idx },
+            win,
+            byte_style: style,
+            top: p.view.top(),
+            sel,
+            block: block.as_deref(),
+            hl,
+            underline: &underline,
+            conceal: pane_conceal,
+            caret_line: f.caret_line,
+            cursor_line: idx.line_of(p.view.cursor().0.min(pbytes.len())),
+            virt: pane_virt,
+            folds: pane_folds,
+            signs: if i == f.ws.focus() { &f.signs } else { &[] },
+            visual: matches!(p.view.mode(), Mode::Visual { .. } | Mode::Select { .. }),
+            graphics_on: f.graphics_on,
+            image_dims: f.image_dims,
+        };
+        paint_window(cur, rect, &input, images);
+    }
+}

@@ -92,3 +92,58 @@ pub(crate) fn cursor_cell(
         ruse_core::Mode::Insert,
     )
 }
+
+/// Put the terminal cursor where it belongs after the flush: after a hit-enter prompt, on the command
+/// line's caret, on a focused terminal's grid cursor (or hidden), or on the focused view's cursor cell.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn place_terminal_cursor(
+    out: &mut io::Stdout,
+    ws: &Workspace,
+    rects: &[Rect],
+    terminals: &TermViews<'_>,
+    at_prompt: Option<&str>,
+    cmd_caret: Option<usize>,
+    focus_cursor: impl Fn() -> (u16, u16),
+    (cols, rows, text_rows): (u16, u16, u16),
+) -> io::Result<()> {
+    if let Some(bar) = at_prompt {
+        // nvim leaves the cursor after the prompt.
+        let col = u16::try_from(crate::ui::message::width(bar))
+            .unwrap_or(u16::MAX)
+            .min(cols.saturating_sub(1));
+        queue!(
+            out,
+            cursor::MoveTo(col, rows.saturating_sub(1)),
+            cursor::Show
+        )?;
+    } else if let Some(caret_col) = cmd_caret {
+        let ccol = (u16::try_from(caret_col + 1).unwrap_or(u16::MAX)).min(cols.saturating_sub(1));
+        queue!(
+            out,
+            cursor::MoveTo(ccol, rows.saturating_sub(1)),
+            cursor::Show
+        )?;
+    } else {
+        // The focused view owns the cursor; its DISPLAY column is grapheme-cluster / width based
+        // (F-006 #4), offset into the focused window's rectangle (F-007).
+        let frect = focus_rect(ws, rects, cols, text_rows);
+        // F-011: a focused terminal owns the cursor at its GRID position (and may hide it, e.g. in vim).
+        #[cfg(unix)]
+        if let Some(&grid) = terminals.get(&ws.focused_buffer()) {
+            if grid.cursor_visible() {
+                let (gr, gc) = grid.cursor();
+                let sr = (frect.y + gr).min(rows.saturating_sub(1));
+                let sc = (frect.x + gc).min(cols.saturating_sub(1));
+                queue!(out, cursor::MoveTo(sc, sr), cursor::Show)?;
+            } else {
+                queue!(out, cursor::Hide)?;
+            }
+            return Ok(());
+        }
+        let (row, col) = focus_cursor();
+        let screen_row = (frect.y + row).min(rows.saturating_sub(1));
+        let screen_col = frect.x.saturating_add(col).min(cols.saturating_sub(1)); // #899
+        queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
+    }
+    Ok(())
+}
