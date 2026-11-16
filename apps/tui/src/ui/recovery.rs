@@ -248,11 +248,12 @@ pub(crate) fn resolve(
     fmt: FileFormat,
     quit: &str,
 ) -> io::Result<Resolved> {
-    let open = |recovered, read_only, note| Resolved::Open {
-        recovered,
-        read_only,
-        note,
-        format: None,
+    let p = Prompt {
+        name,
+        doc,
+        disk,
+        fmt,
+        quit,
     };
     match rec {
         Recovery::None => Ok(open(None, false, None)),
@@ -265,137 +266,189 @@ pub(crate) fn resolve(
             journal,
             crashed,
             note,
-        } => {
-            crate::log::recover_found("in_use", doc, &journal, crashed.is_some());
-            let lines = in_use_lines(name, &owner, crashed.as_deref(), quit);
-            let also = format!("also open in {}", who(&owner));
-            // A journal beside it that could not be offered says why after the answer.
-            let with_note = |s: String| {
-                Some(
-                    note.as_ref()
-                        .map_or_else(|| s.clone(), |n| format!("{s} · {n}")),
-                )
-            };
-            let has_crashed = crashed.is_some();
-            let pick = ask(out, &lines, |k| in_use_choice(k, has_crashed))?;
-            crate::log::recover_chosen(
-                match pick {
-                    Some(InUseChoice::ReadOnly) => "read_only",
-                    Some(InUseChoice::EditAnyway) => "edit_anyway",
-                    Some(InUseChoice::RecoverCrashed) => "recover_crashed",
-                    Some(InUseChoice::Quit) | None => "quit",
-                },
-                doc,
-            );
-            Ok(match pick {
-                Some(InUseChoice::ReadOnly) => {
-                    open(None, true, with_note(format!("[readonly]: {also}")))
-                }
-                Some(InUseChoice::EditAnyway) => {
-                    open(None, false, with_note(format!("editing anyway: {also}")))
-                }
-                // The gone session's journal gets the whole recovery prompt; this session then edits
-                // beside the live one, as `e` would.
-                Some(InUseChoice::RecoverCrashed) => match crashed {
-                    Some(a) => {
-                        match resolve(out, Recovery::Available(a), name, doc, disk, fmt, quit)? {
-                            Resolved::Open {
-                                recovered,
-                                read_only,
-                                note: n,
-                                format,
-                            } => Resolved::Open {
-                                recovered,
-                                read_only,
-                                note: with_note(
-                                    n.map_or_else(|| also.clone(), |n| format!("{n} · {also}")),
-                                ),
-                                format,
-                            },
-                            quit @ Resolved::Quit { .. } => quit,
-                        }
-                    }
-                    None => Resolved::Quit { journal },
-                },
-                Some(InUseChoice::Quit) | None => Resolved::Quit { journal },
-            })
+        } => resolve_in_use(out, &owner, journal, crashed, note.as_ref(), &p),
+        Recovery::Available(a) => resolve_available(out, &a, &p),
+    }
+}
+
+/// What every answer of one prompt reads: [`resolve`]'s arguments past `rec`, passed down unchanged.
+struct Prompt<'a> {
+    name: &'a str,
+    doc: Option<&'a Path>,
+    disk: &'a [u8],
+    fmt: FileFormat,
+    quit: &'a str,
+}
+
+/// Open the disk file (`recovered` over it when given) in the disk file's format.
+fn open(recovered: Option<Vec<u8>>, read_only: bool, note: Option<String>) -> Resolved {
+    Resolved::Open {
+        recovered,
+        read_only,
+        note,
+        format: None,
+    }
+}
+
+/// The in-use status line `s`, with `note` after it: a journal beside it that could not be offered says why
+/// after the answer.
+fn with_note(note: Option<&String>, s: String) -> Option<String> {
+    Some(note.map_or_else(|| s.clone(), |n| format!("{s} · {n}")))
+}
+
+/// [`Recovery::InUse`]: ask the in-use prompt and act on the answer.
+fn resolve_in_use(
+    out: &mut io::Stdout,
+    owner: &Owner,
+    journal: PathBuf,
+    crashed: Option<Box<Available>>,
+    note: Option<&String>,
+    p: &Prompt,
+) -> io::Result<Resolved> {
+    crate::log::recover_found("in_use", p.doc, &journal, crashed.is_some());
+    let lines = in_use_lines(p.name, owner, crashed.as_deref(), p.quit);
+    let also = format!("also open in {}", who(owner));
+    let has_crashed = crashed.is_some();
+    let pick = ask(out, &lines, |k| in_use_choice(k, has_crashed))?;
+    crate::log::recover_chosen(in_use_label(pick), p.doc);
+    Ok(match pick {
+        Some(InUseChoice::ReadOnly) => {
+            open(None, true, with_note(note, format!("[readonly]: {also}")))
         }
-        Recovery::Available(a) => {
-            crate::log::recover_found("available", doc, &a.journal, false);
-            let lines = lines(name, &a, quit);
-            loop {
-                let pick = ask(out, &lines, choice)?;
-                crate::log::recover_chosen(
-                    match pick {
-                        Some(Choice::Recover) => "recover",
-                        Some(Choice::Diff) => "diff",
-                        Some(Choice::EditDisk) => "edit_disk",
-                        Some(Choice::Discard) => "discard",
-                        Some(Choice::Quit) | None => "quit",
-                    },
-                    doc,
-                );
-                let Some(j) = journal::current() else {
+        Some(InUseChoice::EditAnyway) => open(
+            None,
+            false,
+            with_note(note, format!("editing anyway: {also}")),
+        ),
+        Some(InUseChoice::RecoverCrashed) => match crashed {
+            Some(a) => recover_crashed(out, &a, &also, note, p)?,
+            None => Resolved::Quit { journal },
+        },
+        Some(InUseChoice::Quit) | None => Resolved::Quit { journal },
+    })
+}
+
+/// The in-use answer as the log names it.
+fn in_use_label(pick: Option<InUseChoice>) -> &'static str {
+    match pick {
+        Some(InUseChoice::ReadOnly) => "read_only",
+        Some(InUseChoice::EditAnyway) => "edit_anyway",
+        Some(InUseChoice::RecoverCrashed) => "recover_crashed",
+        Some(InUseChoice::Quit) | None => "quit",
+    }
+}
+
+/// In-use `r`: the gone session's journal `a` gets the whole recovery prompt; this session then edits
+/// beside the live one, as `e` would.
+fn recover_crashed(
+    out: &mut io::Stdout,
+    a: &Available,
+    also: &str,
+    note: Option<&String>,
+    p: &Prompt,
+) -> io::Result<Resolved> {
+    Ok(match resolve_available(out, a, p)? {
+        Resolved::Open {
+            recovered,
+            read_only,
+            note: n,
+            format,
+        } => Resolved::Open {
+            recovered,
+            read_only,
+            note: with_note(
+                note,
+                n.map_or_else(|| also.to_string(), |n| format!("{n} · {also}")),
+            ),
+            format,
+        },
+        quit @ Resolved::Quit { .. } => quit,
+    })
+}
+
+/// [`Recovery::Available`]: ask the recovery prompt until an answer other than `d`, and act on it.
+fn resolve_available(out: &mut io::Stdout, a: &Available, p: &Prompt) -> io::Result<Resolved> {
+    crate::log::recover_found("available", p.doc, &a.journal, false);
+    let lines = lines(p.name, a, p.quit);
+    loop {
+        let pick = ask(out, &lines, choice)?;
+        crate::log::recover_chosen(choice_label(pick), p.doc);
+        let Some(j) = journal::current() else {
+            return Ok(Resolved::Quit {
+                journal: a.journal.clone(),
+            });
+        };
+        return Ok(match pick {
+            Some(Choice::Diff) => {
+                let d = diff::unified(p.name, p.disk, &a.recovered);
+                if !show_diff(out, &d)? {
                     return Ok(Resolved::Quit {
                         journal: a.journal.clone(),
                     });
-                };
-                return Ok(match pick {
-                    Some(Choice::Diff) => {
-                        let d = diff::unified(name, disk, &a.recovered);
-                        if !show_diff(out, &d)? {
-                            return Ok(Resolved::Quit {
-                                journal: a.journal.clone(),
-                            });
-                        }
-                        continue;
-                    }
-                    Some(Choice::Recover) => {
-                        // The journal's format is the buffer's; the disk file's may be older (#1286).
-                        let format = a.format.unwrap_or(fmt);
-                        let note = match j.adopt(&a, doc, format) {
-                            Ok(_) => "recovered unsaved changes (:w to save)".to_string(),
-                            Err(e) => {
-                                crate::log::recover_failed("adopt", doc, Some(&a.journal), &e);
-                                format!(
-                                "recovered unsaved changes (:w to save); the journal was not taken \
-                                 over ({e}): {}",
-                                    a.journal.display()
-                                )
-                            }
-                        };
-                        Resolved::Open {
-                            recovered: Some(a.recovered.clone()),
-                            read_only: false,
-                            note: Some(note),
-                            format: Some(format),
-                        }
-                    }
-                    Some(c @ (Choice::EditDisk | Choice::Discard)) => {
-                        let what = if c == Choice::EditDisk {
-                            "opened the disk file"
-                        } else {
-                            "recovery discarded"
-                        };
-                        let note = match j.archive(&a.journal) {
-                            Ok(p) => format!("{what}; journal archived as {}", p.display()),
-                            Err(e) => {
-                                crate::log::recover_failed("archive", doc, Some(&a.journal), &e);
-                                format!(
-                                    "{what}; the journal could not be archived ({e}) and stays: {}",
-                                    a.journal.display()
-                                )
-                            }
-                        };
-                        open(None, false, Some(note))
-                    }
-                    Some(Choice::Quit) | None => Resolved::Quit {
-                        journal: a.journal.clone(),
-                    },
-                });
+                }
+                continue;
             }
-        }
+            Some(Choice::Recover) => recover(j, a, p),
+            Some(c @ (Choice::EditDisk | Choice::Discard)) => archive(j, a, p.doc, c),
+            Some(Choice::Quit) | None => Resolved::Quit {
+                journal: a.journal.clone(),
+            },
+        });
     }
+}
+
+/// The recovery answer as the log names it.
+fn choice_label(pick: Option<Choice>) -> &'static str {
+    match pick {
+        Some(Choice::Recover) => "recover",
+        Some(Choice::Diff) => "diff",
+        Some(Choice::EditDisk) => "edit_disk",
+        Some(Choice::Discard) => "discard",
+        Some(Choice::Quit) | None => "quit",
+    }
+}
+
+/// `r`: this session takes the journal over and opens the recovered text in the journal's format.
+fn recover(j: &journal::Journals, a: &Available, p: &Prompt) -> Resolved {
+    // The journal's format is the buffer's; the disk file's may be older (#1286).
+    let format = a.format.unwrap_or(p.fmt);
+    let note = match j.adopt(a, p.doc, format) {
+        Ok(_) => "recovered unsaved changes (:w to save)".to_string(),
+        Err(e) => {
+            crate::log::recover_failed("adopt", p.doc, Some(&a.journal), &e);
+            format!(
+                "recovered unsaved changes (:w to save); the journal was not taken \
+                 over ({e}): {}",
+                a.journal.display()
+            )
+        }
+    };
+    Resolved::Open {
+        recovered: Some(a.recovered.clone()),
+        read_only: false,
+        note: Some(note),
+        format: Some(format),
+    }
+}
+
+/// `e` and `k` (`c`): move the journal to the archive and open the disk file.
+fn archive(j: &journal::Journals, a: &Available, doc: Option<&Path>, c: Choice) -> Resolved {
+    let what = if c == Choice::EditDisk {
+        "opened the disk file"
+    } else {
+        "recovery discarded"
+    };
+    let note = match j.archive(&a.journal) {
+        Ok(p) => format!("{what}; journal archived as {}", p.display()),
+        Err(e) => {
+            crate::log::recover_failed("archive", doc, Some(&a.journal), &e);
+            format!(
+                "{what}; the journal could not be archived ({e}) and stays: {}",
+                a.journal.display()
+            )
+        }
+    };
+    open(None, false, Some(note))
 }
 
 /// The next key press, typed-ahead keys first (the startup probe, or a command that was running); `None`

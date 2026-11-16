@@ -423,7 +423,7 @@ pub(crate) fn fails_before_redo(cmd: &Command) -> bool {
 /// are returned unchanged.
 ///
 /// Exhaustive like [`change_kind`] (#793): each counted family is rewritten by its own helper, and the
-/// count-free commands are listed one by one.
+/// count-free commands are listed family by family.
 pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
     use Command as C;
     match cmd {
@@ -454,125 +454,65 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         // No count to rewrite. Listed (not a wildcard) so a new counted variant cannot silently drop
         // `N.` (#793). The Visual-selection changes are here by design: nvim ignores a count on `.` of a
         // Visual change (the repeat re-covers the recorded AMOUNT of text, `:help visual-repeat`).
-        C::MoveLeft
-        | C::MoveRight
-        | C::MoveUp
-        | C::MoveDown
-        | C::MoveLineStart
-        | C::MoveLineEnd
-        | C::EnterInsert
-        | C::EnterInsertAfter
-        | C::EnterNormal
-        | C::EnterTerminal
-        | C::EnterTerminalNormal
-        | C::InsertLineStart
-        | C::InsertColumnZero
-        | C::AppendLineEnd
-        | C::OpenBelow
-        | C::OpenAbove
-        | C::EnterReplace
-        | C::ReplaceType(..)
-        | C::ReplaceBackspace
-        | C::EnterVirtualReplace
-        | C::VirtualReplaceType(..)
-        | C::InsertChar(..)
-        | C::InsertRegister(..)
-        | C::InsertEval(..)
-        | C::InsertPaste(..)
-        | C::ReplacePaste(..)
-        | C::EmacsPaste(..)
-        | C::InsertDeleteWordBack
-        | C::InsertDeleteToLineStart
-        | C::CompleteWord { .. }
-        | C::InsertIndent
-        | C::InsertDedent
-        | C::InsertDeleteIndent
-        | C::InsertDeleteIndentRestore
-        | C::InsertStartColumnLine { .. }
-        | C::InsertCaretStep { .. }
-        | C::InsertTab
-        | C::InsertNewline
-        | C::OpenLineIndent { .. }
-        | C::InsertCloser { .. }
-        | C::DeleteBack
-        | C::ReplaceSelectionChar(..)
-        | C::CaseSelection(..)
-        | C::IncrementSelection { .. }
-        | C::GotoLastChange
-        | C::GotoLastChangeLine
-        | C::GotoChangeMarkStart
-        | C::GotoChangeMarkEnd
-        | C::GotoChangeMarkStartLine
-        | C::GotoChangeMarkEndLine
-        | C::GotoVisualMarkStart
-        | C::GotoVisualMarkEnd
-        | C::GotoVisualMarkStartLine
-        | C::GotoVisualMarkEndLine
-        | C::GotoContextMark
-        | C::GotoContextMarkLine
-        | C::GotoOlderChange
-        | C::GotoNewerChange
-        | C::GotoOlderJump
-        | C::GotoNewerJump
-        | C::InsertAtLastInsert
-        | C::AsciiInfo
-        | C::Utf8Info
-        | C::FileInfo
-        | C::CursorInfo
-        | C::SetNamedMark(..)
-        | C::GotoNamedMark(..)
-        | C::GotoNamedMarkLine(..)
-        | C::OpToMark { .. }
-        | C::BreakUndo
-        | C::SetIndents { .. }
-        | C::SetIndentCols { .. }
-        | C::InsertReindent
-        | C::PasteSelection { .. }
-        | C::SetRegister(..)
-        | C::SetExprRegister(..)
-        | C::EnterVisual { .. }
-        | C::EnterSelect { .. }
-        | C::DeleteSelection
-        | C::YankSelection
-        | C::ChangeSelection
-        | C::ReselectVisual
-        | C::SwapSelectionEnds
-        | C::ReplaceSelection(..)
-        | C::VisualOp(..)
-        | C::BlockInsert(..)
-        | C::SearchNext(..)
-        | C::SearchPrev(..)
-        | C::RepeatSubstituteGlobal
-        | C::RepeatSubstituteLine
-        | C::Ex(_)
-        | C::GotoDeclaration { .. }
-        | C::GotoFirstMatch(..)
-        | C::ShowKeywordLines { .. }
-        | C::Undo
-        | C::Redo
-        | C::UndoOlder
-        | C::UndoNewer
-        | C::LineUndo
-        | C::Save
-        | C::Quit
-        | C::SetMark
-        | C::KillRegion
-        | C::CopyRegion
-        | C::ExchangePointMark
-        | C::EmacsYank { .. }
-        | C::EmacsBufferEdge { .. }
-        | C::EmacsKillLine
-        | C::EmacsTransposeChars
-        | C::EmacsTransposeWords
-        | C::EmacsKillWord { .. }
-        | C::EmacsBackwardKillWord { .. }
-        | C::EmacsCaseWord { .. }
-        | C::EmacsHorizontalSpace { .. }
-        | C::EmacsOpenLine
-        | C::EmacsMarkWord
-        | C::EmacsKillWholeLine
-        | C::EmacsCaseRegion { .. }
-        | C::EmacsDeleteIndentation => cmd.clone(),
+        //
+        // Count-free — uncounted motions, mode switches and Visual selection state.
+        C::MoveLeft | C::MoveRight | C::MoveUp | C::MoveDown => cmd.clone(),
+        C::MoveLineStart | C::MoveLineEnd => cmd.clone(),
+        C::EnterNormal | C::EnterTerminal | C::EnterTerminalNormal => cmd.clone(),
+        C::EnterVisual { .. } | C::EnterSelect { .. } => cmd.clone(),
+        C::ReselectVisual | C::SwapSelectionEnds => cmd.clone(),
+        // Count-free — insert entries.
+        C::EnterInsert | C::EnterInsertAfter | C::InsertLineStart => cmd.clone(),
+        C::InsertColumnZero | C::AppendLineEnd | C::OpenBelow | C::OpenAbove => cmd.clone(),
+        C::EnterReplace | C::EnterVirtualReplace | C::InsertAtLastInsert => cmd.clone(),
+        C::BlockInsert(..) => cmd.clone(),
+        // Count-free — insert-session-only commands.
+        C::ReplaceType(..) | C::ReplaceBackspace | C::VirtualReplaceType(..) => cmd.clone(),
+        C::InsertChar(..) | C::InsertRegister(..) | C::InsertEval(..) => cmd.clone(),
+        C::InsertPaste(..) | C::ReplacePaste(..) | C::EmacsPaste(..) => cmd.clone(),
+        C::InsertDeleteWordBack | C::InsertDeleteToLineStart => cmd.clone(),
+        C::CompleteWord { .. } | C::InsertIndent | C::InsertDedent => cmd.clone(),
+        C::InsertDeleteIndent | C::InsertDeleteIndentRestore => cmd.clone(),
+        C::InsertStartColumnLine { .. } | C::InsertCaretStep { .. } => cmd.clone(),
+        C::InsertTab | C::InsertNewline | C::OpenLineIndent { .. } => cmd.clone(),
+        C::InsertCloser { .. } | C::DeleteBack | C::BreakUndo | C::InsertReindent => cmd.clone(),
+        C::SetIndents { .. } | C::SetIndentCols { .. } => cmd.clone(),
+        // Count-free — Visual-selection changes (`:help visual-repeat`, above).
+        C::ReplaceSelectionChar(..) | C::CaseSelection(..) => cmd.clone(),
+        C::IncrementSelection { .. } | C::PasteSelection { .. } => cmd.clone(),
+        C::DeleteSelection | C::YankSelection | C::ChangeSelection => cmd.clone(),
+        C::ReplaceSelection(..) | C::VisualOp(..) => cmd.clone(),
+        // Count-free — change-list, mark and jump-list jumps.
+        C::GotoLastChange | C::GotoLastChangeLine => cmd.clone(),
+        C::GotoChangeMarkStart | C::GotoChangeMarkEnd => cmd.clone(),
+        C::GotoChangeMarkStartLine | C::GotoChangeMarkEndLine => cmd.clone(),
+        C::GotoVisualMarkStart | C::GotoVisualMarkEnd => cmd.clone(),
+        C::GotoVisualMarkStartLine | C::GotoVisualMarkEndLine => cmd.clone(),
+        C::GotoContextMark | C::GotoContextMarkLine => cmd.clone(),
+        C::GotoOlderChange | C::GotoNewerChange => cmd.clone(),
+        C::GotoOlderJump | C::GotoNewerJump => cmd.clone(),
+        // Count-free — info displays, marks and registers.
+        C::AsciiInfo | C::Utf8Info | C::FileInfo | C::CursorInfo => cmd.clone(),
+        C::SetNamedMark(..) | C::GotoNamedMark(..) | C::GotoNamedMarkLine(..) => cmd.clone(),
+        C::OpToMark { .. } => cmd.clone(),
+        C::SetRegister(..) | C::SetExprRegister(..) => cmd.clone(),
+        // Count-free — `n`/`N`, `&`/`g&`, Ex, keyword lookups.
+        C::SearchNext(..) | C::SearchPrev(..) => cmd.clone(),
+        C::RepeatSubstituteGlobal | C::RepeatSubstituteLine | C::Ex(_) => cmd.clone(),
+        C::GotoDeclaration { .. } | C::GotoFirstMatch(..) => cmd.clone(),
+        C::ShowKeywordLines { .. } => cmd.clone(),
+        // Count-free — undo/redo, file and session.
+        C::Undo | C::Redo | C::UndoOlder | C::UndoNewer | C::LineUndo => cmd.clone(),
+        C::Save | C::Quit => cmd.clone(),
+        // Count-free — Emacs mark, region and edit commands.
+        C::SetMark | C::KillRegion | C::CopyRegion | C::ExchangePointMark => cmd.clone(),
+        C::EmacsYank { .. } | C::EmacsBufferEdge { .. } | C::EmacsMarkWord => cmd.clone(),
+        C::EmacsKillLine | C::EmacsKillWholeLine => cmd.clone(),
+        C::EmacsKillWord { .. } | C::EmacsBackwardKillWord { .. } => cmd.clone(),
+        C::EmacsTransposeChars | C::EmacsTransposeWords => cmd.clone(),
+        C::EmacsCaseWord { .. } | C::EmacsCaseRegion { .. } => cmd.clone(),
+        C::EmacsHorizontalSpace { .. } | C::EmacsOpenLine => cmd.clone(),
+        C::EmacsDeleteIndentation => cmd.clone(),
     }
 }
 
