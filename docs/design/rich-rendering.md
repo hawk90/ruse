@@ -251,7 +251,7 @@ Both flow through the layout pass as `origin = Virtual` cells; caret and motion 
 ## 7. Markdown & Org providers
 
 Providers consume a read-only parse **snapshot** (tree-sitter, the F-015 pipeline) and emit decorations —
-they never mutate. The Markdown grammar sits behind the `grammar_for` dispatch (`apps/tui/src/highlight.rs`):
+they never mutate. The Markdown grammar sits behind the `grammar_for` dispatch (`apps/tui/src/highlight/grammars.rs`):
 
 - **Markdown** — `tree-sitter-md` (+ its inline grammar). Map: ATX/setext headings → `heading.N` face +
   optional rule `virt_line`; emphasis/strong → face + conceal markers; inline/fenced code → face; links →
