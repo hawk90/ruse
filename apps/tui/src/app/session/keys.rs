@@ -295,11 +295,7 @@ impl Session {
     pub(super) fn terminal_owns(&mut self, key: KeyEvent) -> bool {
         let Session {
             ws,
-            files,
-            recorded,
-            quit,
             prefix,
-            status,
             #[cfg(unix)]
             terminals,
             ..
@@ -317,14 +313,7 @@ impl Session {
                         if matches!(prefix, Prefix::TermEscape) {
                             *prefix = Prefix::None;
                             if is_ctrl(key, 'n') {
-                                run_cmd(
-                                    Command::EnterTerminalNormal,
-                                    ws,
-                                    files,
-                                    recorded,
-                                    status,
-                                    quit,
-                                );
+                                self.run_cmd(Command::EnterTerminalNormal);
                                 return true;
                             }
                             // Not the escape: the swallowed `CTRL-\` is dropped; fall through to send `key`.
@@ -346,7 +335,7 @@ impl Session {
                         if matches!(key.code, KeyCode::Char('i' | 'a' | 'A'))
                             && !crate::input::is_chord(key) =>
                     {
-                        run_cmd(Command::EnterTerminal, ws, files, recorded, status, quit);
+                        self.run_cmd(Command::EnterTerminal);
                         return true;
                     }
                     _ => {}
@@ -359,25 +348,39 @@ impl Session {
     /// The input engine's turn: every key no owner took, command-line keys included, and what its `Feed`
     /// asks the session to do.
     pub(super) fn feed_engine(&mut self, key: KeyEvent, frame: &FrameCtx) {
-        let report = self.ui_opts.report;
+        match self.engine_feed(key, frame) {
+            // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
+            // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
+            Feed::ExecuteEx(text) => self.execute_ex(text, frame),
+            Feed::EmacsAction(a) => self.emacs_action(a, frame),
+            fed @ (Feed::CmdlineInsertUnder { .. }
+            | Feed::CmdlineInsertLine
+            | Feed::CmdlineComplete(_)
+            | Feed::CmdlineInsertRegister(_)) => self.cmdline_splice(fed),
+            fed @ (Feed::FilterMotion { .. } | Feed::FilterSpan(_) | Feed::CountCmdline { .. }) => {
+                self.seeded_cmdline(fed);
+            }
+            // Resolved in `engine_feed`.
+            Feed::Pending | Feed::Ignored | Feed::ScreenMotion { .. } => {}
+            fed @ (Feed::Beep { .. } | Feed::Cmd(_) | Feed::KeepJumps(_)) => {
+                self.run_fed(fed, frame)
+            }
+            fed @ (Feed::Replay(_) | Feed::Repeat(_)) => self.repeat_fed(fed, frame),
+        }
+    }
+
+    /// Feed `key` to the input engine and report its error; a screen-line motion (#615) is finished here,
+    /// where the window's screen rows are known.
+    fn engine_feed(&mut self, key: KeyEvent, frame: &FrameCtx) -> Feed {
         let Session {
             ws,
-            files,
             line_idx,
-            recorded,
             engine,
-            quit,
             folds,
-            fold_method,
-            foldlevel,
-            search_hl,
-            last_ex_line,
             status,
-            alt_file,
             screen_want,
             ..
         } = self;
-        let snapshot = &frame.snapshot;
         // Every other key — command-line included — goes through the engine (F-026): the command-line
         // namespace owns its buffer, so the frontend no longer special-cases `:`/`/` typing.
         let fed = engine.feed(key, ws.focused().view.mode());
@@ -392,13 +395,22 @@ impl Session {
             }
             fed => fed,
         };
+        fed
+    }
+
+    /// The command-line splices: the word or line under the cursor, a register, a completion (F-026, #613).
+    fn cmdline_splice(&mut self, fed: Feed) {
+        let Session {
+            ws,
+            files,
+            recorded,
+            engine,
+            fold_method,
+            foldlevel,
+            alt_file,
+            ..
+        } = self;
         match fed {
-            // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
-            // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
-            Feed::ExecuteEx(text) => {
-                self.execute_ex(text, frame);
-            }
-            Feed::EmacsAction(a) => self.emacs_action(a, frame),
             // `c_CTRL-R_CTRL-W` / `c_CTRL-R_CTRL-A`: splice the `<cword>` / `<cWORD>` under the BUFFER
             // cursor into the open command line. The engine owns the cmdline buffer but has no document, so
             // resolve the word here and hand it back. No string under the cursor → nothing spliced (nvim
@@ -458,6 +470,21 @@ impl Session {
                 let bytes = ws.register_bytes(Some(name));
                 engine.cmdline_splice_register(&String::from_utf8_lossy(&bytes), linewise);
             }
+            _ => unreachable!("routed by feed_engine"),
+        }
+    }
+
+    /// The `:` lines the engine opens pre-seeded with a range: `!{motion}`, `!` over a search or mark, and
+    /// `{count}:`.
+    fn seeded_cmdline(&mut self, fed: Feed) {
+        let Session {
+            ws,
+            engine,
+            search_hl,
+            status,
+            ..
+        } = self;
+        match fed {
             // `!{motion}` / `!!` (the filter operator): the engine resolved a linewise motion but has no
             // document to number it. Resolve the op-span's first/last line here, then open the `:` cmdline
             // pre-seeded with `{first},{last}!` (Vim's `:.,.+N!`). Typing the command and `<CR>` runs it
@@ -502,8 +529,21 @@ impl Session {
                     format!("{first},{last}")
                 });
             }
-            // Resolved above.
-            Feed::Pending | Feed::Ignored | Feed::ScreenMotion { .. } => {}
+            _ => unreachable!("routed by feed_engine"),
+        }
+    }
+
+    /// A command the engine finished: a beep, a command, or one under `keepjumps`.
+    fn run_fed(&mut self, fed: Feed, frame: &FrameCtx) {
+        let Session {
+            ws,
+            files,
+            recorded,
+            quit,
+            status,
+            ..
+        } = self;
+        match fed {
             // An unknown key (#1111): record the failure, so a macro or `:normal` stops here.
             Feed::Beep { clear_register } => {
                 if clear_register {
@@ -548,6 +588,29 @@ impl Session {
                     run_ex(ExCmd::KeepJumps(false), &mut self.ws, &mut self.recorded);
                 }
             }
+            _ => unreachable!("routed by feed_engine"),
+        }
+    }
+
+    /// `.` and the other repeats: each replayed command is recorded and applied, so the trace (F-022)
+    /// captures the resolved edit, not the key.
+    fn repeat_fed(&mut self, fed: Feed, frame: &FrameCtx) {
+        let report = self.ui_opts.report;
+        let Session {
+            ws,
+            files,
+            line_idx,
+            recorded,
+            engine,
+            quit,
+            folds,
+            last_ex_line,
+            status,
+            alt_file,
+            ..
+        } = self;
+        let snapshot = &frame.snapshot;
+        match fed {
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
@@ -578,6 +641,7 @@ impl Session {
                 sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
                 run_repeat(r, ws, files, recorded, status, quit, report);
             }
+            _ => unreachable!("routed by feed_engine"),
         }
     }
 }

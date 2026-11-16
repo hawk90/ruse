@@ -274,15 +274,7 @@ impl Session {
 
     /// `zp`/`zP`/`zy`: whether `key` was one.
     fn z_paste_yank(&mut self, key: KeyEvent, count: u32) -> bool {
-        let Session {
-            ws,
-            files,
-            recorded,
-            engine,
-            quit,
-            status,
-            ..
-        } = self;
+        let Session { ws, engine, .. } = self;
         // `zp` / `zP` (Normal) paste like `p` / `P` without a block's trailing spaces; `zy` yanks like
         // `y` without a block's trailing white space: over the selection in Visual, and in Normal as the
         // `y` operator (its motions are never blockwise, so it is `y` there), with the count kept.
@@ -294,12 +286,12 @@ impl Session {
                         after: c == 'p',
                         count: count.max(1),
                     };
-                    run_cmd(cmd, ws, files, recorded, status, quit);
+                    self.run_cmd(cmd);
                     return true;
                 }
                 KeyCode::Char('y') if visual => {
                     let cmd = Command::VisualOp(ruse_core::VisualOp::YankTrim);
-                    run_cmd(cmd, ws, files, recorded, status, quit);
+                    self.run_cmd(cmd);
                     return true;
                 }
                 KeyCode::Char('y') => {
@@ -825,13 +817,9 @@ impl Session {
         let so = self.scrolloff_rows();
         let Session {
             ws,
-            files,
             line_idx,
-            recorded,
             engine,
-            quit,
             folds,
-            status,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -909,7 +897,7 @@ impl Session {
                 Err(row) => row,
             };
             match engine.screen_op(row as u32 + 1) {
-                Feed::Cmd(cmd) => run_cmd(cmd, ws, files, recorded, status, quit),
+                Feed::Cmd(cmd) => self.run_cmd(cmd),
                 // `!H` / `!L` / `!M`: the filter over the screen line opens its pre-seeded `:{range}!` line,
                 // exactly like `!{motion}` below (#800) — it was dropped, so the command was typed as text.
                 Feed::FilterMotion { count, motion } => {
