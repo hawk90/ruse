@@ -600,10 +600,13 @@ mod journal_tests {
     fn journaled(
         tag: &str,
         text: &[u8],
-    ) -> (Session, &'static persist::journal::Journals, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("ruse-session-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+    ) -> (
+        Session,
+        &'static persist::journal::Journals,
+        PathBuf,
+        crate::TestDir,
+    ) {
+        let dir = crate::TestDir::new(&format!("session-{tag}"));
         let file = dir.join("f.txt");
         std::fs::write(&file, text).unwrap();
         let mut s = Session::new(SessionInit {
@@ -613,7 +616,7 @@ mod journal_tests {
             status: String::new(),
             profile: "vim",
             term: TermInfo::default(),
-            cwd: dir.clone(),
+            cwd: dir.to_path_buf(),
             trusted: false,
             rescue: false,
         });
@@ -630,14 +633,14 @@ mod journal_tests {
             std::time::Instant::now(),
         );
         s.journal_writers.insert(id, w);
-        (s, j, file)
+        (s, j, file, dir)
     }
 
     /// #1202: an LSP edit batch is a risky operation (RFC-0023 §4). The typing before it reaches the journal
     /// before the batch applies, with no idle wait.
     #[test]
     fn an_lsp_edit_batch_syncs_the_journal_first() {
-        let (mut s, j, file) = journaled("lsp-batch", b"fn main() {}\n");
+        let (mut s, j, file, _dir) = journaled("lsp-batch", b"fn main() {}\n");
         let typed = vec![(BytePos(0), BytePos(0), "pub ".to_string())];
         assert!(s.ws.apply_edits(&typed, TransactionOrigin::UserInput));
         assert!(!j.path_for(&file).exists(), "nothing is due yet");
@@ -651,6 +654,5 @@ mod journal_tests {
             "the typing, synced before the batch"
         );
         assert_eq!(s.ws.focused().doc.bytes(), b"// f\npub fn main() {}\n");
-        let _ = std::fs::remove_dir_all(file.parent().unwrap());
     }
 }

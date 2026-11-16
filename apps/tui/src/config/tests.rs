@@ -10,13 +10,12 @@ use super::*;
 use crate::trust::{ruse_dir_hash, TrustStore};
 
 struct Dirs {
-    base: PathBuf,
+    base: crate::TestDir,
 }
 
 impl Dirs {
     fn new(name: &str) -> Dirs {
-        let base = std::env::temp_dir().join(format!("ruse-config-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
+        let base = crate::TestDir::new(&format!("config-{name}"));
         std::fs::create_dir_all(base.join("ws")).unwrap();
         Dirs { base }
     }
@@ -42,12 +41,6 @@ impl Dirs {
         TrustStore::new(self.base.join("trust"))
             .record(&root, &hash)
             .unwrap();
-    }
-}
-
-impl Drop for Dirs {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.base);
     }
 }
 

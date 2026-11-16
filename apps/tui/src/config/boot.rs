@@ -122,10 +122,11 @@ pub fn arm(
 mod tests {
     use super::*;
 
-    fn record(name: &str) -> BootRecord {
-        let dir = std::env::temp_dir().join(format!("ruse-boot-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        BootRecord::at(dir.join("ruse").join("config-boot"))
+    /// A record under a fresh dir (the record's own dir is not made), with the dir's guard.
+    fn record(name: &str) -> (crate::TestDir, BootRecord) {
+        let dir = crate::TestDir::new(&format!("boot-{name}"));
+        let r = BootRecord::at(dir.join("ruse").join("config-boot"));
+        (dir, r)
     }
 
     /// One start: decide from the record, arm it, and either crash (`drawn == false`, the record stays)
@@ -143,7 +144,7 @@ mod tests {
 
     #[test]
     fn three_crashed_starts_escalate_and_safe_mode_holds() {
-        let r = record("loop");
+        let (_dir, r) = record("loop");
         for n in 1..=CRASH_LIMIT {
             assert_eq!(start(&r, false, true, false), None, "start {n} is normal");
             assert_eq!(r.failed(), n);
@@ -159,23 +160,21 @@ mod tests {
         r.clear();
         assert_eq!(start(&r, false, true, true), None);
         assert_eq!(r.failed(), 0);
-        let _ = std::fs::remove_dir_all(r.path().parent().unwrap().parent().unwrap());
     }
 
     #[test]
     fn a_start_that_draws_resets_the_count() {
-        let r = record("reset");
+        let (_dir, r) = record("reset");
         start(&r, false, true, false);
         start(&r, false, true, false);
         assert_eq!(r.failed(), 2);
         assert_eq!(start(&r, false, true, true), None);
         assert_eq!(r.failed(), 0, "the first frame cleared it");
-        let _ = std::fs::remove_dir_all(r.path().parent().unwrap().parent().unwrap());
     }
 
     #[test]
     fn only_a_start_that_read_user_config_counts() {
-        let r = record("nouser");
+        let (_dir, r) = record("nouser");
         // No user or workspace layer: a crash is not the config's, nothing is written.
         start(&r, false, false, false);
         assert_eq!(r.failed(), 0);
@@ -184,26 +183,23 @@ mod tests {
         start(&r, false, true, false);
         start(&r, false, false, true);
         assert_eq!(r.failed(), 0);
-        let _ = std::fs::remove_dir_all(r.path().parent().unwrap().parent().unwrap());
     }
 
     #[test]
     fn asked_safe_mode_neither_counts_nor_clears() {
-        let r = record("asked");
+        let (_dir, r) = record("asked");
         start(&r, false, true, false);
         assert_eq!(start(&r, true, true, false), Some(SafeMode::Asked));
         assert_eq!(start(&r, true, true, true), Some(SafeMode::Asked));
         assert_eq!(r.failed(), 1, "--safe-mode leaves the count alone");
-        let _ = std::fs::remove_dir_all(r.path().parent().unwrap().parent().unwrap());
     }
 
     #[test]
     fn a_damaged_record_reads_as_zero() {
-        let r = record("damaged");
+        let (_dir, r) = record("damaged");
         std::fs::create_dir_all(r.path().parent().unwrap()).unwrap();
         std::fs::write(r.path(), "lots\n").unwrap();
         assert_eq!(r.failed(), 0);
         assert_eq!(decide(false, r.failed()), None);
-        let _ = std::fs::remove_dir_all(r.path().parent().unwrap().parent().unwrap());
     }
 }

@@ -64,19 +64,10 @@ fn write_report_tags_follow_nvim() {
     );
 }
 
-/// A workspace whose focused buffer is the (new) file `name` in a fresh temp dir, edited once.
-fn ws_on_temp_file(name: &str, text: &[u8]) -> (Workspace, Files, PathBuf) {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "ruse-dispatch-save-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::Relaxed)
-    ));
-    // The file outlives this helper, so no `TestDir` guard: a dir left by an earlier run of the
-    // same pid is emptied instead (#1366).
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+/// A workspace whose focused buffer is the (new) file `name` in a fresh temp dir, edited once. The file
+/// outlives this helper, so the dir's guard is returned for the test to hold.
+fn ws_on_temp_file(name: &str, text: &[u8]) -> (Workspace, Files, PathBuf, crate::TestDir) {
+    let dir = crate::TestDir::new("dispatch-save");
     let path = dir.join(name);
     std::fs::write(&path, text).unwrap();
     let mut ws = Workspace::new(text.to_vec());
@@ -86,7 +77,7 @@ fn ws_on_temp_file(name: &str, text: &[u8]) -> (Workspace, Files, PathBuf) {
     let (mut files, mut hl): (Files, Highlighters) = (Files::new(), HashMap::new());
     let fmt = persist::encoding::FileFormat::detect(text);
     attach_file(&mut files, &mut hl, ws.focused_buffer(), path.clone(), fmt);
-    (ws, files, path)
+    (ws, files, path, dir)
 }
 
 /// #936: when the directory fsync fails after the rename, `:w` does not report "written" and the buffer
@@ -94,7 +85,7 @@ fn ws_on_temp_file(name: &str, text: &[u8]) -> (Workspace, Files, PathBuf) {
 #[cfg(unix)]
 #[test]
 fn save_with_a_failed_directory_fsync_is_not_saved() {
-    let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
+    let (mut ws, files, path, _dir) = ws_on_temp_file("f.txt", b"a\n");
     let mut status = crate::app::messages::Status::default();
     persist::atomic::inject(Some(persist::atomic::Step::SyncDir));
     let ok = save(&mut ws, &files, &mut status);
@@ -115,7 +106,7 @@ fn save_with_a_failed_directory_fsync_is_not_saved() {
 #[cfg(unix)]
 #[test]
 fn save_where_directory_fsync_is_unsupported_is_saved_with_a_note() {
-    let (mut ws, files, path) = ws_on_temp_file("f.txt", b"a\n");
+    let (mut ws, files, path, _dir) = ws_on_temp_file("f.txt", b"a\n");
     let mut status = crate::app::messages::Status::default();
     persist::atomic::inject_errno(persist::atomic::Step::SyncDir, libc::EINVAL);
     let ok = save(&mut ws, &files, &mut status);
@@ -137,7 +128,7 @@ fn save_where_directory_fsync_is_unsupported_is_saved_with_a_note() {
 /// bytes play nvim's lines + `'eol'`, so a later `:set nofixeol` write omits the newline again, as nvim's.
 #[test]
 fn fixeol_writes_the_newline_without_changing_the_buffer() {
-    let (mut ws, mut files, path) = ws_on_temp_file("n.txt", b"a");
+    let (mut ws, mut files, path, _dir) = ws_on_temp_file("n.txt", b"a");
     let mut status = crate::app::messages::Status::default();
     files.write.fixeol = true;
     assert!(save(&mut ws, &files, &mut status));
