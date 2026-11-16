@@ -1962,32 +1962,30 @@ impl Session {
             self.emacs_action(crate::input::EmacsAction::KillTerminal, frame);
             return;
         }
+        if self.display_cmd(&cmd) {
+            return;
+        }
+        let Some(cmd) = self.resolve_search(cmd) else {
+            return;
+        };
+        self.dispatch_resolved(cmd, frame);
+    }
+
+    /// The commands the session answers on the status line or in an overlay, never planned: `g&`, `&`
+    /// picked from the palette, the INFO commands and `[i`/`[I`. Whether `cmd` was one.
+    fn display_cmd(&mut self, cmd: &Command) -> bool {
         let report = self.ui_opts.report;
         let Session {
             ws,
             files,
-            highlighters,
-            line_idx,
             recorded,
-            engine,
-            quit,
-            search_hl,
             last_substitute,
-            last_ex_line,
-            overlay,
             status,
-            alt_file,
-            folds,
-            can_cindent,
-            key_typed,
-            normal_depth,
-            ui_opts,
             ..
         } = self;
-        let snapshot = &frame.snapshot;
         // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
         // has no substitute history); like the current-line `&`, it calls `substitute` directly.
-        if matches!(cmd, Command::RepeatSubstituteGlobal) {
+        if matches!(*cmd, Command::RepeatSubstituteGlobal) {
             status.give(match &last_substitute {
                 Some((pat, rep, flags)) => {
                     // Recorded as the resolved `:%s` it repeats (RFC-0020); a match is a jump (#1119).
@@ -2003,10 +2001,10 @@ impl Session {
                 }
                 None => Msg::error("E33: No previous substitute regular expression"),
             });
-            return;
+            return true;
         }
         // `&` picked by its command id (the palette): the typed `&` with no count.
-        if matches!(cmd, Command::RepeatSubstituteLine) {
+        if matches!(*cmd, Command::RepeatSubstituteLine) {
             status.give(repeat_substitute_lines(
                 ws,
                 recorded,
@@ -2014,66 +2012,91 @@ impl Session {
                 1,
                 report,
             ));
-            return;
+            return true;
         }
         // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
         // mutation. Like `*`/`gd`, the engine has no buffer, so the frontend reads the focused
         // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
-        if let Some(msg) = info_status(&cmd, ws, writes_final_newline(files, ws)) {
+        if let Some(msg) = info_status(cmd, ws, writes_final_newline(files, ws)) {
             status.give(msg);
-            return;
+            return true;
         }
         // `[i`/`]i`/`[I`/`]I` (keyword under cursor): the engine has no buffer, so resolve the
         // keyword here and scan the buffer lines. `[i`/`]i` echo the count'th match on the status
         // line; `[I`/`]I` open a view-only listing overlay. Purely a display command (never planned).
         // No keyword under the cursor → `E349` (like nvim; note `*`/`gd` use `E348`, a different code).
-        if let Command::ShowKeywordLines { above, list, count } = cmd {
-            match ws.word_under_cursor() {
-                Some(keyword) => {
-                    let pane = ws.focused();
-                    let bytes = pane.doc.bytes();
-                    let cursor_line = ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
-                    let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
-                    if list {
-                        let rows: Vec<(usize, String)> =
-                            ruse_core::keyword_list(&matches, cursor_line, above)
-                                .into_iter()
-                                .map(|l| (l, ruse_core::line_text(bytes, l)))
-                                .collect();
-                        status.echo(format!("{} line(s) matching \"{keyword}\"", rows.len()));
-                        *overlay = Some(Overlay::Listing(crate::ui::keyword_lines_picker::open(
-                            &rows,
-                        )));
-                    } else {
-                        status.give(
-                            match ruse_core::keyword_echo(
-                                &matches,
-                                cursor_line,
-                                above,
-                                count as usize,
-                            ) {
-                                ruse_core::KeywordEcho::Line(l) => {
-                                    Msg::echo(ruse_core::line_text(bytes, l))
-                                }
-                                ruse_core::KeywordEcho::CurrentLine => {
-                                    Msg::error("E387: Match is on current line")
-                                }
-                                ruse_core::KeywordEcho::NotFound => {
-                                    Msg::error("E389: Couldn't find pattern")
-                                }
-                            },
-                        );
-                    }
-                }
-                None => status.error("E349: No identifier under cursor"),
-            }
-            return;
+        if let Command::ShowKeywordLines { above, list, count } = *cmd {
+            self.show_keyword_lines(above, list, count);
+            return true;
         }
+        false
+    }
+
+    /// `[i`/`]i` echo the `count`'th line holding the keyword under the cursor; `[I`/`]I` (`list`) open a
+    /// view-only listing of them. `E349` with no keyword under the cursor.
+    fn show_keyword_lines(&mut self, above: bool, list: bool, count: u32) {
+        let Session {
+            ws,
+            overlay,
+            status,
+            ..
+        } = self;
+        match ws.word_under_cursor() {
+            Some(keyword) => {
+                let pane = ws.focused();
+                let bytes = pane.doc.bytes();
+                let cursor_line = ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
+                let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
+                if list {
+                    let rows: Vec<(usize, String)> =
+                        ruse_core::keyword_list(&matches, cursor_line, above)
+                            .into_iter()
+                            .map(|l| (l, ruse_core::line_text(bytes, l)))
+                            .collect();
+                    status.echo(format!("{} line(s) matching \"{keyword}\"", rows.len()));
+                    *overlay = Some(Overlay::Listing(crate::ui::keyword_lines_picker::open(
+                        &rows,
+                    )));
+                } else {
+                    status.give(
+                        match ruse_core::keyword_echo(&matches, cursor_line, above, count as usize)
+                        {
+                            ruse_core::KeywordEcho::Line(l) => {
+                                Msg::echo(ruse_core::line_text(bytes, l))
+                            }
+                            ruse_core::KeywordEcho::CurrentLine => {
+                                Msg::error("E387: Match is on current line")
+                            }
+                            ruse_core::KeywordEcho::NotFound => {
+                                Msg::error("E389: Couldn't find pattern")
+                            }
+                        },
+                    );
+                }
+            }
+            None => status.error("E349: No identifier under cursor"),
+        }
+    }
+
+    /// Resolve a search before it runs: `*`/`#` record their pattern, a search that matches nowhere or has
+    /// no previous pattern fails here (it may still run for the wanted column), and `gd`/`gD` become a
+    /// whole-word first-match jump. `None` when nothing more runs.
+    fn resolve_search(&mut self, cmd: Command) -> Option<Command> {
+        let Session {
+            ws,
+            files,
+            recorded,
+            engine,
+            quit,
+            search_hl,
+            status,
+            ..
+        } = self;
         // `*`/`#` (word under cursor): the planner resolves the keyword and searches; record the same
         // pattern as the last search (direction too, so `#` then `n` continues backward) and for
         // hlsearch. No keyword on the line → E348 and nothing runs.
         if !note_word_search(&cmd, ws, engine, search_hl, status) {
-            return;
+            return None;
         }
         // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
         // nowhere fails with E486 and nothing runs (#901). The core fails it too (a beep, nothing moved or
@@ -2084,7 +2107,7 @@ impl Session {
         if no_previous_pattern(&cmd) {
             run_cmd(cmd, ws, files, recorded, status, quit);
             status.error(E35);
-            return;
+            return None;
         }
         if search_misses(&cmd, ws, status) {
             if matches!(cmd, Command::Search { .. }) {
@@ -2092,7 +2115,7 @@ impl Session {
                 run_cmd(cmd, ws, files, recorded, status, quit);
                 status.restore(err);
             }
-            return;
+            return None;
         }
         // `gd`/`gD` (declaration under cursor, TEXT heuristic — not LSP): like `*`/`#`, the engine
         // has no buffer, so resolve the keyword here and rewrite to a concrete whole-file first-match
@@ -2108,12 +2131,39 @@ impl Session {
                 }
                 None => {
                     status.error("E348: No string under cursor");
-                    return;
+                    return None;
                 }
             }
         } else {
             cmd
         };
+        Some(cmd)
+    }
+
+    /// Run a resolved command: over closed folds, through a 'formatprg'/'equalprg' filter or the tree-aware
+    /// `=`, with hlsearch and the special registers refreshed, then the 'indentkeys' fix and 'foldopen'.
+    fn dispatch_resolved(&mut self, cmd: Command, frame: &FrameCtx) {
+        let report = self.ui_opts.report;
+        let Session {
+            ws,
+            files,
+            highlighters,
+            line_idx,
+            recorded,
+            engine,
+            quit,
+            search_hl,
+            last_ex_line,
+            status,
+            alt_file,
+            folds,
+            can_cindent,
+            key_typed,
+            normal_depth,
+            ui_opts,
+            ..
+        } = self;
+        let snapshot = &frame.snapshot;
         // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
         // Over closed folds (#819): `j`/`k` count a fold as one line, an operator takes it whole, `o`/`p`
         // open and put past it. Before the tree-aware rewrite, which reads the cursor line `o` opens from.

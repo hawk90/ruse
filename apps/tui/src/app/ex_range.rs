@@ -116,6 +116,26 @@ struct Side {
     cursor: Option<usize>,
 }
 
+/// The address parser of one Ex line: where it is in the line, and what the addresses so far set.
+struct Addrs<'a> {
+    rest: &'a str,
+    i: usize,
+    nlines: i64,
+    cur_line: i64,
+    /// The last Visual selection's lines, for `'<`, `'>` and `*`.
+    visual: Option<(i64, i64)>,
+    /// The last search pattern as of this point of the range: a `/pat/` address replaces it for the
+    /// addresses after it (`:/a/;//d`).
+    last_search: Option<String>,
+    /// The range was `%`.
+    whole: bool,
+    addrs: Vec<i64>,
+    ws: &'a mut Workspace,
+    pats: AddrPatterns<'a>,
+    folds: Option<&'a [crate::folds::Fold]>,
+    side: &'a mut Side,
+}
+
 fn resolve(
     line: &str,
     ws: &mut Workspace,
@@ -124,80 +144,168 @@ fn resolve(
     side: &mut Side,
 ) -> Result<ExRange, ExRangeError> {
     let rest = line.trim_start_matches([' ', ':']);
-    let (nlines, mut cur_line, visual) = {
-        // From the buffer's line index (#1257): a `:g` resolves a range once per line it runs on.
-        let pane = ws.focused();
-        let doc = pane.doc;
-        let nlines =
-            (doc.line_starts().len() - usize::from(doc.bytes().ends_with(b"\n"))).max(1) as i64;
-        let cur = (doc.line_of(pane.view.cursor()) as i64 + 1).min(nlines);
-        let visual = pane
-            .view
-            .last_visual_bounds()
-            .map(|(BytePos(s), BytePos(e), _)| {
-                (
-                    doc.line_of(BytePos(s)) as i64 + 1,
-                    doc.line_of(BytePos(e)) as i64 + 1,
+    let (nlines, cur_line, visual) = line_context(ws);
+    let mut p = Addrs {
+        rest,
+        i: 0,
+        nlines,
+        cur_line,
+        visual,
+        last_search: pats.search.map(str::to_string),
+        whole: false,
+        addrs: Vec::new(),
+        ws,
+        pats,
+        folds,
+        side,
+    };
+    if !p.parse()? {
+        // Not a mark after `'`, or not a pattern after `\`: leave the line to the parser.
+        return Ok(ExRange::Line(rest.to_string()));
+    }
+    let tail = rest[p.i..].trim_start();
+    range_text(rest, tail, &p.addrs, p.cur_line, nlines, p.whole, folds)
+}
+
+/// The focused buffer's line count, the cursor's line and the last Visual selection's lines, from the
+/// buffer's line index (#1257): a `:g` resolves a range once per line it runs on.
+fn line_context(ws: &Workspace) -> (i64, i64, Option<(i64, i64)>) {
+    let pane = ws.focused();
+    let doc = pane.doc;
+    let nlines =
+        (doc.line_starts().len() - usize::from(doc.bytes().ends_with(b"\n"))).max(1) as i64;
+    let cur = (doc.line_of(pane.view.cursor()) as i64 + 1).min(nlines);
+    let visual = pane
+        .view
+        .last_visual_bounds()
+        .map(|(BytePos(s), BytePos(e), _)| {
+            (
+                doc.line_of(BytePos(s)) as i64 + 1,
+                doc.line_of(BytePos(e)) as i64 + 1,
+            )
+        });
+    (nlines, cur, visual)
+}
+
+impl Addrs<'_> {
+    /// The byte `off` past the current position.
+    fn at(&self, off: usize) -> Option<&u8> {
+        self.rest.as_bytes().get(self.i + off)
+    }
+
+    /// A run of digits at the current position, if any (saturating at `i64::MAX`).
+    fn digits(&mut self) -> Option<i64> {
+        let start = self.i;
+        while self.at(0).is_some_and(u8::is_ascii_digit) {
+            self.i += 1;
+        }
+        (start < self.i).then(|| self.rest[start..self.i].parse().unwrap_or(i64::MAX))
+    }
+
+    /// Read the addresses and their separators into `addrs`. `false` when the line is no range after all
+    /// (a `'` that is no mark, a `\` that is no pattern).
+    fn parse(&mut self) -> Result<bool, ExRangeError> {
+        loop {
+            while self.at(0) == Some(&b' ') {
+                self.i += 1;
+            }
+            let start = self.i;
+            let Some(base) = self.base()? else {
+                return Ok(false);
+            };
+            let (v, have) = self.offsets(base.unwrap_or(self.cur_line), base.is_some());
+            let i = self.i;
+            // No range at all, unless a separator follows: a missing first address is the cursor's line too
+            // (`:,d`, `:;+1d`).
+            if !have
+                && self.addrs.is_empty()
+                && i == start
+                && !matches!(self.at(0), Some(b',' | b';'))
+            {
+                break;
+            }
+            self.addrs.push(v);
+            while self.at(0) == Some(&b' ') {
+                self.i += 1;
+            }
+            match self.at(0) {
+                Some(b',') => self.i += 1,
+                Some(b';') => {
+                    // Vim moves the cursor here (and leaves it there even if the command then fails).
+                    self.i += 1;
+                    self.cur_line = v.clamp(1, self.nlines);
+                    self.side.cursor = Some(self.cur_line as usize);
+                }
+                _ => break,
+            }
+            // A separator with nothing after it (`:5,d`) closes the range on the cursor's line.
+            if !matches!(
+                self.at(0),
+                Some(
+                    b'0'..=b'9'
+                        | b'.'
+                        | b'$'
+                        | b'%'
+                        | b'*'
+                        | b'\''
+                        | b'/'
+                        | b'?'
+                        | b'\\'
+                        | b'+'
+                        | b'-'
+                        | b' '
                 )
-            });
-        (nlines, cur, visual)
-    };
-    let unchanged = || ExRange::Line(rest.to_string());
-    let s = rest.as_bytes();
-    let digits = |i: &mut usize| -> Option<i64> {
-        let start = *i;
-        while s.get(*i).is_some_and(u8::is_ascii_digit) {
-            *i += 1;
+            ) {
+                self.addrs.push(self.cur_line);
+                break;
+            }
         }
-        (start < *i).then(|| rest[start..*i].parse().unwrap_or(i64::MAX))
-    };
-    // The last search pattern as of this point of the range: a `/pat/` address replaces it for the
-    // addresses after it (`:/a/;//d`).
-    let mut last_search = pats.search.map(str::to_string);
-    let mut whole = false;
-    let mut addrs: Vec<i64> = Vec::new();
-    let mut i = 0;
-    loop {
-        while s.get(i) == Some(&b' ') {
-            i += 1;
-        }
-        let start = i;
-        let base = match s.get(i) {
-            Some(b'0'..=b'9') => digits(&mut i),
+        Ok(true)
+    }
+
+    /// One address's base: a line number, `.`, `$`, `%`, `*`, a mark or a pattern search. `None` when the
+    /// line is no range after all; `Some(None)` when there is no base (the cursor's line, offsets aside).
+    fn base(&mut self) -> Result<Option<Option<i64>>, ExRangeError> {
+        Ok(Some(match self.at(0) {
+            Some(b'0'..=b'9') => self.digits(),
             Some(b'.') => {
-                i += 1;
-                Some(cur_line)
+                self.i += 1;
+                Some(self.cur_line)
             }
             Some(b'$') => {
-                i += 1;
-                Some(nlines)
+                self.i += 1;
+                Some(self.nlines)
             }
             // `%` is `1,$` and `*` is `'<,'>`: the first address goes in here, the second is the base.
             Some(b'%') => {
-                i += 1;
-                whole = true;
-                addrs.push(1);
-                Some(nlines)
+                self.i += 1;
+                self.whole = true;
+                self.addrs.push(1);
+                Some(self.nlines)
             }
             Some(b'*') => {
-                let (first, last) = visual.ok_or(ExRangeError::MarkNotSet)?;
-                i += 1;
-                addrs.push(first);
+                let (first, last) = self.visual.ok_or(ExRangeError::MarkNotSet)?;
+                self.i += 1;
+                self.addrs.push(first);
                 Some(last)
             }
-            Some(b'\'') => match s.get(i + 1).copied().and_then(|c| mark_line(ws, c, visual)) {
+            Some(b'\'') => match self
+                .at(1)
+                .copied()
+                .and_then(|c| mark_line(self.ws, c, self.visual))
+            {
                 Some(line) => {
-                    i += 2;
+                    self.i += 2;
                     Some(line.ok_or(ExRangeError::MarkNotSet)?)
                 }
-                None => return Ok(unchanged()), // not a mark: leave the line to the parser
+                None => return Ok(None), // not a mark: leave the line to the parser
             },
             Some(b'/' | b'?') => {
-                let mut from = cur_line;
-                while let Some(&delim @ (b'/' | b'?')) = s.get(i) {
+                let mut from = self.cur_line;
+                while let Some(&delim @ (b'/' | b'?')) = self.at(0) {
                     let forward = delim == b'/';
-                    let (raw, end) = scan_pattern(rest, i + 1, delim as char);
-                    i = end;
+                    let (raw, end) = scan_pattern(self.rest, self.i + 1, delim as char);
+                    self.i = end;
                     // In `?pat?` a `\?` is the delimiter, not the `?` quantifier.
                     let pat = if forward {
                         raw.to_string()
@@ -205,44 +313,50 @@ fn resolve(
                         raw.replace("\\?", "?")
                     };
                     let pat = if pat.is_empty() {
-                        last_search.clone().ok_or(ExRangeError::NoPreviousPattern)?
+                        self.last_search
+                            .clone()
+                            .ok_or(ExRangeError::NoPreviousPattern)?
                     } else {
-                        side.search = Some((pat.clone(), forward));
-                        last_search = Some(pat.clone());
+                        self.side.search = Some((pat.clone(), forward));
+                        self.last_search = Some(pat.clone());
                         pat
                     };
-                    from = search_line(ws, &pat, from, forward)?;
+                    from = search_line(self.ws, &pat, from, forward)?;
                 }
                 Some(from)
             }
             Some(b'\\') => {
-                let (pat, forward) = match s.get(i + 1) {
-                    Some(b'/') => (last_search.clone(), true),
-                    Some(b'?') => (last_search.clone(), false),
+                let (pat, forward) = match self.at(1) {
+                    Some(b'/') => (self.last_search.clone(), true),
+                    Some(b'?') => (self.last_search.clone(), false),
                     Some(b'&') => (
                         Some(
-                            pats.substitute
+                            self.pats
+                                .substitute
                                 .ok_or(ExRangeError::NoPreviousSubstitute)?
                                 .to_string(),
                         ),
                         true,
                     ),
-                    _ => return Ok(unchanged()),
+                    _ => return Ok(None),
                 };
                 let pat = pat.ok_or(ExRangeError::NoPreviousPattern)?;
-                i += 2;
-                Some(search_line(ws, &pat, cur_line, forward)?)
+                self.i += 2;
+                Some(search_line(self.ws, &pat, self.cur_line, forward)?)
             }
             _ => None,
-        };
-        let mut v = base.unwrap_or(cur_line);
-        let mut have = base.is_some();
-        while let Some(&sign @ (b'+' | b'-')) = s.get(i) {
-            i += 1;
+        }))
+    }
+
+    /// The `+N`/`-N` offsets after a base `v` (`have` = a base was given); the address and whether there
+    /// is one.
+    fn offsets(&mut self, mut v: i64, mut have: bool) -> (i64, bool) {
+        while let Some(&sign @ (b'+' | b'-')) = self.at(0) {
+            self.i += 1;
             // An offset in an address after the first counts from the end of the closed fold the line
             // is in (nvim's `get_address`): `:2;+1d` on a fold of lines 2-4 reaches line 5.
-            if !addrs.is_empty() {
-                if let Some(fv) = folds {
+            if !self.addrs.is_empty() {
+                if let Some(fv) = self.folds {
                     if let Some(r) = usize::try_from(v - 1)
                         .ok()
                         .and_then(|l| crate::folds::closed_range(fv, l))
@@ -251,7 +365,7 @@ fn resolve(
                     }
                 }
             }
-            let n = digits(&mut i).unwrap_or(1);
+            let n = self.digits().unwrap_or(1);
             v = if sign == b'+' {
                 v.saturating_add(n)
             } else {
@@ -259,48 +373,22 @@ fn resolve(
             };
             have = true;
         }
-        // No range at all, unless a separator follows: a missing first address is the cursor's line too
-        // (`:,d`, `:;+1d`).
-        if !have && addrs.is_empty() && i == start && !matches!(s.get(i), Some(b',' | b';')) {
-            break;
-        }
-        addrs.push(v);
-        while s.get(i) == Some(&b' ') {
-            i += 1;
-        }
-        match s.get(i) {
-            Some(b',') => i += 1,
-            Some(b';') => {
-                // Vim moves the cursor here (and leaves it there even if the command then fails).
-                i += 1;
-                cur_line = v.clamp(1, nlines);
-                side.cursor = Some(cur_line as usize);
-            }
-            _ => break,
-        }
-        // A separator with nothing after it (`:5,d`) closes the range on the cursor's line.
-        if !matches!(
-            s.get(i),
-            Some(
-                b'0'..=b'9'
-                    | b'.'
-                    | b'$'
-                    | b'%'
-                    | b'*'
-                    | b'\''
-                    | b'/'
-                    | b'?'
-                    | b'\\'
-                    | b'+'
-                    | b'-'
-                    | b' '
-            )
-        ) {
-            addrs.push(cur_line);
-            break;
-        }
+        (v, have)
     }
-    let tail = rest[i..].trim_start();
+}
+
+/// The range text the command gets for the resolved addresses: closed folds taken whole, `%` kept, one
+/// address for `:put`/`:r`, a count folded in, and `:N` as a jump.
+fn range_text(
+    rest: &str,
+    tail: &str,
+    addrs: &[i64],
+    cur_line: i64,
+    nlines: i64,
+    whole: bool,
+    folds: Option<&[crate::folds::Fold]>,
+) -> Result<ExRange, ExRangeError> {
+    let mut addrs = addrs.to_vec();
     // A closed fold the range starts or ends in is taken whole (nvim's `do_one_cmd`), for a range of two
     // addresses or a command that acts on whole folds, which also widens its default line (#1141).
     let fold_cmd = whole_fold_command(tail);
@@ -315,7 +403,7 @@ fn resolve(
     let Some(&last) = addrs.last() else {
         // No range, but a counted command still needs the cursor's line (`:d 3`).
         return Ok(match counted(tail, cur_line, nlines)? {
-            None => unchanged(),
+            None => ExRange::Line(rest.to_string()),
             Some((Some((a, b)), t)) => ExRange::Line(format!("{a},{b}{t}")),
             Some((None, t)) => ExRange::Line(t),
         });

@@ -6,6 +6,25 @@ use super::*;
 
 pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
     match cmd {
+        Command::DeleteBack | Command::DeleteUnder(_) | Command::DeleteForward(_) => {
+            plan_delete(st, b, cur, hint, cmd)
+        }
+        Command::ReplaceChar(..) | Command::ToggleCase(_) => {
+            plan_rewrite_chars(st, b, cur, hint, cmd)
+        }
+        Command::JoinLines(count) => plan_join(st, cur, *count, st.view.mode, hint, false),
+        Command::JoinLinesNoSpace(count) => plan_join(st, cur, *count, st.view.mode, hint, true),
+        Command::IncrementNumber(delta) => plan_increment_number(st, b, cur, hint, *delta),
+        Command::IncrementSelection { delta, sequential } => {
+            plan_increment_selection(st, b, cur, hint, *delta, *sequential)
+        }
+        _ => unreachable!("planner::edit plans only its own commands"),
+    }
+}
+
+/// `<BS>` (`DeleteBack`), Vim `x` (`DeleteUnder`) and Emacs `delete-char` (`DeleteForward`).
+fn plan_delete(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         Command::DeleteBack => {
             let ls = line_start(b, cur);
             let stepped = (st.view.caret == CaretGravity::OnChar && st.view.mode == Mode::Insert)
@@ -74,6 +93,19 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 )
             }
         }
+        _ => unreachable!("plan_delete plans only the delete commands"),
+    }
+}
+
+/// The in-place character rewrites: `{count}r{ch}` and `{count}~`.
+fn plan_rewrite_chars(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    hint: GroupHint,
+    cmd: &Command,
+) -> Plan {
+    match cmd {
         Command::ReplaceChar(count, c) => {
             // `{count}r{ch}`: replace `count` chars with `ch`. Per Vim it is a NO-OP if fewer than
             // `count` chars remain on the line (never a partial replace). Cursor lands on the last one.
@@ -135,95 +167,108 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 }
             }
         }
-        Command::JoinLines(count) => plan_join(st, cur, *count, st.view.mode, hint, false),
-        Command::JoinLinesNoSpace(count) => plan_join(st, cur, *count, st.view.mode, hint, true),
-        Command::IncrementNumber(delta) => {
-            // `CTRL-A`/`CTRL-X`: adjust the number at or after the cursor on the current line. A `0x`-prefixed
-            // hex literal increments in hex (`0x1f`→`0x20`); otherwise a decimal (with optional `-` sign).
-            let ls = crate::pos::raw::line_start(b, cur);
-            let le = line_end(b, cur);
-            match incr_number(b, ls, le, cur, *delta) {
-                Some((start, old_len, bytes, cursor)) => edit(
-                    one(Edit::replace(BytePos(start), old_len, bytes)),
-                    cursor,
-                    st.view.mode,
-                    hint,
-                ),
-                None => nop(cur, st.view.mode), // no number on the rest of the line
-            }
-        }
-        // Visual `CTRL-A`/`CTRL-X` (and `g CTRL-A`/`g CTRL-X`): increment the first number per selected line.
-        // Plain form adds `delta` to every line; `sequential` (the `g` form) adds `delta`, `2·delta`, `3·delta`…
-        // to successive numbered lines — the classic "turn a column of 1s into 1,2,3…".
-        //
-        // The unifying rule across all three shapes: on each line, search from the SELECTION'S LEFT EDGE
-        // (`incr_number` finds the first number at/after it, expanding to the whole number). This makes a
-        // column of numbers that are NOT the first on their line increment correctly — the whole point of the
-        // feature — for both `CTRL-V` (block left column) and `v` (the start column on the first line):
-        //   - BLOCKWISE (`CTRL-V`): the first character each row touches (`block_geom`).
-        //   - LINEWISE (`V`): the line start (whole lines).
-        //   - CHARWISE (`v`): the selection start on the first line, the line start on continuation lines.
-        // (Charwise does not yet CLIP a number sitting past the selection end on the last line — a rare edge,
-        // noted as a follow-up.)
-        Command::IncrementSelection { delta, sequential } => {
-            let Some(anchor) = st.view.anchor else {
-                return nop(cur, Mode::Normal);
-            };
-            // Per selected line: (line_start, search_from).
-            let lines: Vec<(usize, usize)> = match st.view.mode.selection() {
-                Some(SelectKind::Blockwise) => {
-                    block_geom(b, anchor, cur, st.view.indent.tabs(), false)
-                        .rows
-                        .iter()
-                        .map(|r| (r.ls, r.ds))
-                        .collect()
-                }
-                kind => {
-                    let linewise = kind == Some(SelectKind::Linewise);
-                    let (s, e) = selection_range(b, anchor, cur, linewise);
-                    let mut ls = line_start(b, s.min(b.len()));
-                    let mut out = Vec::new();
-                    // Charwise starts its FIRST line at the selection start `s`; every other line (and every
-                    // linewise line) starts at its own line start.
-                    let mut from = if linewise { ls } else { s.max(ls) };
-                    while ls < e && ls <= b.len() {
-                        out.push((ls, from));
-                        let le = line_end(b, ls);
-                        if le >= b.len() {
-                            break;
-                        }
-                        ls = le + 1;
-                        from = ls;
-                    }
-                    out
-                }
-            };
-            let mut edits: Vec<Edit> = Vec::new();
-            // Vim leaves the caret on the FIRST SELECTED line at the selection's LEFT-EDGE column — the
-            // first line's search-`from` (linewise: column 0; charwise: the selection start; blockwise: the
-            // block's left column). It is INDEPENDENT of which line changed (or whether any did) and of the
-            // number's own last digit — so a multi-digit result (`007`→`008`) or a numberless first line
-            // (`abc` above the numbers) still homes here. Verified against nvim v0.12.4 (parity fixtures).
-            let caret = lines.first().map_or(cur, |&(_ls, from)| from);
-            let mut steps: i64 = 0; // numbered lines seen so far (the sequence multiplier)
-            for (ls, from) in lines {
-                let le = line_end(b, ls);
-                steps += 1;
-                let this = if *sequential { delta * steps } else { *delta };
-                if let Some((start, old_len, bytes, _cursor)) = incr_number(b, ls, le, from, this) {
-                    edits.push(Edit::replace(BytePos(start), old_len, bytes));
-                } else {
-                    steps -= 1; // a line with no number does not advance the sequence
-                }
-            }
-            if edits.is_empty() {
-                return nop(caret, Mode::Normal);
-            }
-            let list = EditList::new(edits).expect("one replacement per line ⇒ disjoint");
-            edit(list, caret, Mode::Normal, hint)
-        }
-        _ => unreachable!("planner::edit plans only its own commands"),
+        _ => unreachable!("plan_rewrite_chars plans only `r` and `~`"),
     }
+}
+
+/// `CTRL-A`/`CTRL-X` at the cursor.
+fn plan_increment_number(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    hint: GroupHint,
+    delta: i64,
+) -> Plan {
+    // `CTRL-A`/`CTRL-X`: adjust the number at or after the cursor on the current line. A `0x`-prefixed
+    // hex literal increments in hex (`0x1f`→`0x20`); otherwise a decimal (with optional `-` sign).
+    let ls = crate::pos::raw::line_start(b, cur);
+    let le = line_end(b, cur);
+    match incr_number(b, ls, le, cur, delta) {
+        Some((start, old_len, bytes, cursor)) => edit(
+            one(Edit::replace(BytePos(start), old_len, bytes)),
+            cursor,
+            st.view.mode,
+            hint,
+        ),
+        None => nop(cur, st.view.mode), // no number on the rest of the line
+    }
+}
+
+/// Visual `CTRL-A`/`CTRL-X` (and `g CTRL-A`/`g CTRL-X`): increment the first number per selected line.
+/// Plain form adds `delta` to every line; `sequential` (the `g` form) adds `delta`, `2·delta`, `3·delta`…
+/// to successive numbered lines — the classic "turn a column of 1s into 1,2,3…".
+///
+/// The unifying rule across all three shapes: on each line, search from the SELECTION'S LEFT EDGE
+/// (`incr_number` finds the first number at/after it, expanding to the whole number). This makes a
+/// column of numbers that are NOT the first on their line increment correctly — the whole point of the
+/// feature — for both `CTRL-V` (block left column) and `v` (the start column on the first line):
+///   - BLOCKWISE (`CTRL-V`): the first character each row touches (`block_geom`).
+///   - LINEWISE (`V`): the line start (whole lines).
+///   - CHARWISE (`v`): the selection start on the first line, the line start on continuation lines.
+///
+/// (Charwise does not yet CLIP a number sitting past the selection end on the last line — a rare edge,
+/// noted as a follow-up.)
+fn plan_increment_selection(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    hint: GroupHint,
+    delta: i64,
+    sequential: bool,
+) -> Plan {
+    let Some(anchor) = st.view.anchor else {
+        return nop(cur, Mode::Normal);
+    };
+    // Per selected line: (line_start, search_from).
+    let lines: Vec<(usize, usize)> = match st.view.mode.selection() {
+        Some(SelectKind::Blockwise) => block_geom(b, anchor, cur, st.view.indent.tabs(), false)
+            .rows
+            .iter()
+            .map(|r| (r.ls, r.ds))
+            .collect(),
+        kind => {
+            let linewise = kind == Some(SelectKind::Linewise);
+            let (s, e) = selection_range(b, anchor, cur, linewise);
+            let mut ls = line_start(b, s.min(b.len()));
+            let mut out = Vec::new();
+            // Charwise starts its FIRST line at the selection start `s`; every other line (and every
+            // linewise line) starts at its own line start.
+            let mut from = if linewise { ls } else { s.max(ls) };
+            while ls < e && ls <= b.len() {
+                out.push((ls, from));
+                let le = line_end(b, ls);
+                if le >= b.len() {
+                    break;
+                }
+                ls = le + 1;
+                from = ls;
+            }
+            out
+        }
+    };
+    let mut edits: Vec<Edit> = Vec::new();
+    // Vim leaves the caret on the FIRST SELECTED line at the selection's LEFT-EDGE column — the
+    // first line's search-`from` (linewise: column 0; charwise: the selection start; blockwise: the
+    // block's left column). It is INDEPENDENT of which line changed (or whether any did) and of the
+    // number's own last digit — so a multi-digit result (`007`→`008`) or a numberless first line
+    // (`abc` above the numbers) still homes here. Verified against nvim v0.12.4 (parity fixtures).
+    let caret = lines.first().map_or(cur, |&(_ls, from)| from);
+    let mut steps: i64 = 0; // numbered lines seen so far (the sequence multiplier)
+    for (ls, from) in lines {
+        let le = line_end(b, ls);
+        steps += 1;
+        let this = if sequential { delta * steps } else { delta };
+        if let Some((start, old_len, bytes, _cursor)) = incr_number(b, ls, le, from, this) {
+            edits.push(Edit::replace(BytePos(start), old_len, bytes));
+        } else {
+            steps -= 1; // a line with no number does not advance the sequence
+        }
+    }
+    if edits.is_empty() {
+        return nop(caret, Mode::Normal);
+    }
+    let list = EditList::new(edits).expect("one replacement per line ⇒ disjoint");
+    edit(list, caret, Mode::Normal, hint)
 }
 
 /// Add `delta` to the first number at or after `from` on the line `ls..le`, matching Neovim `nrformats`
