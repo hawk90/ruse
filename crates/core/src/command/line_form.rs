@@ -473,8 +473,14 @@ fn arg_word_case(arg: Option<&str>, line: &str) -> Result<WordCase, CommandParse
 
 /// Lowercase hex of `text`'s UTF-8 bytes, for a trace argument that may hold any character.
 fn hex_encode(text: &str) -> String {
-    let mut s = String::with_capacity(text.len() * 2);
-    for b in text.bytes() {
+    hex_lower(text.as_bytes())
+}
+
+/// Two lowercase hex digits per byte, the trace's encoding of free text (an empty input is empty). The
+/// `Command` and `ExCmd` codecs both build on it (#1446).
+pub(crate) fn hex_lower(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
         let _ = write!(s, "{b:02x}");
     }
     s

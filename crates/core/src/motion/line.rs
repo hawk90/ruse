@@ -4,7 +4,8 @@
 use crate::cells::Tabs;
 use crate::pos::raw::{line_end, line_start};
 
-use super::boundary::{at_bol, at_col, col_of, next_boundary, prev_boundary, prev_grapheme};
+use super::boundary::{at_bol, at_col, col_of, next_boundary, prev_boundary, prev_grapheme, snap};
+use super::Motion;
 
 pub(super) fn up(b: &[u8], cur: usize) -> usize {
     let ls = line_start(b, cur);
@@ -156,6 +157,90 @@ pub(super) fn lines_down(b: &[u8], pos: usize, n: u32) -> usize {
         ls = le + 1;
     }
     ls
+}
+
+/// The target of a line jump (`gg`/`{count}G`, `G`, `{count}go`, `{count}%`). The count is an absolute
+/// line, a byte offset or a percentage, not a repeat; `count` is the raw count and `n` is `count.max(1)`.
+pub(super) fn line_jump_target(b: &[u8], m: Motion, count: u32, n: u32) -> usize {
+    match m {
+        // Line jumps use the count as an absolute line number (or the last line), not a repeat count.
+        Motion::GotoLine => first_non_blank(b, nth_line_start(b, count)),
+        Motion::LastLine => first_non_blank(b, last_line_start(b)),
+        // `{count}go`: the count is an absolute 1-based BYTE offset (not a repeat); a count past EOF lands on
+        // the LAST byte (Vim never rests the cursor past the final char). Snapped to a char boundary.
+        // A terminated buffer's last byte is its final newline, so a count past EOF lands on the last line's
+        // last char instead (#677).
+        Motion::GotoByte => {
+            let t = off_phantom_at(b, (n as usize).saturating_sub(1).min(b.len()));
+            snap(b, t.min(b.len().saturating_sub(1)))
+        }
+        // `{count}%`: the count is a PERCENTAGE — go to line `(count*line_count + 99)/100` (Vim), first
+        // non-blank. `line_count` follows the terminator model (a trailing `\n` is not a new line).
+        Motion::GotoPercent => {
+            let nl = crate::pos::count_newlines(b);
+            let line_count = if b.is_empty() {
+                1
+            } else if b.last() == Some(&b'\n') {
+                nl
+            } else {
+                nl + 1
+            };
+            let line = ((n as usize) * line_count)
+                .div_ceil(100)
+                .clamp(1, line_count) as u32;
+            first_non_blank(b, nth_line_start(b, line))
+        }
+        _ => unreachable!("{m:?} is not a line jump"),
+    }
+}
+
+/// `+`/`<CR>` (down), `-` (up), `_` (count-1 down): the count is a line delta (not a repeat), then the
+/// first non-blank char of the target line. Clamped at the buffer edges.
+pub(super) fn line_delta_target(b: &[u8], cur0: usize, m: Motion, n: u32) -> usize {
+    let delta: isize = match m {
+        Motion::DownFirstNonBlank => n as isize,
+        Motion::LineUnderscore => (n - 1) as isize,
+        Motion::UpFirstNonBlank => -(n as isize),
+        _ => unreachable!("{m:?} is not a line-delta motion"),
+    };
+    let mut ls = line_start(b, cur0);
+    if delta >= 0 {
+        for _ in 0..delta {
+            let le = line_end(b, ls);
+            if le >= content_end(b) {
+                break; // clamp at the last content line, not the trailing phantom
+            }
+            ls = le + 1;
+        }
+    } else {
+        for _ in 0..(-delta) {
+            if ls == 0 {
+                break;
+            }
+            ls = line_start(b, ls - 1);
+        }
+    }
+    first_non_blank(b, ls)
+}
+
+/// The column motions of the current line: `{count}|` and `gM`.
+pub(super) fn column_target(b: &[u8], cur0: usize, m: Motion, n: u32) -> usize {
+    match m {
+        // `{count}|`: the count is the 1-based display column of the current line (not a repeat).
+        Motion::Column => at_col(b, line_start(b, cur0), (n - 1) as usize),
+        // `gM` / `{count}gM`: the count is a PERCENTAGE of the line's character length (not a repeat); land
+        // on char index `min(count*chars/100, chars-1)`. The frontend passes 50 for a bare `gM`.
+        Motion::MidLine => {
+            let ls = line_start(b, cur0);
+            let chars = col_of(b, ls, line_end(b, cur0)); // char count of the line (excludes the newline)
+            if chars == 0 {
+                return ls; // empty line — nowhere to go
+            }
+            let idx = ((n as usize) * chars / 100).min(chars - 1);
+            at_col(b, ls, idx)
+        }
+        _ => unreachable!("{m:?} is not a column motion"),
+    }
 }
 
 /// One bare `<Space>` step (`'whichwrap'` `s`): the next char on the line, else the first char of the next
