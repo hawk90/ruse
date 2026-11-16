@@ -845,3 +845,30 @@ fn gn_with_no_match_is_a_noop() {
     assert_eq!(st.mode(), Mode::Normal, "no match — stays in Normal");
     assert_eq!(st.cursor().0, 0);
 }
+
+/// A search with no previous pattern (an empty one, #1173) fails: a beep, nothing moves, and the wanted
+/// column resets to the cursor's (nvim's `normal_search`).
+#[test]
+fn a_search_with_no_pattern_fails_and_resets_the_wanted_column() {
+    let mut st = EditorState::new(b"ab cd ef ghijklmnop qrstuvwxyz\ngh (ij kl\n".to_vec());
+    apply_command(&mut st, &Command::Move(1, Motion::Down));
+    apply_command(&mut st, &Command::Move(1, Motion::LineEnd));
+    let effects = apply_command(
+        &mut st,
+        &Command::Search {
+            op: crate::SearchOp::Delete,
+            count: 1,
+            pattern: String::new(),
+            backward: false,
+            offset: crate::SearchOffset::None,
+        },
+    );
+    assert!(effects.contains(&Effect::Beep));
+    assert_eq!(st.cursor().0, 31 + 8);
+    apply_command(&mut st, &Command::Move(1, Motion::Up));
+    assert_eq!(
+        st.cursor().0,
+        8,
+        "the wanted column is the cursor's, not the line's end"
+    );
+}

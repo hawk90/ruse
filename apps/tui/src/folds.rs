@@ -528,5 +528,12 @@ pub fn summary(fold: &Fold, first_line: &str) -> String {
     }
 }
 
+/// The folds of buffer `id`: the session keeps them per buffer, and a buffer with none has an empty list.
+pub(crate) fn for_buffer(
+    folds: &std::collections::HashMap<ruse_core::DocumentId, Vec<Fold>>,
+    id: ruse_core::DocumentId,
+) -> &[Fold] {
+    folds.get(&id).map_or(&[][..], Vec::as_slice)
+}
 #[cfg(test)]
 mod tests;

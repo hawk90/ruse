@@ -219,9 +219,7 @@ impl Session {
         // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
         // Over closed folds (#819): `j`/`k` count a fold as one line, an operator takes it whole, `o`/`p`
         // open and put past it. Before the tree-aware rewrite, which reads the cursor line `o` opens from.
-        let fv = folds
-            .get(&ws.focused_buffer())
-            .map_or(&[][..], Vec::as_slice);
+        let fv = crate::folds::for_buffer(folds, ws.focused_buffer());
         let Some(cmd) = crate::app::fold_cmds::prepare(cmd, ws, fv, line_idx, snapshot, recorded)
         else {
             return;

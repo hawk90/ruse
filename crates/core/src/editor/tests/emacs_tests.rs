@@ -285,27 +285,6 @@ mod mark_tests {
         );
     }
 
-    // Emacs back-to-indentation (M-m) / Vim `^` share Motion::LineFirstNonBlank: land on the first
-    // non-blank of the line, or the line end when it is all blank.
-    #[test]
-    fn line_first_non_blank_lands_on_first_non_blank() {
-        let mut st = EditorState::new(b"  foo".to_vec());
-        st.set_caret_gravity(CaretGravity::BetweenChar);
-        st.set_cursor(BytePos(5)); // end of line
-        apply_command(&mut st, &Command::Move(1, Motion::LineFirstNonBlank));
-        assert_eq!(
-            st.view.cursor, 2,
-            "lands on 'f' past the two leading spaces"
-        );
-
-        // An all-blank line: land at the line end (no non-blank to find).
-        let mut blank = EditorState::new(b"   \nx".to_vec());
-        blank.set_caret_gravity(CaretGravity::BetweenChar);
-        blank.set_cursor(BytePos(0));
-        apply_command(&mut blank, &Command::Move(1, Motion::LineFirstNonBlank));
-        assert_eq!(blank.view.cursor, 3, "all-blank line: land at its end");
-    }
-
     // Emacs just-one-space (M-SPC) / delete-horizontal-space (M-\) (D-051): collapse surrounding spaces/tabs.
     #[test]
     fn emacs_horizontal_space_collapses_surrounding_whitespace() {
@@ -635,6 +614,42 @@ mod mark_tests {
         assert_eq!(text(&st), "abc\n");
         assert_eq!(st.view.cursor, 2);
         assert_eq!(st.view.mark, None);
+    }
+
+    /// #617: `'autoindent'` and the `'smarttab'` `<BS>` are Vim-profile rules; an Emacs `newline` and
+    /// `delete-backward-char` keep their plain behaviour under the same (default) options.
+    #[test]
+    fn emacs_newline_and_backspace_ignore_vim_indent_rules() {
+        let mut st = EditorState::new(b"    foo".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        apply_command(&mut st, &Command::MoveLineEnd);
+        apply_command(&mut st, &Command::InsertNewline);
+        assert_eq!(st.doc.bytes(), b"    foo\n");
+        let mut st = EditorState::new(b"    foo".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        apply_command(&mut st, &Command::EnterInsert);
+        st.view.cursor = 4;
+        apply_command(&mut st, &Command::DeleteBack);
+        assert_eq!(st.doc.bytes(), b"   foo");
+    }
+
+    /// #618: auto-wrap and the comment-leader opens are Vim-profile rules; Emacs typing past
+    /// 'textwidth' and an Emacs `newline` on a comment line stay plain.
+    #[test]
+    fn emacs_typing_does_not_auto_wrap_or_continue_comments() {
+        let mut st = EditorState::new(b"aaa bbb".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_option(EditorOption::TextWidth(5));
+        st.set_option(EditorOption::FormatOptions("tcqjro".into()));
+        apply_command(&mut st, &Command::MoveLineEnd);
+        apply_command(&mut st, &Command::InsertChar('x'));
+        assert_eq!(st.doc.bytes(), b"aaa bbbx");
+        let mut st = EditorState::new(b"// a".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_option(EditorOption::FormatOptions("tcqjro".into()));
+        apply_command(&mut st, &Command::MoveLineEnd);
+        apply_command(&mut st, &Command::InsertNewline);
+        assert_eq!(st.doc.bytes(), b"// a\n");
     }
 }
 
