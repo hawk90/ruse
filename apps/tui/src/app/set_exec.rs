@@ -390,7 +390,8 @@ impl OptionHost<'_> {
         self.get(opt, scope == SetScope::Global)
     }
 
-    /// Write `val` into `opt` at `level`.
+    /// Write `val` into `opt` at `level`: a core option or a window-local display option directly, any
+    /// other option through the installer of the owner that holds it.
     pub(crate) fn put(&mut self, opt: Opt, level: OptionLevel, val: OptVal) {
         if let Some(core) = core_option(opt, &val) {
             let global = core.is_global();
@@ -412,6 +413,60 @@ impl OptionHost<'_> {
             OptVal::Text(t) => t.to_string(),
             _ => String::new(),
         };
+        match opt {
+            Opt::ShowBreak
+            | Opt::ListChars
+            | Opt::FillChars
+            | Opt::SideScrollOff
+            | Opt::BreakAt
+            | Opt::Display
+            | Opt::SideScroll
+            | Opt::ScrollJump
+            | Opt::Scroll
+            | Opt::ScrollOff => self.put_display(opt, level, val, text),
+            Opt::HlSearch
+            | Opt::IncSearch
+            | Opt::TildeOp
+            | Opt::ShowMode
+            | Opt::Verbose
+            | Opt::MessageOptions
+            | Opt::FoldOpen
+            | Opt::Report
+            | Opt::History => self.put_session_ui(opt, val, on, text),
+            Opt::FoldMethod | Opt::FoldLevel | Opt::FoldEnable => {
+                self.put_fold(opt, val, on, buf);
+            }
+            Opt::AutoRead
+            | Opt::AutoWrite
+            | Opt::AutoWriteAll
+            | Opt::Confirm
+            | Opt::Hidden
+            | Opt::Modifiable
+            | Opt::Modified
+            | Opt::ReadOnly => self.put_buffer_state(opt, level, on, buf),
+            Opt::FixEol
+            | Opt::FileFormats
+            | Opt::SwapFile
+            | Opt::UpdateCount
+            | Opt::Backup
+            | Opt::WriteBackup
+            | Opt::Write
+            | Opt::WriteAny
+            | Opt::Fsync
+            | Opt::BackupDir
+            | Opt::BackupSkip
+            | Opt::BackupExt
+            | Opt::BackupCopy
+            | Opt::PatchMode => self.put_write(opt, level, val, on, text, buf),
+            Opt::FileFormat | Opt::Binary | Opt::EndOfLine | Opt::EndOfFile | Opt::Bomb => {
+                self.put_file_shape(opt, level, val, on, buf);
+            }
+            _ => {}
+        }
+    }
+
+    /// The session's display globals, the global-local display options and the scroll options.
+    fn put_display(&mut self, opt: Opt, level: OptionLevel, val: OptVal, text: String) {
         match (opt, val) {
             // The global-local display options: as 'scrolloff' (`:set` drops the window's own value).
             (Opt::ShowBreak | Opt::ListChars | Opt::FillChars | Opt::SideScrollOff, v) => {
@@ -451,16 +506,6 @@ impl OptionHost<'_> {
                 let focus = self.ws.focus();
                 self.ws.set_scroll(focus, lines, h);
             }
-            (Opt::HlSearch, _) => {
-                *self.hlsearch_on = on;
-                if !on {
-                    // Switching hlsearch off also clears the live highlight (Vim).
-                    *self.search_hl = None;
-                }
-            }
-            (Opt::IncSearch, _) => *self.incsearch_on = on,
-            (Opt::FixEol, _) => self.files.write.fixeol = on,
-            (Opt::TildeOp, _) => self.engine.set_tildeop(on),
             // Global-local: `:setlocal` gives the focused window its own value, `:set` sets the global
             // value and drops the window's (nvim), `:setglobal` leaves the window's alone.
             (Opt::ScrollOff, OptVal::Num(n)) => match level {
@@ -471,6 +516,22 @@ impl OptionHost<'_> {
                 }
                 OptionLevel::Global => *self.scrolloff = n,
             },
+            _ => {}
+        }
+    }
+
+    /// The session's search, input-engine and message options.
+    fn put_session_ui(&mut self, opt: Opt, val: OptVal, on: bool, text: String) {
+        match (opt, val) {
+            (Opt::HlSearch, _) => {
+                *self.hlsearch_on = on;
+                if !on {
+                    // Switching hlsearch off also clears the live highlight (Vim).
+                    *self.search_hl = None;
+                }
+            }
+            (Opt::IncSearch, _) => *self.incsearch_on = on,
+            (Opt::TildeOp, _) => self.engine.set_tildeop(on),
             (Opt::ShowMode, _) => self.ui.showmode = on,
             (Opt::Verbose, OptVal::Num(n)) => self.ui.verbose = n,
             (Opt::MessageOptions, _) => self.ui.messagesopt = text,
@@ -479,8 +540,14 @@ impl OptionHost<'_> {
             (Opt::History, OptVal::Num(n)) => {
                 self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
             }
-            // The fold options (frontend state, per buffer). Switching the method keeps the folds and
-            // recomputes them next frame (Vim keeps them); a level or enable change re-applies at once.
+            _ => {}
+        }
+    }
+
+    /// The fold options (frontend state, per buffer). Switching the method keeps the folds and
+    /// recomputes them next frame (Vim keeps them); a level or enable change re-applies at once.
+    fn put_fold(&mut self, opt: Opt, val: OptVal, on: bool, buf: DocumentId) {
+        match (opt, val) {
             (Opt::FoldMethod, OptVal::Str(m)) => {
                 let m = if m == "indent" {
                     FoldMethod::Indent
@@ -504,20 +571,51 @@ impl OptionHost<'_> {
                 self.foldenable.insert(buf, on);
                 self.reapply_folds(buf);
             }
-            (Opt::AutoRead, _) => self.ui.buffers.autoread = on,
-            (Opt::AutoWrite, _) => self.ui.buffers.autowrite = on,
+            _ => {}
+        }
+    }
+
+    /// The buffer-abandon options (#619) and the focused buffer's own state.
+    fn put_buffer_state(&mut self, opt: Opt, level: OptionLevel, on: bool, buf: DocumentId) {
+        match opt {
+            Opt::AutoRead => self.ui.buffers.autoread = on,
+            Opt::AutoWrite => self.ui.buffers.autowrite = on,
             // nvim: 'autowriteall' implies 'autowrite' (it does not set it).
-            (Opt::AutoWriteAll, _) => self.ui.buffers.autowriteall = on,
-            (Opt::Confirm, _) => self.ui.buffers.confirm = on,
-            (Opt::Hidden, _) => self.ui.buffers.hidden = on,
+            Opt::AutoWriteAll => self.ui.buffers.autowriteall = on,
+            Opt::Confirm => self.ui.buffers.confirm = on,
+            Opt::Hidden => self.ui.buffers.hidden = on,
             // Buffer state of the focused buffer, recorded so a replay refuses the same edits (#619).
-            (Opt::Modifiable, _) => {
+            Opt::Modifiable => {
                 crate::app::dispatch::run_ex(ExCmd::Modifiable(on), self.ws, self.recorded);
             }
             // `:set nomod` marks the buffer unchanged (its text stays); `:set mod` marks it changed.
-            (Opt::Modified, _) => {
+            Opt::Modified => {
                 crate::app::dispatch::run_ex(ExCmd::Modified(on), self.ws, self.recorded);
             }
+            // `'readonly'` is the buffer's; a `:set noro` (not `:setlocal`) also ends `ruse -R`'s readonly
+            // mode, as nvim's does.
+            Opt::ReadOnly => {
+                self.readonly.set(self.files, buf, on);
+                if !on && level != OptionLevel::Local {
+                    self.readonly.mode = false;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The session's write preferences and the swap-file options.
+    fn put_write(
+        &mut self,
+        opt: Opt,
+        level: OptionLevel,
+        val: OptVal,
+        on: bool,
+        text: String,
+        buf: DocumentId,
+    ) {
+        match (opt, val) {
+            (Opt::FixEol, _) => self.files.write.fixeol = on,
             (Opt::FileFormats, _) => self.files.write.fileformats = text,
             // `:setlocal noswf` is the buffer's; `:set` also sets the default of buffers opened later.
             (Opt::SwapFile, _) => {
@@ -531,6 +629,30 @@ impl OptionHost<'_> {
             (Opt::UpdateCount, OptVal::Num(n)) => {
                 self.files.write.updatecount = usize::try_from(n).unwrap_or(0);
             }
+            (Opt::Backup, _) => self.files.write.backup = on,
+            (Opt::WriteBackup, _) => self.files.write.writebackup = on,
+            (Opt::Write, _) => self.files.write.write = on,
+            (Opt::WriteAny, _) => self.files.write.writeany = on,
+            (Opt::Fsync, _) => self.files.write.fsync = on,
+            (Opt::BackupDir, _) => self.files.write.backupdir = Some(text),
+            (Opt::BackupSkip, _) => self.files.write.backupskip = Some(text),
+            (Opt::BackupExt, _) => self.files.write.backupext = text,
+            (Opt::BackupCopy, _) => self.files.write.backupcopy = text,
+            (Opt::PatchMode, _) => self.files.write.patchmode = text,
+            _ => {}
+        }
+    }
+
+    /// The shape of the focused buffer's file: its line endings, `'binary'`, its last line and its BOM.
+    fn put_file_shape(
+        &mut self,
+        opt: Opt,
+        level: OptionLevel,
+        val: OptVal,
+        on: bool,
+        buf: DocumentId,
+    ) {
+        match (opt, val) {
             // `'fileformat'` changes how the file is written, so the buffer is modified (nvim); `:setglobal`
             // sets the format of buffers without a file.
             (Opt::FileFormat, OptVal::Str(name)) => {
@@ -575,16 +697,6 @@ impl OptionHost<'_> {
                     }
                 }
             }
-            (Opt::Backup, _) => self.files.write.backup = on,
-            (Opt::WriteBackup, _) => self.files.write.writebackup = on,
-            (Opt::Write, _) => self.files.write.write = on,
-            (Opt::WriteAny, _) => self.files.write.writeany = on,
-            (Opt::Fsync, _) => self.files.write.fsync = on,
-            (Opt::BackupDir, _) => self.files.write.backupdir = Some(text),
-            (Opt::BackupSkip, _) => self.files.write.backupskip = Some(text),
-            (Opt::BackupExt, _) => self.files.write.backupext = text,
-            (Opt::BackupCopy, _) => self.files.write.backupcopy = text,
-            (Opt::PatchMode, _) => self.files.write.patchmode = text,
             // The file's shape is the buffer's. Changing its BOM changes the file, so the buffer is modified
             // (nvim); `'endofline'` and `'endoffile'` do not modify it.
             (Opt::EndOfLine | Opt::EndOfFile | Opt::Bomb, _) => {
@@ -596,14 +708,6 @@ impl OptionHost<'_> {
                 });
                 if opt == Opt::Bomb && before != on {
                     self.ws.focused_doc_mut().mark_unsaved();
-                }
-            }
-            // `'readonly'` is the buffer's; a `:set noro` (not `:setlocal`) also ends `ruse -R`'s readonly
-            // mode, as nvim's does.
-            (Opt::ReadOnly, _) => {
-                self.readonly.set(self.files, buf, on);
-                if !on && level != OptionLevel::Local {
-                    self.readonly.mode = false;
                 }
             }
             _ => {}
