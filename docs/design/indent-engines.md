@@ -25,7 +25,7 @@ opens and the typed keys run them only under `'cindent'`. ruse follows that orde
 | buffer | `=` | `o`/`O`/`<CR>`, `cc`/`S`, typed keys | where |
 |---|---|---|---|
 | `'lisp'` set | Lisp rules | Lisp rules (under `'autoindent'`) | `crates/core/src/editor/lisp.rs` |
-| C (`.c`, `.h`) | C rules | C rules, by `'cinkeys'` | `crates/core/src/editor/cindent.rs` |
+| C (`.c`, `.h`) | C rules | C rules, by `'cinkeys'` | `crates/core/src/editor/cindent/` |
 | Python | Python script | Python script, by its `'indentkeys'` | `apps/tui/src/indent/python.rs` |
 | Rust, JavaScript, Go, sh, CSS, JSON | node depth | node depth, by each file type's keys | `apps/tui/src/indent.rs` |
 | no tree (or Markdown) | C rules | autoindent; C rules under `'cindent'` | core |
@@ -36,8 +36,8 @@ indents those by node depth (Rust, JavaScript) and has no Java grammar.
 
 ## The C rules (#1163)
 
-`cindent.rs` ports `get_c_indent` and every helper it calls (`cin_islabel`, `cin_isfuncdecl`,
-`cin_is_cpp_baseclass`, `find_match`, …), plus the parts of `findmatchlimit` it runs: the backward search
+`cindent/` ports `get_c_indent` (`indent.rs`) and every helper it calls (`syntax.rs`: `cin_islabel`,
+`cin_isfuncdecl`, `cin_is_cpp_baseclass`, `find_match`, …), plus the parts of `findmatchlimit` it runs: the backward search
 for a `/*` comment start or a C++ raw string start, and the bracket search that skips strings, `'c'`
 characters and escaped brackets (nvim's default `'cpoptions'`: no `%`, no `M`). It keeps nvim's
 structure, a cursor the helpers move and 1-based line numbers, so a rule can be checked against the C

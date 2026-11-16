@@ -324,7 +324,7 @@ features:
     # 'lisp' wins over the tree indent. Not built: 'lispoptions' (only matters with an 'indentexpr', which
     # ruse has none of), the Lisp rules of `%` and showmatch, cindent and 'vartabstop'/'varsofttabstop'.
     # #1163 (oracle-verified vs nvim v0.12.6, `cin_*`): 'cindent', 'cinoptions' (every flag), 'cinkeys' and
-    # 'cinscopedecls' are built — `crates/core/src/editor/cindent.rs` ports nvim's get_c_indent. `=` runs
+    # 'cinscopedecls' are built — `crates/core/src/editor/cindent/` ports nvim's get_c_indent. `=` runs
     # it whenever no other indenter applies (as nvim's `=` with an empty 'indentexpr'); o/O/<CR>, cc/S and
     # the 'cinkeys' keys run it in a C buffer (nvim's indent/c.vim sets 'cindent') and, under 'cindent', in a
     # buffer without an indenter. Not built: `*`/`!` keys other than `!^F`, :set nocindent in a C buffer
