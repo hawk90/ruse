@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyEvent};
 use ruse_core::{BytePos, Command, DocumentId};
 
-use crate::app::dispatch::{place_cursor, run_cmd};
+use crate::app::dispatch::place_cursor;
 use crate::app::session::{FrameCtx, Prefix, Session, E350};
 use crate::folds::Fold;
 
@@ -15,23 +15,19 @@ impl Session {
     /// `z` + a fold verb, or another `z` command (a no-op, or a beep where nvim beeps too).
     pub(super) fn z_fold(&mut self, key: KeyEvent, count: u32, frame: &FrameCtx) {
         let Session {
-            ws,
-            files,
+            ed,
             line_idx,
-            recorded,
-            quit,
             prefix,
             folds,
             fold_method,
             foldlevel,
             foldenable,
-            status,
             ..
         } = self;
         let snapshot = &frame.snapshot;
         // Fold verbs (manual folds; F-007 carve-out). `zf` folds the Visual selection; the rest act on the fold at the cursor.
-        let buf = ws.focused_buffer();
-        let cur_line = line_idx.line_of(ws.focused().view.cursor().0);
+        let buf = ed.ws.focused_buffer();
+        let cur_line = line_idx.line_of(ed.ws.focused().view.cursor().0);
         let fv = folds.entry(buf).or_default();
         match key.code {
             // `zf` — create a CLOSED fold. From a Visual selection: fold the selection's lines. From
@@ -42,16 +38,18 @@ impl Session {
             KeyCode::Char('f')
                 if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent) =>
             {
-                status.error(E350);
+                ed.status.error(E350);
             }
             KeyCode::Char('f') => {
-                if let Some((BytePos(s), BytePos(e))) = ws.focused().view.selection_span(snapshot) {
+                if let Some((BytePos(s), BytePos(e))) =
+                    ed.ws.focused().view.selection_span(snapshot)
+                {
                     let (a, b) = (line_idx.line_of(s), line_idx.line_of(e.saturating_sub(1)));
                     let (start, end) = (a.min(b), a.max(b));
-                    run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+                    ed.run(Command::EnterNormal);
                     crate::folds::insert_closed_fold(fv, start, end);
-                    place_cursor(ws, recorded, line_idx.nth_line_start(start));
-                    status.echo(format!("folded {} lines", end - start + 1));
+                    place_cursor(&mut ed.ws, &mut ed.recorded, line_idx.nth_line_start(start));
+                    ed.status.echo(format!("folded {} lines", end - start + 1));
                 } else {
                     // Normal mode: begin `zf{motion}`. Seed the buffer with any count typed before `z`
                     // (e.g. `3zfj`); further count digits typed after `f` are appended by the handler.
@@ -65,14 +63,14 @@ impl Session {
             // `zo`/`zc`/`za`, `zO`/`zC`/`zA` ([`open_close`]).
             KeyCode::Char(c @ ('o' | 'c' | 'a' | 'O' | 'C' | 'A')) => {
                 if !open_close(fv, cur_line, c, count) {
-                    status.error("E490: No fold found");
+                    ed.status.error("E490: No fold found");
                 }
             }
             // `zj` / `zk` ([`fold_jump`]).
             KeyCode::Char('j') | KeyCode::Char('k') => {
                 let down = matches!(key.code, KeyCode::Char('j'));
                 if let Some(line) = fold_jump(fv, cur_line, down, count) {
-                    place_cursor(ws, recorded, line_idx.nth_line_start(line));
+                    place_cursor(&mut ed.ws, &mut ed.recorded, line_idx.nth_line_start(line));
                 }
             }
             // `zR`/`zM`/`zr`/`zm`, `zx`/`zX` ([`set_foldlevel`]).
@@ -84,7 +82,7 @@ impl Session {
                 let indent =
                     fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent);
                 if let Some(err) = delete_folds(fv, c, cur_line, indent) {
-                    status.error(err);
+                    ed.status.error(err);
                 }
             }
             // `zv` — view cursor line: open just enough folds to reveal the cursor line. Keeps the
@@ -99,7 +97,7 @@ impl Session {
                 if key.modifiers.is_empty()
                     && !"abcdefghijklmnoprstuvwxyzACDEFGHLMNOPRWX0123456789+-.^=".contains(c) =>
             {
-                ws.beep();
+                ed.ws.beep();
             }
             _ => {}
         }

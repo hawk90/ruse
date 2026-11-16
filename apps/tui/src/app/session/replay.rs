@@ -28,10 +28,10 @@ impl Session {
         }
         // A linewise-Visual `@{reg}` runs on each line from its column 0, clamped to the last line.
         if let Some(line) = self.macros.next_line_run() {
-            let b = self.ws.focused().doc.bytes();
+            let b = self.ed.ws.focused().doc.bytes();
             let lines = ruse_core::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
             let at = ruse_core::pos::nth_line_start(b, line.min(lines.saturating_sub(1))).0;
-            place_cursor(&mut self.ws, &mut self.recorded, at);
+            place_cursor(&mut self.ed.ws, &mut self.ed.recorded, at);
         }
         let next = self.macros.next_replay();
         if next.is_none() {
@@ -43,10 +43,10 @@ impl Session {
     /// Close the undo block a macro replay opened ([`Session::macro_undo`]).
     pub(super) fn end_macro_undo(&mut self) {
         if let Some(doc) = self.macro_undo.take() {
-            if let Some(d) = self.ws.document_mut(doc) {
+            if let Some(d) = self.ed.ws.document_mut(doc) {
                 d.end_undo_block();
             }
-            note_ex(ExCmd::End, &mut self.recorded);
+            note_ex(ExCmd::End, &mut self.ed.recorded);
         }
     }
 
@@ -59,14 +59,14 @@ impl Session {
         if self.emacs_profile {
             return;
         }
-        let mode = self.ws.focused().view.mode();
+        let mode = self.ed.ws.focused().view.mode();
         let entry = matches!(mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace);
         if !entry || self.engine.in_one_shot() || self.engine.insert_resumed() {
             // Recorded when it closes a group, so a replay's `u` undoes what it undid live (RFC-0020).
-            if !self.ws.focused().doc.history().is_synced() {
-                note_ex(ExCmd::UndoSync, &mut self.recorded);
+            if !self.ed.ws.focused().doc.history().is_synced() {
+                note_ex(ExCmd::UndoSync, &mut self.ed.recorded);
             }
-            self.ws.focused_doc_mut().sync_undo();
+            self.ed.ws.focused_doc_mut().sync_undo();
         }
     }
 
@@ -77,7 +77,7 @@ impl Session {
         if ruse_core::interrupt::take() {
             self.macros.interrupt_replay();
             self.end_macro_undo();
-            self.status.info("Interrupted");
+            self.ed.status.info("Interrupted");
         }
     }
 }

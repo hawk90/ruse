@@ -6,9 +6,8 @@ use ruse_core::Command;
 use ruse_core::{ExCmd, LineAddr, SubRange};
 
 #[cfg(unix)]
-use crate::app::dispatch::run_cmd;
 use crate::app::dispatch::{lines_outcome, run_ex};
-use crate::app::session::{read_text, with_shell_failure, FrameCtx, Session};
+use crate::app::session::{read_text, with_shell_failure, Editing, FrameCtx, Session};
 use crate::input::ReadSource;
 use crate::persist;
 #[cfg(unix)]
@@ -21,9 +20,13 @@ impl Session {
     /// FIRST inserted line for a file read, the LAST for a command read (nvim v0.12.4 quirk).
     pub(in crate::app::session) fn ex_read(&mut self, addr: LineAddr, source: ReadSource) {
         let Session {
-            ws,
-            recorded,
-            status,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             ..
         } = self;
         match source {
@@ -61,10 +64,14 @@ impl Session {
     /// and the status line says `shell returned {n}` (#861).
     pub(in crate::app::session) fn ex_filter(&mut self, range: SubRange, cmd: String) {
         let Session {
-            ws,
-            files,
-            recorded,
-            status,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    ..
+                },
             ..
         } = self;
         match ws.range_text(range) {
@@ -103,37 +110,30 @@ impl Session {
     /// `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused
     /// window, and enter Terminal mode. Unix-only in slice 1.
     pub(in crate::app::session) fn ex_terminal(&mut self, frame: &FrameCtx) {
-        let Session {
-            ws,
-            files,
-            recorded,
-            quit,
-            terminals,
-            status,
-            ..
-        } = self;
+        let Session { ed, terminals, .. } = self;
         let cols = frame.cols;
         let text_rows = frame.text_rows;
         let rects = &frame.rects;
         #[cfg(unix)]
         {
-            let rect = rects.get(ws.focus());
+            let rect = rects.get(ed.ws.focus());
             let cols = rect.map_or(cols, |r| r.w).max(1);
             let rows = rect.map_or(text_rows, |r| r.h).max(1);
             match term_buffer::Terminal::spawn(rows, cols) {
                 Ok(term) => {
-                    let id = ws.add_buffer(Vec::new(), Some("[terminal]".to_string()));
-                    ws.focus_buffer(id);
+                    let id = ed.ws.add_buffer(Vec::new(), Some("[terminal]".to_string()));
+                    ed.ws.focus_buffer(id);
                     terminals.insert(id, term);
-                    run_cmd(Command::EnterTerminal, ws, files, recorded, status, quit);
-                    status.echo("terminal started (CTRL-\\ CTRL-N to leave)");
+                    ed.run(Command::EnterTerminal);
+                    ed.status.echo("terminal started (CTRL-\\ CTRL-N to leave)");
                 }
-                Err(e) => status.error(format!("E: cannot start terminal: {e}")),
+                Err(e) => ed.status.error(format!("E: cannot start terminal: {e}")),
             }
         }
         #[cfg(not(unix))]
         {
-            status.error("terminal is not supported on this platform");
+            ed.status
+                .error("terminal is not supported on this platform");
         }
     }
 
@@ -141,7 +141,10 @@ impl Session {
     /// Multi-line output is collapsed to one status line (a scrolling message pane is a
     /// follow-up); an empty result echoes the command so the user sees it ran.
     pub(in crate::app::session) fn ex_shell(&mut self, cmd: String) {
-        let Session { status, .. } = self;
+        let Session {
+            ed: Editing { status, .. },
+            ..
+        } = self;
         match crate::shell::capture(&cmd) {
             Ok(out) => {
                 let joined = out.text.trim_end_matches('\n').replace('\n', " | ");

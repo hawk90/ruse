@@ -106,7 +106,7 @@ fn ctrl_g(key: KeyEvent) -> bool {
 
 impl Session {
     fn emacs_vars(&self) -> EmacsFiles {
-        self.files.write.emacs.clone().unwrap_or_default()
+        self.ed.files.write.emacs.clone().unwrap_or_default()
     }
 
     /// Show `p` and wait for its answer.
@@ -120,7 +120,7 @@ impl Session {
             EmacsPrompt::ReadFile { prompt, typed, .. } => format!("{prompt}{typed}"),
             EmacsPrompt::LargeFile { question, .. } => question.clone(),
         };
-        self.status.echo(text);
+        self.ed.status.echo(text);
         self.emacs_prompt = Some(p);
     }
 
@@ -154,7 +154,7 @@ impl Session {
             EmacsAction::SaveSomeBuffers => {
                 let queue = self.buffers_needing_save(false);
                 if queue.is_empty() {
-                    self.status.echo("(No files need saving)");
+                    self.ed.status.echo("(No files need saving)");
                 } else {
                     self.save_some(queue, Then::Done);
                 }
@@ -189,7 +189,7 @@ impl Session {
         match then {
             Then::Done => {}
             Then::Revert => {
-                let id = self.ws.focused_buffer();
+                let id = self.ed.ws.focused_buffer();
                 self.revert_now(id);
             }
             Then::RevertBuffer(id) => self.revert_now(id),
@@ -201,7 +201,7 @@ impl Session {
     /// The key that answered an Emacs question.
     pub(crate) fn answer_emacs(&mut self, p: EmacsPrompt, key: KeyEvent) {
         if ctrl_g(key) {
-            self.status.echo("Quit");
+            self.ed.status.echo("Quit");
             return;
         }
         match p {
@@ -233,12 +233,12 @@ impl Session {
         match key.code {
             KeyCode::Enter => match typed.as_str() {
                 "yes" => {
-                    self.status.clear();
+                    self.ed.status.clear();
                     self.emacs_then(then, true);
                 }
-                "no" => self.status.clear(),
+                "no" => self.ed.status.clear(),
                 _ => {
-                    self.status.echo("Please answer yes or no.");
+                    self.ed.status.echo("Please answer yes or no.");
                     self.emacs_prompt = Some(EmacsPrompt::YesOrNo {
                         question,
                         typed: String::new(),
@@ -277,12 +277,13 @@ impl Session {
     /// `y-or-n-p`: one key.
     fn answer_y_or_n(&mut self, question: String, then: Then, key: KeyEvent) {
         if plain(key, 'y') || plain(key, 'Y') || plain(key, ' ') {
-            self.status.clear();
+            self.ed.status.clear();
             self.emacs_then(then, true);
         } else if plain(key, 'n') || plain(key, 'N') || key.code == KeyCode::Backspace {
-            self.status.clear();
+            self.ed.status.clear();
         } else {
-            self.status
+            self.ed
+                .status
                 .echo(format!("Please answer y or n.  {question}(y or n) "));
             self.emacs_prompt = Some(EmacsPrompt::YOrN { question, then });
         }
@@ -298,7 +299,7 @@ impl Session {
     ) {
         match key.code {
             KeyCode::Enter => {
-                self.status.clear();
+                self.ed.status.clear();
                 match purpose {
                     ReadFor::FindFile { confirmed } => {
                         // `confirm-nonexistent-file-or-buffer` t: a new file's name needs a second
@@ -318,7 +319,7 @@ impl Session {
                                 typed,
                                 purpose: ReadFor::FindFile { confirmed: true },
                             });
-                            self.status.echo(shown);
+                            self.ed.status.echo(shown);
                         } else {
                             self.find_file(&typed);
                         }
@@ -391,15 +392,15 @@ impl Session {
     /// `write-file` (`C-x C-w`): the focused buffer is written to `name`, which becomes its file. Under
     /// `change-major-mode-with-file-name` nil it keeps its highlighting.
     fn write_file(&mut self, name: &str) {
-        let id = self.ws.focused_buffer();
+        let id = self.ed.ws.focused_buffer();
         let keep = (!self.emacs_vars().change_major_mode_with_file_name)
             .then(|| self.highlighters.remove(&id))
             .flatten();
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             ..
         } = self;
         crate::app::file_cmds::ex_saveas(
@@ -421,9 +422,9 @@ impl Session {
         if name.is_empty() {
             return;
         }
-        let focus = self.ws.focused_buffer();
+        let focus = self.ed.ws.focused_buffer();
         if focus != buf {
-            self.ws.focus_buffer(buf);
+            self.ed.ws.focus_buffer(buf);
         }
         let spec = crate::input::WriteSpec {
             range: None,
@@ -434,15 +435,15 @@ impl Session {
             quit: false,
         };
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             ..
         } = self;
         crate::app::file_cmds::ex_write(&spec, ws, files, highlighters, status);
         if focus != buf {
-            self.ws.focus_buffer(focus);
+            self.ed.ws.focus_buffer(focus);
         }
     }
 }

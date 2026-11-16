@@ -10,18 +10,19 @@ use crate::persist;
 impl Session {
     /// `revert-buffer` (`quick`: `revert-buffer-quick`).
     pub(super) fn revert_buffer(&mut self, quick: bool) {
-        let id = self.ws.focused_buffer();
-        let Some(path) = self.files.get(&id).map(|bf| bf.path.clone()) else {
-            self.status
+        let id = self.ed.ws.focused_buffer();
+        let Some(path) = self.ed.files.get(&id).map(|bf| bf.path.clone()) else {
+            self.ed
+                .status
                 .error("Buffer does not seem to be associated with any file");
             return;
         };
         let vars = self.emacs_vars();
-        let modified = self.ws.focused().doc.is_modified();
+        let modified = self.ed.ws.focused().doc.is_modified();
         let file = std::path::absolute(&path).unwrap_or(path);
         if quick && !modified {
             self.revert_now(id);
-            self.status.echo("Reverted buffer");
+            self.ed.status.echo("Reverted buffer");
             return;
         }
         let shown = file.display().to_string();
@@ -48,16 +49,16 @@ impl Session {
 
     /// Re-read buffer `id` from its file as one undoable change, marked unmodified.
     pub(super) fn revert_now(&mut self, id: DocumentId) {
-        let Some(path) = self.files.get(&id).map(|bf| bf.path.clone()) else {
+        let Some(path) = self.ed.files.get(&id).map(|bf| bf.path.clone()) else {
             return;
         };
         match persist::read_file(&path) {
             Ok(raw) => {
                 persist::disk::saw(&path, &raw);
                 persist::backup::visited(&path);
-                let fmt = self.files.write.read_format(&raw);
-                self.ws.reload_undoable(id, fmt.to_buffer(&raw));
-                if let Some(bf) = self.files.get_mut(&id) {
+                let fmt = self.ed.files.write.read_format(&raw);
+                self.ed.ws.reload_undoable(id, fmt.to_buffer(&raw));
+                if let Some(bf) = self.ed.files.get_mut(&id) {
                     bf.fmt = fmt;
                     bf.reloads = bf.reloads.saturating_add(1);
                 }
@@ -66,6 +67,7 @@ impl Session {
                 self.disk_warned.remove(&id);
             }
             Err(e) => self
+                .ed
                 .status
                 .error(format!("Opening input file: {e}, {}", path.display())),
         }

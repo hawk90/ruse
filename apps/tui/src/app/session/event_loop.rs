@@ -60,10 +60,10 @@ pub(crate) fn run(
         rescue: true,
     });
     // What the start buffer's file held as ruse read it, for `[disk changed]` (RFC-0023 §8).
-    if let Some(p) = s
-        .files
-        .get(&s.ws.focused_buffer())
-        .map(|bf| bf.path.clone())
+    if let Some(p) =
+        s.ed.files
+            .get(&s.ed.ws.focused_buffer())
+            .map(|bf| bf.path.clone())
     {
         persist::disk::saw(&p, &raw);
     }
@@ -76,16 +76,17 @@ pub(crate) fn run(
         s.apply_recovered(rec);
     }
     if read_only {
-        for bf in s.files.values_mut() {
+        for bf in s.ed.files.values_mut() {
             bf.read_only = true; // the start buffer is the only one with a file yet
         }
     }
     s.readonly.mode = read_only_mode;
-    s.files.write.binary_mode = binary;
+    s.ed.files.write.binary_mode = binary;
     // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
     // still works — `"+p` just pastes nothing.
-    s.ws.set_clipboard(Box::new(crate::clipboard::SystemClipboard::detect()));
+    s.ed.ws
+        .set_clipboard(Box::new(crate::clipboard::SystemClipboard::detect()));
     // CTRL-C (`C-g` in Emacs) interrupts a long command: the core's checkpoints poll the terminal (#898).
     crate::breakcheck::install(profile == "emacs");
 
@@ -96,7 +97,7 @@ pub(crate) fn run(
         std::process::abort();
     }
 
-    while !s.quit {
+    while !s.ed.quit {
         // SIGTERM / SIGHUP (#857): end the session; the caller journals every modified buffer and the
         // guard restores the terminal. The handler's wake-up lands here via a resize event.
         if crate::signals::pending().is_some() {
@@ -127,7 +128,7 @@ pub(crate) fn run(
     // A normal quit lets every buffer's unsaved changes go (#862): `:q` only gets here with none, and
     // `:q!` / `:qa!` / `:cq` discard them on purpose. nvim deletes its swap files on each of these exits, so
     // the next start offers nothing. A signal ends the loop without `quit`, and its journals are kept.
-    if s.quit && crate::signals::pending().is_none() {
+    if s.ed.quit && crate::signals::pending().is_none() {
         s.discard_journals();
     }
     painter.clear_images(&mut out);
@@ -364,10 +365,10 @@ impl Painter {
         // Highlight only the VISIBLE byte range of the focused buffer (F-015 #3): the union of the
         // viewports of every pane showing it. The tree is reparsed incrementally on edit (keyed on
         // revision); the viewport-bounded query keeps the per-keystroke cost O(viewport), not O(buffer).
-        let visible = visible_byte_range(&s.ws, rects, &s.line_idx, snapshot.len());
+        let visible = visible_byte_range(&s.ed.ws, rects, &s.line_idx, snapshot.len());
         // Syntax highlighting is the FOCUSED buffer's own grammar (F-007): each file buffer has its own
         // highlighter in the registry; a scratch/no-file buffer has none, so it paints unhighlighted.
-        let focused_id = s.ws.focused_buffer();
+        let focused_id = s.ed.ws.focused_buffer();
         // F-031 3b-2b: reserve taller image blocks on a graphics-capable terminal (no-op after the first).
         if let Some(h) = s.highlighters.get_mut(&focused_id) {
             h.set_image_rows(self.image_rows);
@@ -405,14 +406,14 @@ impl Painter {
         // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
         // `term_views` lends each grid to the renderer. On non-unix this is always empty.
         #[cfg(unix)]
-        let term_views = term_views(&mut s.terminals, &s.ws, rects);
+        let term_views = term_views(&mut s.terminals, &s.ed.ws, rects);
         #[cfg(not(unix))]
         let term_views = crate::ui::render::TermViews::new();
         // F-014: sync the focused buffer with its server + poll all clients (diagnostics + response
         // dispatch) — the coordinator owns all of it; deferred edits/refs are applied after render.
         s.lsp
-            .sync_and_poll(&s.ws, &s.files, revision, snapshot, &mut s.status);
-        let focus_diags = s.lsp.diagnostics_for(s.ws.focused_buffer());
+            .sync_and_poll(&s.ed.ws, &s.ed.files, revision, snapshot, &mut s.ed.status);
+        let focus_diags = s.lsp.diagnostics_for(s.ed.ws.focused_buffer());
         // F-031 3b-2c: read each visible image's pixel dimensions (IHDR only) so render can size it to its
         // natural aspect and centre it. Cheap — only the 24-byte header, only when graphics are on.
         let image_dims = read_image_dims(self.has_graphics, virt_lines);
@@ -431,10 +432,10 @@ impl Painter {
         };
         let images = render(
             out,
-            &s.ws,
+            &s.ed.ws,
             cmd_line.map(|(pfx, t)| (pfx, t, cmd_caret)),
             &cmd_menu,
-            s.status.text(),
+            s.ed.status.text(),
             spans,
             virt_lines,
             rects,
@@ -448,13 +449,13 @@ impl Painter {
             s.lsp.completion_view(),
             self.has_graphics,
             &image_dims,
-            focused_folds(&s.folds, &s.ws),
+            focused_folds(&s.folds, &s.ed.ws),
             &s.line_idx,
             &s.pane_idx,
             s.ui_opts.showmode,
             s.ui_opts.conceal,
             &flags,
-            s.status.serial(),
+            s.ed.status.serial(),
             s.emacs_prompt.is_some() || s.changed_prompt.is_some(),
             &mut s.pager,
         )?;
@@ -522,7 +523,7 @@ impl Session {
                 .map(|p| {
                     cache
                         .spans_in(
-                            self.ws.focused_buffer(),
+                            self.ed.ws.focused_buffer(),
                             revision,
                             snapshot,
                             visible.clone(),

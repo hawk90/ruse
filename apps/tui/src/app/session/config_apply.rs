@@ -16,8 +16,13 @@ impl Session {
     pub(super) fn apply_config_keys(&mut self, startup: bool, only: Option<&[&'static str]>) {
         let mut scratch = Vec::new();
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    files,
+                    ..
+                },
             engine,
             hlsearch_on,
             search_hl,
@@ -31,7 +36,6 @@ impl Session {
             opt_sources,
             ui_opts,
             config,
-            files,
             readonly,
             ..
         } = self;
@@ -61,12 +65,12 @@ impl Session {
             Vec::new()
         };
         if !notes.is_empty() {
-            let shown = format!("{} · {}", self.status, notes.join(" · "));
-            self.status.amend(shown);
+            let shown = format!("{} · {}", self.ed.status, notes.join(" · "));
+            self.ed.status.amend(shown);
         }
         if startup {
-            self.start_options = self.ws.focused().view.editing_options();
-            self.start_registers = self.ws.registers().filled();
+            self.start_options = self.ed.ws.focused().view.editing_options();
+            self.start_registers = self.ed.ws.registers().filled();
         }
     }
 
@@ -87,7 +91,7 @@ impl Session {
         });
         let Some((root, store)) = target else {
             if !grant {
-                self.status.info("workspace untrusted for this session");
+                self.ed.status.info("workspace untrusted for this session");
             }
             return;
         };
@@ -114,13 +118,13 @@ impl Session {
         });
         match note {
             Some(n) if grant => {
-                let shown = format!("{}; {n}", self.status);
-                self.status.amend(shown);
+                let shown = format!("{}; {n}", self.ed.status);
+                self.ed.status.amend(shown);
             }
-            Some(n) => self.status.info(n),
+            Some(n) => self.ed.status.info(n),
             None if workspace_loaded => {
-                let shown = format!("{}; workspace config loaded", self.status);
-                self.status.amend(shown);
+                let shown = format!("{}; workspace config loaded", self.ed.status);
+                self.ed.status.amend(shown);
             }
             None => {}
         }
@@ -147,7 +151,8 @@ impl Session {
         use crate::config::LayerState;
         let Some(paths) = self.config_paths.clone() else {
             if explicit {
-                self.status
+                self.ed
+                    .status
                     .error("config-reload: no config files in this session");
             }
             return;
@@ -180,9 +185,9 @@ impl Session {
                 crate::config::short_path(&l.path)
             );
             if explicit {
-                self.status.error(text);
+                self.ed.status.error(text);
             } else {
-                self.status.warn(text);
+                self.ed.status.warn(text);
             }
             return;
         }
@@ -225,6 +230,6 @@ impl Session {
                 self.config.diagnostics.len()
             ));
         }
-        self.status.info(text);
+        self.ed.status.info(text);
     }
 }

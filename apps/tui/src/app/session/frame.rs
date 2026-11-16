@@ -13,7 +13,7 @@ impl Session {
     /// fold otherwise; it paints on the fold's summary row.
     pub(super) fn reconcile_folds(&mut self, revision: ruse_core::Revision, snapshot: &[u8]) {
         let Session {
-            ws,
+            ed: Editing { ws, .. },
             line_idx,
             folds,
             fold_anchors,
@@ -72,15 +72,15 @@ impl Session {
     /// file's recovery. `save()` clears a buffer's journal by path, so this stays consistent.
     pub(super) fn publish_rescue(&mut self) {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             journals,
             journal_writers,
             journal_failed,
             readonly,
             unnamed_start,
             rescue,
-            status,
             ..
         } = self;
         readonly.follow(files);
@@ -168,9 +168,8 @@ impl Session {
     /// During a `:s///c` confirm, follow the current match so the viewport scrolls it into view.
     pub(super) fn follow_confirm(&mut self) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             confirm,
-            status,
             ..
         } = self;
         if let Some(c) = &confirm {
@@ -192,7 +191,7 @@ impl Session {
     ) -> (u16, Vec<Rect>, Vec<WinView>) {
         let global_so = self.scrolloff;
         let Session {
-            ws,
+            ed: Editing { ws, .. },
             line_idx,
             pane_idx,
             folds,
@@ -392,14 +391,14 @@ impl Session {
     /// invariant walker (#906). Only the focused buffer's folds are reconciled each frame, so only they are
     /// checked against their text.
     pub(crate) fn assert_fold_invariants(&self) {
-        let buf = self.ws.focused_buffer();
+        let buf = self.ed.ws.focused_buffer();
         if let Some(fv) = self.folds.get(&buf) {
-            let lines = crate::app::dispatch::line_count(self.ws.focused().doc.bytes());
+            let lines = crate::app::dispatch::line_count(self.ed.ws.focused().doc.bytes());
             let manual = self.fold_method.get(&buf) != Some(&crate::input::FoldMethod::Indent);
             crate::folds::assert_invariants(fv, lines, manual);
         }
         for (id, a) in &self.fold_anchors {
-            if let Some(doc) = self.ws.document(*id) {
+            if let Some(doc) = self.ed.ws.document(*id) {
                 for anchor in a.anchor_ids() {
                     assert!(
                         doc.resolve_anchor(anchor).is_some(),
@@ -418,13 +417,13 @@ impl Session {
         // is an Arc refcount bump (not an O(buffer) copy): a committed edit builds a fresh Arc, so this handle
         // keeps pointing at the bytes captured here even after the later `&mut ws` borrows edit the doc.
         let (revision, snapshot) = {
-            let f = self.ws.focused();
+            let f = self.ed.ws.focused();
             (f.doc.revision(), f.doc.text_arc())
         };
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
         self.line_idx
-            .refresh_for(self.ws.focused_buffer(), revision, &snapshot);
+            .refresh_for(self.ed.ws.focused_buffer(), revision, &snapshot);
         self.reconcile_folds(revision, &snapshot);
         self.publish_rescue();
         self.follow_confirm();
@@ -448,13 +447,13 @@ impl Session {
         if self.lsp.has_edit_batch() {
             self.sync_journals();
         }
-        let recorded = &mut self.recorded;
+        let recorded = &mut self.ed.recorded;
         self.lsp.apply_pending(
-            &mut self.ws,
-            &mut self.files,
+            &mut self.ed.ws,
+            &mut self.ed.files,
             &mut self.highlighters,
             &frame.snapshot,
-            &mut self.status,
+            &mut self.ed.status,
             &mut |ws, ex| run_ex(ex, ws, recorded),
         );
         if let Some(locs) = self.lsp.take_refs() {
@@ -496,17 +495,17 @@ impl Session {
     /// write or sync of its modified buffer's journal failed (#938).
     pub(crate) fn status_flags(&self) -> String {
         let mut flags = String::new();
-        let id = self.ws.focused_buffer();
-        if self.readonly.get(&self.files, id) {
+        let id = self.ed.ws.focused_buffer();
+        if self.readonly.get(&self.ed.files, id) {
             flags.push_str("[RO]");
         }
-        if self.journal_failed.contains(&id) && self.ws.focused().doc.is_modified() {
+        if self.journal_failed.contains(&id) && self.ed.ws.focused().doc.is_modified() {
             flags.push_str("[journal!]");
         }
         if self.disk_changed.contains(&id) {
             flags.push_str("[disk changed]");
         }
-        if self.files.get(&id).is_some_and(|bf| bf.large) {
+        if self.ed.files.get(&id).is_some_and(|bf| bf.large) {
             flags.push_str("[large]");
         }
         if self.config.safe_mode.is_some() {

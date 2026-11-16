@@ -267,7 +267,7 @@ fn ex_substitute_count_only_reports_without_mutating() {
     let mut ws = Workspace::new(src.as_bytes().to_vec());
     ws.place_focused_cursor(BytePos(5)); // must not move
     let s = crate::app::session::Session::ex_on(&mut ws, "%s/foo//gn");
-    assert_eq!(s.status, "6 matches on 3 lines", "nvim wording");
+    assert_eq!(s.ed.status, "6 matches on 3 lines", "nvim wording");
     assert!(
         s.confirm.is_none(),
         "`n` overrides `c` — no confirm loop opens"

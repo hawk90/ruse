@@ -7,7 +7,7 @@ use crossterm::event::KeyEvent;
 use super::memory::{human_size, out_of_memory_warning};
 use super::revert::emacs_match;
 use super::{plain, EmacsPrompt, Then};
-use crate::app::session::Session;
+use crate::app::session::{Editing, Session};
 use crate::persist;
 
 impl Session {
@@ -49,7 +49,7 @@ impl Session {
         let path = std::path::PathBuf::from(&name);
         let size = std::fs::metadata(&path).map_or(0, |m| m.len());
         let vars = self.emacs_vars();
-        let visited = crate::app::dispatch::buffer_for_path(&self.files, &path).is_some();
+        let visited = crate::app::dispatch::buffer_for_path(&self.ed.files, &path).is_some();
         if !visited
             && vars
                 .large_file_warning_threshold
@@ -73,23 +73,23 @@ impl Session {
     /// or telling about a file changed on disk, and warn past `out-of-memory-warning-percentage`.
     fn visit(&mut self, name: &str, literally: bool) {
         let path = std::path::PathBuf::from(name);
-        let existing = crate::app::dispatch::buffer_for_path(&self.files, &path);
+        let existing = crate::app::dispatch::buffer_for_path(&self.ed.files, &path);
         let size = std::fs::metadata(&path).map_or(0, |m| m.len());
         let new = std::fs::symlink_metadata(&path).is_err();
         // `find-file-existing-other-name`: a buffer visiting the same file under another name is used, and
         // Emacs says so unless `find-file-suppress-same-file-warnings`.
         let same_file = existing.and_then(|id| {
-            let other = self.files.get(&id)?.path.clone();
+            let other = self.ed.files.get(&id)?.path.clone();
             let a = std::path::absolute(&path).ok()?;
             let b = std::path::absolute(&other).ok()?;
             (a != b).then(|| (a.display().to_string(), b.display().to_string()))
         });
         {
             let Session {
-                ws,
-                files,
+                ed: Editing {
+                    ws, files, status, ..
+                },
                 highlighters,
-                status,
                 ..
             } = self;
             let opened = crate::app::dispatch::open_file_with(name, ws, files, highlighters, |f| {
@@ -111,22 +111,24 @@ impl Session {
             }
         }
         let Some(id) = existing else {
-            self.status.clear();
+            self.ed.status.clear();
             if new {
-                self.status.echo("(New file)");
+                self.ed.status.echo("(New file)");
             }
             if let Some(warning) = out_of_memory_warning(size, &self.emacs_vars()) {
-                self.status.warn(warning);
+                self.ed.status.warn(warning);
             }
             return;
         };
-        self.status.clear();
+        self.ed.status.clear();
         if let Some((a, b)) = same_file {
             if !self.emacs_vars().find_file_suppress_same_file_warnings {
-                self.status.echo(format!("{a} and {b} are the same file"));
+                self.ed
+                    .status
+                    .echo(format!("{a} and {b} are the same file"));
             }
         }
-        let Some(bf) = self.files.get(&id) else {
+        let Some(bf) = self.ed.files.get(&id) else {
             return;
         };
         if persist::disk::check(&bf.path) != persist::disk::State::Changed {
@@ -138,7 +140,7 @@ impl Session {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let modified = self.ws.document(id).is_some_and(|d| d.is_modified());
+        let modified = self.ed.ws.document(id).is_some_and(|d| d.is_modified());
         let shown = file.display().to_string();
         if !modified
             && vars
@@ -147,9 +149,11 @@ impl Session {
                 .any(|re| emacs_match(re, &shown))
         {
             self.revert_now(id);
-            self.status.echo(format!("Reverting file {shown}...done"));
+            self.ed
+                .status
+                .echo(format!("Reverting file {shown}...done"));
         } else if !vars.query_about_changed_file {
-            self.status.echo(format!(
+            self.ed.status.echo(format!(
                 "File {base} changed on disk.  C-x x g to load new contents{}",
                 if modified {
                     " and discard your edits"
@@ -170,13 +174,13 @@ impl Session {
     /// The large-file question: open, open literally, or abort.
     pub(super) fn answer_large_file(&mut self, name: String, question: String, key: KeyEvent) {
         if plain(key, 'y') || plain(key, 'Y') {
-            self.status.clear();
+            self.ed.status.clear();
             self.visit(&name, false);
         } else if plain(key, 'l') || plain(key, 'L') {
-            self.status.clear();
+            self.ed.status.clear();
             self.visit(&name, true);
         } else if plain(key, 'n') || plain(key, 'N') {
-            self.status.error("Aborted");
+            self.ed.status.error("Aborted");
         } else {
             self.ask(EmacsPrompt::LargeFile { name, question });
         }
@@ -184,14 +188,15 @@ impl Session {
 
     /// `find-sibling-file`: the first existing file a `find-sibling-rules` rule names from the visited one.
     pub(super) fn find_sibling_file(&mut self) {
-        let id = self.ws.focused_buffer();
-        let Some(path) = self.files.get(&id).map(|bf| bf.path.clone()) else {
-            self.status.error("Not visiting a file");
+        let id = self.ed.ws.focused_buffer();
+        let Some(path) = self.ed.files.get(&id).map(|bf| bf.path.clone()) else {
+            self.ed.status.error("Not visiting a file");
             return;
         };
         let rules = self.emacs_vars().find_sibling_rules;
         if rules.is_empty() {
-            self.status
+            self.ed
+                .status
                 .error("The `find-sibling-rules' variable has not been configured");
             return;
         }
@@ -205,7 +210,7 @@ impl Session {
                 let f = f.clone();
                 self.find_file(&f);
             }
-            None => self.status.error("Couldn't find any sibling files"),
+            None => self.ed.status.error("Couldn't find any sibling files"),
         }
     }
 }

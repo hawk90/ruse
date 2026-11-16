@@ -19,8 +19,8 @@ use ruse_core::{
 use crate::app::dispatch::{
     attach_file, buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, lines_outcome,
     match_count_message, may_quit, note_ex, open_file_into_buffer, place_cursor, quit_window,
-    record_register_writes, regex_error_msg, run_cmd, run_ex, run_repeat, sub_outcome,
-    substitute_cmd, Files, Highlighters,
+    record_register_writes, regex_error_msg, run_ex, run_repeat, sub_outcome, substitute_cmd,
+    Files, Highlighters,
 };
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
@@ -126,8 +126,9 @@ pub(crate) struct SessionInit {
 /// [`Session::pre_frame`] → render → [`Session::post_render`] → read a key → [`Session::on_key`]; the
 /// headless harness (`crate::headless`) drives the same methods without a terminal.
 pub(crate) struct Session {
-    pub(crate) ws: Workspace,
-    pub(crate) files: Files,
+    /// What a semantic command runs against: the workspace, its files, the recording, the status line and
+    /// the quit flag (#1509).
+    pub(crate) ed: Editing,
     pub(crate) highlighters: HashMap<DocumentId, highlight::CachedHighlight>,
     /// Revision-cached line index: O(log n) row/line lookups instead of an O(buffer) newline scan per
     /// pane per frame (D-042 win D). Refreshed by `pre_frame`.
@@ -135,7 +136,6 @@ pub(crate) struct Session {
     /// The line indexes of the other buffers the windows show (#1182), refreshed by `pre_frame`.
     pub(crate) pane_idx: line_index::PaneIndexes,
     pub(crate) initial: Vec<u8>,
-    pub(crate) recorded: Vec<Command>,
     /// The editing options the core reads, as the session began: a saved trace starts by setting them, so
     /// it replays the same under another config (RFC-0020 R4).
     pub(crate) start_options: Vec<EditorOption>,
@@ -174,7 +174,6 @@ pub(crate) struct Session {
     pub(crate) profile_name: &'static str,
     pub(crate) emacs_profile: bool,
     pub(crate) engine: InputEngine,
-    pub(crate) quit: bool,
     /// The rows of a message shown above the hit-enter or `-- More --` prompt (#1222, #1235), and the
     /// prompt the last frame showed: the next key answers it.
     pager: crate::ui::message::Pager,
@@ -271,8 +270,6 @@ pub(crate) struct Session {
     /// F-014: all app-side LSP orchestration (clients, diagnostics, hover/completion, request dispatch,
     /// deferred edit-applies) lives behind the coordinator; the loop just drives it (CAP-LSP-COORD).
     pub(crate) lsp: LspCoordinator,
-    /// The status line's message and the `:messages` history (#1235).
-    pub(crate) status: Status,
     /// How many `:normal` runs are in progress (nested ones count each).
     normal_depth: usize,
     /// The key being routed was typed, not replayed from a macro (nvim's `KeyTyped`, for 'foldopen').
@@ -378,13 +375,18 @@ impl Session {
         let start_registers = ws.registers().filled();
         let trace_watch = crate::app::trace_check::TraceWatch::new(&ws, &files);
         Session {
-            ws,
-            files,
+            ed: Editing {
+                ws,
+                files,
+                recorded: Vec::new(),
+                // The startup line is shown, not kept (nvim keeps no banner).
+                status: Status::showing(Msg::echo(status)),
+                quit: false,
+            },
             highlighters,
             line_idx: line_index::LineIndex::default(),
             pane_idx: line_index::PaneIndexes::default(),
             initial,
-            recorded: Vec::new(),
             start_options,
             start_registers,
             trace_watch,
@@ -402,7 +404,6 @@ impl Session {
             profile_name: profile,
             emacs_profile,
             engine: profile_engine(profile),
-            quit: false,
             pager: crate::ui::message::Pager::default(),
             term,
             prefix: Prefix::None,
@@ -446,8 +447,6 @@ impl Session {
             #[cfg(unix)]
             terminals: HashMap::new(),
             lsp: LspCoordinator::new(cwd, trusted),
-            // The startup line is shown, not kept (nvim keeps no banner).
-            status: Status::showing(Msg::echo(status)),
             normal_depth: 0,
             key_typed: false,
             global_busy: false,
@@ -464,8 +463,8 @@ impl Session {
     /// (`:q` refuses with E37), `u` goes back to the disk text, and a saved trace starts from the disk text
     /// and replays the recovery.
     pub(crate) fn apply_recovered(&mut self, rec: Vec<u8>) {
-        crate::app::dispatch::apply_recovery(&mut self.ws, rec, &mut self.recorded);
-        crate::app::dispatch::place_cursor(&mut self.ws, &mut self.recorded, 0);
+        crate::app::dispatch::apply_recovery(&mut self.ed.ws, rec, &mut self.ed.recorded);
+        crate::app::dispatch::place_cursor(&mut self.ed.ws, &mut self.ed.recorded, 0);
     }
 }
 
@@ -473,6 +472,7 @@ mod cmdline_ctx;
 mod commands;
 mod config_apply;
 mod disk_watch;
+mod editing;
 mod emacs_files;
 mod event_loop;
 pub(crate) use event_loop::run;
@@ -489,6 +489,7 @@ mod scroll;
 use cmdline_ctx::{sync_special_registers, ExCompletion};
 use commands::*;
 use disk_watch::*;
+pub(crate) use editing::Editing;
 use ex_helpers::{
     give_report, goto_line, read_text, runs_external, to_i64, with_shell_failure, SwapPrompt, E35,
     E350,
@@ -624,11 +625,11 @@ mod journal_tests {
             persist::journal::Journals::in_state_home(&dir.join("state")),
         ));
         s.journals = Some(j);
-        let id = s.ws.focused_buffer();
+        let id = s.ed.ws.focused_buffer();
         let fmt = persist::encoding::FileFormat::default();
         let mut w = persist::journal::Writer::new(j, &file, fmt);
         w.absorb(
-            s.ws.document_mut(id).unwrap(),
+            s.ed.ws.document_mut(id).unwrap(),
             fmt,
             std::time::Instant::now(),
         );
@@ -642,7 +643,7 @@ mod journal_tests {
     fn an_lsp_edit_batch_syncs_the_journal_first() {
         let (mut s, j, file, _dir) = journaled("lsp-batch", b"fn main() {}\n");
         let typed = vec![(BytePos(0), BytePos(0), "pub ".to_string())];
-        assert!(s.ws.apply_edits(&typed, TransactionOrigin::UserInput));
+        assert!(s.ed.ws.apply_edits(&typed, TransactionOrigin::UserInput));
         assert!(!j.path_for(&file).exists(), "nothing is due yet");
         s.lsp
             .queue_format_edits(vec![(BytePos(0), BytePos(0), "// f\n".to_string())]);
@@ -653,6 +654,11 @@ mod journal_tests {
             Some(&b"pub fn main() {}\n"[..]),
             "the typing, synced before the batch"
         );
-        assert_eq!(s.ws.focused().doc.bytes(), b"// f\npub fn main() {}\n");
+        assert_eq!(
+            s.ed.ws.focused().doc.bytes(),
+            b"// f
+pub fn main() {}
+"
+        );
     }
 }

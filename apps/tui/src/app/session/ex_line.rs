@@ -25,24 +25,17 @@ impl Session {
     /// way Vim's `restart_edit` starts Insert after the command line.
     pub(super) fn start_or_stop_insert(&mut self, start: Option<(crate::input::StartKind, bool)>) {
         use crate::input::StartKind;
-        let Session {
-            ws,
-            files,
-            recorded,
-            status,
-            quit,
-            ..
-        } = self;
-        let mode = ws.focused().view.mode();
+        let Session { ed, .. } = self;
+        let mode = ed.ws.focused().view.mode();
         let Some((kind, bang)) = start else {
             if mode != Mode::Normal {
                 // Only `i_CTRL-O` runs an Ex command in Insert mode; its return is dropped, and the
                 // cursor stays where `CTRL-O` left it (no `<Esc>` step back) unless it sat past the end.
-                let at = ws.focused().view.cursor().0;
-                run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
-                let b = ws.focused().doc.bytes();
+                let at = ed.ws.focused().view.cursor().0;
+                ed.run(Command::EnterNormal);
+                let b = ed.ws.focused().doc.bytes();
                 if at < ruse_core::pos::line_end(b, ruse_core::BytePos(at)).0 {
-                    place_cursor(ws, recorded, at);
+                    place_cursor(&mut ed.ws, &mut ed.recorded, at);
                 }
             }
             return;
@@ -58,14 +51,14 @@ impl Session {
         };
         if bang && kind != StartKind::Insert {
             // `:startreplace!` replaces from the end of the line: enter at the line's end, as `A` does.
-            run_cmd(Command::AppendLineEnd, ws, files, recorded, status, quit);
-            run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
-            let pane = ws.focused();
+            ed.run(Command::AppendLineEnd);
+            ed.run(Command::EnterNormal);
+            let pane = ed.ws.focused();
             let b = pane.doc.bytes();
             let end = ruse_core::pos::line_end(b, pane.view.cursor()).0;
-            place_cursor(ws, recorded, end);
+            place_cursor(&mut ed.ws, &mut ed.recorded, end);
         }
-        run_cmd(enter, ws, files, recorded, status, quit);
+        ed.run(enter);
     }
 
     /// Run the `|`-separated commands of one line in turn (see [`Session::execute_ex`]). A backwards range
@@ -73,14 +66,14 @@ impl Session {
     pub(super) fn run_ex_pieces(&mut self, pieces: Vec<String>, frame: &FrameCtx) {
         let mut pieces = pieces.into_iter();
         while let Some(cmd) = pieces.next() {
-            self.status.clear();
+            self.ed.status.clear();
             self.ex_line = cmd.clone();
             // Command modifiers (`:silent`, `:verbose`, …) come first (#609). `:silent` hides the command's
             // message but not an error; `:silent!` hides the error too, and the line goes on after it. The
             // hidden error is still the last error (Vim's `v:errmsg`).
             let (mods, cmd) = crate::input::strip_modifiers(&cmd);
             if mods.filter.is_some() && cmd.trim().is_empty() {
-                self.status.error("E476: Invalid command");
+                self.ed.status.error("E476: Invalid command");
                 break;
             }
             // `:keeppatterns`, `:keepalt` and `:keepjumps` (#609): put back what the command changed.
@@ -93,18 +86,22 @@ impl Session {
             });
             let kept_alt = mods
                 .keep_alt
-                .then(|| (self.ws.alternate(), self.alt_file.clone()));
+                .then(|| (self.ed.ws.alternate(), self.alt_file.clone()));
             // The switch goes through the trace (RFC-0020 R6): the command it wraps replays without the
             // jumps it skipped live.
-            let jumps_were_kept = self.ws.keep_jumps();
+            let jumps_were_kept = self.ed.ws.keep_jumps();
             if mods.keep_jumps && !jumps_were_kept {
-                run_ex(ExCmd::KeepJumps(true), &mut self.ws, &mut self.recorded);
+                run_ex(
+                    ExCmd::KeepJumps(true),
+                    &mut self.ed.ws,
+                    &mut self.ed.recorded,
+                );
             }
             self.ex_filter = mods.filter.clone();
             self.ex_verbose = mods.verbose;
             self.ex_confirm = mods.confirm;
             // What `:silent` keeps off the screen stays out of `:messages` too (#1235).
-            let hushed = self.status.hush(if mods.silent_errors {
+            let hushed = self.ed.status.hush(if mods.silent_errors {
                 Silence::All
             } else if mods.silent {
                 Silence::Messages
@@ -112,11 +109,15 @@ impl Session {
                 Silence::Off
             });
             self.execute_ex_one(cmd.to_string(), frame);
-            self.status.unhush(hushed);
+            self.ed.status.unhush(hushed);
             self.ex_filter = None;
             self.ex_verbose = false;
-            if !jumps_were_kept && self.ws.keep_jumps() {
-                run_ex(ExCmd::KeepJumps(false), &mut self.ws, &mut self.recorded);
+            if !jumps_were_kept && self.ed.ws.keep_jumps() {
+                run_ex(
+                    ExCmd::KeepJumps(false),
+                    &mut self.ed.ws,
+                    &mut self.ed.recorded,
+                );
             }
             if let Some((search, hl, sub)) = kept_patterns {
                 self.engine.restore_search_state(search);
@@ -124,7 +125,7 @@ impl Session {
                 self.last_substitute = sub;
             }
             if let Some((alt, alt_file)) = kept_alt {
-                self.ws.set_alternate(alt);
+                self.ed.ws.set_alternate(alt);
                 self.alt_file = alt_file;
             }
             self.ex_confirm = false;
@@ -136,12 +137,12 @@ impl Session {
                 prompt.pending.extend(pieces);
                 return;
             }
-            if mods.silent_errors && self.status.is_error() {
-                self.silenced_error = Some(self.status.take().text);
-            } else if mods.silent && !self.status.is_error() {
-                self.status.clear();
+            if mods.silent_errors && self.ed.status.is_error() {
+                self.silenced_error = Some(self.ed.status.take().text);
+            } else if mods.silent && !self.ed.status.is_error() {
+                self.ed.status.clear();
             }
-            if self.quit || self.confirm.is_some() || self.status.is_error() {
+            if self.ed.quit || self.confirm.is_some() || self.ed.status.is_error() {
                 break;
             }
         }
@@ -156,12 +157,12 @@ impl Session {
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         match key.code {
             KeyCode::Char('y') if plain => {
-                self.status.clear();
+                self.ed.status.clear();
                 self.run_ex_pieces(prompt.pending, frame);
             }
-            KeyCode::Char('n') | KeyCode::Esc if plain => self.status.clear(),
+            KeyCode::Char('n') | KeyCode::Esc if plain => self.ed.status.clear(),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.status.clear()
+                self.ed.status.clear()
             }
             _ => self.swap = Some(prompt),
         }
@@ -179,11 +180,16 @@ impl Session {
             self.changed_prompt = Some(prompt);
             return;
         };
-        self.status.clear();
-        if crate::app::abandon::act(&prompt, a, &mut self.ws, &self.files, &mut self.status)
-            && !self.status.is_error()
+        self.ed.status.clear();
+        if crate::app::abandon::act(
+            &prompt,
+            a,
+            &mut self.ed.ws,
+            &self.ed.files,
+            &mut self.ed.status,
+        ) && !self.ed.status.is_error()
         {
-            self.status.clear();
+            self.ed.status.clear();
             self.run_ex_pieces(prompt.pending, frame);
         }
     }
@@ -197,18 +203,19 @@ impl Session {
         let line = self.ex_line.clone();
         match crate::app::abandon::gate(
             &parsed,
-            &mut self.ws,
-            &self.files,
+            &mut self.ed.ws,
+            &self.ed.files,
             &self.ui_opts.buffers,
             self.ex_confirm,
             &line,
-            &mut self.status,
+            &mut self.ed.status,
         ) {
             crate::app::abandon::Gate::Go => {}
             crate::app::abandon::Gate::Stop => return,
             crate::app::abandon::Gate::Ask(prompt) => {
-                self.status
-                    .echo(crate::app::abandon::prompt_text(&prompt, &self.ws));
+                self.ed
+                    .status
+                    .echo(crate::app::abandon::prompt_text(&prompt, &self.ed.ws));
                 self.changed_prompt = Some(prompt);
                 return;
             }
@@ -219,8 +226,8 @@ impl Session {
         }
         self.execute_ex_parsed(text, frame);
         // An edit `'nomodifiable'` refused (#619): nvim's E21 over whatever the command said.
-        if self.ws.take_not_modifiable() {
-            self.status.error(ruse_core::E21);
+        if self.ed.ws.take_not_modifiable() {
+            self.ed.status.error(ruse_core::E21);
         }
         // The files may have changed: after another program ran (nvim checks after a shell command), and
         // after a write, which may have been refused because one did (RFC-0023 §8). `:checktime` asks.
@@ -233,16 +240,12 @@ impl Session {
     /// moved the cursor leaves it moved. The text that remains is the command.
     pub(super) fn resolve_ex_line(&mut self, text: &str) -> Option<String> {
         let Session {
-            ws,
-            files,
-            recorded,
+            ed,
             engine,
-            quit,
             folds,
             swap,
             search_hl,
             last_substitute,
-            status,
             global_busy,
             ..
         } = self;
@@ -252,13 +255,13 @@ impl Session {
         // `:[count]messages [clear]` (#1235): its count is no line number, so it is read before the range.
         if let Some(cmd) = crate::app::messages::parse_messages(text) {
             match cmd {
-                Ok(cmd) if cmd.clear => status.history_mut().keep_last(cmd.count.unwrap_or(0)),
+                Ok(cmd) if cmd.clear => ed.status.history_mut().keep_last(cmd.count.unwrap_or(0)),
                 Ok(cmd) => {
-                    let shown: Vec<&str> = status.history().last(cmd.count).collect();
+                    let shown: Vec<&str> = ed.status.history().last(cmd.count).collect();
                     let shown = shown.join("\n");
-                    status.echo(shown);
+                    ed.status.echo(shown);
                 }
-                Err(e) => status.error(e.to_string()),
+                Err(e) => ed.status.error(e.to_string()),
             }
             return None;
         }
@@ -268,9 +271,9 @@ impl Session {
         };
         // Inside a `:g` a range does not grow to closed folds (nvim checks `global_busy`).
         let range_folds = (!*global_busy)
-            .then(|| folds.get(&ws.focused_buffer()).map(Vec::as_slice))
+            .then(|| folds.get(&ed.ws.focused_buffer()).map(Vec::as_slice))
             .flatten();
-        let resolved = crate::app::ex_range::resolve_ex_range(text, ws, pats, range_folds);
+        let resolved = crate::app::ex_range::resolve_ex_range(text, &mut ed.ws, pats, range_folds);
         // A `/pat/` or `?pat?` address becomes the last search, as in Vim (`:/foo/d` then `n`).
         if let Some((pat, forward)) = resolved.search {
             engine.set_last_search(pat.clone(), forward);
@@ -278,23 +281,23 @@ impl Session {
         }
         // A `;` in the range moved the cursor, and it stays moved whatever the command does (`:5;-2d`).
         if let Some(line) = resolved.cursor {
-            goto_line(line, ws, files, recorded, status, quit);
+            goto_line(line, ed);
         }
         match resolved.range {
             Ok(ExRange::Line(text)) => Some(text),
             Ok(ExRange::Backwards(swapped)) => {
-                status.echo("Backwards range given, OK to swap (y/n)?");
+                ed.status.echo("Backwards range given, OK to swap (y/n)?");
                 *swap = Some(SwapPrompt {
                     pending: vec![swapped],
                 });
                 None
             }
             Ok(ExRange::Goto(line)) => {
-                goto_line(line, ws, files, recorded, status, quit);
+                goto_line(line, ed);
                 None
             }
             Err(e) => {
-                status.error(e.to_string());
+                ed.status.error(e.to_string());
                 None
             }
         }
@@ -304,8 +307,7 @@ impl Session {
     /// previous command, remembered for the next) in a shell command.
     pub(super) fn expand_ex_args(&mut self, ex: Ex) -> Result<Ex, crate::input::ExpandError> {
         let Session {
-            ws,
-            files,
+            ed: Editing { ws, files, .. },
             alt_file,
             last_shell,
             ..
@@ -389,7 +391,7 @@ impl Session {
         let ex = match self.expand_ex_args(parse_ex(&text)) {
             Ok(ex) => ex,
             Err(e) => {
-                self.status.error(e.to_string());
+                self.ed.status.error(e.to_string());
                 return;
             }
         };
@@ -479,11 +481,11 @@ impl Session {
             self.reload_config(true);
         }
         if let Some(line) = after.then_run {
-            let opened = self.status.take();
+            let opened = self.ed.status.take();
             self.execute_ex_one(line, frame);
             // The open's own report stays unless the command said something (an error, a count).
-            if self.status.is_empty() {
-                self.status.restore(opened);
+            if self.ed.status.is_empty() {
+                self.ed.status.restore(opened);
             }
         }
     }
@@ -492,10 +494,9 @@ impl Session {
     pub(super) fn ex_show(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
         let after = ExAfter::default();
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             search_hl,
             overlay,
-            status,
             ..
         } = self;
         match ex {
@@ -552,10 +553,10 @@ impl Session {
     pub(super) fn ex_services(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
         let mut after = ExAfter::default();
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             lsp,
-            status,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -585,11 +586,15 @@ impl Session {
     pub(super) fn ex_windows(&mut self, ex: Ex) -> ExAfter {
         let after = ExAfter::default();
         let Session {
-            ws,
-            files,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    quit,
+                    status,
+                    ..
+                },
             highlighters,
-            quit,
-            status,
             alt_file,
             #[cfg(unix)]
             terminals,
@@ -702,13 +707,9 @@ impl Session {
     pub(super) fn ex_lines(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
         let after = ExAfter::default();
         let Session {
-            ws,
-            files,
-            recorded,
+            ed,
             engine,
-            quit,
             ui_opts,
-            status,
             ..
         } = self;
         match ex {
@@ -724,8 +725,8 @@ impl Session {
                 recursive,
             } => self.ex_fold_open(range, open, recursive),
             Ex::FoldDo { range, closed, cmd } => self.ex_fold_do(range, closed, cmd, frame),
-            Ex::Earlier(n) => time_travel(true, n, ws, files, recorded, status, quit),
-            Ex::Later(n) => time_travel(false, n, ws, files, recorded, status, quit),
+            Ex::Earlier(n) => time_travel(true, n, ed),
+            Ex::Later(n) => time_travel(false, n, ed),
             Ex::Filter { range, cmd } => self.ex_filter(range, cmd),
             Ex::Shell(cmd) => self.ex_shell(cmd),
             Ex::RepeatSubstitute { range, flags } => self.ex_repeat_substitute(range, flags),
@@ -734,21 +735,27 @@ impl Session {
             Ex::Yank(range, reg) => self.ex_yank(range, reg),
             Ex::Join { range, bang } => self.ex_join(range, bang),
             // `:[range]m {addr}` — move the range's lines to after the destination line.
-            Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, dest) => {
-                status.error("E16: Invalid range");
+            Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(&ed.ws, dest) => {
+                ed.status.error("E16: Invalid range");
             }
             Ex::Move(range, dest) => {
-                let ((first, last), dest) = (ws.resolve_range(range), ws.resolve_addr(dest));
+                let ((first, last), dest) = (ed.ws.resolve_range(range), ed.ws.resolve_addr(dest));
                 let moved = dest.and_then(|dest| {
-                    match run_ex(ExCmd::Move { first, last, dest }, ws, recorded) {
+                    match run_ex(
+                        ExCmd::Move { first, last, dest },
+                        &mut ed.ws,
+                        &mut ed.recorded,
+                    ) {
                         ExOutcome::Relocated(n) => n,
                         _ => None,
                     }
                 });
                 match moved {
                     // Moved onto itself (`:2m2`): nothing to report.
-                    Some(n) => give_report(status, report::moved(n, ui_opts.report)),
-                    None => status.error("E134: Cannot move a range of lines into itself"),
+                    Some(n) => give_report(&mut ed.status, report::moved(n, ui_opts.report)),
+                    None => ed
+                        .status
+                        .error("E134: Cannot move a range of lines into itself"),
                 }
             }
             Ex::Copy(range, dest) => self.ex_copy(range, dest),
@@ -761,29 +768,30 @@ impl Session {
             // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
             mut ex @ Ex::Sort(..) => {
                 if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
-                    status.error(msg.to_string());
+                    ed.status.error(msg.to_string());
                     return after;
                 }
                 let Ex::Sort(range, spec) = ex else {
                     unreachable!("bound by the arm's pattern")
                 };
-                let (first, last) = ws.resolve_range(range);
+                let (first, last) = ed.ws.resolve_range(range);
                 let ex = ExCmd::Sort {
                     first,
                     last,
                     opts: spec,
                 };
-                let sorted = match run_ex(ex, ws, recorded) {
+                let sorted = match run_ex(ex, &mut ed.ws, &mut ed.recorded) {
                     ExOutcome::Failed(e) => Err(e),
                     out => Ok(lines_outcome(&out)),
                 };
                 match sorted {
                     // nvim's `msgmore` for the lines `u` dropped; a sort that drops none says nothing.
-                    Ok(removed) => {
-                        give_report(status, report::more(-to_i64(removed), ui_opts.report))
-                    }
+                    Ok(removed) => give_report(
+                        &mut ed.status,
+                        report::more(-to_i64(removed), ui_opts.report),
+                    ),
                     // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
-                    Err(e) => status.error(regex_error_msg(&e)),
+                    Err(e) => ed.status.error(regex_error_msg(&e)),
                 }
             }
             Ex::Retab {
@@ -801,7 +809,7 @@ impl Session {
         let after = ExAfter::default();
         let Session {
             engine,
-            status,
+            ed: Editing { status, .. },
             pending_insert,
             ..
         } = self;
@@ -839,27 +847,19 @@ pub(super) struct ExAfter {
 /// `:earlier {n}` (`older`) / `:later {n}`: `n` steps of `g-` / `g+`, recorded and applied one by one so
 /// each lands in the trace. The walk stops at the end of the undo time line, where a step changes nothing,
 /// so a huge count costs no more steps than there are changes (#685); CTRL-C stops it too.
-pub(super) fn time_travel(
-    older: bool,
-    n: u32,
-    ws: &mut Workspace,
-    files: &Files,
-    recorded: &mut Vec<Command>,
-    status: &mut Status,
-    quit: &mut bool,
-) {
+pub(super) fn time_travel(older: bool, n: u32, ed: &mut Editing) {
     let cmd = if older {
         Command::UndoOlder
     } else {
         Command::UndoNewer
     };
     for _ in 0..n {
-        let before = ws.focused().doc.revision();
-        run_cmd(cmd.clone(), ws, files, recorded, status, quit);
-        if ws.focused().doc.revision() == before || ruse_core::interrupt::breakcheck() {
+        let before = ed.ws.focused().doc.revision();
+        ed.run(cmd.clone());
+        if ed.ws.focused().doc.revision() == before || ruse_core::interrupt::breakcheck() {
             break;
         }
     }
     let dir = if older { "earlier" } else { "later" };
-    status.info(format!("{n} change(s) {dir}"));
+    ed.status.info(format!("{n} change(s) {dir}"));
 }

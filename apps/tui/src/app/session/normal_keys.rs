@@ -34,12 +34,16 @@ impl Session {
     /// `zf{motion}`: while the `zf` prefix is armed, the keys after it. Whether it took `key`.
     pub(super) fn zf_owns(&mut self, key: KeyEvent) -> bool {
         let Session {
-            ws,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             line_idx,
-            recorded,
             prefix,
             folds,
-            status,
             ..
         } = self;
         // `zf{motion}` (Normal mode): keep buffering keys after `zf` until they resolve to a linewise
@@ -120,13 +124,9 @@ impl Session {
     ) -> bool {
         let so = self.scrolloff_rows();
         let Session {
-            ws,
-            files,
+            ed,
             line_idx,
-            recorded,
-            quit,
             folds,
-            status,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -140,9 +140,9 @@ impl Session {
             _ => None,
         };
         if let Some(to) = to {
-            let cur = line_idx.line_of(ws.focused().view.cursor().0);
+            let cur = line_idx.line_of(ed.ws.focused().view.cursor().0);
             let last = line_idx.line_of(snapshot.len().saturating_sub(1));
-            let top = ws.focused().view.top();
+            let top = ed.ws.focused().view.top();
             let row = match (key.code, count) {
                 // `z+`: the line just below the window goes to the top (nvim's `nv_zet`).
                 (KeyCode::Char('+'), 0) => (top + focused_h).min(last),
@@ -166,14 +166,7 @@ impl Session {
                     } else {
                         (cur - row, ruse_core::Motion::Up)
                     };
-                    run_cmd(
-                        Command::Move(n as u32, m),
-                        ws,
-                        files,
-                        recorded,
-                        status,
-                        quit,
-                    );
+                    ed.run(Command::Move(n as u32, m));
                 }
             } else {
                 let start = line_idx.nth_line_start(row);
@@ -188,11 +181,11 @@ impl Session {
                 } else {
                     blank
                 };
-                place_cursor(ws, recorded, start + off);
+                place_cursor(&mut ed.ws, &mut ed.recorded, start + off);
             }
             // Over closed folds the rows are counted as nvim counts them (a fold is one row).
-            let fv = focused_folds(folds, ws);
-            let new_top = match frame.wins.get(ws.focus()) {
+            let fv = focused_folds(folds, &ed.ws);
+            let new_top = match frame.wins.get(ed.ws.focus()) {
                 Some(win) if fv.iter().any(|f| f.closed) => {
                     let lines = PaneLines {
                         text: PaneText {
@@ -208,7 +201,7 @@ impl Session {
                 }
                 _ => viewport::recenter(row, focused_h, to),
             };
-            ws.set_top(ws.focus(), new_top);
+            ed.ws.set_top(ed.ws.focus(), new_top);
             return true;
         }
         false
@@ -217,9 +210,8 @@ impl Session {
     /// `z` + a horizontal scroll verb (`zh`/`zl`/`zH`/`zL`/`zs`/`ze`): whether `key` was one.
     fn z_hscroll(&mut self, key: KeyEvent, count: u32, frame: &FrameCtx) -> bool {
         let Session {
-            ws,
+            ed: Editing { ws, recorded, .. },
             line_idx,
-            recorded,
             folds,
             ..
         } = self;
@@ -275,7 +267,11 @@ impl Session {
 
     /// `zp`/`zP`/`zy`: whether `key` was one.
     fn z_paste_yank(&mut self, key: KeyEvent, count: u32) -> bool {
-        let Session { ws, engine, .. } = self;
+        let Session {
+            ed: Editing { ws, .. },
+            engine,
+            ..
+        } = self;
         // `zp` / `zP` (Normal) paste like `p` / `P` without a block's trailing spaces; `zy` yanks like
         // `y` without a block's trailing white space: over the selection in Visual, and in Normal as the
         // `y` operator (its motions are never blockwise, so it is `y` there), with the count kept.
@@ -287,12 +283,12 @@ impl Session {
                         after: c == 'p',
                         count: count.max(1),
                     };
-                    self.run_cmd(cmd);
+                    self.ed.run(cmd);
                     return true;
                 }
                 KeyCode::Char('y') if visual => {
                     let cmd = Command::VisualOp(ruse_core::VisualOp::YankTrim);
-                    self.run_cmd(cmd);
+                    self.ed.run(cmd);
                     return true;
                 }
                 KeyCode::Char('y') => {
@@ -316,7 +312,7 @@ impl Session {
     /// A `C-w` window prefix: whether it took `key` (a count digit, or the window command).
     pub(super) fn window_prefix_owns(&mut self, key: KeyEvent) -> bool {
         let Session {
-            ws,
+            ed: Editing { ws, .. },
             prefix,
             window_ex,
             ..
@@ -359,7 +355,7 @@ impl Session {
     /// cancel it and do nothing (Vim's `checkclearop`), and the count typed before them is theirs, never
     /// the next command's.
     pub(super) fn key_ctx(&self) -> KeyCtx {
-        let (ws, engine) = (&self.ws, &self.engine);
+        let (ws, engine) = (&self.ed.ws, &self.engine);
         let normal = !self.emacs_profile
             && matches!(ws.focused().view.mode(), Mode::Normal)
             && engine.cmdline().is_none()
@@ -386,13 +382,9 @@ impl Session {
         focused_h: usize,
     ) -> bool {
         let Session {
-            ws,
-            files,
-            recorded,
+            ed,
             emacs_profile,
             engine,
-            quit,
-            status,
             ..
         } = self;
         // `i_CTRL-E` / `i_CTRL-Y` (Insert mode) — insert the char directly BELOW / ABOVE the caret at the
@@ -403,19 +395,19 @@ impl Session {
         // These Insert-mode intercepts are Vim keys too: an Emacs session is in Insert after its first
         // printable key, and there `C-e`, `C-y`, `C-n`, `C-p`, `C-l` and the page keys are Emacs commands
         // (#1156).
-        let vim_insert = !*emacs_profile && matches!(ws.focused().view.mode(), Mode::Insert);
+        let vim_insert = !*emacs_profile && matches!(ed.ws.focused().view.mode(), Mode::Insert);
         if vim_insert && (is_ctrl(key, 'e') || is_ctrl(key, 'y')) && engine.insert_plain_text_ctx()
         {
             // An active completion cycle owns the key first: `CTRL-E` cancels it, `CTRL-Y` accepts (#805).
             if let Some(feed) = engine.complete_end(is_ctrl(key, 'e')) {
                 if let Feed::Cmd(cmd) = feed {
-                    run_cmd(cmd, ws, files, recorded, status, quit);
+                    ed.run(cmd);
                 }
                 return true;
             }
-            let ch = ws.adjacent_line_char(is_ctrl(key, 'y'));
+            let ch = ed.ws.adjacent_line_char(is_ctrl(key, 'y'));
             if let Feed::Cmd(cmd) = engine.insert_copy_char(ch) {
-                run_cmd(cmd, ws, files, recorded, status, quit);
+                ed.run(cmd);
             }
             return true;
         }
@@ -424,7 +416,7 @@ impl Session {
         if let (true, Some(forward)) = (vim_insert, insert_page_key(key)) {
             if engine.insert_plain_text_ctx() {
                 // The jump breaks undo first (it changes no text, so the scroll below sees the same lines).
-                run_cmd(engine.insert_page_jump(), ws, files, recorded, status, quit);
+                ed.run(engine.insert_page_jump());
                 self.scroll_key(ScrollKey::Page { forward, count: 1 }, frame, focused_h);
                 return true;
             }
@@ -441,11 +433,11 @@ impl Session {
             let feed = if engine.completion_active() {
                 engine.complete_cycle(forward)
             } else {
-                let (base, cands) = ws.keyword_completion();
+                let (base, cands) = ed.ws.keyword_completion();
                 engine.complete_start(base, cands, forward)
             };
             if let Feed::Cmd(cmd) = feed {
-                run_cmd(cmd, ws, files, recorded, status, quit);
+                ed.run(cmd);
             }
             return true;
         }
@@ -457,15 +449,15 @@ impl Session {
         // and `CTRL-X CTRL-F` (filename) sources, and the popup menu — all out of scope for this slice.
         if vim_insert && is_ctrl(key, 'l') {
             if engine.insert_ctrl_x_pending() {
-                let (base, cands) = ws.line_completion();
+                let (base, cands) = ed.ws.line_completion();
                 if let Feed::Cmd(cmd) = engine.complete_line_start(base, cands) {
-                    run_cmd(cmd, ws, files, recorded, status, quit);
+                    ed.run(cmd);
                 }
                 return true;
             }
             if engine.completion_active() && engine.insert_plain_text_ctx() {
                 if let Feed::Cmd(cmd) = engine.complete_cycle(true) {
-                    run_cmd(cmd, ws, files, recorded, status, quit);
+                    ed.run(cmd);
                 }
                 return true;
             }
@@ -484,7 +476,7 @@ impl Session {
     ) -> bool {
         let so = self.scrolloff_rows();
         let Session {
-            ws,
+            ed: Editing { ws, .. },
             line_idx,
             engine,
             folds,
@@ -565,7 +557,7 @@ impl Session {
                 Err(row) => row,
             };
             match engine.screen_op(row as u32 + 1) {
-                Feed::Cmd(cmd) => self.run_cmd(cmd),
+                Feed::Cmd(cmd) => self.ed.run(cmd),
                 // `!H` / `!L` / `!M`: the filter over the screen line opens its pre-seeded `:{range}!` line,
                 // exactly like `!{motion}` below (#800) — it was dropped, so the command was typed as text.
                 Feed::FilterMotion { count, motion } => {
@@ -584,21 +576,17 @@ impl Session {
     fn scroll_key(&mut self, key: ScrollKey, frame: &FrameCtx, height: usize) {
         let so = self.scrolloff_rows();
         let Session {
-            ws,
-            files,
+            ed,
             line_idx,
             folds,
             screen_want,
             scroll_valid,
-            recorded,
-            status,
-            quit,
             ..
         } = self;
-        let fv = focused_folds(folds, ws);
+        let fv = focused_folds(folds, &ed.ws);
         run_scroll(
             key,
-            ws,
+            ed,
             frame,
             line_idx,
             fv,
@@ -606,10 +594,6 @@ impl Session {
             height,
             screen_want,
             scroll_valid,
-            files,
-            recorded,
-            status,
-            quit,
         );
     }
 }

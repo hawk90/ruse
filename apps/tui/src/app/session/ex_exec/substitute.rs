@@ -7,7 +7,7 @@ use ruse_core::{SubFlags, SubRange};
 use crate::app::dispatch::{run_ex, sub_outcome, substitute_cmd};
 use crate::app::messages::Msg;
 // `match_count_message` comes through the session's own imports; this module is its only user.
-use crate::app::session::{match_count_message, Session};
+use crate::app::session::{match_count_message, Editing, Session};
 use crate::input::{Ex, PrintFlags};
 use crate::ui::prompts::Confirm;
 
@@ -35,11 +35,15 @@ impl Session {
         flags: Option<ruse_core::SubFlags>,
     ) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             ui_opts,
             last_substitute,
-            status,
             global_busy,
             ..
         } = self;
@@ -67,11 +71,10 @@ impl Session {
     /// search pattern (Vim's `save_re_pat`): `n` finds it next, and `:g//` or `:s//` reuse it.
     pub(in crate::app::session) fn ex_substitute(&mut self, mut ex: Ex) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             engine,
             search_hl,
             last_substitute,
-            status,
             ..
         } = self;
         if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
@@ -129,8 +132,7 @@ impl Session {
     /// Overrides `c` (like Vim). `substitute_count` borrows `&`, so no edit / undo / cursor move.
     fn substitute_count_only(&mut self, run: &SubRun<'_>) {
         let Session {
-            ws,
-            status,
+            ed: Editing { ws, status, .. },
             global_busy,
             ..
         } = self;
@@ -149,9 +151,8 @@ impl Session {
     /// `:s///c`: compute the matches and hand control to the interactive confirm loop (F-009 #2).
     fn substitute_confirm(&mut self, run: &SubRun<'_>) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             confirm,
-            status,
             ..
         } = self;
         match ws.substitute_preview(run.range, run.pattern, run.replacement, run.flags) {
@@ -179,10 +180,14 @@ impl Session {
     /// A plain `:s`: the edit, and its report (or the substituted line under `p`/`#`/`l`).
     fn substitute_apply(&mut self, run: &SubRun<'_>) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             ui_opts,
-            status,
             global_busy,
             ..
         } = self;

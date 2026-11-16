@@ -8,7 +8,7 @@ use ruse_core::{ExCmd, ExOutcome};
 
 use crate::app::dispatch::{lines_outcome, place_cursor, regex_error_msg, run_ex};
 use crate::app::report;
-use crate::app::session::{give_report, FrameCtx, Session};
+use crate::app::session::{give_report, Editing, FrameCtx, Session};
 use crate::input::Ex;
 
 impl Session {
@@ -19,10 +19,9 @@ impl Session {
     /// before the command runs, so `:g/pat/s//X/` substitutes `pat` (Vim, #804).
     pub(in crate::app::session) fn ex_global(&mut self, mut ex: Ex, frame: &FrameCtx) {
         let Session {
-            ws,
+            ed: Editing { ws, status, .. },
             engine,
             search_hl,
-            status,
             global_busy,
             ..
         } = self;
@@ -92,12 +91,16 @@ impl Session {
         cmd: &ruse_core::GlobalCmd,
     ) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             engine,
             search_hl,
             ui_opts,
-            status,
             ..
         } = self;
         // A `:g/pat/s///g` reports its substitutions (`4 substitutions on 2 lines`): the
@@ -170,10 +173,14 @@ impl Session {
         flags: crate::input::PrintFlags,
     ) {
         let Session {
-            ws,
-            recorded,
+            ed:
+                Editing {
+                    ws,
+                    recorded,
+                    status,
+                    ..
+                },
             overlay,
-            status,
             ex_filter,
             ..
         } = self;

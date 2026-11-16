@@ -11,16 +11,19 @@ impl Session {
     /// `read-only-mode` (`C-x C-q`): toggle `buffer-read-only`; with `view-read-only`, turning it on enters
     /// View mode and turning it off leaves it.
     pub(super) fn read_only_mode(&mut self) {
-        let id = self.ws.focused_buffer();
-        let on = self.ws.focused().doc.is_modifiable();
-        self.ws.focused_doc_mut().set_modifiable(!on);
+        let id = self.ed.ws.focused_buffer();
+        let on = self.ed.ws.focused().doc.is_modifiable();
+        self.ed.ws.focused_doc_mut().set_modifiable(!on);
         if on {
-            self.status.echo("Read-Only mode enabled in current buffer");
+            self.ed
+                .status
+                .echo("Read-Only mode enabled in current buffer");
             if self.emacs_vars().view_read_only {
                 self.view_mode.insert(id, true);
             }
         } else {
-            self.status
+            self.ed
+                .status
                 .echo("Read-Only mode disabled in current buffer");
             self.view_mode.remove(&id);
         }
@@ -28,7 +31,7 @@ impl Session {
 
     /// A key in View mode (`view-mode-map`), or `None` when View mode does not bind it.
     pub(crate) fn view_key(&mut self, key: KeyEvent, frame: &FrameCtx) -> bool {
-        let id = self.ws.focused_buffer();
+        let id = self.ed.ws.focused_buffer();
         let Some(&from_read_only) = self.view_mode.get(&id) else {
             return false;
         };
@@ -42,16 +45,9 @@ impl Session {
             } else {
                 Command::MoveUp
             };
-            let Session {
-                ws,
-                files,
-                recorded,
-                status,
-                quit,
-                ..
-            } = s;
+            let Session { ed, .. } = s;
             for _ in 0..n {
-                crate::app::dispatch::run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+                ed.run(cmd.clone());
             }
         };
         if shift_space || key.code == KeyCode::Backspace && key.modifiers.is_empty() {
@@ -68,23 +64,16 @@ impl Session {
             let cmd = Command::EmacsBufferEdge {
                 start: plain(key, '<'),
             };
-            let Session {
-                ws,
-                files,
-                recorded,
-                status,
-                quit,
-                ..
-            } = self;
-            crate::app::dispatch::run_cmd(cmd, ws, files, recorded, status, quit);
+            let Session { ed, .. } = self;
+            ed.run(cmd);
         } else if plain(key, 'q') || plain(key, 'e') || plain(key, 'E') {
             // `q` (`View-quit`) gives a buffer View mode made read-only its writability back; `e`
             // (`View-exit`) keeps it read-only; `E` (`View-exit-and-edit`) makes it writable.
             self.view_mode.remove(&id);
             if plain(key, 'E') || (plain(key, 'q') && from_read_only) {
-                self.ws.focused_doc_mut().set_modifiable(true);
+                self.ed.ws.focused_doc_mut().set_modifiable(true);
             }
-            self.status.clear();
+            self.ed.status.clear();
         } else {
             return false;
         }

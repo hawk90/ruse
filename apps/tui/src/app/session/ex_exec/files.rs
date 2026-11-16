@@ -7,7 +7,7 @@ use ruse_core::{Command, SplitDir};
 use crate::app::dispatch::quit_window;
 use crate::app::session::commands::info_status;
 // `Trace` comes through the session's own imports; this module is its only user.
-use crate::app::session::{Session, Trace};
+use crate::app::session::{Editing, Session, Trace};
 use crate::input::{EditSpec, FileOpts, WriteSpec, WriteTarget};
 use crate::persist;
 
@@ -15,14 +15,18 @@ impl Session {
     /// `:savetrace`.
     pub(in crate::app::session) fn ex_save_trace(&mut self, p: String) {
         let Session {
-            ws,
-            files,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    recorded,
+                    status,
+                    ..
+                },
             initial,
             start_options,
             start_registers,
             trace_watch,
-            recorded,
-            status,
             ..
         } = self;
         let trace =
@@ -46,10 +50,10 @@ impl Session {
     /// `:saveas`.
     pub(in crate::app::session) fn ex_saveas(&mut self, bang: bool, file: String, opts: FileOpts) {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             alt_file,
             ..
         } = self;
@@ -68,10 +72,10 @@ impl Session {
     /// changes with E89 unless `!` forces it.
     pub(in crate::app::session) fn ex_bdelete(&mut self, force: bool) {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             ..
         } = self;
         let id = ws.focused_buffer();
@@ -92,11 +96,15 @@ impl Session {
     /// file, or a failed write, keeps it open; `!` also lets the focused buffer's changes go.
     pub(in crate::app::session) fn ex_write(&mut self, spec: WriteSpec) {
         let Session {
-            ws,
-            files,
+            ed:
+                Editing {
+                    ws,
+                    files,
+                    quit,
+                    status,
+                    ..
+                },
             highlighters,
-            quit,
-            status,
             alt_file,
             ..
         } = self;
@@ -120,10 +128,10 @@ impl Session {
     /// becomes the alternate file.
     pub(in crate::app::session) fn ex_file(&mut self, cmd: crate::input::FileCmd) {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             alt_file,
             ..
         } = self;
@@ -157,9 +165,9 @@ impl Session {
     /// The directory is expanded with the other file arguments above.
     pub(in crate::app::session) fn ex_cd(&mut self, dir: Option<String>) {
         let Session {
-            ws,
-            files,
-            status,
+            ed: Editing {
+                ws, files, status, ..
+            },
             prev_dir,
             ..
         } = self;
@@ -182,10 +190,10 @@ impl Session {
         spec: EditSpec,
     ) -> Option<String> {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             ..
         } = self;
         let mut then_run = None;
@@ -215,10 +223,10 @@ impl Session {
     /// `:drop {file}` (#610): go to a window that shows the file, or edit it here.
     pub(in crate::app::session) fn ex_drop(&mut self, spec: EditSpec) -> Option<String> {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             ..
         } = self;
         let mut then_run = None;
@@ -246,10 +254,10 @@ impl Session {
     /// A `+cmd` runs once the file is open (after this dispatch, which holds the session's fields).
     pub(in crate::app::session) fn ex_edit(&mut self, spec: EditSpec) -> Option<String> {
         let Session {
-            ws,
-            files,
+            ed: Editing {
+                ws, files, status, ..
+            },
             highlighters,
-            status,
             ..
         } = self;
         let mut then_run = None;
