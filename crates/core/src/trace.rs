@@ -251,7 +251,7 @@ mod tests {
     /// Every verb the trace codec knows, scraped from `Command::from_line`'s match arms so new verbs are
     /// fuzzed without editing this list.
     fn verbs() -> Vec<String> {
-        include_str!("command.rs")
+        include_str!("command/line_form.rs")
             .lines()
             .chain(include_str!("editor/ex_cmd.rs").lines())
             .filter_map(|l| {
@@ -267,7 +267,7 @@ mod tests {
 
     /// Every motion token, scraped from the body of `motion_token`.
     fn motions() -> Vec<String> {
-        let src = include_str!("command.rs");
+        let src = include_str!("command/line_form.rs");
         let start = src.find("fn motion_token").unwrap();
         let end = src[start..].find("fn motion_from_token").unwrap() + start;
         src[start..end]
