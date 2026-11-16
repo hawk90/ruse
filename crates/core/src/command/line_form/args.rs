@@ -1,7 +1,7 @@
 //! The argument and token-field parsers the [`Command::from_line`](super::super::Command::from_line)
 //! decoders build on: counts, chars, word cases, hex text, the `<count> <motion>` pair, the parametric
 //! motion tokens and the multi-field operator arguments. Split from `line_form.rs` (#1494). They hold no
-//! `"verb" =>` arm, so `trace.rs`'s scrape of the parent file is unaffected.
+//! `"verb" =>` arm, so they add nothing to `trace.rs`'s verb scrape of `line_form/`.
 
 use super::super::{Command, Motion, WordCase};
 use super::{forced_wise_from_token, motion_from_token, op_kind_from_token, CommandParseError};

@@ -248,10 +248,26 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    /// The source of the trace line form: `command/line_form.rs`, then every `.rs` file under
+    /// `command/line_form/` in name order (#1530), so a decoder moved into a child is still scraped.
+    fn line_form_source() -> String {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/command");
+        let mut children: Vec<_> = std::fs::read_dir(dir.join("line_form"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+            .collect();
+        children.sort();
+        std::iter::once(dir.join("line_form.rs"))
+            .chain(children)
+            .map(|p| std::fs::read_to_string(p).unwrap())
+            .collect()
+    }
+
     /// Every verb the trace codec knows, scraped from `Command::from_line`'s match arms so new verbs are
     /// fuzzed without editing this list.
     fn verbs() -> Vec<String> {
-        include_str!("command/line_form.rs")
+        line_form_source()
             .lines()
             .chain(include_str!("editor/ex_cmd/codec.rs").lines())
             .filter_map(|l| {
@@ -267,7 +283,7 @@ mod tests {
 
     /// Every motion token, scraped from the body of `motion_token`.
     fn motions() -> Vec<String> {
-        let src = include_str!("command/line_form.rs");
+        let src = line_form_source();
         let start = src.find("fn motion_token").unwrap();
         let end = src[start..].find("fn motion_from_token").unwrap() + start;
         src[start..end]
