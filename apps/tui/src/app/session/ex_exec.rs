@@ -1008,9 +1008,7 @@ impl Session {
     ) {
         let Session { ws, folds, .. } = self;
         let (a, b) = ws.resolve_range(range);
-        let fv = folds
-            .get(&ws.focused_buffer())
-            .map_or(&[][..], Vec::as_slice);
+        let fv = crate::folds::for_buffer(folds, ws.focused_buffer());
         let marked: Vec<usize> = (a.max(1)..=b)
             .filter(|&l| crate::folds::closed_range(fv, l - 1).is_some() == closed)
             .collect();
