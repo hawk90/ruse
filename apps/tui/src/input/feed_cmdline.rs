@@ -725,3 +725,28 @@ impl InputEngine {
         self.last_search.as_ref().map(|(p, _, _)| p.as_str())
     }
 }
+
+/// Split a raw search line into `(pattern, offset)` on the LAST unescaped `delim` (`/` for a forward
+/// search, `?` for a backward one) — Vim's `/{pattern}/{offset}` grammar (`:help search-offset`). A
+/// delimiter preceded by an odd run of backslashes is escaped (part of the pattern), so `foo\/bar/e`
+/// splits into `("foo\/bar", Some(e))`. A present-but-unrecognized offset parses to [`SearchOffset::None`].
+///
+/// The returned offset is `None` ONLY when NO delimiter is present (`foo`); a delimiter with an empty
+/// offset part (`foo/`, or the `//` repeat) yields `Some(SearchOffset::None)`. This distinction matters
+/// for the empty-pattern repeat: a bare `/<CR>` (no delimiter) reuses the last offset, whereas `//<CR>`
+/// (a typed delimiter, empty offset) explicitly resets to NO offset — matching nvim (`/foo/e` then `//`
+/// lands on the match start, but then `/<CR>` reuses `e`).
+/// Split a typed search line into `{pattern}` and `{offset}` at the delimiter that ends the pattern, found
+/// as Vim's `skip_regexp` finds it: a `\/` is a literal, and so is a delimiter inside `[...]` (`/[/]`,
+/// #803). `None` when there is no offset part.
+pub(super) fn split_search_offset(line: &str, delim: char) -> (String, Option<SearchOffset>) {
+    let idx = ruse_core::pattern::skip_regexp(line, delim, true);
+    if idx < line.len() {
+        (
+            line[..idx].to_string(),
+            Some(SearchOffset::parse(&line[idx + delim.len_utf8()..])),
+        )
+    } else {
+        (line.to_string(), None)
+    }
+}
