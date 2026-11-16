@@ -116,6 +116,54 @@ fn paint_line_overlays(cur: &mut screen::Screen, rect: Rect, p: &PaneInput<'_>, 
     }
 }
 
+/// What [`paint_window`] works out once for the whole window: the text area's columns, the layout options
+/// and the `'fillchars'` `lastline` text.
+struct WinGeom<'a> {
+    /// The text area's first column and the window's right edge.
+    tx: u16,
+    x1: u16,
+    /// The text area's width in cells.
+    tw: usize,
+    /// The first virtual column shown (0 with `'wrap'`).
+    leftcol: usize,
+    lay_opts: crate::ui::line_layout::Layout<'a>,
+    lastline: String,
+}
+
+/// What the row loop of [`paint_window`] carries from one line to the next.
+struct RowCursor {
+    /// The window row the next line paints at.
+    row: u16,
+    /// The buffer line painted next.
+    line: usize,
+    /// No line painted yet: the first one starts `win.skip` rows in and always paints.
+    first: bool,
+    /// A last line that did not fit ended the loop (no `eob` filler then).
+    cut: bool,
+}
+
+/// One buffer line as the row loop hands it to a row painter.
+struct LineAt<'a> {
+    line: usize,
+    /// The screen row it starts at.
+    srow: u16,
+    /// The byte where it starts.
+    ls: usize,
+    /// Its own rows above the window (`win.skip` on the first line).
+    skip: usize,
+    /// The virtual column past which nothing shows.
+    max_vcol: usize,
+    /// Its bytes, up to what the window can show.
+    text: &'a [u8],
+}
+
+/// Whether the row loop goes on after a line.
+enum Step {
+    Next,
+    /// A last line that did not fit was painted as `'display'` says: the window is full.
+    Stop,
+}
+
 /// Paint one window into its `rect`: from line `top`, each line laid out by [`line_layout`] (soft wrap,
 /// `'showbreak'`, `'breakindent'`, `'linebreak'`, `'list'`, or the columns from `leftcol` without
 /// `'wrap'`), behind the sign and number columns. A closed fold's start row shows its summary; a last line
@@ -126,244 +174,63 @@ pub(crate) fn paint_window(
     p: &PaneInput<'_>,
     out_images: &mut Vec<(String, graphics::Placement)>,
 ) {
-    use crate::ui::line_layout::{CellKind, CellText};
-    use crate::ui::window_view::LastLine;
-    use unicode_segmentation::UnicodeSegmentation;
     if rect.w == 0 || rect.h == 0 {
         return;
     }
     let win = p.win;
     let gutter = u16::try_from(win.gutter()).unwrap_or(u16::MAX).min(rect.w);
-    let (tx, x1) = (rect.x + gutter, rect.x + rect.w);
-    let tw = usize::from(rect.w - gutter);
-    let lay_opts = win.layout();
-    let count = p.text.line_count();
-    let leftcol = if win.wrap { 0 } else { win.leftcol };
-    let paint_block = |cur: &mut screen::Screen, disp_row: u16, vb: &highlight::VirtLine| match (
-        p.graphics_on,
-        &vb.path,
-    ) {
-        // A graphics terminal shows the real image ONLY when its pixel dimensions were read; a missing
-        // or unreadable path paints a text "not found" band instead of a blank placeholder grid.
-        (true, Some(path)) => match p.image_dims.get(path).copied() {
-            Some(dims) => paint_image_cells(cur, rect, disp_row, vb.height, path, Some(dims)),
-            None => paint_missing_image(cur, rect, disp_row, vb.height, path),
-        },
-        _ => paint_virt_block(cur, rect, disp_row, vb),
-    };
     let mut buf = [0u8; 4];
     let lastline: &str = win.fill.lastline.encode_utf8(&mut buf);
-    let lastline = lastline.to_string();
-    let mut row: u16 = 0;
-    let mut line = p.top;
-    let mut first = true;
-    let mut cut = false;
-    while row < rect.h && line < count {
-        if crate::folds::hidden(p.folds, line) {
-            line += 1;
+    let g = WinGeom {
+        tx: rect.x + gutter,
+        x1: rect.x + rect.w,
+        tw: usize::from(rect.w - gutter),
+        leftcol: if win.wrap { 0 } else { win.leftcol },
+        lay_opts: win.layout(),
+        lastline: lastline.to_string(),
+    };
+    let count = p.text.line_count();
+    let mut at = RowCursor {
+        row: 0,
+        line: p.top,
+        first: true,
+        cut: false,
+    };
+    while at.row < rect.h && at.line < count {
+        if crate::folds::hidden(p.folds, at.line) {
+            at.line += 1;
             continue;
         }
-        let srow = rect.y + row;
-        let ls = p.text.start(line);
         // Only what the window can show is laid out (a huge line costs its visible rows).
-        let skip = if first { win.skip } else { 0 };
+        let skip = if at.first { win.skip } else { 0 };
         let max_vcol = if win.wrap {
-            (skip + usize::from(rect.h - row) + 1).saturating_mul(tw.max(1))
+            (skip + usize::from(rect.h - at.row) + 1).saturating_mul(g.tw.max(1))
         } else {
-            leftcol + tw + 1
+            g.leftcol + g.tw + 1
         };
-        let text = p.text.line_upto(line, PaneText::bytes_for(max_vcol));
-        if let Some(fold) = crate::folds::closed_starting_at(p.folds, line) {
-            // A closed fold's start row shows its one-line summary in place of the text.
-            paint_gutter(cur, rect, srow, line, 0, p);
-            let mut c = tx;
-            for gph in crate::folds::summary(fold, &String::from_utf8_lossy(text)).graphemes(true) {
-                if c >= x1 {
-                    break;
-                }
-                c = cur.put(srow, c, gph, DIM, false);
-            }
-            // 'fillchars' `fold` fills the rest of the row.
-            let mut fb = [0u8; 4];
-            let fill: &str = win.fill.fold.encode_utf8(&mut fb);
-            while c < x1 {
-                c = cur.put(srow, c, fill, DIM, false);
-            }
-            paint_line_overlays(
-                cur,
-                rect,
-                p,
-                &LineRows {
-                    line,
-                    srow,
-                    shown: 1,
-                    skip: 0,
-                    rows: 1,
-                    fold: true,
-                },
-            );
-            row += 1;
-        } else {
-            // F-031 conceal: hidden on every line but the caret's, which is revealed so its markup stays
-            // editable.
-            let conceal: Vec<(usize, usize, Option<&str>)> = if line == p.caret_line {
-                Vec::new()
-            } else {
-                p.conceal
-                    .iter()
-                    .filter(|&&(s, e, _)| s >= ls && s < ls + text.len().max(1) && e > s)
-                    .map(|&(s, e, v)| (s - ls, (e - ls).min(text.len()), v))
-                    .collect()
-            };
-            // The rows above the window (`skip`) or the columns left of it are counted, not laid out.
-            let min_vcol = if win.wrap {
-                skip.saturating_mul(tw.max(1))
-            } else {
-                leftcol
-            };
-            let lay = crate::ui::line_layout::layout_from(
-                text,
-                &lay_opts,
-                &conceal,
-                min_vcol,
-                max_vcol,
-                usize::MAX,
-            );
-            let rows = lay.rows.saturating_sub(skip).max(1);
-            let avail = usize::from(rect.h - row);
-            // The first line always paints; a later one that does not fit shows as 'display' says.
-            let partial = rows > avail && !first;
-            if partial && win.lastline == LastLine::AtRows {
-                for r in 0..avail {
-                    cur.put(srow + r as u16, tx, &lastline, DIM, false);
-                }
-                cut = true;
-                break;
-            }
-            let shown = rows.min(avail);
-            for r in 0..shown {
-                paint_gutter(cur, rect, srow + r as u16, line, r + skip, p);
-            }
-            let truncate_row = (partial && win.lastline == LastLine::Truncate).then_some(shown - 1);
-            for c in &lay.cells {
-                let (r, col) = if win.wrap {
-                    lay.place(c.vcol)
-                } else {
-                    (0, c.vcol)
-                };
-                if r < skip || r - skip >= shown || Some(r - skip) == truncate_row {
-                    continue;
-                }
-                let srow = srow + (r - skip) as u16;
-                // Without 'wrap' the window shows the columns from `leftcol`: a wide glyph cut at the left
-                // edge shows `<`, one cut at the right edge `>`.
-                let (col, text, width, kind) = if win.wrap {
-                    (col, c.text.clone(), c.width, c.kind)
-                } else if col + c.width <= leftcol || col >= leftcol + tw {
-                    continue;
-                } else if col < leftcol {
-                    (0, CellText::Char('<'), 1, CellKind::NonText)
-                } else if col + c.width > leftcol + tw {
-                    (col - leftcol, CellText::Char('>'), 1, CellKind::NonText)
-                } else {
-                    (col - leftcol, c.text.clone(), c.width, c.kind)
-                };
-                if col >= tw {
-                    continue;
-                }
-                let x = tx + col as u16;
-                let byte = c.byte.map(|b| ls + b);
-                let style = cell_style(p, byte, kind);
-                let mut buf = [0u8; 4];
-                let g: &str = match &text {
-                    CellText::Str(s) => s,
-                    CellText::Char(ch) => ch.encode_utf8(&mut buf),
-                    CellText::Blank => " ",
-                };
-                if col + width > tw {
-                    // A wide glyph with no room for its second half (a window narrower than it).
-                    cur.put_styled(srow, x, " ", &style);
-                } else {
-                    cur.put_styled(srow, x, g, &style);
-                }
-            }
-            if !win.wrap {
-                if let Some(lc) = win.list.as_ref() {
-                    // 'listchars' `extends` / `precedes`: the line goes on past the right / left edge.
-                    let past_right = lay.cells.iter().any(|c| c.vcol >= leftcol + tw);
-                    if let (Some(ch), true) = (lc.extends, past_right) {
-                        let mut buf = [0u8; 4];
-                        cur.put(
-                            srow,
-                            tx + (tw - 1) as u16,
-                            ch.encode_utf8(&mut buf),
-                            DIM,
-                            false,
-                        );
-                    }
-                    if let (Some(ch), true) = (lc.precedes, leftcol > 0 && lay.total > leftcol) {
-                        let mut buf = [0u8; 4];
-                        cur.put(srow, tx, ch.encode_utf8(&mut buf), DIM, false);
-                    }
-                }
-            }
-            paint_line_overlays(
-                cur,
-                rect,
-                p,
-                &LineRows {
-                    line,
-                    srow,
-                    shown,
-                    skip,
-                    rows: lay.rows,
-                    fold: false,
-                },
-            );
-            if partial {
-                let last = srow + (shown - 1) as u16;
-                match win.lastline {
-                    LastLine::Lastline => {
-                        for k in 0..3.min(tw) {
-                            cur.put(last, x1 - 1 - k as u16, &lastline, DIM, false);
-                        }
-                    }
-                    _ => {
-                        for k in 0..3.min(tw) {
-                            cur.put(last, tx + k as u16, &lastline, DIM, false);
-                        }
-                    }
-                }
-                cut = true;
-                break;
-            }
-            row += shown as u16;
+        let ln = LineAt {
+            line: at.line,
+            srow: rect.y + at.row,
+            ls: p.text.start(at.line),
+            skip,
+            max_vcol,
+            text: p.text.line_upto(at.line, PaneText::bytes_for(max_vcol)),
+        };
+        if let Some(fold) = crate::folds::closed_starting_at(p.folds, at.line) {
+            paint_fold_row(cur, rect, p, &g, fold, &ln);
+            at.row += 1;
+        } else if let Step::Stop = paint_text_line(cur, rect, p, &g, &mut at, &ln) {
+            break;
         }
-        first = false;
-        // A virtual block (an image placeholder) below the line pushes the lines after it down.
-        if let Some(vb) = p.virt.iter().find(|v| v.after_line == line) {
-            if row < rect.h {
-                paint_block(cur, row, vb);
-                collect_image(
-                    out_images,
-                    rect,
-                    row,
-                    vb,
-                    vb.path
-                        .as_deref()
-                        .and_then(|q| p.image_dims.get(q))
-                        .copied(),
-                );
-            }
-            row = row.saturating_add(vb.height);
-        }
-        line += 1;
+        at.first = false;
+        paint_virt_below(cur, rect, p, &mut at, out_images);
+        at.line += 1;
     }
     // The rows after the buffer's last line show 'fillchars' `eob` in their first column.
-    if !cut && line >= count {
+    if !at.cut && at.line >= count {
         let mut eb = [0u8; 4];
         let eob: &str = win.fill.eob.encode_utf8(&mut eb);
-        for r in row..rect.h {
+        for r in at.row..rect.h {
             cur.put(rect.y + r, rect.x, eob, DIM, false);
         }
     }
@@ -373,6 +240,262 @@ pub(crate) fn paint_window(
             cur.put(rect.y, rect.x + k, "<", DIM, false);
         }
     }
+}
+
+/// A closed fold's start row: its one-line summary in place of the text, then 'fillchars' `fold`.
+fn paint_fold_row(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    p: &PaneInput<'_>,
+    g: &WinGeom<'_>,
+    fold: &crate::folds::Fold,
+    ln: &LineAt<'_>,
+) {
+    use unicode_segmentation::UnicodeSegmentation;
+    let (srow, x1) = (ln.srow, g.x1);
+    paint_gutter(cur, rect, srow, ln.line, 0, p);
+    let mut c = g.tx;
+    for gph in crate::folds::summary(fold, &String::from_utf8_lossy(ln.text)).graphemes(true) {
+        if c >= x1 {
+            break;
+        }
+        c = cur.put(srow, c, gph, DIM, false);
+    }
+    // 'fillchars' `fold` fills the rest of the row.
+    let mut fb = [0u8; 4];
+    let fill: &str = p.win.fill.fold.encode_utf8(&mut fb);
+    while c < x1 {
+        c = cur.put(srow, c, fill, DIM, false);
+    }
+    paint_line_overlays(
+        cur,
+        rect,
+        p,
+        &LineRows {
+            line: ln.line,
+            srow,
+            shown: 1,
+            skip: 0,
+            rows: 1,
+            fold: true,
+        },
+    );
+}
+
+/// A text line: laid out (concealed but on the caret's line), its gutter, cells, `'listchars'` edges and
+/// overlays, then `at.row` moved past its rows. A last line that does not fit shows as `'display'` says,
+/// sets `at.cut` and stops the loop.
+fn paint_text_line(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    p: &PaneInput<'_>,
+    g: &WinGeom<'_>,
+    at: &mut RowCursor,
+    ln: &LineAt<'_>,
+) -> Step {
+    use crate::ui::window_view::LastLine;
+    let win = p.win;
+    let (srow, ls, skip, text, tw) = (ln.srow, ln.ls, ln.skip, ln.text, g.tw);
+    // F-031 conceal: hidden on every line but the caret's, which is revealed so its markup stays
+    // editable.
+    let conceal: Vec<(usize, usize, Option<&str>)> = if ln.line == p.caret_line {
+        Vec::new()
+    } else {
+        p.conceal
+            .iter()
+            .filter(|&&(s, e, _)| s >= ls && s < ls + text.len().max(1) && e > s)
+            .map(|&(s, e, v)| (s - ls, (e - ls).min(text.len()), v))
+            .collect()
+    };
+    // The rows above the window (`skip`) or the columns left of it are counted, not laid out.
+    let min_vcol = if win.wrap {
+        skip.saturating_mul(tw.max(1))
+    } else {
+        g.leftcol
+    };
+    let lay = crate::ui::line_layout::layout_from(
+        text,
+        &g.lay_opts,
+        &conceal,
+        min_vcol,
+        ln.max_vcol,
+        usize::MAX,
+    );
+    let rows = lay.rows.saturating_sub(skip).max(1);
+    let avail = usize::from(rect.h - at.row);
+    // The first line always paints; a later one that does not fit shows as 'display' says.
+    let partial = rows > avail && !at.first;
+    if partial && win.lastline == LastLine::AtRows {
+        for r in 0..avail {
+            cur.put(srow + r as u16, g.tx, &g.lastline, DIM, false);
+        }
+        at.cut = true;
+        return Step::Stop;
+    }
+    let shown = rows.min(avail);
+    for r in 0..shown {
+        paint_gutter(cur, rect, srow + r as u16, ln.line, r + skip, p);
+    }
+    let truncate_row = (partial && win.lastline == LastLine::Truncate).then_some(shown - 1);
+    paint_cells(cur, p, g, &lay, ln, shown, truncate_row);
+    if !win.wrap {
+        paint_list_edges(cur, p, g, &lay, srow);
+    }
+    paint_line_overlays(
+        cur,
+        rect,
+        p,
+        &LineRows {
+            line: ln.line,
+            srow,
+            shown,
+            skip,
+            rows: lay.rows,
+            fold: false,
+        },
+    );
+    if partial {
+        let last = srow + (shown - 1) as u16;
+        match win.lastline {
+            LastLine::Lastline => {
+                for k in 0..3.min(tw) {
+                    cur.put(last, g.x1 - 1 - k as u16, &g.lastline, DIM, false);
+                }
+            }
+            _ => {
+                for k in 0..3.min(tw) {
+                    cur.put(last, g.tx + k as u16, &g.lastline, DIM, false);
+                }
+            }
+        }
+        at.cut = true;
+        return Step::Stop;
+    }
+    at.row += shown as u16;
+    Step::Next
+}
+
+/// The laid-out cells of a text line on its `shown` rows from its row `skip` (none on `truncate_row`).
+fn paint_cells(
+    cur: &mut screen::Screen,
+    p: &PaneInput<'_>,
+    g: &WinGeom<'_>,
+    lay: &crate::ui::line_layout::LineLayout<'_>,
+    ln: &LineAt<'_>,
+    shown: usize,
+    truncate_row: Option<usize>,
+) {
+    use crate::ui::line_layout::{CellKind, CellText};
+    let win = p.win;
+    let (skip, leftcol, tw) = (ln.skip, g.leftcol, g.tw);
+    for c in &lay.cells {
+        let (r, col) = if win.wrap {
+            lay.place(c.vcol)
+        } else {
+            (0, c.vcol)
+        };
+        if r < skip || r - skip >= shown || Some(r - skip) == truncate_row {
+            continue;
+        }
+        let srow = ln.srow + (r - skip) as u16;
+        // Without 'wrap' the window shows the columns from `leftcol`: a wide glyph cut at the left
+        // edge shows `<`, one cut at the right edge `>`.
+        let (col, text, width, kind) = if win.wrap {
+            (col, c.text.clone(), c.width, c.kind)
+        } else if col + c.width <= leftcol || col >= leftcol + tw {
+            continue;
+        } else if col < leftcol {
+            (0, CellText::Char('<'), 1, CellKind::NonText)
+        } else if col + c.width > leftcol + tw {
+            (col - leftcol, CellText::Char('>'), 1, CellKind::NonText)
+        } else {
+            (col - leftcol, c.text.clone(), c.width, c.kind)
+        };
+        if col >= tw {
+            continue;
+        }
+        let x = g.tx + col as u16;
+        let byte = c.byte.map(|b| ln.ls + b);
+        let style = cell_style(p, byte, kind);
+        let mut buf = [0u8; 4];
+        let glyph: &str = match &text {
+            CellText::Str(s) => s,
+            CellText::Char(ch) => ch.encode_utf8(&mut buf),
+            CellText::Blank => " ",
+        };
+        if col + width > tw {
+            // A wide glyph with no room for its second half (a window narrower than it).
+            cur.put_styled(srow, x, " ", &style);
+        } else {
+            cur.put_styled(srow, x, glyph, &style);
+        }
+    }
+}
+
+/// 'listchars' `extends` / `precedes` on a line without 'wrap': it goes on past the right / left edge.
+fn paint_list_edges(
+    cur: &mut screen::Screen,
+    p: &PaneInput<'_>,
+    g: &WinGeom<'_>,
+    lay: &crate::ui::line_layout::LineLayout<'_>,
+    srow: u16,
+) {
+    let Some(lc) = p.win.list.as_ref() else {
+        return;
+    };
+    let (tx, tw, leftcol) = (g.tx, g.tw, g.leftcol);
+    let past_right = lay.cells.iter().any(|c| c.vcol >= leftcol + tw);
+    if let (Some(ch), true) = (lc.extends, past_right) {
+        let mut buf = [0u8; 4];
+        cur.put(
+            srow,
+            tx + (tw - 1) as u16,
+            ch.encode_utf8(&mut buf),
+            DIM,
+            false,
+        );
+    }
+    if let (Some(ch), true) = (lc.precedes, leftcol > 0 && lay.total > leftcol) {
+        let mut buf = [0u8; 4];
+        cur.put(srow, tx, ch.encode_utf8(&mut buf), DIM, false);
+    }
+}
+
+/// A virtual block (an image placeholder) below line `at.line` pushes the lines after it down: painted
+/// (and its image collected) while it starts inside the window, `at.row` moved past it either way.
+fn paint_virt_below(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    p: &PaneInput<'_>,
+    at: &mut RowCursor,
+    out_images: &mut Vec<(String, graphics::Placement)>,
+) {
+    let Some(vb) = p.virt.iter().find(|v| v.after_line == at.line) else {
+        return;
+    };
+    let row = at.row;
+    if row < rect.h {
+        match (p.graphics_on, &vb.path) {
+            // A graphics terminal shows the real image ONLY when its pixel dimensions were read; a missing
+            // or unreadable path paints a text "not found" band instead of a blank placeholder grid.
+            (true, Some(path)) => match p.image_dims.get(path).copied() {
+                Some(dims) => paint_image_cells(cur, rect, row, vb.height, path, Some(dims)),
+                None => paint_missing_image(cur, rect, row, vb.height, path),
+            },
+            _ => paint_virt_block(cur, rect, row, vb),
+        }
+        collect_image(
+            out_images,
+            rect,
+            row,
+            vb,
+            vb.path
+                .as_deref()
+                .and_then(|q| p.image_dims.get(q))
+                .copied(),
+        );
+    }
+    at.row = row.saturating_add(vb.height);
 }
 
 /// The style of a painted cell: the byte's face plus the frame overlays (selection and match reverse
