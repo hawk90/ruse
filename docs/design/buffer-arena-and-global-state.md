@@ -199,7 +199,7 @@ enum BufferKind  { Ordinary, Scratch, NoFile, Interactive }
 
 `close_focused`/`remove_buffer` return (or emit an `Effect` carrying) the set of `DocumentId`s actually
 retired, so the frontend prunes its parallel maps (`Files`, highlighters, folds, terminals —
-`dispatch.rs:65`, `session.rs`) in lockstep. A debug-build assert flags a `Files` key with no live buffer.
+`app/dispatch/files.rs`, `session.rs`) in lockstep. A debug-build assert flags a `Files` key with no live buffer.
 
 ### The unblocked features (consumer sketches)
 
