@@ -730,14 +730,6 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         | Command::SetIndents { .. }
         | Command::SetIndentCols { .. }
         | Command::InsertReindent => operator::plan(st, b, cur, hint, &memo, cmd),
-        _ => plan_cmd_rest(st, b, cur, hint, cmd),
-    }
-}
-
-/// The families `plan_cmd` does not route itself: put, Visual/Select, search, the frontend-resolved
-/// commands, undo and the Emacs profile. None of them reads the motion memo.
-fn plan_cmd_rest(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
-    match cmd {
         Command::Paste { .. }
         | Command::PasteBlockInner { .. }
         | Command::PasteIndent { .. }
@@ -799,7 +791,6 @@ fn plan_cmd_rest(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &
         | Command::EmacsCaseRegion { .. }
         | Command::EmacsDeleteIndentation
         | Command::EmacsBufferEdge { .. } => plan_emacs(st, b, cur, hint, cmd),
-        _ => unreachable!("plan_cmd routes its own families before plan_cmd_rest"),
     }
 }
 
