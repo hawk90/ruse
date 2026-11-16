@@ -654,8 +654,11 @@ mod journal_tests {
             Some(&b"pub fn main() {}\n"[..]),
             "the typing, synced before the batch"
         );
-        assert_eq!(s.ed.ws.focused().doc.bytes(), b"// f
+        assert_eq!(
+            s.ed.ws.focused().doc.bytes(),
+            b"// f
 pub fn main() {}
-");
+"
+        );
     }
 }
