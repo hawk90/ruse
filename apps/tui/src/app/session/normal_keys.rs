@@ -24,9 +24,7 @@ pub(super) fn focused_folds<'a>(
     folds: &'a HashMap<DocumentId, Vec<crate::folds::Fold>>,
     ws: &Workspace,
 ) -> &'a [crate::folds::Fold] {
-    folds
-        .get(&ws.focused_buffer())
-        .map_or(&[][..], Vec::as_slice)
+    crate::folds::for_buffer(folds, ws.focused_buffer())
 }
 
 impl Session {

@@ -31,9 +31,7 @@ impl Session {
                     idx,
                 };
                 let folds = if i == self.ws.focus() {
-                    self.folds
-                        .get(&self.ws.focused_buffer())
-                        .map_or(&[][..], Vec::as_slice)
+                    crate::folds::for_buffer(&self.folds, self.ws.focused_buffer())
                 } else {
                     &[]
                 };

@@ -329,10 +329,7 @@ impl Headless {
     /// The focused buffer's folds.
     #[must_use]
     pub fn folds(&self) -> &[crate::folds::Fold] {
-        self.s
-            .folds
-            .get(&self.s.ws.focused_buffer())
-            .map_or(&[][..], Vec::as_slice)
+        crate::folds::for_buffer(&self.s.folds, self.s.ws.focused_buffer())
     }
 
     /// The whole-state invariant walker (#906): the workspace's, and the session's folds — every fold set
