@@ -43,6 +43,7 @@ fn active_region(st: &EditorState, cur: usize) -> Option<(usize, usize)> {
 /// Plan the Emacs-profile commands split out of [`plan`]: the depth-1 region ops (D-027 —
 /// SetMark / KillRegion / CopyRegion / ExchangePointMark) and the distinct Emacs commands (D-051).
 /// The core stays profile-agnostic; the profile decides which of these its keymap resolves to.
+/// Routes each command family to its own planner.
 pub(super) fn plan_emacs(
     st: &EditorState,
     b: &[u8],
@@ -50,6 +51,32 @@ pub(super) fn plan_emacs(
     hint: GroupHint,
     cmd: &Command,
 ) -> Plan {
+    match cmd {
+        Command::SetMark
+        | Command::ExchangePointMark
+        | Command::CopyRegion
+        | Command::EmacsMarkWord
+        | Command::EmacsBufferEdge { .. } => plan_mark(st, b, cur, cmd),
+        Command::KillRegion
+        | Command::EmacsKillLine
+        | Command::EmacsKillWord { .. }
+        | Command::EmacsBackwardKillWord { .. }
+        | Command::EmacsKillWholeLine => plan_kill(st, b, cur, hint, cmd),
+        Command::EmacsYank { count } => emacs_yank(st, b, cur, *count),
+        Command::EmacsTransposeChars
+        | Command::EmacsTransposeWords
+        | Command::EmacsCaseWord { .. }
+        | Command::EmacsCaseRegion { .. } => plan_reshape(st, b, cur, hint, cmd),
+        Command::EmacsHorizontalSpace { .. }
+        | Command::EmacsOpenLine
+        | Command::EmacsDeleteIndentation => plan_whitespace(st, b, cur, hint, cmd),
+        _ => unreachable!("plan_emacs handles only Emacs-profile commands"),
+    }
+}
+
+/// The mark commands and the non-destructive region op: each moves point and/or writes the mark (or,
+/// for `M-w`, the register) without editing the buffer.
+fn plan_mark(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Plan {
     match cmd {
         // Emacs region (D-027 depth-1). `C-SPC` drops the mark at point.
         Command::SetMark => nop_mark(cur, st.view.mode, cur),
@@ -70,50 +97,46 @@ pub(super) fn plan_emacs(
             }
             None => nop(cur, st.view.mode),
         },
+        // `M-@` (Emacs mark-word, D-051): set the mark at the end of the next word (`forward-word`) without
+        // moving point, activating the region point→word-end. No edit, no kill-ring write.
+        Command::EmacsMarkWord => nop_mark(
+            cur,
+            st.view.mode,
+            motion::target(b, cur, Motion::EmacsWordFwd, 1),
+        ),
+        // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
+        // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
+        Command::EmacsBufferEdge { start } => {
+            nop_mark(if *start { 0 } else { b.len() }, st.view.mode, cur)
+        }
+        _ => unreachable!("plan_mark plans only the Emacs mark commands"),
+    }
+}
+
+/// The Emacs kills: each deletes a span into the register, accumulating onto the current kill-ring
+/// entry when it follows another kill.
+fn plan_kill(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         // `C-w` kills the region into the register (the kill ring) and leaves point and mark together at its
         // start — Emacs keeps the mark at the region's lower bound `s` (where point also lands after the
         // deletion collapses the span), it does NOT clear it. An empty region or no mark is inert.
         Command::KillRegion => match active_region(st, cur) {
             Some((s, e)) => {
                 let reg = captured(b, s, e, false);
+                // A kill: accumulates onto the current unnamed entry when it follows another kill.
                 Plan {
-                    action: Action::Txn {
-                        edits: one(Edit::delete(BytePos(s), e - s)),
-                        hint,
-                    },
-                    cursor: s,
-                    mode: st.view.mode,
-                    is_edit: true,
-                    effects: Vec::new(),
-                    // A kill: accumulates onto the current unnamed entry when it follows another kill.
-                    set_register: Some(RegWrite::KillAppend(reg)),
-                    set_anchor: None,
                     set_mark: Some(MarkWrite::Set(s)),
+                    ..edit_kill(
+                        one(Edit::delete(BytePos(s), e - s)),
+                        s,
+                        st.view.mode,
+                        hint,
+                        reg,
+                    )
                 }
             }
             None => nop(cur, st.view.mode),
         },
-        // `C-y` (Emacs yank, D-051): the same gravity-aware charwise paste as `Paste{after:false}`, plus it
-        // SETS the mark at the insertion start (point before the paste). An empty register is inert (no mark
-        // write either — `paste` returns a Nop).
-        Command::EmacsYank { count } => {
-            let mut p = paste(
-                b,
-                cur,
-                st.view.mode,
-                st.view.registers.get(st.view.pending_register),
-                false,
-                *count,
-                st.view.caret,
-                false, // Emacs yank is not `gp` — normal cursor placement
-                true,
-                st.view.indent.tabs(),
-            );
-            if !matches!(p.action, Action::Nop) {
-                p.set_mark = Some(MarkWrite::Set(cur));
-            }
-            p
-        }
         Command::EmacsKillLine => kill_line(st, b, cur, hint),
         // `M-d` / `kill-word` (Emacs kill-word, D-051): kill the `EmacsWordFwd` span (the word only, not Vim
         // `dw`'s trailing space) into the register, accumulating like every Emacs kill. Distinct from Vim
@@ -154,6 +177,54 @@ pub(super) fn plan_emacs(
                 }
             }
         }
+        // `C-S-DEL` (Emacs kill-whole-line, D-051): kill the whole line INCLUDING its trailing newline,
+        // regardless of point column, into the register (accumulating), leaving point at the line start.
+        Command::EmacsKillWholeLine => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, cur);
+            let e = if le < b.len() { le + 1 } else { le }; // include the terminating newline when present
+            if e > ls {
+                let reg = captured(b, ls, e, false);
+                edit_kill(
+                    one(Edit::delete(BytePos(ls), e - ls)),
+                    ls,
+                    st.view.mode,
+                    hint,
+                    reg,
+                )
+            } else {
+                nop(cur, st.view.mode)
+            }
+        }
+        _ => unreachable!("plan_kill plans only the Emacs kill commands"),
+    }
+}
+
+/// `C-y` (Emacs yank, D-051): the same gravity-aware charwise paste as `Paste{after:false}`, plus it
+/// SETS the mark at the insertion start (point before the paste). An empty register is inert (no mark
+/// write either — `paste` returns a Nop).
+fn emacs_yank(st: &EditorState, b: &[u8], cur: usize, count: u32) -> Plan {
+    let mut p = paste(
+        b,
+        cur,
+        st.view.mode,
+        st.view.registers.get(st.view.pending_register),
+        false,
+        count,
+        st.view.caret,
+        false, // Emacs yank is not `gp` — normal cursor placement
+        true,
+        st.view.indent.tabs(),
+    );
+    if !matches!(p.action, Action::Nop) {
+        p.set_mark = Some(MarkWrite::Set(cur));
+    }
+    p
+}
+
+/// The text reshapers: transposes and recases. They rewrite text in place with no kill-ring write.
+fn plan_reshape(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         Command::EmacsTransposeChars => transpose_chars(st, b, cur, hint),
         Command::EmacsTransposeWords => transpose_words(st, b, cur, hint),
         // `M-u`/`M-l`/`M-c` (Emacs upcase-/downcase-/capitalize-word, D-051): recase the `forward-word` span
@@ -177,6 +248,15 @@ pub(super) fn plan_emacs(
                 None => nop(cur, st.view.mode),
             }
         }
+        Command::EmacsCaseRegion { case } => case_region(st, b, cur, hint, case),
+        _ => unreachable!("plan_reshape plans only the Emacs transpose and case commands"),
+    }
+}
+
+/// The whitespace and line-shape commands: they insert or delete spaces and newlines around point with
+/// no kill-ring write.
+fn plan_whitespace(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         // `M-SPC` (just-one-space) / `M-\` (delete-horizontal-space, D-051): collapse the run of spaces/tabs
         // around point (never crossing a newline). `keep_one` leaves exactly one space with point after it
         // (inserting one when there was none); otherwise it deletes them all. No kill-ring write.
@@ -208,40 +288,8 @@ pub(super) fn plan_emacs(
             st.view.mode,
             hint,
         ),
-        // `M-@` (Emacs mark-word, D-051): set the mark at the end of the next word (`forward-word`) without
-        // moving point, activating the region point→word-end. No edit, no kill-ring write.
-        Command::EmacsMarkWord => nop_mark(
-            cur,
-            st.view.mode,
-            motion::target(b, cur, Motion::EmacsWordFwd, 1),
-        ),
-        // `C-S-DEL` (Emacs kill-whole-line, D-051): kill the whole line INCLUDING its trailing newline,
-        // regardless of point column, into the register (accumulating), leaving point at the line start.
-        Command::EmacsKillWholeLine => {
-            let ls = line_start(b, cur);
-            let le = line_end(b, cur);
-            let e = if le < b.len() { le + 1 } else { le }; // include the terminating newline when present
-            if e > ls {
-                let reg = captured(b, ls, e, false);
-                edit_kill(
-                    one(Edit::delete(BytePos(ls), e - ls)),
-                    ls,
-                    st.view.mode,
-                    hint,
-                    reg,
-                )
-            } else {
-                nop(cur, st.view.mode)
-            }
-        }
-        Command::EmacsCaseRegion { case } => case_region(st, b, cur, hint, case),
         Command::EmacsDeleteIndentation => delete_indentation(st, b, cur, hint),
-        // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
-        // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
-        Command::EmacsBufferEdge { start } => {
-            nop_mark(if *start { 0 } else { b.len() }, st.view.mode, cur)
-        }
-        _ => unreachable!("plan_emacs handles only Emacs-profile commands"),
+        _ => unreachable!("plan_whitespace plans only the Emacs whitespace and line commands"),
     }
 }
 
