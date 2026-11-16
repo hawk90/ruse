@@ -560,7 +560,7 @@ items:
       - Superseded requests are cancelled
     evidence:
       - apps/tui/src/app/lsp_coordinator.rs::ingest_completion
-      - apps/tui/src/highlight.rs::CachedHighlight
+      - apps/tui/src/highlight/cache.rs::CachedHighlight
     legacy_ids:
       - DR-SCHED-3
     source:
@@ -605,7 +605,7 @@ items:
     acceptance:
       - Each cache documents its source and invalidation trigger
     evidence:
-      - apps/tui/src/highlight.rs::CachedHighlight
+      - apps/tui/src/highlight/cache.rs::CachedHighlight
       - apps/tui/src/line_index.rs
     legacy_ids:
       - DR-CACHE-1
@@ -622,7 +622,7 @@ items:
       - Keys include revision
       - Keys include profile, capability and schema version
     evidence:
-      - apps/tui/src/highlight.rs::cache_recomputes_only_on_revision_change
+      - apps/tui/src/highlight/tests.rs::cache_recomputes_only_on_revision_change
     legacy_ids:
       - DR-CACHE-2
     source:
@@ -651,7 +651,7 @@ items:
     acceptance:
       - Cached and uncached computation give the same result, under test
     evidence:
-      - apps/tui/src/highlight.rs::cached_search_matches_and_bounds_to_viewport
+      - apps/tui/src/highlight/search.rs::cached_search_matches_and_bounds_to_viewport
     legacy_ids:
       - DR-CACHE-4
     source:

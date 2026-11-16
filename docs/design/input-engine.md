@@ -362,7 +362,7 @@ walk) and `<C-p>`/`<C-n>` (RAW ring, unfiltered — the nvim-verified distinctio
 restores the typed draft. The ring + recall walk live in a pure, unit-tested `CmdHistory`/`HistWalk`
 (`apps/tui/src/input/history.rs`). `q:`/`q/`/`q?` open a read-only history window (`input/cmdwin.rs`; editable
 in [buffer-arena-and-global-state.md](buffer-arena-and-global-state.md) slice 4, #947), and incsearch highlights
-through `apps/tui/src/highlight.rs` (it ignores `ignorecase`/`smartcase`, #824).
+through `apps/tui/src/highlight/search.rs` (it ignores `ignorecase`/`smartcase`, #824).
 
 **Shipped:** command-line **completion** (`:help cmdline-completion`, #613) at nvim v0.12.6's defaults
 (`wildmode=full`, `wildoptions=pum`). `apps/tui/src/input/complete.rs` reads the `:` line before the caret into

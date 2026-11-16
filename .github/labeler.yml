@@ -59,6 +59,7 @@
           - 'apps/tui/src/indent/**'
           - 'apps/tui/src/indent.rs'
           - 'apps/tui/src/highlight.rs'
+          - 'apps/tui/src/highlight/**'
 'area/infra':
   - changed-files: [{ any-glob-to-any-file: ['.github/**', 'tools/**', 'lefthook.yml', 'Cargo.toml', 'Cargo.lock'] }]
 'area/docs':

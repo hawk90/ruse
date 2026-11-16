@@ -52,7 +52,7 @@ changed #2, #3 and #4 follow below.
 | # | Hot spot | Where | Cost |
 | --- | --- | --- | --- |
 | 1 | `EditList::apply_to` builds a fresh `Vec`, then the anchor index is rebuilt | `crates/core/src/{edit,document}.rs` | O(n) per edit |
-| 2 | Tree-sitter parse: incremental against the kept `Tree`, query bounded to the viewport; the `InputEdit` comes from an O(n) byte diff | `apps/tui/src/highlight.rs` | O(n) diff + reparse of the edit + O(viewport) query |
+| 2 | Tree-sitter parse: incremental against the kept `Tree`, query bounded to the viewport; the `InputEdit` comes from an O(n) byte diff | `apps/tui/src/highlight/cache.rs` | O(n) diff + reparse of the edit + O(viewport) query |
 | 3 | Per-byte color vec, bounded to the viewport | `apps/tui/src/ui/render.rs` | O(viewport) for the colour vec; paint still walks every grapheme above `top` (#840) |
 | 4 | Line-start index, cached per revision | `apps/tui/src/line_index.rs` | O(n) per edit, O(log n) lookup per frame |
 
