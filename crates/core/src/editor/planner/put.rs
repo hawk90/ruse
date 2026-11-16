@@ -122,9 +122,61 @@ pub(super) fn plan_paste_selection(
     let ts = st.view.indent.tabs();
     let reg = st.view.registers.get(st.view.pending_register).clone();
     // 1. The delete: its edits, the captured text, and where the cursor sits afterwards.
-    let (dels, deleted, mut c2, block_lines) = match kind {
+    let del = match delete_selection(b, kind, anchor, cur, ts, st.view.curswant == MAXCOL) {
+        Ok(del) => del,
+        Err(s) => return nop(s, Mode::Normal),
+    };
+    let b2 = EditList::new(del.edits)
+        .expect("selection deletes are disjoint (one per line)")
+        .apply_to(b);
+    // 2. Where the put goes on the post-delete text.
+    let (c2, forward) = settle_cursor(&b2, kind, del.cursor);
+    // 3. The put, on the post-delete text.
+    let put = SelectionPut {
+        b2: &b2,
+        c2,
+        forward,
+        count,
+        caret: st.view.caret,
+        ts,
+    };
+    let (mut b3, cursor) = put.place(kind, &reg, swap, del.block_lines);
+    // Putting lines into a buffer the delete emptied leaves no extra empty line behind (Vim deletes it).
+    if kind == SelectKind::Linewise
+        && b2.is_empty()
+        && b.last() != Some(&b'\n')
+        && b3.ends_with(b"\n")
+    {
+        b3.pop();
+    }
+    // 4. One edit from the old text to the new. The replaced text goes to the unnamed register, not the one
+    //    being put (nvim deletes with no register named, #707).
+    let set_register = swap.then_some(RegWrite::Replaced(del.deleted));
+    replacement_plan(b, &b3, cursor, set_register)
+}
+
+/// The delete half of a Visual put: the edits that remove the selection, the text they capture, the cursor
+/// right after the delete (before [`settle_cursor`]), and a block selection's first and last line.
+struct SelectionDelete {
+    edits: Vec<Edit>,
+    deleted: Register,
+    cursor: usize,
+    block_lines: Option<(usize, usize)>,
+}
+
+/// Plans the delete of the `kind` selection between `anchor` and `cur` (`to_eol`: a block selection runs
+/// to each line's end, `$`). An empty charwise selection is `Err` with the cursor its no-op plan rests on.
+fn delete_selection(
+    b: &[u8],
+    kind: SelectKind,
+    anchor: usize,
+    cur: usize,
+    ts: Tabs,
+    to_eol: bool,
+) -> Result<SelectionDelete, usize> {
+    Ok(match kind {
         SelectKind::Blockwise => {
-            let block = block_geom(b, anchor, cur, ts, st.view.curswant == MAXCOL);
+            let block = block_geom(b, anchor, cur, ts, to_eol);
             let dels: Vec<Edit> = block
                 .rows
                 .iter()
@@ -134,12 +186,12 @@ pub(super) fn plan_paste_selection(
             let reg = Register::blockwise_width(block.yank_text(b), block.width());
             let top = block.rows[0];
             let first = crate::pos::raw::line_of(b, top.ls);
-            (
-                dels,
-                reg,
-                top.ds + top.out_l,
-                Some((first, first + block.rows.len() - 1)),
-            )
+            SelectionDelete {
+                edits: dels,
+                deleted: reg,
+                cursor: top.ds + top.out_l,
+                block_lines: Some((first, first + block.rows.len() - 1)),
+            }
         }
         SelectKind::Linewise => {
             let (s, e) = selection_range(b, anchor, cur, true);
@@ -149,139 +201,170 @@ pub(super) fn plan_paste_selection(
             } else {
                 s
             };
-            (
-                vec![Edit::delete(BytePos(s0), e - s0)],
-                captured(b, s, e, true),
-                s0,
-                None,
-            )
+            SelectionDelete {
+                edits: vec![Edit::delete(BytePos(s0), e - s0)],
+                deleted: captured(b, s, e, true),
+                cursor: s0,
+                block_lines: None,
+            }
         }
         SelectKind::Charwise => {
             let (s, e) = selection_range(b, anchor, cur, false);
             if s >= e {
-                return nop(s, Mode::Normal);
+                return Err(s);
             }
-            (
-                vec![Edit::delete(BytePos(s), e - s)],
-                captured(b, s, e, false),
-                s,
-                None,
-            )
+            SelectionDelete {
+                edits: vec![Edit::delete(BytePos(s), e - s)],
+                deleted: captured(b, s, e, false),
+                cursor: s,
+                block_lines: None,
+            }
         }
-    };
-    let b2 = EditList::new(dels)
-        .expect("selection deletes are disjoint (one per line)")
-        .apply_to(b);
-    // 2. Normal mode cannot rest past a line's last character: a delete that emptied the end of its line (or
-    //    took the last lines) leaves the cursor on the character (line) before, and the put goes after it.
+    })
+}
+
+/// Normal mode cannot rest past a line's last character: a delete that emptied the end of its line (or took
+/// the last lines) leaves the cursor on the character (line) before, and the put goes after it. Returns the
+/// settled cursor and whether the put goes forward.
+fn settle_cursor(b2: &[u8], kind: SelectKind, mut c2: usize) -> (usize, bool) {
     let mut forward = false;
     if kind == SelectKind::Linewise {
         if c2 >= b2.len() && !b2.is_empty() {
-            c2 = line_start(&b2, b2.len() - usize::from(b2.ends_with(b"\n")));
+            c2 = line_start(b2, b2.len() - usize::from(b2.ends_with(b"\n")));
             forward = true;
         } else {
-            c2 = line_start(&b2, c2);
+            c2 = line_start(b2, c2);
         }
-    } else if c2 > line_start(&b2, c2) && c2 >= line_end(&b2, c2) {
-        c2 = prev_boundary(&b2, c2);
+    } else if c2 > line_start(b2, c2) && c2 >= line_end(b2, c2) {
+        c2 = prev_boundary(b2, c2);
         forward = true;
     }
-    let caret = st.view.caret;
-    let put = |reg: &Register, at: usize, after: bool| {
-        paste(
-            &b2,
+    (c2, forward)
+}
+
+/// The put half of a Visual put, on the post-delete text `b2` with the settled cursor `c2`.
+struct SelectionPut<'a> {
+    b2: &'a [u8],
+    c2: usize,
+    forward: bool,
+    count: u32,
+    caret: CaretGravity,
+    ts: Tabs,
+}
+
+impl SelectionPut<'_> {
+    /// The text after the put and the cursor, shaped by the selection and register kinds.
+    fn place(
+        &self,
+        kind: SelectKind,
+        reg: &Register,
+        swap: bool,
+        block_lines: Option<(usize, usize)>,
+    ) -> (Vec<u8>, usize) {
+        let (b2, c2, forward) = (self.b2, self.c2, self.forward);
+        if reg.is_empty() {
+            return (b2.to_vec(), c2.min(b2.len()));
+        }
+        match (kind, reg.kind()) {
+            (SelectKind::Linewise, RegKind::Linewise) => self.put(reg, c2, forward),
+            (SelectKind::Linewise, _) => {
+                self.put(&Register::linewise(reg.text().to_vec()), c2, forward)
+            }
+            (SelectKind::Charwise, RegKind::Linewise) => self.lines_into_line(reg),
+            (SelectKind::Blockwise, RegKind::Linewise) if swap => {
+                let (_, last) = block_lines.expect("a block selection records its lines");
+                let at = crate::pos::raw::nth_line_start(b2, last).min(b2.len());
+                self.put(reg, at, true)
+            }
+            (SelectKind::Blockwise, RegKind::Charwise) if !reg.text().contains(&b'\n') => {
+                let (first, last) = block_lines.expect("a block selection records its lines");
+                self.text_on_block_rows(reg, first, last)
+            }
+            _ => self.put(reg, c2, forward),
+        }
+    }
+
+    /// An ordinary put of `reg` at `at`, applied to the post-delete text.
+    fn put(&self, reg: &Register, at: usize, after: bool) -> (Vec<u8>, usize) {
+        let p = paste(
+            self.b2,
             at,
             Mode::Normal,
             reg,
             after,
-            count.max(1),
-            caret,
+            self.count.max(1),
+            self.caret,
             false,
             true,
-            ts,
-        )
-    };
-    let applied = |p: Plan| -> (Vec<u8>, usize) {
+            self.ts,
+        );
         match p.action {
-            Action::Txn { edits, .. } => (edits.apply_to(&b2), p.cursor),
-            _ => (b2.clone(), p.cursor),
+            Action::Txn { edits, .. } => (edits.apply_to(self.b2), p.cursor),
+            _ => (self.b2.to_vec(), p.cursor),
         }
-    };
-    // 3. The put, on the post-delete text.
-    let (mut b3, cursor) = if reg.is_empty() {
-        (b2.clone(), c2.min(b2.len()))
-    } else {
-        match (kind, reg.kind()) {
-            (SelectKind::Linewise, RegKind::Linewise) => applied(put(&reg, c2, forward)),
-            (SelectKind::Linewise, _) => {
-                applied(put(&Register::linewise(reg.text().to_vec()), c2, forward))
-            }
-            (SelectKind::Charwise, RegKind::Linewise) => {
-                let sp = if forward { next_boundary(&b2, c2) } else { c2 };
-                let mut out = b2[..sp].to_vec();
-                out.push(b'\n');
-                // Bounded like every other put ([`MAX_PUT_BYTES`]), so a hostile count cannot exhaust
-                // memory.
-                let reps =
-                    (count.max(1) as usize).min((MAX_PUT_BYTES / reg.text().len().max(1)).max(1));
-                for _ in 0..reps {
-                    out.extend_from_slice(reg.text());
-                }
-                out.extend_from_slice(&b2[sp..]);
-                let fnb = reg
-                    .text()
-                    .iter()
-                    .take_while(|&&c| c == b' ' || c == b'\t')
-                    .count();
-                (out, sp + 1 + fnb)
-            }
-            (SelectKind::Blockwise, RegKind::Linewise) if swap => {
-                let (_, last) = block_lines.expect("a block selection records its lines");
-                let at = crate::pos::raw::nth_line_start(&b2, last).min(b2.len());
-                applied(put(&reg, at, true))
-            }
-            (SelectKind::Blockwise, RegKind::Charwise) if !reg.text().contains(&b'\n') => {
-                let (first, last) = block_lines.expect("a block selection records its lines");
-                let (v0, v1) = vcols_at(&b2, c2, ts);
-                let vcol = if forward { v1 + 1 } else { v0 };
-                let mut edits = Vec::new();
-                let mut cursor = c2;
-                for line in first..=last {
-                    let ls = crate::pos::raw::nth_line_start(&b2, line);
-                    if ls > b2.len() || line_cells(&b2, ls, ts) < vcol {
-                        continue;
-                    }
-                    let le = line_end(&b2, ls);
-                    let at = if vcol >= line_cells(&b2, ls, ts) {
-                        le
-                    } else {
-                        at_vcol(&b2, ls, vcol, ts)
-                    };
-                    if line == first {
-                        cursor = at + reg.text().len() - 1;
-                    }
-                    edits.push(Edit::insert(BytePos(at), reg.text().to_vec()));
-                }
-                let list = EditList::new(edits).expect("one insert per line");
-                (list.apply_to(&b2), cursor)
-            }
-            _ => applied(put(&reg, c2, forward)),
-        }
-    };
-    // Putting lines into a buffer the delete emptied leaves no extra empty line behind (Vim deletes it).
-    if kind == SelectKind::Linewise
-        && b2.is_empty()
-        && b.last() != Some(&b'\n')
-        && b3.ends_with(b"\n")
-    {
-        b3.pop();
     }
-    // 4. One edit from the old text to the new: the changed middle between the common ends, kept on char
-    //    boundaries.
+
+    /// A linewise register over a charwise selection: split the line and put the lines between the halves.
+    fn lines_into_line(&self, reg: &Register) -> (Vec<u8>, usize) {
+        let b2 = self.b2;
+        let sp = if self.forward {
+            next_boundary(b2, self.c2)
+        } else {
+            self.c2
+        };
+        let mut out = b2[..sp].to_vec();
+        out.push(b'\n');
+        // Bounded like every other put ([`MAX_PUT_BYTES`]), so a hostile count cannot exhaust memory.
+        let reps =
+            (self.count.max(1) as usize).min((MAX_PUT_BYTES / reg.text().len().max(1)).max(1));
+        for _ in 0..reps {
+            out.extend_from_slice(reg.text());
+        }
+        out.extend_from_slice(&b2[sp..]);
+        let fnb = reg
+            .text()
+            .iter()
+            .take_while(|&&c| c == b' ' || c == b'\t')
+            .count();
+        (out, sp + 1 + fnb)
+    }
+
+    /// A one-line charwise register over a block selection: put the text on every row of the block's lines
+    /// `first..=last`, skipping rows shorter than the block's left edge.
+    fn text_on_block_rows(&self, reg: &Register, first: usize, last: usize) -> (Vec<u8>, usize) {
+        let (b2, c2, ts) = (self.b2, self.c2, self.ts);
+        let (v0, v1) = vcols_at(b2, c2, ts);
+        let vcol = if self.forward { v1 + 1 } else { v0 };
+        let mut edits = Vec::new();
+        let mut cursor = c2;
+        for line in first..=last {
+            let ls = crate::pos::raw::nth_line_start(b2, line);
+            if ls > b2.len() || line_cells(b2, ls, ts) < vcol {
+                continue;
+            }
+            let le = line_end(b2, ls);
+            let at = if vcol >= line_cells(b2, ls, ts) {
+                le
+            } else {
+                at_vcol(b2, ls, vcol, ts)
+            };
+            if line == first {
+                cursor = at + reg.text().len() - 1;
+            }
+            edits.push(Edit::insert(BytePos(at), reg.text().to_vec()));
+        }
+        let list = EditList::new(edits).expect("one insert per line");
+        (list.apply_to(b2), cursor)
+    }
+}
+
+/// The plan that turns `b` into `b3` as one edit: the changed middle between the common ends, kept on char
+/// boundaries. An unchanged text is a no-op that still writes `set_register`.
+fn replacement_plan(b: &[u8], b3: &[u8], cursor: usize, set_register: Option<RegWrite>) -> Plan {
     let max = b.len().min(b3.len());
     let mut p = b
         .iter()
-        .zip(&b3)
+        .zip(b3)
         .take_while(|(x, y)| x == y)
         .count()
         .min(max);
@@ -298,9 +381,6 @@ pub(super) fn plan_paste_selection(
     while q > 0 && (b[b.len() - q] & 0xC0) == 0x80 {
         q -= 1;
     }
-    // The replaced text goes to the unnamed register, not the one being put (nvim deletes with no register
-    // named, #707).
-    let set_register = swap.then_some(RegWrite::Replaced(deleted));
     if b3 == b {
         return Plan {
             set_register,
