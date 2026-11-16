@@ -5,7 +5,7 @@ use super::lex::{
     at, check_linecomment, cin_isbreak, cin_iscomment, cin_isdo, cin_islinecomment, is_white,
     last_byte, ncmp, skipwhite, starts, strend,
 };
-use super::options::getdigits;
+use super::options::{getdigits, CinOptions};
 use super::{Ci, Pos};
 
 impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
@@ -468,7 +468,11 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
 
     /// The brace branch of `get_c_indent`: inside the block opened by the `{` at `brace`. Returns
     /// `i32::MIN` for "the indent of the cursor line" (a matched `if`/`do`, nvim's `goto theend`).
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    ///
+    /// The phases run in nvim's order; each returns the indent when it decides it, else falls through
+    /// to the next: the block's own indent, a closing brace or a matched `else`/`while`, the
+    /// imaginary-brace correction, the case/scope label amount, then the backward search one line at
+    /// a time.
     fn brace_indent(
         &mut self,
         theline: &[u8],
@@ -477,626 +481,753 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
         cur_amount: &mut i32,
         ind_continuation: &mut i32,
     ) -> i32 {
-        const INITIAL: u8 = 0;
-        const IF: u8 = 1;
-        const DO: u8 = 2;
-        const CASE: u8 = 3;
-        const ANY: u8 = 4;
-        const TERM: u8 = 5;
-        const UNTERM: u8 = 6;
-        const SCOPEDECL: u8 = 7;
-        const NOBREAK: u8 = 8;
-        const CPP_BASECLASS: u8 = 9;
-        const ENUM_OR_INIT: u8 = 10;
-        const JS_KEY: u8 = 11;
-        const COMMA: u8 = 12;
         let o = *self.o();
-        let t0 = at(theline, 0);
-        let try_brace = brace;
-        let mut ourscope = brace.lnum;
-        let start = self.line(ourscope);
-        let mut amount: i32;
-        let start_brace; // 1: column 0, 2: at start, 3: at end
-        let mut cache = (
-            false,
-            Pos {
-                lnum: usize::MAX,
-                col: 0,
-            },
-        );
-        let mut lookfor_cpp_namespace = false;
-        let mut cont_amount = 0i32;
-        let mut added_to_amount = 0i32;
-        let mut raw_string_start = 0usize;
+        let (amount, start_brace) = self.brace_block_amount(brace);
+        let mut s = BraceScan {
+            o,
+            t0: at(theline, 0),
+            try_brace: brace,
+            cur_curpos,
+            ourscope: brace.lnum,
+            start_brace,
+            amount,
+            scope_amount: 0,
+            cont_amount: 0,
+            added_to_amount: 0,
+            whilelevel: 0,
+            raw_string_start: 0,
+            cache: (
+                false,
+                Pos {
+                    lnum: usize::MAX,
+                    col: 0,
+                },
+            ),
+            lookfor: Lookfor::Initial,
+            lookfor_break: false,
+            lookfor_cpp_namespace: false,
+            js_cur_has_key: o.js != 0 && self.cin_has_js_key(theline, 0),
+            cur_amount: *cur_amount,
+            ind_continuation: *ind_continuation,
+        };
+        if let Some(a) = self.brace_close_or_match(&mut s, theline) {
+            return a;
+        }
+        self.brace_imaginary_amount(&mut s);
+        self.brace_label_amount(&mut s, theline);
+        s.scope_amount = s.amount;
+        s.whilelevel = 0;
+        self.cur = cur_curpos;
+        while self.brace_scan_line(&mut s) == Step::Next {}
+        *cur_amount = s.cur_amount;
+        *ind_continuation = s.ind_continuation;
+        s.amount
+    }
+
+    /// `get_c_indent`, "Now figure out how indented the line is in general": the indent of the block
+    /// opened by the `{` at `brace`, and where that `{` sits. A `{` that starts its line gives its own
+    /// column; one at the end of a line gives the indent of the statement it ends.
+    fn brace_block_amount(&mut self, brace: Pos) -> (i32, StartBrace) {
+        let o = *self.o();
+        let start = self.line(brace.lnum);
         let look = skipwhite(start, 0);
         if at(start, look) == b'{' {
-            amount = i32::try_from(self.vcol(brace.lnum, brace.col)).unwrap_or(i32::MAX);
-            start_brace = if at(start, 0) == b'{' { 1 } else { 2 };
-        } else {
-            self.cur.lnum = ourscope;
-            let mut lnum = ourscope;
-            if self.find_last_paren(start, b'(', b')') {
-                if let Some(t) = self.find_match_paren(o.maxparen) {
-                    lnum = t.lnum;
-                }
-            }
-            let cl = self.cur_line();
-            if (o.js != 0 || o.keep_case_label != 0) && self.cin_iscase(cl, skipwhite(cl, 0), false)
-            {
-                amount = self.get_indent();
-            } else if o.js != 0 {
-                amount = self.indent_of(lnum);
+            let amount = i32::try_from(self.vcol(brace.lnum, brace.col)).unwrap_or(i32::MAX);
+            let start_brace = if at(start, 0) == b'{' {
+                StartBrace::InCol0
             } else {
-                amount = self.skip_label(lnum).0;
+                StartBrace::AtStart
+            };
+            return (amount, start_brace);
+        }
+        self.cur.lnum = brace.lnum;
+        let mut lnum = brace.lnum;
+        if self.find_last_paren(start, b'(', b')') {
+            if let Some(t) = self.find_match_paren(o.maxparen) {
+                lnum = t.lnum;
             }
-            start_brace = 3;
         }
-        let mut js_cur_has_key = o.js != 0 && self.cin_has_js_key(theline, 0);
-        if t0 == b'}' {
-            return amount + o.close_extra;
+        let cl = self.cur_line();
+        let amount = if (o.js != 0 || o.keep_case_label != 0)
+            && self.cin_iscase(cl, skipwhite(cl, 0), false)
+        {
+            self.get_indent()
+        } else if o.js != 0 {
+            self.indent_of(lnum)
+        } else {
+            self.skip_label(lnum).0
+        };
+        (amount, StartBrace::AtEnd)
+    }
+
+    /// `get_c_indent`, "If we're looking at a closing brace, that's where we want to be" and "If
+    /// we're looking at an "else", try to find an "if" to match it with" (and a `while` with its
+    /// `do`). Returns the indent of a `}` line, `i32::MIN` for a matched `else`/`while` (nvim's `goto
+    /// theend`), else `None`.
+    fn brace_close_or_match(&mut self, s: &mut BraceScan, theline: &[u8]) -> Option<i32> {
+        if s.t0 == b'}' {
+            return Some(s.amount + s.o.close_extra);
         }
-        let mut lookfor = INITIAL;
+        s.lookfor = Lookfor::Initial;
         if self.cin_iselse(theline, 0) {
-            lookfor = IF;
-        } else if self.cin_iswhileofdo(theline, 0, cur_curpos.lnum) {
-            lookfor = DO;
+            s.lookfor = Lookfor::If;
+        } else if self.cin_iswhileofdo(theline, 0, s.cur_curpos.lnum) {
+            s.lookfor = Lookfor::Do;
         }
-        if lookfor != INITIAL {
-            self.cur.lnum = cur_curpos.lnum;
-            if self.find_match(lookfor == IF, ourscope) {
-                return i32::MIN;
+        if s.lookfor != Lookfor::Initial {
+            self.cur.lnum = s.cur_curpos.lnum;
+            if self.find_match(s.lookfor == Lookfor::If, s.ourscope) {
+                return Some(i32::MIN);
             }
         }
-        if start_brace == 1 {
-            amount = o.open_left_imag;
-            lookfor_cpp_namespace = true;
-        } else if start_brace == 2 && lookfor_cpp_namespace {
-            lookfor_cpp_namespace = true;
-        } else if start_brace == 3 {
-            amount += o.open_imag;
+        None
+    }
+
+    /// `get_c_indent`, "First set amount for when we don't find anything": a `{` in column 0 takes
+    /// the imaginary left-margin brace, one at the end of a line the imaginary indent (plus the
+    /// namespace or `extern "C"` amount), else `b_ind_open_extra` is compensated for.
+    fn brace_imaginary_amount(&mut self, s: &mut BraceScan) {
+        let o = s.o;
+        if s.start_brace == StartBrace::InCol0 {
+            s.amount = o.open_left_imag;
+            s.lookfor_cpp_namespace = true;
+        } else if s.start_brace == StartBrace::AtStart && s.lookfor_cpp_namespace {
+            s.lookfor_cpp_namespace = true;
+        } else if s.start_brace == StartBrace::AtEnd {
+            s.amount += o.open_imag;
             let cl = self.cur_line();
             let l = skipwhite(cl, 0);
             if self.cin_is_cpp_namespace(cl, l) {
-                amount += o.cpp_namespace;
+                s.amount += o.cpp_namespace;
             } else if self.cin_is_cpp_extern_c(cl, l) {
-                amount += o.cpp_extern_c;
+                s.amount += o.cpp_extern_c;
             }
         } else {
-            amount -= o.open_extra;
-            if amount < 0 {
-                amount = 0;
+            s.amount -= o.open_extra;
+            if s.amount < 0 {
+                s.amount = 0;
             }
         }
-        let mut lookfor_break = false;
+    }
+
+    /// `get_c_indent`, "it's a switch() label" / "private:, ..." / "b_ind_level from start of
+    /// block": what the backward search looks for, and the amount the line gets for it.
+    fn brace_label_amount(&self, s: &mut BraceScan, theline: &[u8]) {
+        let o = s.o;
+        s.lookfor_break = false;
         if self.cin_iscase(theline, 0, false) {
-            lookfor = CASE;
-            amount += o.case;
+            s.lookfor = Lookfor::Case;
+            s.amount += o.case;
         } else if self.cin_isscopedecl(theline, 0) {
-            lookfor = SCOPEDECL;
-            amount += o.scopedecl;
+            s.lookfor = Lookfor::Scopedecl;
+            s.amount += o.scopedecl;
         } else {
             if o.case_break != 0 && cin_isbreak(theline, 0) {
-                lookfor_break = true;
+                s.lookfor_break = true;
             }
-            lookfor = INITIAL;
-            amount += o.level;
+            s.lookfor = Lookfor::Initial;
+            s.amount += o.level;
         }
-        let mut scope_amount = amount;
-        let mut whilelevel = 0i32;
-        self.cur = cur_curpos;
-        'outer: loop {
-            self.cur.lnum -= 1;
+    }
+
+    /// One pass of `get_c_indent`'s "Search backwards. If we find something we recognize, line up
+    /// with that." loop, on the line above the cursor. Its phases run in nvim's order.
+    fn brace_scan_line(&mut self, s: &mut BraceScan) -> Step {
+        self.cur.lnum -= 1;
+        self.cur.col = 0;
+        if self.cur.lnum <= s.ourscope {
+            return self.brace_scope_start(s);
+        }
+        if let Some(t) = self.ind_find_start_cors(Some(&mut s.raw_string_start)) {
+            self.cur.lnum = t.lnum + 1;
             self.cur.col = 0;
-            if self.cur.lnum <= ourscope {
-                if lookfor == ENUM_OR_INIT {
-                    if self.cur.lnum == 0
-                        || (self.cur.lnum as i64) < ourscope as i64 - i64::from(o.maxparen)
-                    {
-                        if cont_amount > 0 {
-                            amount = cont_amount;
-                        } else if o.js == 0 {
-                            amount += *ind_continuation;
-                        }
-                        break;
-                    }
-                    if let Some(t) = self.ind_find_start_cors(None) {
-                        self.cur.lnum = t.lnum + 1;
-                        self.cur.col = 0;
-                        continue;
-                    }
-                    let mut l = self.cur_line();
-                    let mut ln = self.cur.lnum;
-                    if self.cin_ispreproc_cont(&mut l, &mut ln, &mut amount) {
-                        self.cur.lnum = ln;
-                        continue;
-                    }
-                    self.cur.lnum = ln;
-                    if self.nocode(l, 0) {
-                        continue;
-                    }
-                    let terminated = self.isterminated(l, 0, false, true);
-                    if start_brace != 1 || !self.cin_isfuncdecl(Some(l), self.cur.lnum, 0) {
-                        if terminated == b',' {
-                            break;
-                        }
-                        if terminated != b';' && self.cin_isinit() {
-                            break;
-                        }
-                        if terminated == 0 || terminated == b'{' {
-                            continue;
-                        }
-                    }
-                    if terminated != b';' {
-                        let mut t = None;
-                        if self.find_last_paren(l, b'(', b')') {
-                            t = self.find_match_paren(o.maxparen);
-                        }
-                        if t.is_none() && self.find_last_paren(l, b'{', b'}') {
-                            t = self.find_start_brace();
-                        }
-                        if let Some(t) = t {
-                            self.cur.lnum = t.lnum + 1;
-                            self.cur.col = 0;
-                            continue;
-                        }
-                    }
-                    if cont_amount > 0 {
-                        amount = cont_amount;
-                    } else {
-                        amount += *ind_continuation;
-                    }
-                } else if lookfor == UNTERM {
-                    if cont_amount > 0 {
-                        amount = cont_amount;
-                    } else {
-                        amount += *ind_continuation;
-                    }
-                } else {
-                    if lookfor != TERM && lookfor != CPP_BASECLASS && lookfor != COMMA {
-                        amount = scope_amount;
-                        if t0 == b'{' {
-                            amount += o.open_extra;
-                            added_to_amount = o.open_extra;
-                        }
-                    }
-                    if lookfor_cpp_namespace {
-                        if self.cur.lnum == ourscope {
-                            continue;
-                        }
-                        if self.cur.lnum == 0 || (self.cur.lnum as i64) < ourscope as i64 - 20 {
-                            break;
-                        }
-                        if let Some(t) = self.ind_find_start_cors(None) {
-                            self.cur.lnum = t.lnum + 1;
-                            self.cur.col = 0;
-                            continue;
-                        }
-                        let mut l = self.cur_line();
-                        let mut ln = self.cur.lnum;
-                        if self.cin_ispreproc_cont(&mut l, &mut ln, &mut amount) {
-                            self.cur.lnum = ln;
-                            continue;
-                        }
-                        self.cur.lnum = ln;
-                        if self.cin_is_cpp_namespace(l, 0) {
-                            amount += o.cpp_namespace - added_to_amount;
-                            break;
-                        } else if self.cin_is_cpp_extern_c(l, 0) {
-                            amount += o.cpp_extern_c - added_to_amount;
-                            break;
-                        }
-                        if self.nocode(l, 0) {
-                            continue;
-                        }
-                    }
-                }
-                break;
+            return Step::Next;
+        }
+        let mut l = self.cur_line();
+        if let Some(step) = self.brace_switch_label(s, l) {
+            return step;
+        }
+        if let Some(step) = self.brace_skip_ignored(s, &mut l) {
+            return step;
+        }
+        if let Some(step) = self.brace_cpp_baseclass(s, &mut l) {
+            return step;
+        }
+        let terminated = self.isterminated(l, 0, false, true);
+        if let Some(step) = self.brace_js_key_or_comma(s, l, terminated) {
+            return step;
+        }
+        if terminated == 0 || (s.lookfor != Lookfor::Unterm && terminated == b',') {
+            self.brace_unterminated(s, l, terminated)
+        } else if self.cin_iswhileofdo_end(terminated) {
+            self.brace_while_of_do_end(s)
+        } else {
+            self.brace_terminated(s)
+        }
+    }
+
+    /// `get_c_indent`, "If we went all the way back to the start of our scope, line up with it".
+    fn brace_scope_start(&mut self, s: &mut BraceScan) -> Step {
+        match s.lookfor {
+            Lookfor::EnumOrInit => self.brace_scope_start_enum_or_init(s),
+            Lookfor::Unterm => {
+                s.add_continuation();
+                Step::Done
             }
-            if let Some(t) = self.ind_find_start_cors(Some(&mut raw_string_start)) {
+            _ => self.brace_scope_start_namespace(s),
+        }
+    }
+
+    /// `get_c_indent`, "We reached end of scope: If looking for a enum or structure initialization go
+    /// further back": past the scope start, until the declaration the initializer belongs to.
+    fn brace_scope_start_enum_or_init(&mut self, s: &mut BraceScan) -> Step {
+        let o = s.o;
+        if self.cur.lnum == 0 || (self.cur.lnum as i64) < s.ourscope as i64 - i64::from(o.maxparen)
+        {
+            if s.cont_amount > 0 {
+                s.amount = s.cont_amount;
+            } else if o.js == 0 {
+                s.amount += s.ind_continuation;
+            }
+            return Step::Done;
+        }
+        if let Some(t) = self.ind_find_start_cors(None) {
+            self.cur.lnum = t.lnum + 1;
+            self.cur.col = 0;
+            return Step::Next;
+        }
+        let mut l = self.cur_line();
+        let mut ln = self.cur.lnum;
+        if self.cin_ispreproc_cont(&mut l, &mut ln, &mut s.amount) {
+            self.cur.lnum = ln;
+            return Step::Next;
+        }
+        self.cur.lnum = ln;
+        if self.nocode(l, 0) {
+            return Step::Next;
+        }
+        let terminated = self.isterminated(l, 0, false, true);
+        if s.start_brace != StartBrace::InCol0 || !self.cin_isfuncdecl(Some(l), self.cur.lnum, 0) {
+            if terminated == b',' {
+                return Step::Done;
+            }
+            if terminated != b';' && self.cin_isinit() {
+                return Step::Done;
+            }
+            if terminated == 0 || terminated == b'{' {
+                return Step::Next;
+            }
+        }
+        if terminated != b';' {
+            let mut t = None;
+            if self.find_last_paren(l, b'(', b')') {
+                t = self.find_match_paren(o.maxparen);
+            }
+            if t.is_none() && self.find_last_paren(l, b'{', b'}') {
+                t = self.find_start_brace();
+            }
+            if let Some(t) = t {
                 self.cur.lnum = t.lnum + 1;
                 self.cur.col = 0;
-                continue;
+                return Step::Next;
             }
-            let l = self.cur_line();
-            let iscase = self.cin_iscase(l, 0, false);
-            if iscase || self.cin_isscopedecl(l, 0) {
-                if lookfor == CPP_BASECLASS {
-                    break;
-                }
-                if whilelevel > 0 {
-                    continue;
-                }
-                if lookfor == UNTERM || lookfor == ENUM_OR_INIT {
-                    if cont_amount > 0 {
-                        amount = cont_amount;
-                    } else {
-                        amount += *ind_continuation;
-                    }
-                    break;
-                }
-                if (iscase && lookfor == CASE)
-                    || (iscase && lookfor_break)
-                    || (!iscase && lookfor == SCOPEDECL)
-                {
-                    match self.find_start_brace() {
-                        None => {
-                            amount = self.get_indent();
-                            break;
-                        }
-                        Some(t) if t.lnum == ourscope => {
-                            amount = self.get_indent();
-                            break;
-                        }
-                        Some(_) => continue,
-                    }
-                }
-                let n = self.get_indent_nolabel(self.cur.lnum);
-                if lookfor == TERM {
-                    if n != 0 {
-                        amount = n;
-                    }
-                    if !lookfor_break {
-                        break;
-                    }
-                }
-                if n != 0 {
-                    amount = n;
-                    let cl = self.cur_line();
-                    if let Some(p) = self.after_label(cl) {
-                        if self.cin_is_cinword(cl, p) {
-                            if t0 == b'{' {
-                                amount += o.open_extra;
-                            } else {
-                                amount += o.level + o.no_brace;
-                            }
-                        }
-                    }
-                    break;
-                }
-                scope_amount = self.get_indent()
-                    + if iscase {
-                        o.case_code
-                    } else {
-                        o.scopedecl_code
-                    };
-                lookfor = if o.case_break != 0 { NOBREAK } else { ANY };
-                continue;
+        }
+        s.add_continuation();
+        Step::Done
+    }
+
+    /// `get_c_indent`, the scope start reached while not in an initializer: line up with the scope,
+    /// and, "Looking for C++ namespace, need to look further back", add the namespace or `extern
+    /// "C"` amount.
+    fn brace_scope_start_namespace(&mut self, s: &mut BraceScan) -> Step {
+        let o = s.o;
+        if s.lookfor != Lookfor::Term
+            && s.lookfor != Lookfor::CppBaseclass
+            && s.lookfor != Lookfor::Comma
+        {
+            s.amount = s.scope_amount;
+            if s.t0 == b'{' {
+                s.amount += o.open_extra;
+                s.added_to_amount = o.open_extra;
             }
-            if lookfor == CASE || lookfor == SCOPEDECL {
-                if self.find_last_paren(l, b'{', b'}') {
-                    if let Some(t) = self.find_start_brace() {
-                        self.cur.lnum = t.lnum + 1;
-                        self.cur.col = 0;
-                    }
-                }
-                continue;
+        }
+        if s.lookfor_cpp_namespace {
+            if self.cur.lnum == s.ourscope {
+                return Step::Next;
             }
-            if o.js == 0 && self.cin_islabel() {
-                let cl = self.cur_line();
-                match self.after_label(cl) {
-                    None => continue,
-                    Some(p) if self.nocode(cl, p) => continue,
-                    Some(_) => {}
-                }
+            if self.cur.lnum == 0 || (self.cur.lnum as i64) < s.ourscope as i64 - 20 {
+                return Step::Done;
+            }
+            if let Some(t) = self.ind_find_start_cors(None) {
+                self.cur.lnum = t.lnum + 1;
+                self.cur.col = 0;
+                return Step::Next;
             }
             let mut l = self.cur_line();
             let mut ln = self.cur.lnum;
-            let pre = self.cin_ispreproc_cont(&mut l, &mut ln, &mut amount);
+            if self.cin_ispreproc_cont(&mut l, &mut ln, &mut s.amount) {
+                self.cur.lnum = ln;
+                return Step::Next;
+            }
             self.cur.lnum = ln;
-            if pre || self.nocode(l, 0) {
-                continue;
+            if self.cin_is_cpp_namespace(l, 0) {
+                s.amount += o.cpp_namespace - s.added_to_amount;
+                return Step::Done;
+            } else if self.cin_is_cpp_extern_c(l, 0) {
+                s.amount += o.cpp_extern_c - s.added_to_amount;
+                return Step::Done;
             }
-            let mut n = false;
-            if lookfor != TERM && o.cpp_baseclass > 0 {
-                n = self.cin_is_cpp_baseclass(&mut cache);
-                l = self.cur_line();
+            if self.nocode(l, 0) {
+                return Step::Next;
             }
-            if n {
-                if lookfor == UNTERM {
-                    if cont_amount > 0 {
-                        amount = cont_amount;
+        }
+        Step::Done
+    }
+
+    /// `get_c_indent`, "If this is a switch() label, may line up relative to that. If this is a C++
+    /// scope declaration, do the same." `None` when line `l` is neither.
+    fn brace_switch_label(&mut self, s: &mut BraceScan, l: &[u8]) -> Option<Step> {
+        let o = s.o;
+        let iscase = self.cin_iscase(l, 0, false);
+        if !iscase && !self.cin_isscopedecl(l, 0) {
+            return None;
+        }
+        if s.lookfor == Lookfor::CppBaseclass {
+            return Some(Step::Done);
+        }
+        if s.whilelevel > 0 {
+            return Some(Step::Next);
+        }
+        if s.lookfor == Lookfor::Unterm || s.lookfor == Lookfor::EnumOrInit {
+            s.add_continuation();
+            return Some(Step::Done);
+        }
+        if (iscase && s.lookfor == Lookfor::Case)
+            || (iscase && s.lookfor_break)
+            || (!iscase && s.lookfor == Lookfor::Scopedecl)
+        {
+            return Some(match self.find_start_brace() {
+                Some(t) if t.lnum != s.ourscope => Step::Next,
+                _ => {
+                    s.amount = self.get_indent();
+                    Step::Done
+                }
+            });
+        }
+        let n = self.get_indent_nolabel(self.cur.lnum);
+        if s.lookfor == Lookfor::Term {
+            if n != 0 {
+                s.amount = n;
+            }
+            if !s.lookfor_break {
+                return Some(Step::Done);
+            }
+        }
+        if n != 0 {
+            s.amount = n;
+            let cl = self.cur_line();
+            if let Some(p) = self.after_label(cl) {
+                if self.cin_is_cinword(cl, p) {
+                    if s.t0 == b'{' {
+                        s.amount += o.open_extra;
                     } else {
-                        amount += *ind_continuation;
+                        s.amount += o.level + o.no_brace;
                     }
-                } else if t0 == b'{' {
-                    lookfor = UNTERM;
-                    *ind_continuation = 0;
-                    continue;
-                } else {
-                    amount = self.get_baseclass_amount(cache.1.col);
-                }
-                break;
-            } else if lookfor == CPP_BASECLASS {
-                if self.isterminated(l, 0, true, false) != 0 {
-                    break;
-                }
-                continue;
-            }
-            let terminated = self.isterminated(l, 0, false, true);
-            if js_cur_has_key {
-                js_cur_has_key = false;
-                if o.js != 0 && terminated == b',' {
-                    lookfor = JS_KEY;
                 }
             }
-            if lookfor == JS_KEY && self.cin_has_js_key(l, 0) {
-                amount = self.get_indent();
-                break;
-            }
-            if lookfor == COMMA {
-                if try_brace.lnum >= self.cur.lnum {
-                    break;
-                }
-                if terminated == b',' {
-                    break;
-                }
-                amount = self.get_indent();
-                if self.cur.lnum - 1 == ourscope {
-                    break;
-                }
-            }
-            if terminated == 0 || (lookfor != UNTERM && terminated == b',') {
-                if lookfor != ENUM_OR_INIT
-                    && (at(l, skipwhite(l, 0)) == b'[' || last_byte(l) == b'[')
-                {
-                    amount += *ind_continuation;
-                }
-                let _ = self.find_last_paren(l, b'(', b')');
-                let mp = self.corr_ind_maxparen(cur_curpos);
-                let mut trypos = self.find_match_paren(mp);
-                if trypos.is_some_and(|t| (t.lnum, t.col) < (try_brace.lnum, try_brace.col)) {
-                    trypos = None;
-                }
-                l = self.cur_line();
-                if trypos.is_none() && terminated == b',' {
-                    if self.find_last_paren(l, b'{', b'}') {
-                        trypos = self.find_start_brace();
-                    }
-                    l = self.cur_line();
-                }
-                if let Some(t) = trypos {
-                    self.cur = t;
-                    l = self.cur_line();
-                    if self.cin_iscase(l, 0, false) || self.cin_isscopedecl(l, 0) {
-                        self.cur.lnum += 1;
-                        self.cur.col = 0;
-                        continue;
-                    }
-                }
-                if terminated == b',' {
-                    while self.cur.lnum > 1 {
-                        let pl = self.line(self.cur.lnum - 1);
-                        if last_byte(pl) != b'\\' {
-                            break;
-                        }
-                        self.cur.lnum -= 1;
-                        self.cur.col = 0;
-                    }
-                    l = self.cur_line();
-                }
-                let mut lstart = 0usize;
-                if o.js != 0 {
-                    *cur_amount = self.get_indent();
-                } else {
-                    let (a, ll, ls) = self.skip_label(self.cur.lnum);
-                    *cur_amount = a;
-                    l = ll;
-                    lstart = ls;
-                }
-                if terminated != b',' && lookfor != TERM && t0 == b'{' {
-                    amount = *cur_amount;
-                    if at(l, skipwhite(l, lstart)) != b'{' {
-                        amount += o.open_extra;
-                    }
-                    if o.cpp_baseclass != 0 && o.js == 0 {
-                        lookfor = CPP_BASECLASS;
-                        continue;
-                    }
-                    break;
-                }
-                if self.cin_is_cinword(l, lstart) || self.cin_iselse(l, skipwhite(l, lstart)) {
-                    if lookfor == UNTERM || lookfor == ENUM_OR_INIT {
-                        if cont_amount > 0 {
-                            amount = cont_amount;
-                        } else {
-                            amount += *ind_continuation;
-                        }
-                        break;
-                    }
-                    amount = *cur_amount;
-                    if t0 == b'{' {
-                        amount += o.open_extra;
-                    }
-                    if lookfor != TERM {
-                        amount += o.level + o.no_brace;
-                        break;
-                    }
-                    let cl = self.cur_line();
-                    let ls = skipwhite(cl, 0);
-                    if cin_isdo(cl, ls) {
-                        if whilelevel == 0 {
-                            break;
-                        }
-                        whilelevel -= 1;
-                    }
-                    if self.cin_iselse(cl, ls) && whilelevel == 0 {
-                        if at(cl, ls) == b'}' {
-                            self.cur.col = ls + 1;
-                        }
-                        match self.find_start_brace() {
-                            None => break,
-                            Some(t) => {
-                                if !self.find_match(true, t.lnum) {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    if lookfor == UNTERM {
-                        if terminated == b',' {
-                            amount += *ind_continuation;
-                        }
-                        break;
-                    }
-                    if lookfor == ENUM_OR_INIT {
-                        if terminated == b',' {
-                            if o.cpp_baseclass == 0 {
-                                break;
-                            }
-                            lookfor = CPP_BASECLASS;
-                            continue;
-                        }
-                        if amount > *cur_amount {
-                            amount = *cur_amount;
-                        }
-                    } else {
-                        let cl = self.cur_line();
-                        amount = *cur_amount;
-                        let n = strend(cl, 0);
-                        if o.js != 0
-                            && terminated == b','
-                            && (at(cl, skipwhite(cl, 0)) == b']' || (n >= 2 && cl[n - 2] == b']'))
-                        {
-                            break;
-                        }
-                        if lookfor == INITIAL && terminated == b',' {
-                            if o.js != 0 {
-                                if cin_iscomment(cl, skipwhite(cl, 0)) {
-                                    break;
-                                }
-                                lookfor = COMMA;
-                                if let Some(t) = self.find_match_char(b'[', o.maxparen) {
-                                    if t.lnum == self.cur.lnum - 1 {
-                                        break;
-                                    }
-                                    ourscope = t.lnum;
-                                }
-                            } else {
-                                lookfor = ENUM_OR_INIT;
-                                cont_amount = self.cin_first_id_amount();
-                            }
-                        } else {
-                            if lookfor == INITIAL && last_byte(cl) == b'\\' {
-                                cont_amount = self.cin_get_equal_amount(self.cur.lnum);
-                            }
-                            if lookfor != TERM
-                                && lookfor != JS_KEY
-                                && lookfor != COMMA
-                                && raw_string_start != self.cur.lnum
-                            {
-                                lookfor = UNTERM;
-                            }
-                        }
-                    }
-                }
-            } else if self.cin_iswhileofdo_end(terminated) {
-                if lookfor == UNTERM || lookfor == ENUM_OR_INIT {
-                    if cont_amount > 0 {
-                        amount = cont_amount;
-                    } else {
-                        amount += *ind_continuation;
-                    }
-                    break;
-                }
-                if whilelevel == 0 {
-                    lookfor = TERM;
-                    amount = self.get_indent();
-                    if t0 == b'{' {
-                        amount += o.open_extra;
-                    }
-                }
-                whilelevel += 1;
+            return Some(Step::Done);
+        }
+        s.scope_amount = self.get_indent()
+            + if iscase {
+                o.case_code
             } else {
-                if lookfor == NOBREAK {
-                    let cl = self.cur_line();
-                    if cin_isbreak(cl, skipwhite(cl, 0)) {
-                        lookfor = ANY;
-                        continue;
-                    }
+                o.scopedecl_code
+            };
+        s.lookfor = if o.case_break != 0 {
+            Lookfor::Nobreak
+        } else {
+            Lookfor::Any
+        };
+        Some(Step::Next)
+    }
+
+    /// `get_c_indent`, "Looking for a switch() label or C++ scope declaration, ignore other lines,
+    /// skip {}-blocks", "Ignore jump labels with nothing after them" and "Ignore #defines, #if, etc.
+    /// Ignore comment and empty lines." `*l` is the line again afterwards.
+    fn brace_skip_ignored(&mut self, s: &mut BraceScan, l: &mut &'a [u8]) -> Option<Step> {
+        if s.lookfor == Lookfor::Case || s.lookfor == Lookfor::Scopedecl {
+            if self.find_last_paren(l, b'{', b'}') {
+                if let Some(t) = self.find_start_brace() {
+                    self.cur.lnum = t.lnum + 1;
+                    self.cur.col = 0;
                 }
-                if whilelevel > 0 {
-                    let cl = self.cur_line();
-                    let s = self.skipcomment(cl, 0);
-                    if cin_isdo(cl, s) {
-                        amount = self.get_indent();
-                        whilelevel -= 1;
-                        continue;
-                    }
-                }
-                if lookfor == UNTERM || lookfor == ENUM_OR_INIT {
-                    if cont_amount > 0 {
-                        amount = cont_amount;
-                    } else {
-                        amount += *ind_continuation;
-                    }
+            }
+            return Some(Step::Next);
+        }
+        if s.o.js == 0 && self.cin_islabel() {
+            let cl = self.cur_line();
+            match self.after_label(cl) {
+                None => return Some(Step::Next),
+                Some(p) if self.nocode(cl, p) => return Some(Step::Next),
+                Some(_) => {}
+            }
+        }
+        *l = self.cur_line();
+        let mut ln = self.cur.lnum;
+        let pre = self.cin_ispreproc_cont(l, &mut ln, &mut s.amount);
+        self.cur.lnum = ln;
+        if pre || self.nocode(l, 0) {
+            return Some(Step::Next);
+        }
+        None
+    }
+
+    /// `get_c_indent`, "Are we at the start of a cpp base class declaration or constructor
+    /// initialization?", and "only look, whether there is a cpp base class declaration or
+    /// initialization before the opening brace" while looking for one.
+    fn brace_cpp_baseclass(&mut self, s: &mut BraceScan, l: &mut &'a [u8]) -> Option<Step> {
+        let mut n = false;
+        if s.lookfor != Lookfor::Term && s.o.cpp_baseclass > 0 {
+            n = self.cin_is_cpp_baseclass(&mut s.cache);
+            *l = self.cur_line();
+        }
+        if n {
+            if s.lookfor == Lookfor::Unterm {
+                s.add_continuation();
+            } else if s.t0 == b'{' {
+                s.lookfor = Lookfor::Unterm;
+                s.ind_continuation = 0;
+                return Some(Step::Next);
+            } else {
+                s.amount = self.get_baseclass_amount(s.cache.1.col);
+            }
+            return Some(Step::Done);
+        } else if s.lookfor == Lookfor::CppBaseclass {
+            if self.isterminated(l, 0, true, false) != 0 {
+                return Some(Step::Done);
+            }
+            return Some(Step::Next);
+        }
+        None
+    }
+
+    /// `get_c_indent`, "For Javascript we might be inside an object" (line up with a `key:` line)
+    /// and the JS `Comma` search: "Line below current line is the one that starts a (possibly
+    /// broken) line ending in a comma."
+    fn brace_js_key_or_comma(&self, s: &mut BraceScan, l: &[u8], terminated: u8) -> Option<Step> {
+        if s.js_cur_has_key {
+            s.js_cur_has_key = false;
+            if s.o.js != 0 && terminated == b',' {
+                s.lookfor = Lookfor::JsKey;
+            }
+        }
+        if s.lookfor == Lookfor::JsKey && self.cin_has_js_key(l, 0) {
+            s.amount = self.get_indent();
+            return Some(Step::Done);
+        }
+        if s.lookfor == Lookfor::Comma {
+            if s.try_brace.lnum >= self.cur.lnum {
+                return Some(Step::Done);
+            }
+            if terminated == b',' {
+                return Some(Step::Done);
+            }
+            s.amount = self.get_indent();
+            if self.cur.lnum - 1 == s.ourscope {
+                return Some(Step::Done);
+            }
+        }
+        None
+    }
+
+    /// `get_c_indent`, an unterminated line (or one ending in `,`): "If we're in the middle of a
+    /// paren thing, Go back to the line that starts it so we can get the right prevailing indent",
+    /// "Skip over continuation lines to find the one to get the indent from", then "If this is just
+    /// above the line we are indenting, and it starts with a '{', line it up with this line."
+    fn brace_unterminated(&mut self, s: &mut BraceScan, mut l: &'a [u8], terminated: u8) -> Step {
+        let o = s.o;
+        if s.lookfor != Lookfor::EnumOrInit
+            && (at(l, skipwhite(l, 0)) == b'[' || last_byte(l) == b'[')
+        {
+            s.amount += s.ind_continuation;
+        }
+        let _ = self.find_last_paren(l, b'(', b')');
+        let mp = self.corr_ind_maxparen(s.cur_curpos);
+        let mut trypos = self.find_match_paren(mp);
+        if trypos.is_some_and(|t| (t.lnum, t.col) < (s.try_brace.lnum, s.try_brace.col)) {
+            trypos = None;
+        }
+        l = self.cur_line();
+        if trypos.is_none() && terminated == b',' {
+            if self.find_last_paren(l, b'{', b'}') {
+                trypos = self.find_start_brace();
+            }
+            l = self.cur_line();
+        }
+        if let Some(t) = trypos {
+            self.cur = t;
+            l = self.cur_line();
+            if self.cin_iscase(l, 0, false) || self.cin_isscopedecl(l, 0) {
+                self.cur.lnum += 1;
+                self.cur.col = 0;
+                return Step::Next;
+            }
+        }
+        if terminated == b',' {
+            while self.cur.lnum > 1 {
+                let pl = self.line(self.cur.lnum - 1);
+                if last_byte(pl) != b'\\' {
                     break;
                 }
-                if lookfor == TERM {
-                    if !lookfor_break && whilelevel == 0 {
-                        break;
-                    }
-                } else {
-                    // term_again:
-                    loop {
-                        let l = self.cur_line();
-                        if self.find_last_paren(l, b'(', b')') {
-                            if let Some(t) = self.find_match_paren(o.maxparen) {
-                                self.cur = t;
-                                let l = self.cur_line();
-                                if self.cin_iscase(l, 0, false) || self.cin_isscopedecl(l, 0) {
-                                    self.cur.lnum += 1;
-                                    self.cur.col = 0;
-                                    continue 'outer;
-                                }
-                            }
-                        }
-                        let cl = self.cur_line();
-                        let iscase = o.keep_case_label != 0 && self.cin_iscase(cl, 0, false);
-                        let (a, ll, ls) = self.skip_label(self.cur.lnum);
-                        amount = a;
-                        if t0 == b'{' {
-                            amount += o.open_extra;
-                        }
-                        let li = skipwhite(ll, ls);
-                        if at(ll, li) == b'{' {
-                            amount -= o.open_extra;
-                        }
-                        lookfor = if iscase { ANY } else { TERM };
-                        if lookfor == TERM
-                            && at(ll, li) != b'}'
-                            && self.cin_iselse(ll, li)
-                            && whilelevel == 0
-                        {
-                            match self.find_start_brace() {
-                                None => break 'outer,
-                                Some(t) => {
-                                    if !self.find_match(true, t.lnum) {
-                                        break 'outer;
-                                    }
-                                }
-                            }
-                            continue 'outer;
-                        }
-                        let l = self.cur_line();
-                        if self.find_last_paren(l, b'{', b'}') {
-                            if let Some(t) = self.find_start_brace() {
-                                self.cur = t;
-                                let cl = self.cur_line();
-                                let s = self.skipcomment(cl, 0);
-                                if at(cl, s) == b'}' || !self.cin_iselse(cl, s) {
-                                    continue; // term_again
-                                }
-                                self.cur.lnum += 1;
-                                self.cur.col = 0;
-                            }
-                        }
-                        break;
+                self.cur.lnum -= 1;
+                self.cur.col = 0;
+            }
+            l = self.cur_line();
+        }
+        let mut lstart = 0usize;
+        if o.js != 0 {
+            s.cur_amount = self.get_indent();
+        } else {
+            let (a, ll, ls) = self.skip_label(self.cur.lnum);
+            s.cur_amount = a;
+            l = ll;
+            lstart = ls;
+        }
+        if terminated != b',' && s.lookfor != Lookfor::Term && s.t0 == b'{' {
+            s.amount = s.cur_amount;
+            if at(l, skipwhite(l, lstart)) != b'{' {
+                s.amount += o.open_extra;
+            }
+            if o.cpp_baseclass != 0 && o.js == 0 {
+                s.lookfor = Lookfor::CppBaseclass;
+                return Step::Next;
+            }
+            return Step::Done;
+        }
+        if self.cin_is_cinword(l, lstart) || self.cin_iselse(l, skipwhite(l, lstart)) {
+            self.brace_unterminated_after_cinword(s)
+        } else {
+            self.brace_unterminated_other(s, terminated)
+        }
+    }
+
+    /// `get_c_indent`, "Check if we are after an "if", "while", etc. Also allow "   } else"": line up
+    /// with the conditional, or, when looking for a terminated line, skip to the `do` or the `if` of
+    /// an `else`.
+    fn brace_unterminated_after_cinword(&mut self, s: &mut BraceScan) -> Step {
+        let o = s.o;
+        if s.lookfor == Lookfor::Unterm || s.lookfor == Lookfor::EnumOrInit {
+            s.add_continuation();
+            return Step::Done;
+        }
+        s.amount = s.cur_amount;
+        if s.t0 == b'{' {
+            s.amount += o.open_extra;
+        }
+        if s.lookfor != Lookfor::Term {
+            s.amount += o.level + o.no_brace;
+            return Step::Done;
+        }
+        let cl = self.cur_line();
+        let ls = skipwhite(cl, 0);
+        if cin_isdo(cl, ls) {
+            if s.whilelevel == 0 {
+                return Step::Done;
+            }
+            s.whilelevel -= 1;
+        }
+        if self.cin_iselse(cl, ls) && s.whilelevel == 0 {
+            if at(cl, ls) == b'}' {
+                self.cur.col = ls + 1;
+            }
+            match self.find_start_brace() {
+                None => return Step::Done,
+                Some(t) => {
+                    if !self.find_match(true, t.lnum) {
+                        return Step::Done;
                     }
                 }
             }
         }
-        amount
+        Step::Next
+    }
+
+    /// `get_c_indent`, "If we're below an unterminated line that is not an "if" or something, we may
+    /// line up with this line or add something for a continuation line": two unterminated lines in a
+    /// row, two lines ending in `,`, or the first unterminated line (where an enum or initializer, or
+    /// the JS `[` list, starts its own search).
+    fn brace_unterminated_other(&mut self, s: &mut BraceScan, terminated: u8) -> Step {
+        let o = s.o;
+        if s.lookfor == Lookfor::Unterm {
+            if terminated == b',' {
+                s.amount += s.ind_continuation;
+            }
+            return Step::Done;
+        }
+        if s.lookfor == Lookfor::EnumOrInit {
+            if terminated == b',' {
+                if o.cpp_baseclass == 0 {
+                    return Step::Done;
+                }
+                s.lookfor = Lookfor::CppBaseclass;
+                return Step::Next;
+            }
+            if s.amount > s.cur_amount {
+                s.amount = s.cur_amount;
+            }
+            return Step::Next;
+        }
+        let cl = self.cur_line();
+        s.amount = s.cur_amount;
+        let n = strend(cl, 0);
+        if o.js != 0
+            && terminated == b','
+            && (at(cl, skipwhite(cl, 0)) == b']' || (n >= 2 && cl[n - 2] == b']'))
+        {
+            return Step::Done;
+        }
+        if s.lookfor == Lookfor::Initial && terminated == b',' {
+            if o.js != 0 {
+                if cin_iscomment(cl, skipwhite(cl, 0)) {
+                    return Step::Done;
+                }
+                s.lookfor = Lookfor::Comma;
+                if let Some(t) = self.find_match_char(b'[', o.maxparen) {
+                    if t.lnum == self.cur.lnum - 1 {
+                        return Step::Done;
+                    }
+                    s.ourscope = t.lnum;
+                }
+            } else {
+                s.lookfor = Lookfor::EnumOrInit;
+                s.cont_amount = self.cin_first_id_amount();
+            }
+        } else {
+            if s.lookfor == Lookfor::Initial && last_byte(cl) == b'\\' {
+                s.cont_amount = self.cin_get_equal_amount(self.cur.lnum);
+            }
+            if s.lookfor != Lookfor::Term
+                && s.lookfor != Lookfor::JsKey
+                && s.lookfor != Lookfor::Comma
+                && s.raw_string_start != self.cur.lnum
+            {
+                s.lookfor = Lookfor::Unterm;
+            }
+        }
+        Step::Next
+    }
+
+    /// `get_c_indent`, "Check if we are after a while (cond); If so: Ignore until the matching
+    /// "do"."
+    fn brace_while_of_do_end(&mut self, s: &mut BraceScan) -> Step {
+        if s.lookfor == Lookfor::Unterm || s.lookfor == Lookfor::EnumOrInit {
+            s.add_continuation();
+            return Step::Done;
+        }
+        if s.whilelevel == 0 {
+            s.lookfor = Lookfor::Term;
+            s.amount = self.get_indent();
+            if s.t0 == b'{' {
+                s.amount += s.o.open_extra;
+            }
+        }
+        s.whilelevel += 1;
+        Step::Next
+    }
+
+    /// `get_c_indent`, "We are after a "normal" statement": skip a single `break` before a switch
+    /// label, handle a "do {" line, add the continuation amount below a terminated line, or stop at
+    /// a second terminated line; else look further back (`term_again`).
+    fn brace_terminated(&mut self, s: &mut BraceScan) -> Step {
+        if s.lookfor == Lookfor::Nobreak {
+            let cl = self.cur_line();
+            if cin_isbreak(cl, skipwhite(cl, 0)) {
+                s.lookfor = Lookfor::Any;
+                return Step::Next;
+            }
+        }
+        if s.whilelevel > 0 {
+            let cl = self.cur_line();
+            let sk = self.skipcomment(cl, 0);
+            if cin_isdo(cl, sk) {
+                s.amount = self.get_indent();
+                s.whilelevel -= 1;
+                return Step::Next;
+            }
+        }
+        if s.lookfor == Lookfor::Unterm || s.lookfor == Lookfor::EnumOrInit {
+            s.add_continuation();
+            return Step::Done;
+        }
+        if s.lookfor == Lookfor::Term {
+            if !s.lookfor_break && s.whilelevel == 0 {
+                return Step::Done;
+            }
+            return Step::Next;
+        }
+        self.brace_term_again(s)
+    }
+
+    /// `get_c_indent`'s `term_again` label: "First line above the one we're indenting is terminated.
+    /// To know what needs to be done look further backward for a terminated line", skipping a
+    /// matched paren, an `else` (to its `if`) and a `{}` block (to its start).
+    fn brace_term_again(&mut self, s: &mut BraceScan) -> Step {
+        let o = s.o;
+        loop {
+            let l = self.cur_line();
+            if self.find_last_paren(l, b'(', b')') {
+                if let Some(t) = self.find_match_paren(o.maxparen) {
+                    self.cur = t;
+                    let l = self.cur_line();
+                    if self.cin_iscase(l, 0, false) || self.cin_isscopedecl(l, 0) {
+                        self.cur.lnum += 1;
+                        self.cur.col = 0;
+                        return Step::Next;
+                    }
+                }
+            }
+            let cl = self.cur_line();
+            let iscase = o.keep_case_label != 0 && self.cin_iscase(cl, 0, false);
+            let (a, ll, ls) = self.skip_label(self.cur.lnum);
+            s.amount = a;
+            if s.t0 == b'{' {
+                s.amount += o.open_extra;
+            }
+            let li = skipwhite(ll, ls);
+            if at(ll, li) == b'{' {
+                s.amount -= o.open_extra;
+            }
+            s.lookfor = if iscase { Lookfor::Any } else { Lookfor::Term };
+            if s.lookfor == Lookfor::Term
+                && at(ll, li) != b'}'
+                && self.cin_iselse(ll, li)
+                && s.whilelevel == 0
+            {
+                match self.find_start_brace() {
+                    None => return Step::Done,
+                    Some(t) => {
+                        if !self.find_match(true, t.lnum) {
+                            return Step::Done;
+                        }
+                    }
+                }
+                return Step::Next;
+            }
+            let l = self.cur_line();
+            if self.find_last_paren(l, b'{', b'}') {
+                if let Some(t) = self.find_start_brace() {
+                    self.cur = t;
+                    let cl = self.cur_line();
+                    let sk = self.skipcomment(cl, 0);
+                    if at(cl, sk) == b'}' || !self.cin_iselse(cl, sk) {
+                        continue; // term_again
+                    }
+                    self.cur.lnum += 1;
+                    self.cur.col = 0;
+                }
+            }
+            return Step::Next;
+        }
     }
 
     /// The top-level branch of `get_c_indent`: outside any brace or parenthesis.
@@ -1217,5 +1348,80 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
             break;
         }
         amount
+    }
+}
+
+/// What the brace branch's backward search looks for (nvim's `LOOKFOR_*`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lookfor {
+    Initial,
+    If,
+    Do,
+    Case,
+    Any,
+    Term,
+    Unterm,
+    Scopedecl,
+    Nobreak,
+    CppBaseclass,
+    EnumOrInit,
+    JsKey,
+    Comma,
+}
+
+/// Where the `{` that opens the block sits (nvim's `BRACE_IN_COL0`, `BRACE_AT_START`,
+/// `BRACE_AT_END`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StartBrace {
+    InCol0,
+    AtStart,
+    AtEnd,
+}
+
+/// What one pass of the backward search decided: look at the line above (nvim's `continue`), or
+/// stop with the amount found (nvim's `break`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Next,
+    Done,
+}
+
+/// The locals of the brace branch of nvim's `get_c_indent`, shared by its phases. Each is set where
+/// nvim sets it and read by the later phases, so no phase recomputes another's value.
+struct BraceScan {
+    o: CinOptions,
+    /// The first byte of the line being indented.
+    t0: u8,
+    /// The `{` that opens the block (nvim's `tryposBrace` copy).
+    try_brace: Pos,
+    cur_curpos: Pos,
+    ourscope: usize,
+    start_brace: StartBrace,
+    amount: i32,
+    scope_amount: i32,
+    cont_amount: i32,
+    added_to_amount: i32,
+    whilelevel: i32,
+    raw_string_start: usize,
+    cache: (bool, Pos),
+    lookfor: Lookfor,
+    lookfor_break: bool,
+    lookfor_cpp_namespace: bool,
+    js_cur_has_key: bool,
+    /// The caller's `cur_amount`, written back when the search ends.
+    cur_amount: i32,
+    /// The caller's `ind_continuation`, written back when the search ends.
+    ind_continuation: i32,
+}
+
+impl BraceScan {
+    /// nvim's repeated "if (cont_amount > 0) amount = cont_amount; else amount +=
+    /// ind_continuation;".
+    fn add_continuation(&mut self) {
+        if self.cont_amount > 0 {
+            self.amount = self.cont_amount;
+        } else {
+            self.amount += self.ind_continuation;
+        }
     }
 }
