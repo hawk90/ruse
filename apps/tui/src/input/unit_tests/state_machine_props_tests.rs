@@ -22,6 +22,17 @@ fn any_key() -> impl Strategy<Value = KeyEvent> {
     ]
 }
 
+/// Finish a `Feed::ScreenMotion` the way the frontend's `resolve_screen_motion` can, rotating through
+/// its four finishers by step index so every one of them is held to the no-leak invariant.
+fn finish_screen_motion(e: &mut InputEngine, step: usize) -> Feed {
+    match step % 4 {
+        0 => e.screen_motion_to(0),
+        1 => e.screen_motion_line_end(1),
+        2 => e.screen_motion_lines(step % 8 < 4),
+        _ => e.screen_motion_fail(),
+    }
+}
+
 fn any_mode() -> impl Strategy<Value = Mode> {
     prop_oneof![
         Just(Mode::Normal),
@@ -48,11 +59,20 @@ proptest! {
     /// No key sequence ever leaves a partial command dangling: after any outcome that is not
     /// `Feed::Pending`, every transient axis (count, operator, key-expectation) is cleared. And a
     /// text-object expectation is only ever armed with an operator present. (Never panics — implicit.)
+    ///
+    /// A `Feed::ScreenMotion` (`gj`, `gk`, …) is a handoff, not an outcome: the engine keeps the count,
+    /// operator, register and any `i_CTRL-O` one-shot armed until the frontend finishes it (#615, #1177).
+    /// The property finishes it as the frontend does and checks the finishing outcome instead (#1536).
     #[test]
     fn no_pending_state_ever_leaks(steps in prop::collection::vec((any_key(), any_mode()), 0..80)) {
         let mut e = InputEngine::new();
-        for (key, mode) in steps {
-            let feed = e.feed(key, mode);
+        for (i, (key, mode)) in steps.into_iter().enumerate() {
+            let mut feed = e.feed(key, mode);
+            if let Feed::ScreenMotion { count, .. } = feed {
+                prop_assert_eq!(count, e.mcount(), "handoff count differs from the armed count");
+                prop_assert!(e.normal.awaiting == Awaiting::Nothing, "key-expectation armed across a handoff");
+                feed = finish_screen_motion(&mut e, i);
+            }
             // Orthogonal-axis invariant: a text object is only ever awaited with an operator armed
             // (`diw`) or from a selection mode (`viw`) — never bare in Normal. `mode` is the mode the
             // arming key was fed with, so this checks the arm site directly.

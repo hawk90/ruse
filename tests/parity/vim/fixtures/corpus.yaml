@@ -143271,6 +143271,68 @@
       }
     },
     {
+      "name": "vis_count_gj_over_wrapped_line",
+      "lines": [
+        "first",
+        "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+        "last line"
+      ],
+      "keys": "j3lv1gj",
+      "expect": {
+        "text": [
+          "first",
+          "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+          "last line"
+        ],
+        "cursor": [
+          2,
+          83
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "vis_count_gj_leaves_no_count",
+      "lines": [
+        "first",
+        "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+        "last line"
+      ],
+      "keys": "j3lv1gj<Esc>2x",
+      "expect": {
+        "text": [
+          "first",
+          "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11ord12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+          "last line"
+        ],
+        "cursor": [
+          2,
+          83
+        ],
+        "reg_unnamed": {
+          "text": " w",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
       "name": "vb_shift_right",
       "lines": [
         "abc def",

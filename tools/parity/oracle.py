@@ -4350,6 +4350,10 @@ FIXTURES: list[dict] = [
     {"name": "dgj_in_wrapped_line", "lines": WRAP_LINES, "keys": "3ldgj"},
     {"name": "g_dollar_in_wrapped_line", "lines": WRAP_LINES, "keys": "gjdg$"},
     {"name": "nowrap_gj_is_linewise", "lines": WRAP_LINES, "keys": ":set nowrap<CR>dgj"},
+    # #1536: Visual `{count}gj` moves one screen row and leaves no count pending (a leaked `1` would make
+    # the `2x` a `12x`).
+    {"name": "vis_count_gj_over_wrapped_line", "lines": WRAP_LINES, "keys": "j3lv1gj"},
+    {"name": "vis_count_gj_leaves_no_count", "lines": WRAP_LINES, "keys": "j3lv1gj<Esc>2x"},
     # --- #1180 Visual-block `>`/`<` (`:help v_b_>`): shift from the block's left column. `|` rows: a row
     #     the left edge cuts a `<Tab>` or a wide character on (neither corner sits on it). ---------------
     {"name": "vb_shift_right", "lines": ["abc def", "ghi jkl", "mno"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>"},
