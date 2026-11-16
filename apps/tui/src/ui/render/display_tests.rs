@@ -5,13 +5,6 @@
 use super::*;
 use crate::ui::window_view::DisplayGlobals;
 
-/// A line index over `bytes`.
-fn li(bytes: &[u8]) -> crate::line_index::LineIndex {
-    let mut idx = crate::line_index::LineIndex::default();
-    idx.refresh(ruse_core::Revision(0), bytes);
-    idx
-}
-
 /// One window to paint: the buffer, its size and scroll, and what the frame overlays.
 struct Win<'a> {
     text: &'a str,
