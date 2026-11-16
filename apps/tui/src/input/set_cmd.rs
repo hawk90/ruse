@@ -173,19 +173,73 @@ const E518: &str = "E518: Unknown option";
 
 const E521: &str = "E521: Number required after =";
 
+/// What [`parse_one`] and its form parsers return: the argument, where it ends, and whether a `"`
+/// comment follows it directly; or an error with its message and the position its text runs from.
+type Parsed = Result<(SetArg, usize, bool), (&'static str, usize)>;
+
 /// One argument starting at `start`: the argument, where it ends, and whether a `"` comment follows it
 /// directly. An error carries its message and the position its text runs from (see [`parse_args`]).
-fn parse_one(s: &str, start: usize) -> Result<(SetArg, usize, bool), (&'static str, usize)> {
-    let b = s.as_bytes();
+///
+/// The forms are tried in nvim's order: `all` / `all&`, then the option name (with its `no` / `inv`
+/// prefix), then an assignment (`=` `:` `+=` `-=` `^=`), then a suffix (`?` `!` `&` `<`) or none.
+fn parse_one(s: &str, start: usize) -> Parsed {
+    if let Some(all) = parse_all(s, start) {
+        return Ok(all);
+    }
+    let item = match parse_name(s, start)? {
+        Named::Known(item) => item,
+        Named::Done(arg) => return Ok(arg),
+    };
+    if let Some((op, value_at)) = assign_op(s.as_bytes(), item.op_at, item.op) {
+        return parse_assign(&item, op, value_at);
+    }
+    parse_suffix(&item)
+}
+
+/// An argument read past its option name: the state the form parsers share.
+struct Item<'a> {
+    s: &'a str,
+    /// Where the argument starts; most errors run from here.
+    start: usize,
+    prefix: Prefix,
+    def: &'static OptDef,
+    is_bool: bool,
+    /// Where the name ends.
+    name_end: usize,
+    /// Where the operator is, past any white space after the name.
+    op_at: usize,
+    /// The byte at `op_at`.
+    op: Option<u8>,
+}
+
+/// What [`parse_name`] read: an option ruse implements, or an argument already complete.
+enum Named<'a> {
+    Known(Item<'a>),
+    /// A key code, a termcap option, or an option ruse does not implement.
+    Done((SetArg, usize, bool)),
+}
+
+/// Whether the argument ends at `at`: the end, a blank, or a `"` comment.
+fn ends_or_comment(b: &[u8], at: usize) -> bool {
+    at >= b.len() || matches!(b[at], b' ' | b'\t' | b'"')
+}
+
+/// `all` / `all&`.
+fn parse_all(s: &str, start: usize) -> Option<(SetArg, usize, bool)> {
     let rest = &s[start..];
-    let ends = |at: usize| at >= b.len() || matches!(b[at], b' ' | b'\t');
-    let ends_or_comment = |at: usize| ends(at) || b[at] == b'"';
-    if rest.starts_with("all") && ends_or_comment(start + 3) {
-        return Ok((SetArg::ShowAll, start + 3, false));
+    if rest.starts_with("all") && ends_or_comment(s.as_bytes(), start + 3) {
+        return Some((SetArg::ShowAll, start + 3, false));
     }
     if rest.starts_with("all&") {
-        return Ok((SetArg::ResetAll, start + 4, false));
+        return Some((SetArg::ResetAll, start + 4, false));
     }
+    None
+}
+
+/// The `no` / `inv` prefix and the option name after it, resolved against the option tables.
+fn parse_name(s: &str, start: usize) -> Result<Named<'_>, (&'static str, usize)> {
+    let b = s.as_bytes();
+    let rest = &s[start..];
     let (prefix, mut i) = if rest.starts_with("no") {
         (Prefix::No, start + 2)
     } else if rest.starts_with("inv") {
@@ -195,7 +249,7 @@ fn parse_one(s: &str, start: usize) -> Result<(SetArg, usize, bool), (&'static s
     };
     // A key code (`<F1>`) or a termcap option (`t_xx`): nvim has none and ignores them.
     if b.get(i) == Some(&b'<') || s[i..].starts_with("t_") {
-        return Ok((SetArg::Ignored, skip_to_white(b, i), false));
+        return Ok(Named::Done((SetArg::Ignored, skip_to_white(b, i), false)));
     }
     let name_start = i;
     while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
@@ -223,14 +277,27 @@ fn parse_one(s: &str, start: usize) -> Result<(SetArg, usize, bool), (&'static s
         if is_bool && matches!(op, Some(b'=' | b':')) {
             return Err((E474, start));
         }
-        return Ok((
+        return Ok(Named::Done((
             SetArg::Unsupported(name.to_string()),
             skip_to_white(b, i),
             false,
-        ));
+        )));
     };
-    let opt = def.opt;
-    let assign = match op {
+    Ok(Named::Known(Item {
+        s,
+        start,
+        prefix,
+        def,
+        is_bool,
+        name_end,
+        op_at,
+        op,
+    }))
+}
+
+/// The assignment operator `op` at `op_at` is, if any, and where its value starts.
+fn assign_op(b: &[u8], op_at: usize, op: Option<u8>) -> Option<(AssignOp, usize)> {
+    match op {
         Some(b'=' | b':') => Some((AssignOp::Set, op_at + 1)),
         Some(c @ (b'+' | b'-' | b'^')) if b.get(op_at + 1) == Some(&b'=') => Some((
             match c {
@@ -241,91 +308,117 @@ fn parse_one(s: &str, start: usize) -> Result<(SetArg, usize, bool), (&'static s
             op_at + 2,
         )),
         _ => None,
-    };
-    if let Some((op, value_at)) = assign {
-        if is_bool {
-            return Err((E474, start));
-        }
-        return match def.kind {
-            OptKind::Num { .. } => {
-                let (n, end) = parse_number(b, value_at).ok_or((E521, value_at))?;
-                if !ends_or_comment(end) {
-                    return Err((E521, value_at));
-                }
-                let comment = end < b.len() && b[end] == b'"';
-                Ok((
-                    SetArg::Assign {
-                        opt,
-                        op,
-                        val: RawVal::Num(n),
-                    },
-                    end,
-                    comment,
-                ))
-            }
-            _ => {
-                let (v, end) = string_value(s, value_at);
-                Ok((
-                    SetArg::Assign {
-                        opt,
-                        op,
-                        val: RawVal::Str(v),
-                    },
-                    end,
-                    false,
-                ))
-            }
-        };
     }
-    match op {
+}
+
+/// `opt=v`, `opt+=v`, `opt-=v`, `opt^=v`: a number or a string value from `value_at`.
+fn parse_assign(item: &Item<'_>, op: AssignOp, value_at: usize) -> Parsed {
+    let b = item.s.as_bytes();
+    if item.is_bool {
+        return Err((E474, item.start));
+    }
+    let opt = item.def.opt;
+    match item.def.kind {
+        OptKind::Num { .. } => {
+            let (n, end) = parse_number(b, value_at).ok_or((E521, value_at))?;
+            if !ends_or_comment(b, end) {
+                return Err((E521, value_at));
+            }
+            let comment = end < b.len() && b[end] == b'"';
+            Ok((
+                SetArg::Assign {
+                    opt,
+                    op,
+                    val: RawVal::Num(n),
+                },
+                end,
+                comment,
+            ))
+        }
+        _ => {
+            let (v, end) = string_value(item.s, value_at);
+            Ok((
+                SetArg::Assign {
+                    opt,
+                    op,
+                    val: RawVal::Str(v),
+                },
+                end,
+                false,
+            ))
+        }
+    }
+}
+
+/// `opt?`, `opt!`, `opt&` / `opt&vim`, `opt<`, or a bare `opt` / `noopt` / `invopt`.
+fn parse_suffix(item: &Item<'_>) -> Parsed {
+    let b = item.s.as_bytes();
+    let (opt, op_at) = (item.def.opt, item.op_at);
+    match item.op {
         Some(b'?') => {
-            if !ends_or_comment(op_at + 1) {
-                return Err((E488, start));
+            if !ends_or_comment(b, op_at + 1) {
+                return Err((E488, item.start));
             }
             Ok((SetArg::Show(opt), op_at + 1, comment_at(b, op_at + 1)))
         }
         Some(b'!') => {
-            if !is_bool || !ends_or_comment(op_at + 1) {
-                return Err((E488, start));
+            if !item.is_bool || !ends_or_comment(b, op_at + 1) {
+                return Err((E488, item.start));
             }
             Ok((SetArg::Toggle(opt), op_at + 1, comment_at(b, op_at + 1)))
         }
-        Some(b'&') => {
-            let mut end = op_at + 1;
-            let vim = if s[end..].starts_with("vim") {
-                end += 3;
-                true
-            } else if s[end..].starts_with("vi") {
-                end += 2;
-                true
-            } else {
-                false
-            };
-            if !ends_or_comment(end) {
-                return Err((E488, start));
-            }
-            Ok((SetArg::Default { opt, vim }, end, comment_at(b, end)))
-        }
+        Some(b'&') => parse_default(item),
         Some(b'<') => {
-            if !ends_or_comment(op_at + 1) {
-                return Err((E488, start));
+            if !ends_or_comment(b, op_at + 1) {
+                return Err((E488, item.start));
             }
             Ok((SetArg::FromGlobal(opt), op_at + 1, comment_at(b, op_at + 1)))
         }
-        _ => {
-            // No operator. Right after the name only a blank, the end or a comment may follow.
-            if !ends_or_comment(name_end) {
-                return Err((E488, start));
-            }
-            let arg = match (is_bool, prefix) {
-                (true, Prefix::None) => SetArg::Bool(opt, true),
-                (true, Prefix::No) => SetArg::Bool(opt, false),
-                (true, Prefix::Inv) => SetArg::Toggle(opt),
-                (false, _) => SetArg::Show(opt),
-            };
-            Ok((arg, name_end, comment_at(b, name_end)))
-        }
+        _ => parse_bare(item),
     }
+}
+
+/// `opt&` / `opt&vi` / `opt&vim`.
+fn parse_default(item: &Item<'_>) -> Parsed {
+    let (s, b) = (item.s, item.s.as_bytes());
+    let mut end = item.op_at + 1;
+    let vim = if s[end..].starts_with("vim") {
+        end += 3;
+        true
+    } else if s[end..].starts_with("vi") {
+        end += 2;
+        true
+    } else {
+        false
+    };
+    if !ends_or_comment(b, end) {
+        return Err((E488, item.start));
+    }
+    Ok((
+        SetArg::Default {
+            opt: item.def.opt,
+            vim,
+        },
+        end,
+        comment_at(b, end),
+    ))
+}
+
+/// No operator: `opt` / `noopt` / `invopt` on a boolean, or `opt` (show) on any other type.
+fn parse_bare(item: &Item<'_>) -> Parsed {
+    let b = item.s.as_bytes();
+    let (opt, name_end) = (item.def.opt, item.name_end);
+    // Right after the name only a blank, the end or a comment may follow.
+    if !ends_or_comment(b, name_end) {
+        return Err((E488, item.start));
+    }
+    let arg = match (item.is_bool, item.prefix) {
+        (true, Prefix::None) => SetArg::Bool(opt, true),
+        (true, Prefix::No) => SetArg::Bool(opt, false),
+        (true, Prefix::Inv) => SetArg::Toggle(opt),
+        (false, _) => SetArg::Show(opt),
+    };
+    Ok((arg, name_end, comment_at(b, name_end)))
 }
 
 fn comment_at(b: &[u8], at: usize) -> bool {
