@@ -1,7 +1,10 @@
 //! Comment-leader continuation: the leader an opened line (`o`/`O`/`<CR>`) continues, and the end of a
 //! three-piece comment that `formatoptions` closes (#1350).
 
-use super::*;
+use super::{edit, indent_cols, one};
+use crate::editor::format;
+use crate::motion::{line_end, line_start};
+use crate::{BytePos, CaretGravity, Command, Edit, EditorState, GroupHint, Mode, Plan, View};
 
 /// The line a comment-continuing open makes (#618): `o`/`O` under `'formatoptions'` `o` and an Insert
 /// `<CR>` under `r` on a line that starts with a `'comments'` leader (nvim's `open_line` with

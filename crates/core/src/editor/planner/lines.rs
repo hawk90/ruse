@@ -3,7 +3,10 @@
 //!
 //! Split out of `planner/mod.rs` (#1392); the items are as they were there.
 
-use super::*;
+use super::{beep, edit, hspace_end, indent_cols, mark_line_target, nop, one};
+use crate::editor::{format, op_landing, want_col, MAXCOL};
+use crate::motion::{self, line_end, line_start, next_grapheme};
+use crate::{BytePos, Command, Edit, EditList, EditorState, GroupHint, Mode, Motion, Plan, Tabs};
 
 /// Plan a `[count]J` / `[count]gJ` join (nvim's `do_join`). `count` joins `count-1` seams (Vim: `J`/`2J` =
 /// one join, `3J` = two), leaving the cursor on the LAST join. `J` strips the next line's leading blanks

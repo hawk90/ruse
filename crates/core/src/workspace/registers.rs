@@ -1,8 +1,8 @@
 //! Registers and the OS clipboard: the editor-global register store the workspace lends into the
 //! focused View, the `"+`/`"*` provider, and the register snapshots the frontend reads.
 
-use super::*;
 use crate::register::RegKind;
+use crate::{Clipboard, EditorState, RegisterStore, Workspace};
 
 impl Workspace {
     /// The editor-global register store (read-only).

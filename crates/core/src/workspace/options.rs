@@ -1,6 +1,6 @@
 //! Option levels: the global copy every new View takes and the focused View's local copy.
 
-use super::*;
+use crate::Workspace;
 
 impl Workspace {
     /// Set the workspace default search-case and apply it to EVERY live view (existing and, via

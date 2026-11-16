@@ -3,7 +3,7 @@
 //!
 //! Split out of `planner/mod.rs` (#1392); the items are as they were there.
 
-use super::*;
+use crate::WordCase;
 
 /// Recase `bytes`, keeping any invalid UTF-8 byte as it is: a file with stray bytes recases its letters
 /// instead of panicking (#706).

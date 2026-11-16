@@ -7,7 +7,9 @@
 //! `line_form/`: the `"verb" =>` arms of the decoders and token readers feed its fuzz verb list, and the
 //! body of `motion_token` (which ends at `fn motion_from_token`) feeds its motion list.
 
-use super::*;
+use crate::{
+    Command, ForcedWise, MarkOp, Motion, OpKind, SearchOffset, SearchOp, VisualOp, WordCase,
+};
 
 mod args;
 mod decode;

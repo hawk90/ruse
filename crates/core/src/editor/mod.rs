@@ -7,21 +7,20 @@
 
 use crate::anchor::Tracked;
 use crate::cells::{Tabs, VarStops};
-use crate::command::{
-    BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOffset, SearchOp,
-    SelectKind, VisualOp, WordCase,
-};
+use crate::command::SelectKind;
 use crate::document::{Document, DocumentId, TxnError};
 use crate::edit::{Edit, EditList};
-use crate::effect::Effect;
-use crate::motion::{
-    self, at_col, col_of, line_end, line_start, next_boundary, next_grapheme, prev_boundary,
-    prev_grapheme, snap, Motion,
-};
-use crate::pattern::RegexError;
+use crate::motion::snap;
 use crate::pos::BytePos;
-use crate::register::{Register, RegisterStore};
+use crate::register::RegisterStore;
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
+// The test suites under `tests/` read these through `use crate::editor::*`.
+#[cfg(test)]
+use crate::{
+    command::{BlockInsertKind, Command, ForcedWise, OpKind, OpenKind, SearchOffset, WordCase},
+    effect::Effect,
+    motion::{self, Motion},
+};
 
 /// The editor mode. `Visual { kind }` and `Select { kind }` are selection modes carrying a [`SelectKind`]
 /// shape: charwise (`v`), linewise (`V`), or blockwise (`CTRL-V`). A selection is the pair `(anchor,

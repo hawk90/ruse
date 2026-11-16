@@ -3,7 +3,12 @@
 //! marks, jumps, changes). Moved out of `editor/mod.rs` (#1495); a child module, so it reads the private
 //! `View` fields as before.
 
-use super::*;
+use super::{planner, Want, WantKind};
+use crate::motion::snap;
+use crate::{
+    BytePos, CaretGravity, Command, EditorOption, EditorState, IndentStyle, Mode, Register,
+    RegisterStore,
+};
 
 impl EditorState {
     /// Set the indentation config the shift operators (`>>`/`<<`) use. Runtime config loading is deferred;

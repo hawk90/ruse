@@ -2,7 +2,9 @@
 //! ([`VisualOpGeom`]) and the step that records it or rebuilds an equivalent selection at the caret before
 //! the operator plans. Moved out of `editor/mod.rs` (#1495).
 
-use super::*;
+use super::{at_vcol, block_geom, range, vcols_at, Want};
+use crate::motion::{line_end, line_start};
+use crate::{Command, EditorState, Mode, SelectKind};
 
 /// The AMOUNT of text the last Visual-selection operator covered, kept so dot-repeat (`.`) can rebuild an
 /// equivalent selection at the caret (`:help visual-repeat`, #794): the same number of lines; within one

@@ -4,7 +4,19 @@
 //! Split out of [`super::plan_cmd`] (#1349); [`plan`] routes each operator family to its own planner
 //! (#1479), and the arms are as they were there.
 
-use super::*;
+use super::{
+    apply_op, beep, block_op, delete_quirk, nop, plan_comment, plan_format_lines, plan_reindent,
+    plan_set_indents, plan_shift,
+};
+use crate::editor::{
+    block_geom, change_span, exclusive_end_adjusted, forced_span, is_text_object, op_landing,
+    op_span, op_span_full, want_col,
+};
+use crate::motion::{self, line_end, line_start, prev_grapheme};
+use crate::{
+    CaretGravity, Command, EditorState, ForcedWise, GroupHint, MarkOp, Mode, Motion, OpKind, Plan,
+    SelectKind,
+};
 
 pub(super) fn plan(
     st: &EditorState,

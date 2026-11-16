@@ -4,9 +4,9 @@
 //! private `View`/`Document` state as they did in `mod.rs`; `:g` is in `line_cmds.rs`.
 //! The public types stay `pub` and remain reachable at the crate root via `crate::lib`'s re-export.
 
-use super::*;
 use crate::pattern::{Match, Regex};
 use crate::pos::BytePos;
+use crate::{motion, Edit, EditList, EditorState, RegexError};
 
 /// The pure decision for one command.
 #[must_use]

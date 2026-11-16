@@ -1,6 +1,7 @@
 //! The buffer list: add, focus, cycle, remove, name and reload buffers, and look them up by id.
 
-use super::*;
+use super::BufferInfo;
+use crate::{BytePos, Document, DocumentId, View, ViewId, Workspace};
 
 impl Workspace {
     /// The focused buffer, mutably — for a durable save to `mark_saved()` after writing to disk.

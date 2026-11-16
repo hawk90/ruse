@@ -3,7 +3,7 @@
 //! it carries for `commit` to apply. Moved out of `editor/mod.rs` (#1495); `pub(super)` keeps each item's
 //! old reach, the `editor` module and its children.
 
-use super::*;
+use crate::{BlockInsertKind, EditList, Effect, GroupHint, Mode, Register};
 
 pub(super) enum Action {
     Txn {

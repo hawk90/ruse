@@ -7,7 +7,14 @@
 //! and the undo landing), [`classify`] (command predicates), [`insert_state`] (Insert-session bookkeeping)
 //! and [`curswant`] (the sticky wanted column).
 
-use super::*;
+use super::{
+    lisp, planner, prepare_selection_op, Action, BlockGeom, MarkWrite, RegWrite, UndoStep,
+};
+use crate::motion::{self, col_of, line_end, line_start, prev_grapheme, snap};
+use crate::{
+    plan, BlockInsertKind, CaretGravity, Command, Document, EditList, EditorState, Effect,
+    GroupHint, Mode, Plan, RegisterStore, Tracked,
+};
 
 mod classify;
 mod curswant;

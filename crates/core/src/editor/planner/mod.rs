@@ -1,6 +1,12 @@
-use super::*;
-use crate::cells::Tabs;
-use crate::RegKind;
+// `cindent` and `lisp` are imported for `lines.rs`, which names them as `super::cindent` / `super::lisp`.
+use super::{
+    cindent, cluster_cells, lisp, range, selection_range, want_col, Action, OpSpan, RegWrite,
+};
+use crate::motion::{self, line_end, line_start, next_grapheme, prev_grapheme};
+use crate::{
+    BytePos, CaretGravity, Command, Edit, EditList, EditorState, Effect, GroupHint, MarkOp, Mode,
+    Motion, Plan, Register, SelectKind,
+};
 
 mod block;
 mod comment;

@@ -3,7 +3,10 @@
 //!
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
-use super::*;
+use super::{apply_op, beep, delete_quirk, mark_line_target, nop, plan_op_over_span};
+use crate::editor::{exclusive_op_span, Action};
+use crate::motion::{self, line_end, line_start, prev_grapheme};
+use crate::{BytePos, Command, EditorState, GroupHint, MarkOp, Mode, Plan, SelectKind};
 
 pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
     match cmd {

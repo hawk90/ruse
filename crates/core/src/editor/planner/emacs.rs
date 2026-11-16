@@ -1,7 +1,13 @@
 //! The Emacs profile's commands: the depth-1 region ops (D-027) and the distinct Emacs commands (D-051),
 //! planned by [`plan_emacs`]. Moved out of `planner/mod.rs` (#1350).
 
-use super::*;
+use super::{captured, edit, hspace_end, is_hspace, nop, one, paste, recase_emacs, recase_span};
+use crate::editor::{op_span, Action, MarkWrite, RegWrite};
+use crate::motion::{self, line_end, line_start};
+use crate::{
+    BytePos, Command, Edit, EditList, EditorState, GroupHint, Mode, Motion, Plan, Register,
+    WordCase,
+};
 
 /// A non-editing move (like [`nop`]) that also SETS the Emacs mark at `mark`. Shared by the mark commands
 /// (`SetMark` / `ExchangePointMark` / `EmacsMarkWord` / `EmacsBufferEdge`).
