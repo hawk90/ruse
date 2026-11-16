@@ -622,7 +622,7 @@ features:
     title: Buffers, views, windows, splits
     stage: mvp
     priority: must
-    # done (#102 impl + #103 repoint): crates/core/src/workspace.rs — Workspace owns docs/views/
+    # done (#102 impl + #103 repoint): crates/core/src/workspace/ — Workspace owns docs/views/
     # windows arenas (no Rc/RefCell; a View NAMES its buffer by DocumentId), edits the focused
     # (Document, View) via a swap into the UNCHANGED EditorState pipeline (single-window path byte-
     # identical), split clones the focused View onto the same buffer, close_focused retires the View
@@ -667,7 +667,7 @@ features:
       # F-002/005/008). Chain closes via parity_na (gov implementable F-007 = READY).
       parity: []
       design: [../docs/design/view-window-workspace.md, ../docs/architecture/architecture.md#7, ../docs/design/render-and-frontends.md]
-      verify: [../crates/core/src/workspace.rs, ../apps/tui/src/ui/window_view.rs, ../apps/tui/tests/session_intercepts.rs, ../apps/tui/tests/scenarios.rs]
+      verify: [../crates/core/src/workspace/mod.rs, ../apps/tui/src/ui/window_view.rs, ../apps/tui/tests/session_intercepts.rs, ../apps/tui/tests/scenarios.rs]
     acceptance:
       - Splitting shows two views of one document with independent cursors and scroll.
       - View-local state (cursor, folds, selection) stays in the view, not the buffer.
@@ -789,7 +789,7 @@ features:
       # statefulness) is a vim.md prose bullet, never a catalog row — demoted to this annotation.
       parity: []
       design: [../docs/design/persistence-and-recovery.md]
-      verify: [../apps/tui/tests/journal_torn_write.rs, ../apps/tui/tests/journal_roundtrip.rs, ../apps/tui/tests/fs_faults.rs, ../apps/tui/src/persist/atomic.rs, ../apps/tui/tests/pty_recovery.rs]
+      verify: [../apps/tui/tests/journal_torn_write.rs, ../apps/tui/tests/journal_roundtrip.rs, ../apps/tui/tests/fs_faults.rs, ../apps/tui/src/persist/atomic/tests.rs, ../apps/tui/tests/pty_recovery.rs]
     acceptance:
       - 'The "Saved" UI reflects a durable write (fsync), not just a successful syscall.'
       - Save preserves the file's original encoding and line-ending style.
@@ -1295,7 +1295,7 @@ features:
       is the cross-buffer layer over the existing F-007 arena; it unblocks global marks, buffer/file pickers,
       an editable q:, the "# register, and the "other buffers" completion source (D-057).
     # done (#944, D-057 slice 2): the register store is Workspace-owned, so a yank reaches every buffer and
-    # split (core unit tests in workspace.rs). "# reads the alternate file name (#1022). A buffer whose last
+    # split (core unit tests in workspace/tests/). "# reads the alternate file name (#1022). A buffer whose last
     # window closes stays loaded and hidden (#1044); uppercase marks work within their own buffer (#1103); marks,
     # the jumplist and the change list follow edits as line anchors (#1124). Remaining (RFC-0018 accepted
     # 2026-11-03): cross-buffer `A, (DocumentId, Anchor) jumplist entries with degrade-to-(path, line, col) on
