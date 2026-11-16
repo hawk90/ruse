@@ -1,7 +1,8 @@
 //! The Emacs profile's definitions (F-012 / D-045 / D-049): the nine-tier keymap table, the prefix-
 //! argument and key data types, the `M-x` command registry, and the pure count-folding helpers. Split
 //! out of `input/mod.rs` as self-contained definitions; the `InputEngine` dispatch methods
-//! (`feed_emacs`, `feed_emacs_prefix`, `open_minibuffer`) stay in the engine core and reach these
+//! (`feed_emacs`, `feed_emacs_prefix` in [`super::feed_emacs`], `open_minibuffer` in
+//! [`super::feed_cmdline`]) reach these
 //! through `pub(crate)` types / accessors.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
