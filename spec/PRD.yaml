@@ -800,7 +800,7 @@ features:
     title: Search & substitute
     stage: mvp
     priority: should
-    # done (#107-#112): the C-REGEX Vim-dialect engine (crates/core/src/pattern.rs — magic levels +
+    # done (#107-#112): the C-REGEX Vim-dialect engine (crates/core/src/pattern/ — magic levels +
     # \zs/\ze over wrapped `regex`, DEP-REGEX; owned NFA for lookbehind/backrefs is post-MVP) plus the
     # search + substitute command layer. #1 search+smartcase (#108) + incremental hlsearch/incsearch
     # highlight (#112); #2 :[range]s///[g][c][i] + gdefault, the c-confirm interactive loop (#109/#110);
