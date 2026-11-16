@@ -622,3 +622,33 @@ fn visual_line_operators_and_command_entry() {
     assert_eq!(e.feed(k('!'), vis), op(VisualOp::LeaveAtStart));
     assert_eq!(e.cmdline(), Some((':', "'<,'>!", 6)));
 }
+
+#[test]
+fn visual_count_gj_hands_off_then_clears_the_count() {
+    // #1536: Visual `1gj` hands the screen motion to the frontend with the count still armed (the
+    // frontend needs it); finishing it is the command boundary that clears it.
+    let vis = Mode::Visual {
+        kind: SelectKind::Charwise,
+    };
+    let mut e = InputEngine::new();
+    assert_eq!(e.feed(k('1'), vis), Feed::Pending);
+    assert_eq!(e.feed(k('g'), vis), Feed::Pending);
+    assert_eq!(
+        e.feed(k('j'), vis),
+        Feed::ScreenMotion {
+            motion: ScreenMotion::Down,
+            count: 1
+        }
+    );
+    assert_eq!(
+        e.screen_motion_to(83),
+        Feed::Cmd(Command::Move(84, Motion::GotoByte))
+    );
+    assert_eq!((e.normal.count, e.pending()), (0, Pending::Base));
+    // The next count starts fresh: `2l`, not `12l`.
+    assert_eq!(e.feed(k('2'), vis), Feed::Pending);
+    assert_eq!(
+        e.feed(k('l'), vis),
+        Feed::Cmd(Command::Move(2, Motion::Right))
+    );
+}

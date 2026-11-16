@@ -742,4 +742,29 @@ mod tests {
         h.keys("dd");
         assert_eq!(h.text(), "x\n", "keys after quit are ignored");
     }
+
+    /// #1536: Visual `1gj` moves one screen row down a wrapped line and leaves no count pending, as
+    /// nvim v0.12.6 does: (2,3) to (2,83), still in Visual, and the following `2x` deletes two chars
+    /// (a leaked `1` would make it `12x`).
+    #[test]
+    fn visual_count_gj_leaves_no_pending_count() {
+        let words: Vec<String> = (0..30).map(|i| format!("word{i:02}")).collect();
+        let long = words.join(" ");
+        let mut h = Headless::vim(&format!("first\n{long}\nlast line\n"));
+        h.keys("j3lv1gj");
+        assert_eq!(
+            h.mode(),
+            Mode::Visual {
+                kind: ruse_core::SelectKind::Charwise
+            }
+        );
+        assert_eq!(h.cursor_row_col(), (2, 83));
+        assert_eq!(
+            (h.engine().screen_count(), h.engine().pending()),
+            (0, crate::input::Pending::Base)
+        );
+        h.keys("<Esc>2x");
+        let want = format!("{}{}", &long[..83], &long[85..]);
+        assert_eq!(h.text(), format!("first\n{want}\nlast line\n"));
+    }
 }
