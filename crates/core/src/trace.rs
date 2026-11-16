@@ -253,7 +253,7 @@ mod tests {
     fn verbs() -> Vec<String> {
         include_str!("command/line_form.rs")
             .lines()
-            .chain(include_str!("editor/ex_cmd.rs").lines())
+            .chain(include_str!("editor/ex_cmd/codec.rs").lines())
             .filter_map(|l| {
                 let rest = l.trim_start().strip_prefix('"')?;
                 let (verb, tail) = rest.split_once('"')?;

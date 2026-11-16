@@ -1089,7 +1089,7 @@ items:
       - User-facing message differs from the developer diagnostic
     evidence:
       - apps/tui/src/shell.rs::ShellError
-      - apps/tui/src/app/dispatch.rs::save
+      - apps/tui/src/app/dispatch/save.rs::save
       - tools/rusekit/gov/rust_discipline.py
     legacy_ids:
       - DR-STAB-2
