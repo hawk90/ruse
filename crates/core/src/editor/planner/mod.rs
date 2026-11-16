@@ -629,15 +629,6 @@ fn display_columns(st: &EditorState, cmd: &Command) -> Option<Command> {
 fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
     let cur = st.view.cursor;
-    // Undo/redo restore DOCUMENT state, not mode. The engine only reaches them from Normal or from
-    // Insert via `i_CTRL-O` (Vim's `u` in Visual is not an undo), so preserving Insert makes
-    // `i_CTRL-O u` return to Insert — the one-shot's resume (KL-OBL-5) — while everything else
-    // collapses to Normal exactly as before.
-    let undo_resume_mode = if st.view.mode == Mode::Insert {
-        Mode::Insert
-    } else {
-        Mode::Normal
-    };
     let hint = if st.view.last_was_edit {
         GroupHint::Continue
     } else {
@@ -653,35 +644,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
     }
 
     match cmd {
-        // `h`/`l` move by whole grapheme cluster so the cursor never lands mid-emoji/ZWJ/combining
-        // (F-002 #2). Operator/selection internals below still step by char boundary — grapheme-aware
-        // deletion is a follow-up; this slice makes the CURSOR stay synced to user-perceived chars.
-        Command::MoveLeft => nop(prev_grapheme(b, cur), st.view.mode),
-        Command::MoveRight => nop(next_grapheme(b, cur), st.view.mode),
-        Command::MoveLineStart => nop(line_start(b, cur), st.view.mode),
-        Command::MoveLineEnd => nop(line_end(b, cur), st.view.mode),
-        Command::MoveUp => nop(
-            motion::vmove(
-                b,
-                cur,
-                1,
-                false,
-                st.view.curswant.get(),
-                st.view.indent.tabs(),
-            ),
-            st.view.mode,
-        ),
-        Command::MoveDown => nop(
-            motion::vmove(
-                b,
-                cur,
-                1,
-                true,
-                st.view.curswant.get(),
-                st.view.indent.tabs(),
-            ),
-            st.view.mode,
-        ),
+        Command::MoveLeft
+        | Command::MoveRight
+        | Command::MoveLineStart
+        | Command::MoveLineEnd
+        | Command::MoveUp
+        | Command::MoveDown => plan_cursor_move(st, b, cur, cmd),
         Command::EnterInsert
         | Command::InsertAtLastInsert
         | Command::EnterInsertAfter
@@ -747,10 +715,6 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         | Command::GotoNamedMark(..)
         | Command::GotoNamedMarkLine(..)
         | Command::OpToMark { .. } => marks::plan(st, b, cur, hint, cmd),
-        // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
-        // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
-        // group starts here mid-insert-session (Vim `i_CTRL-G_u`). Cursor and mode are untouched.
-        Command::BreakUndo => nop(cur, st.view.mode),
         Command::Move(..)
         | Command::Delete(..)
         | Command::Change(..)
@@ -792,18 +756,114 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         | Command::GotoDeclaration { .. }
         | Command::ShowKeywordLines { .. }
         | Command::GotoFirstMatch(..) => search::plan(st, b, cur, hint, cmd),
-        // `ga`/`:ascii`, `CTRL-G`, `g CTRL-G` — INFO commands resolved by the frontend (it reads the buffer
-        // bytes + cursor and sets the status line); the pure core never mutates for them.
-        Command::AsciiInfo | Command::Utf8Info | Command::FileInfo | Command::CursorInfo => {
-            nop(cur, st.view.mode)
-        }
-        // `g&` — resolved in the frontend against its last-substitute state; a no-op in the pure core.
-        Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
-        // `&` — resolved in the frontend (current-line, flagless repeat); a no-op in the pure core.
-        Command::RepeatSubstituteLine => nop(cur, st.view.mode),
+        Command::BreakUndo
+        | Command::AsciiInfo
+        | Command::Utf8Info
+        | Command::FileInfo
+        | Command::CursorInfo
+        | Command::RepeatSubstituteGlobal
+        | Command::RepeatSubstituteLine
+        | Command::Ex(_)
+        | Command::Save
+        | Command::Quit => plan_session(st, cur, cmd),
+        Command::Undo
+        | Command::Redo
+        | Command::UndoOlder
+        | Command::UndoNewer
+        | Command::LineUndo => plan_undo(st, cur, cmd),
+        // Emacs-profile commands: the depth-1 region ops (D-027) and the distinct Emacs commands
+        // (D-051), grouped into `plan_emacs` to keep this match readable.
+        Command::SetMark
+        | Command::ExchangePointMark
+        | Command::CopyRegion
+        | Command::KillRegion
+        | Command::EmacsYank { .. }
+        | Command::EmacsKillLine
+        | Command::EmacsKillWord { .. }
+        | Command::EmacsBackwardKillWord { .. }
+        | Command::EmacsTransposeChars
+        | Command::EmacsTransposeWords
+        | Command::EmacsCaseWord { .. }
+        | Command::EmacsHorizontalSpace { .. }
+        | Command::EmacsOpenLine
+        | Command::EmacsMarkWord
+        | Command::EmacsKillWholeLine
+        | Command::EmacsCaseRegion { .. }
+        | Command::EmacsDeleteIndentation
+        | Command::EmacsBufferEdge { .. } => plan_emacs(st, b, cur, hint, cmd),
+    }
+}
+
+/// The bare cursor motions `h` `l` `0` `$` `k` `j`.
+fn plan_cursor_move(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Plan {
+    match cmd {
+        // `h`/`l` move by whole grapheme cluster so the cursor never lands mid-emoji/ZWJ/combining
+        // (F-002 #2). Operator/selection internals still step by char boundary — grapheme-aware
+        // deletion is a follow-up; this slice makes the CURSOR stay synced to user-perceived chars.
+        Command::MoveLeft => nop(prev_grapheme(b, cur), st.view.mode),
+        Command::MoveRight => nop(next_grapheme(b, cur), st.view.mode),
+        Command::MoveLineStart => nop(line_start(b, cur), st.view.mode),
+        Command::MoveLineEnd => nop(line_end(b, cur), st.view.mode),
+        Command::MoveUp | Command::MoveDown => nop(
+            motion::vmove(
+                b,
+                cur,
+                1,
+                matches!(cmd, Command::MoveDown),
+                st.view.curswant.get(),
+                st.view.indent.tabs(),
+            ),
+            st.view.mode,
+        ),
+        _ => unreachable!("plan_cursor_move plans only the bare cursor motions"),
+    }
+}
+
+/// Commands the pure core does not edit for: they keep cursor and mode, and at most hand the
+/// frontend an effect.
+fn plan_session(st: &EditorState, cur: usize, cmd: &Command) -> Plan {
+    match cmd {
+        // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
+        // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
+        // group starts here mid-insert-session (Vim `i_CTRL-G_u`).
+        // `ga`/`:ascii`, `CTRL-G`, `g CTRL-G` — INFO commands resolved by the frontend (it reads the
+        // buffer bytes + cursor and sets the status line).
+        // `g&` — resolved in the frontend against its last-substitute state.
+        // `&` — resolved in the frontend (current-line, flagless repeat).
         // A resolved Ex edit never reaches the planner: `apply_command` runs it through
         // `EditorState::apply_ex` (RFC-0020). Planned alone it changes nothing.
-        Command::Ex(_) => nop(cur, st.view.mode),
+        Command::BreakUndo
+        | Command::AsciiInfo
+        | Command::Utf8Info
+        | Command::FileInfo
+        | Command::CursorInfo
+        | Command::RepeatSubstituteGlobal
+        | Command::RepeatSubstituteLine
+        | Command::Ex(_) => nop(cur, st.view.mode),
+        Command::Save => Plan {
+            effects: vec![Effect::Save],
+            ..nop(cur, st.view.mode)
+        },
+        Command::Quit => Plan {
+            effects: vec![Effect::Quit],
+            ..nop(cur, st.view.mode)
+        },
+        _ => unreachable!("plan_session plans only the frontend-resolved commands"),
+    }
+}
+
+/// `u`, `CTRL-R`, `g-`, `g+` and `U`.
+fn plan_undo(st: &EditorState, cur: usize, cmd: &Command) -> Plan {
+    // Undo/redo restore DOCUMENT state, not mode. The engine only reaches them from Normal or from
+    // Insert via `i_CTRL-O` (Vim's `u` in Visual is not an undo), so preserving Insert makes
+    // `i_CTRL-O u` return to Insert — the one-shot's resume (KL-OBL-5) — while everything else
+    // collapses to Normal exactly as before.
+    let undo_resume_mode = if st.view.mode == Mode::Insert {
+        Mode::Insert
+    } else {
+        Mode::Normal
+    };
+    match cmd {
         // Nothing to undo or redo: Vim's `u_doit` beeps ("Already at oldest change"), which stops a macro
         // replay or a `:normal` (#1111).
         Command::Undo if !st.doc.can_undo() => beep(cur, st.view.mode),
@@ -831,34 +891,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             action: Action::UndoChrono { older: false },
             ..nop(cur, undo_resume_mode)
         },
-        Command::Save => Plan {
-            effects: vec![Effect::Save],
-            ..nop(cur, st.view.mode)
-        },
-        Command::Quit => Plan {
-            effects: vec![Effect::Quit],
-            ..nop(cur, st.view.mode)
-        },
-        // Emacs-profile commands: the depth-1 region ops (D-027) and the distinct Emacs commands
-        // (D-051), grouped into `plan_emacs` to keep this match readable.
-        Command::SetMark
-        | Command::ExchangePointMark
-        | Command::CopyRegion
-        | Command::KillRegion
-        | Command::EmacsYank { .. }
-        | Command::EmacsKillLine
-        | Command::EmacsKillWord { .. }
-        | Command::EmacsBackwardKillWord { .. }
-        | Command::EmacsTransposeChars
-        | Command::EmacsTransposeWords
-        | Command::EmacsCaseWord { .. }
-        | Command::EmacsHorizontalSpace { .. }
-        | Command::EmacsOpenLine
-        | Command::EmacsMarkWord
-        | Command::EmacsKillWholeLine
-        | Command::EmacsCaseRegion { .. }
-        | Command::EmacsDeleteIndentation
-        | Command::EmacsBufferEdge { .. } => plan_emacs(st, b, cur, hint, cmd),
+        _ => unreachable!("plan_undo plans only the undo commands"),
     }
 }
 
