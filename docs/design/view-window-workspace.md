@@ -541,7 +541,7 @@ pub struct Workspace {
 ```
 
 <!-- design-code-ack: Workspace — the illustration above is the FULL C-WORKSPACE design; the code
-     (crates/core/src/workspace.rs) is the F-007 MVP slice plus the buffer list, which implements
+     (crates/core/src/workspace/) is the F-007 MVP slice plus the buffer list, which implements
      { documents, views, windows, split, focus, names, buffer_order, alt, clipboard } and defers tabs /
      overlays / roots / services / settings / session / health to post-MVP (see "MVP slice — F-007 minimal"
      below). The design is ahead of the code by intent. -->
@@ -901,7 +901,7 @@ later multi-client/remote work extends them without a break.
 
 `apply_command` keeps its `EditorState` signature. To run a command, the focused `(Document, View)` pair is
 swapped out of its arena slots into an `EditorState`, the pipeline runs, and the pair is swapped back
-(the swap trick, `crates/core/src/workspace.rs`). One command runs at a time and other Views hold only the
+(the swap trick, `crates/core/src/workspace/mod.rs`). One command runs at a time and other Views hold only the
 id, so the move is sound.
 
 ### Document ownership — arena + handles, not `Rc<RefCell>`
