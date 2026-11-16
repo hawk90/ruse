@@ -146,7 +146,7 @@ impl Journals {
     /// The journal of a document by its canonical path: `<basename>.<16 hex>.rj`.
     pub fn path_for_canonical(&self, canon: &Path) -> PathBuf {
         let hash = rj01::sha256(&path_bytes(canon));
-        let hex: String = hash[..8].iter().map(|b| format!("{b:02x}")).collect();
+        let hex = crate::hex_lower(&hash[..8]);
         let base = canon
             .file_name()
             .map_or_else(Vec::new, |n| path_bytes(Path::new(n)));

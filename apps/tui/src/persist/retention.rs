@@ -223,10 +223,8 @@ mod tests {
     const NOW: u64 = 1_800_000_000_000;
     const HASH: &str = "0123456789abcdef";
 
-    fn scratch(tag: &str) -> (Journals, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("ruse-retention-{tag}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+    fn scratch(tag: &str) -> (Journals, crate::TestDir) {
+        let dir = crate::TestDir::new(&format!("retention-{tag}"));
         let j = Journals::in_state_home(&dir.join("state"));
         fs::create_dir_all(j.archive_dir()).unwrap();
         (j, dir)
@@ -301,7 +299,7 @@ mod tests {
     /// Archives older than 14 days go; younger ones and look-alike names stay.
     #[test]
     fn old_archives_are_removed() {
-        let (j, dir) = scratch("age");
+        let (j, _dir) = scratch("age");
         let a = j.archive_dir();
         let old = NOW - MAX_AGE_MS - 1;
         put(&a.join(format!("f.txt.{HASH}.rj.1")), old);
@@ -328,7 +326,6 @@ mod tests {
                 "notes.txt".into()
             ]
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     /// #934: a legacy sidecar whose name is 255 bytes is archived under a shortened name, and that archive is
@@ -368,13 +365,12 @@ mod tests {
         let mut want = lookalikes.to_vec();
         want.sort();
         assert_eq!(names(&a), want);
-        let _ = fs::remove_dir_all(&dir);
     }
 
     /// At most 20 archives per document path, the newest kept; a second session's counts with the owner's.
     #[test]
     fn each_path_keeps_its_newest_twenty() {
-        let (j, dir) = scratch("cap");
+        let (j, _dir) = scratch("cap");
         let a = j.archive_dir();
         for i in 0..15u64 {
             put(
@@ -401,13 +397,12 @@ mod tests {
             assert!(!left.contains(&format!("f.txt.{HASH}.77.rj.{i}")));
         }
         assert!(left.contains(&format!("f.txt.{HASH}.rj.5")));
-        let _ = fs::remove_dir_all(&dir);
     }
 
     /// The sweep runs once a day and records when; a stamp in the future counts as due.
     #[test]
     fn the_sweep_runs_at_most_once_a_day() {
-        let (j, dir) = scratch("stamp");
+        let (j, _dir) = scratch("stamp");
         let a = j.archive_dir();
         assert_eq!(stats(&j).last_sweep_ms, None);
         assert_eq!(sweep_if_due(&j, NOW), Some(Swept::default()));
@@ -419,14 +414,13 @@ mod tests {
         assert_eq!(last_sweep(&j), Some(NOW + DAY_MS));
         // The clock went back: due again.
         assert!(sweep_if_due(&j, NOW).is_some());
-        let _ = fs::remove_dir_all(&dir);
     }
 
     /// No journal directory: nothing is created.
     #[test]
     fn no_journal_directory_no_sweep() {
-        let dir = std::env::temp_dir().join(format!("ruse-retention-none-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
+        let root = crate::TestDir::new("retention-none");
+        let dir = root.join("state");
         let j = Journals::in_state_home(&dir);
         assert_eq!(sweep_if_due(&j, NOW), None);
         assert!(!dir.exists());
@@ -435,7 +429,7 @@ mod tests {
     /// Live journals in `journal/` are never touched, whoever owns them and however old.
     #[test]
     fn live_journals_are_untouched() {
-        let (j, dir) = scratch("live");
+        let (j, _dir) = scratch("live");
         let live = [
             format!("f.txt.{HASH}.rj"),
             format!("f.txt.{HASH}.4242.rj"),
@@ -453,7 +447,6 @@ mod tests {
         want.extend(["archive".into(), STAMP.into()]);
         want.sort();
         assert_eq!(names(j.dir()), want);
-        let _ = fs::remove_dir_all(&dir);
     }
 
     /// A symlink in the archive is neither followed nor removed, and a symlinked archive directory is not
@@ -484,12 +477,11 @@ mod tests {
         sweep_if_due(&j, NOW);
         assert_eq!(fs::read(&decoy).unwrap(), b"keep");
         assert_eq!(last_sweep(&j), Some(NOW));
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn stats_count_the_archive() {
-        let (j, dir) = scratch("stats");
+        let (j, _dir) = scratch("stats");
         let a = j.archive_dir();
         put(&a.join(format!("f.txt.{HASH}.rj.1")), NOW);
         fs::write(a.join(format!("g.txt.{HASH}.rj.2")), b"abc").unwrap();
@@ -502,6 +494,5 @@ mod tests {
                 last_sweep_ms: None
             }
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 }

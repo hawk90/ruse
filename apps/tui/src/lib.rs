@@ -71,6 +71,17 @@ pub(crate) mod viewport;
 
 pub use app::cli::run;
 
+/// Two lowercase hex digits per byte (an empty input is empty): the hashes in the trust records and the
+/// journal names. The twin of `ruse_core`'s crate-private `command::hex_lower` (#1511).
+pub(crate) fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
 /// A temp dir of one test: empty when made and removed when dropped, so no later run, even one whose
 /// process gets the same pid, sees its files (#1366). It derefs to its [`Path`](std::path::Path).
 #[cfg(test)]

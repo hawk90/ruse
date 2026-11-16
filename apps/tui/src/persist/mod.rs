@@ -234,8 +234,7 @@ mod tests {
 
     #[test]
     fn read_file_refuses_directories_and_devices() {
-        let dir = std::env::temp_dir().join(format!("ruse-read-file-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::TestDir::new("read-file");
         let e = read_file(&dir).unwrap_err();
         assert_eq!(e.to_string(), "is a directory");
         #[cfg(unix)]
@@ -248,7 +247,6 @@ mod tests {
         assert_eq!(read_file(&f).unwrap(), b"text\n");
         let missing = read_file(&dir.join("missing")).unwrap_err();
         assert_eq!(missing.kind(), std::io::ErrorKind::NotFound);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A FIFO with no writer is refused at once instead of blocking the open; one with a writer is read.
@@ -256,8 +254,7 @@ mod tests {
     #[test]
     fn read_file_does_not_block_on_a_fifo() {
         use std::os::unix::ffi::OsStrExt;
-        let dir = std::env::temp_dir().join(format!("ruse-read-fifo-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::TestDir::new("read-fifo");
         let fifo = dir.join("p");
         let c = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         // SAFETY: `c` is a valid NUL-terminated path.
@@ -286,7 +283,6 @@ mod tests {
         assert_eq!(read_file(&fifo).unwrap(), b"piped\n");
         writer.join().unwrap();
         drop(placeholder);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn apply(disk: &[u8], (s, e, t): &(usize, usize, String)) -> Vec<u8> {
