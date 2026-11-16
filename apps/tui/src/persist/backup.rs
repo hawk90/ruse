@@ -710,16 +710,8 @@ pub fn visited(p: &Path) {
 mod tests {
     use super::*;
 
-    static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
-    fn tmp(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!(
-            "ruse-backup-{tag}-{}-{}",
-            std::process::id(),
-            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&d).unwrap();
-        d
+    fn tmp(tag: &str) -> crate::TestDir {
+        crate::TestDir::new(&format!("backup-{tag}"))
     }
 
     /// A write by rename, as a save makes one: a backup hard-linked to the old file keeps the old text.
@@ -799,7 +791,6 @@ mod tests {
         // The next write replaces the backup with the text before it.
         make(&p, &f, true).unwrap().finish(true);
         assert_eq!(fs::read(d.join("f.txt~")).unwrap(), b"two\n");
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -817,7 +808,6 @@ mod tests {
         assert!(b.exists(), "a failed write keeps its write backup");
         make(&p, &f, true).unwrap().finish(true);
         assert!(!b.exists(), "a successful write removes it");
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -837,7 +827,6 @@ mod tests {
         let p = vim(true, false, &format!("{}/sub,.", blocker.display()));
         let b = make(&p, &f, false).unwrap().backup.unwrap();
         assert_eq!(b, d.join("f.txt~"));
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -862,7 +851,6 @@ mod tests {
         let n = d.join("n.txt");
         patch_new(&p, &n);
         assert_eq!(fs::read(d.join("n.txt.orig")).unwrap(), b"");
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -879,7 +867,6 @@ mod tests {
         visited(&f);
         assert!(make(&p, &f, false).unwrap().backup.is_some());
         assert_eq!(fs::read(d.join("f.txt~")).unwrap(), b"two\n");
-        fs::remove_dir_all(d).unwrap();
     }
 
     /// Emacs 31.1 with `version-control t`, `kept-old-versions 1`, `kept-new-versions 2`,
@@ -907,7 +894,6 @@ mod tests {
         let p = emacs(VersionControl::Always, 1, 1, DeleteOld::Ask);
         visited(&f);
         assert_eq!(make(&p, &f, false).unwrap().excess, 2);
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -936,7 +922,6 @@ mod tests {
         .backup
         .unwrap();
         assert_eq!(b, d.join("f.txt~"));
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -958,7 +943,7 @@ mod tests {
         );
         if let Rules::Emacs(e) = &mut p.rules {
             e.alist = vec![(".".into(), "rel".into())];
-            e.temp_dirs = vec![d.clone()];
+            e.temp_dirs = vec![d.to_path_buf()];
         }
         visited(&f);
         assert!(
@@ -973,7 +958,6 @@ mod tests {
             make(&p, &f, false).unwrap().backup.unwrap(),
             absolute(&d).join("rel").join("f!x.txt~")
         );
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[cfg(unix)]
@@ -991,6 +975,5 @@ mod tests {
             "E510: Can't make backup file (add ! to override)"
         );
         assert_eq!(fs::read(&victim).unwrap(), b"keep");
-        fs::remove_dir_all(d).unwrap();
     }
 }

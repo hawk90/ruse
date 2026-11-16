@@ -147,7 +147,7 @@ pub fn ruse_dir_snapshot(root: &Path) -> io::Result<RuseSnapshot> {
         }
     }
     Ok(RuseSnapshot {
-        hash: format!("sha256:{}", hex(&h.finalize())),
+        hash: format!("sha256:{}", crate::hex_lower(&h.finalize())),
         config,
     })
 }
@@ -176,10 +176,6 @@ fn read_bounded(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
         return Err(io::Error::other(".ruse/ is too large to hash"));
     }
     Ok(bytes)
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(unix)]
@@ -213,7 +209,7 @@ impl TrustStore {
     /// The record file for `root` (canonicalized when it exists).
     fn file(&self, root: &Path) -> (PathBuf, String) {
         let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-        let name = hex(&Sha256::digest(os_bytes(root.as_os_str())));
+        let name = crate::hex_lower(&Sha256::digest(os_bytes(root.as_os_str())));
         (self.dir.join(name), root.to_string_lossy().into_owned())
     }
 

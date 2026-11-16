@@ -188,7 +188,8 @@ mod tests {
     /// error REPLY instead of an over-limit frame, and the agent keeps serving the next request.
     #[test]
     fn oversized_response_becomes_an_error_reply_and_serving_continues() {
-        let path = std::env::temp_dir().join(format!("ruse_agent_big_{}.txt", std::process::id()));
+        let dir = crate::TestDir::new("agent-big");
+        let path = dir.join("big.txt");
         std::fs::write(&path, vec![b'a'; MAX_FRAME_BYTES + 1]).unwrap();
 
         let mut input = Vec::new();
@@ -201,7 +202,6 @@ mod tests {
 
         let mut out = Vec::new();
         serve(Cursor::new(input), &mut out).unwrap();
-        let _ = std::fs::remove_file(&path);
 
         let mut r = Cursor::new(out);
         let big = read_message(&mut r).unwrap().unwrap();
@@ -218,8 +218,7 @@ mod tests {
     /// missing sibling (`exists: false`, NOT an error), and list the dir (the written file appears).
     #[test]
     fn serve_writes_stats_and_lists() {
-        let dir = std::env::temp_dir().join(format!("ruse_agent_fs_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::TestDir::new("agent-fs");
         let file = dir.join("w.txt");
         let fp = file.to_str().unwrap();
 
@@ -247,7 +246,6 @@ mod tests {
 
         let mut out = Vec::new();
         serve(Cursor::new(input), &mut out).unwrap();
-        let _ = std::fs::remove_dir_all(&dir);
 
         let mut r = Cursor::new(out);
         assert_eq!(
