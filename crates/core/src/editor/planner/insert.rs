@@ -5,7 +5,53 @@
 
 use super::*;
 
+/// The single entry: route each Insert/Replace-mode command to its family's planner. The variants are
+/// disjoint, so the families are independent; each keeps its arms (and their guards) in the old order.
 pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
+        Command::EnterInsert
+        | Command::InsertAtLastInsert
+        | Command::EnterInsertAfter
+        | Command::InsertLineStart
+        | Command::InsertColumnZero
+        | Command::AppendLineEnd
+        | Command::OpenBelow
+        | Command::OpenAbove
+        | Command::EnterNormal
+        | Command::EnterTerminal
+        | Command::EnterTerminalNormal
+        | Command::EnterReplace
+        | Command::EnterVirtualReplace => plan_mode_entry(st, b, cur, hint, cmd),
+        Command::ReplaceType(..)
+        | Command::ReplaceBackspace
+        | Command::VirtualReplaceType(..)
+        | Command::VirtualReplaceChar(..) => plan_replace_typed(st, b, cur, hint, cmd),
+        Command::InsertChar(..)
+        | Command::InsertNewline
+        | Command::OpenLineIndent { .. }
+        | Command::InsertCloser { .. } => plan_typed(st, b, cur, hint, cmd),
+        Command::InsertRegister(..)
+        | Command::InsertEval(..)
+        | Command::InsertPaste(..)
+        | Command::ReplacePaste(..)
+        | Command::EmacsPaste(..) => plan_splice(st, b, cur, hint, cmd),
+        Command::InsertDeleteWordBack
+        | Command::InsertDeleteToLineStart
+        | Command::CompleteWord { .. } => plan_delete_back(st, b, cur, hint, cmd),
+        Command::InsertIndent
+        | Command::InsertDedent
+        | Command::InsertDeleteIndent
+        | Command::InsertDeleteIndentRestore
+        | Command::InsertTab => plan_indent(st, b, cur, hint, cmd),
+        Command::InsertStartColumnLine { .. } | Command::InsertCaretStep { .. } => {
+            plan_caret(st, b, cur, cmd)
+        }
+        _ => unreachable!("planner::insert plans only its own commands"),
+    }
+}
+
+/// Mode entry: `i`/`a`/`I`/`gI`/`A`/`gi`, `o`/`O`, `<Esc>`, and the Terminal/Replace mode switches.
+fn plan_mode_entry(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
     match cmd {
         Command::EnterInsert => nop(cur, Mode::Insert),
         // `gi` — resume Insert at the last-insert position (snapped), or the buffer start if none yet.
@@ -49,39 +95,71 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         Command::EnterTerminal => nop(cur, Mode::Terminal),
         Command::EnterTerminalNormal => nop(cur, Mode::TerminalNormal),
         Command::EnterReplace => nop(cur, Mode::Replace),
+        Command::EnterVirtualReplace => nop(cur, Mode::VirtualReplace),
+        _ => unreachable!("plan_mode_entry plans only the mode-entry commands"),
+    }
+}
+
+/// What is typed (or backspaced) in Replace and Virtual Replace mode.
+fn plan_replace_typed(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    hint: GroupHint,
+    cmd: &Command,
+) -> Plan {
+    match cmd {
         Command::ReplaceType(c) => replace_type(b, cur, hint, c),
         Command::ReplaceBackspace => replace_backspace(st, b, cur, hint),
-        Command::EnterVirtualReplace => nop(cur, Mode::VirtualReplace),
         Command::VirtualReplaceType(c) => plan_virtual_replace_type(st, b, cur, *c, hint),
         Command::VirtualReplaceChar(count, c) => {
             plan_virtual_replace_char(st, b, cur, *count, *c, hint)
         }
+        _ => unreachable!("plan_replace_typed plans only the Replace-mode typing commands"),
+    }
+}
+
+/// What is typed in Insert mode: a char, `<CR>`, an opened line at an indent level, an auto-closer.
+fn plan_typed(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         Command::InsertChar(c) => insert_char(st, b, cur, hint, c),
+        Command::InsertNewline if auto_indents(st) && st.view.mode == Mode::Insert => {
+            insert_newline_indented(st, b, cur, hint)
+        }
+        Command::InsertNewline => insert_text(cur, b"\n".to_vec(), Mode::Insert, hint),
+        Command::OpenLineIndent { kind, level } => {
+            open_line_at_level(st, b, cur, hint, kind, level)
+        }
+        Command::InsertCloser { ch } => insert_closer(b, cur, hint, ch),
+        _ => unreachable!("plan_typed plans only the Insert-mode typing commands"),
+    }
+}
+
+/// Text spliced at the caret in one step: a register, an expression result, or a paste.
+fn plan_splice(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         // `i_CTRL-R{reg}` — splice the named register's raw bytes at the caret, staying in Insert with the
         // cursor after the inserted text. An empty register is a no-op. `"` reads the unnamed register (via
         // `get`'s fallback). The bytes are inserted verbatim (linewise registers keep their trailing `\n`).
-        Command::InsertRegister(name) => {
-            let bytes = st.view.registers.get(Some(*name)).text().to_vec();
-            if bytes.is_empty() {
-                return nop(cur, Mode::Insert);
-            }
-            insert_text(cur, bytes, Mode::Insert, hint)
-        }
+        Command::InsertRegister(name) => insert_or_nop(
+            cur,
+            st.view.registers.get(Some(*name)).text().to_vec(),
+            hint,
+        ),
         // `i_CTRL-R=<expr><CR>` — evaluate the expression (a minimal-honest arithmetic/string calculator,
         // NOT full Vimscript) and splice the formatted result at the caret, staying in Insert. A malformed
         // or unsupported expression evaluates to the empty string and inserts nothing (Vim's degrade).
         Command::InsertEval(e) => {
-            let bytes = crate::expr::eval_or_empty(e).into_bytes();
-            if bytes.is_empty() {
-                return nop(cur, Mode::Insert);
-            }
-            insert_text(cur, bytes, Mode::Insert, hint)
+            insert_or_nop(cur, crate::expr::eval_or_empty(e).into_bytes(), hint)
+        }
+        // An empty paste of any kind is a no-op in the current mode.
+        Command::InsertPaste(text) | Command::ReplacePaste(text) | Command::EmacsPaste(text)
+            if text.is_empty() =>
+        {
+            nop(cur, st.view.mode)
         }
         // A bracketed paste (#600): one literal splice at the caret, mode unchanged.
         Command::InsertPaste(text) => {
-            if text.is_empty() {
-                return nop(cur, st.view.mode);
-            }
             // Over a charwise/linewise selection a paste replaces it, as a typed Select key does
             // (`vim.paste`: `<Del>` the selection, then put the text where it was), entering Insert.
             if matches!(
@@ -96,9 +174,6 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         // as nvim's `vim.paste` counts them), then splice the text. nvim counts BYTES and can split a
         // multi-byte char; this counts characters.
         Command::ReplacePaste(text) => {
-            if text.is_empty() {
-                return nop(cur, st.view.mode);
-            }
             let nchars = text.chars().filter(|&c| c != '\n').count();
             let le = line_end(b, cur);
             // A byte that is not UTF-8 is one char (#1243).
@@ -116,18 +191,34 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
             )
         }
         // Emacs `xterm-paste`: kill-new the text, then yank it (point after, mark at the start).
-        Command::EmacsPaste(text) => {
-            if text.is_empty() {
-                return nop(cur, st.view.mode);
-            }
-            Plan {
-                set_register: Some(RegWrite::Write(Register::charwise(
-                    text.as_bytes().to_vec(),
-                ))),
-                set_mark: Some(MarkWrite::Set(cur)),
-                ..insert_text(cur, text.as_bytes().to_vec(), st.view.mode, hint)
-            }
-        }
+        Command::EmacsPaste(text) => Plan {
+            set_register: Some(RegWrite::Write(Register::charwise(
+                text.as_bytes().to_vec(),
+            ))),
+            set_mark: Some(MarkWrite::Set(cur)),
+            ..insert_text(cur, text.as_bytes().to_vec(), st.view.mode, hint)
+        },
+        _ => unreachable!("plan_splice plans only the splice commands"),
+    }
+}
+
+/// Splice `bytes` at the caret staying in Insert, or stay put when there are none.
+fn insert_or_nop(cur: usize, bytes: Vec<u8>, hint: GroupHint) -> Plan {
+    if bytes.is_empty() {
+        return nop(cur, Mode::Insert);
+    }
+    insert_text(cur, bytes, Mode::Insert, hint)
+}
+
+/// Deleting back from the caret: `i_CTRL-W`, `i_CTRL-U`, and a completion step replacing its region.
+fn plan_delete_back(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    hint: GroupHint,
+    cmd: &Command,
+) -> Plan {
+    match cmd {
         // `i_CTRL-W` — delete the word before the caret (within the current line), staying in Insert.
         Command::InsertDeleteWordBack => {
             if motion::at_bol(b, cur) {
@@ -172,49 +263,20 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 hint,
             )
         }
+        _ => unreachable!("plan_delete_back plans only the delete-back commands"),
+    }
+}
+
+/// The line's indent from Insert mode: `i_CTRL-T`, `i_CTRL-D`, `i_0_CTRL-D`, and `<Tab>`.
+fn plan_indent(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         // `i_CTRL-T` — indent the current line to the NEXT multiple of the shiftwidth (Vim rounds: 2 cols at
         // sw=4 → 4); the caret rides right with the text. The leading whitespace is rebuilt at the new width
         // in the configured style (Vim's `change_indent`).
-        Command::InsertIndent => {
-            let ls = line_start(b, cur);
-            let le = line_end(b, ls);
-            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tabs());
-            let sw = st.shift_width();
-            let want = st
-                .view
-                .indent
-                .rebuilt(&b[ls..ls + ws], (cols / sw + 1) * sw);
-            let cursor = reindented_caret(cur, ls, ws, want.len());
-            edit(
-                one(Edit::replace(BytePos(ls), ws, want)),
-                cursor,
-                Mode::Insert,
-                hint,
-            )
-        }
+        Command::InsertIndent => shift_line_indent(st, b, cur, hint, false),
         // `i_CTRL-D` — dedent the current line by one shiftwidth; the caret rides left (never before the line
         // start). A no-op when there is no leading whitespace.
-        Command::InsertDedent => {
-            let ls = line_start(b, cur);
-            let le = line_end(b, ls);
-            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tabs());
-            if ws == 0 {
-                return nop(cur, Mode::Insert);
-            }
-            // Down to the PREVIOUS multiple of the shiftwidth (Vim rounds: 6 cols at sw=4 → 4).
-            let sw = st.shift_width();
-            let want = st
-                .view
-                .indent
-                .rebuilt(&b[ls..ls + ws], cols.saturating_sub(1) / sw * sw);
-            let cursor = reindented_caret(cur, ls, ws, want.len());
-            edit(
-                one(Edit::replace(BytePos(ls), ws, want)),
-                cursor,
-                Mode::Insert,
-                hint,
-            )
-        }
+        Command::InsertDedent => shift_line_indent(st, b, cur, hint, true),
         // `i_0_CTRL-D` / `i_^_CTRL-D` — delete all leading whitespace of the line; the caret rides left.
         Command::InsertDeleteIndent | Command::InsertDeleteIndentRestore => {
             let ls = line_start(b, cur);
@@ -234,6 +296,62 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 hint,
             )
         }
+        // `<Tab>` in Insert: insert whitespace at the caret to the next stop. Space style (`expandtab`)
+        // inserts spaces up to the next tabstop column even when it started mid-line; tab style inserts one
+        // `\t`. Within the line's leading whitespace the stop is the SHIFTWIDTH instead ('smarttab', on by
+        // default in nvim): spaces under `expandtab`, else the leading whitespace is rebuilt as tabs + spaces
+        // at the new width. With `ts == sw` both rules agree. Unlike `i_CTRL-T` this is caret-relative.
+        Command::InsertTab => {
+            let ls = line_start(b, cur);
+            let (from, run) = st.view.indent.tab(b, ls, cur);
+            let cursor = from + run.len();
+            edit(
+                one(Edit::replace(BytePos(from), cur - from, run)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
+        }
+        _ => unreachable!("plan_indent plans only the Insert-mode indent commands"),
+    }
+}
+
+/// `i_CTRL-T` (`dedent == false`) or `i_CTRL-D` (`dedent == true`): rebuild the line's leading whitespace
+/// one shiftwidth wider, or narrower, at a multiple of the shiftwidth. A dedent with no leading whitespace
+/// is a no-op.
+fn shift_line_indent(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    hint: GroupHint,
+    dedent: bool,
+) -> Plan {
+    let ls = line_start(b, cur);
+    let le = line_end(b, ls);
+    let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tabs());
+    if dedent && ws == 0 {
+        return nop(cur, Mode::Insert);
+    }
+    let sw = st.shift_width();
+    // Up to the NEXT multiple, or down to the PREVIOUS one (Vim rounds: 2 cols at sw=4 → 4; 6 → 4).
+    let width = if dedent {
+        cols.saturating_sub(1) / sw * sw
+    } else {
+        (cols / sw + 1) * sw
+    };
+    let want = st.view.indent.rebuilt(&b[ls..ls + ws], width);
+    let cursor = reindented_caret(cur, ls, ws, want.len());
+    edit(
+        one(Edit::replace(BytePos(ls), ws, want)),
+        cursor,
+        Mode::Insert,
+        hint,
+    )
+}
+
+/// Caret moves that stay in the current mode: `i_CTRL-G_j`/`k` and `i_CTRL-G_U` + `<Left>`/`<Right>`.
+fn plan_caret(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Plan {
+    match cmd {
         // `i_CTRL-G_j` / `i_CTRL-G_k` — the adjacent line, at the column the insert started in (char columns,
         // like the rest of the motion model). No adjacent line: stay put (nvim beeps).
         Command::InsertStartColumnLine { down } => {
@@ -265,31 +383,7 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
             };
             nop(to, st.view.mode)
         }
-        // `<Tab>` in Insert: insert whitespace at the caret to the next stop. Space style (`expandtab`)
-        // inserts spaces up to the next tabstop column even when it started mid-line; tab style inserts one
-        // `\t`. Within the line's leading whitespace the stop is the SHIFTWIDTH instead ('smarttab', on by
-        // default in nvim): spaces under `expandtab`, else the leading whitespace is rebuilt as tabs + spaces
-        // at the new width. With `ts == sw` both rules agree. Unlike `i_CTRL-T` this is caret-relative.
-        Command::InsertTab => {
-            let ls = line_start(b, cur);
-            let (from, run) = st.view.indent.tab(b, ls, cur);
-            let cursor = from + run.len();
-            edit(
-                one(Edit::replace(BytePos(from), cur - from, run)),
-                cursor,
-                Mode::Insert,
-                hint,
-            )
-        }
-        Command::InsertNewline if auto_indents(st) && st.view.mode == Mode::Insert => {
-            insert_newline_indented(st, b, cur, hint)
-        }
-        Command::InsertNewline => insert_text(cur, b"\n".to_vec(), Mode::Insert, hint),
-        Command::OpenLineIndent { kind, level } => {
-            open_line_at_level(st, b, cur, hint, kind, level)
-        }
-        Command::InsertCloser { ch } => insert_closer(b, cur, hint, ch),
-        _ => unreachable!("planner::insert plans only its own commands"),
+        _ => unreachable!("plan_caret plans only the Insert-mode caret steps"),
     }
 }
 
