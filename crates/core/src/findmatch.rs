@@ -15,6 +15,10 @@ use std::cell::Cell;
 
 use crate::pos::raw::line_end;
 
+pub(crate) mod scan;
+
+use scan::{check_prevcol, Backslashes, MatchScan, MatchStep};
+
 thread_local! {
     static LISP: Cell<bool> = const { Cell::new(false) };
 }
@@ -90,19 +94,6 @@ fn check_linecomment(line: &[u8], lisp: bool) -> Option<usize> {
     }
 }
 
-/// Whether the character before `line[col]` is `ch` (`check_prevcol`); `prevcol` takes its column.
-fn check_prevcol(line: &[u8], col: usize, ch: u8, prevcol: &mut usize) -> bool {
-    if col == 0 {
-        return false;
-    }
-    let mut c = col - 1;
-    while c > 0 && line[c] & 0xC0 == 0x80 {
-        c -= 1;
-    }
-    *prevcol = c;
-    line[c] == ch
-}
-
 /// The number of backslashes right before `line[col]`.
 fn backslashes(line: &[u8], col: usize) -> usize {
     let mut n = 0;
@@ -159,50 +150,13 @@ struct Target {
     match_escaped: usize,
 }
 
-/// The state the `findmatchlimit` scan loop carries from one position to the next.
-struct MatchScan<'l, 'a> {
-    lines: &'l Lines<'a>,
-    lisp: bool,
-    t: Target,
-    /// The current search position (line, column).
-    pos: (usize, usize),
-    /// The text of line `pos.0`.
-    linep: &'a [u8],
-    /// The parity of the quotes on the line, -1 until counted.
-    do_quotes: i32,
-    /// Whether the search started inside quotes, `None` until known.
-    start_in_quotes: Option<bool>,
-    /// True when inside quotes.
-    inquote: bool,
-    /// The cumulative number of unmatched `initc`s (or `/*`s).
-    count: i32,
-    /// Where the last `/*` was found.
-    match_pos: (usize, usize),
-    /// The start of the line's `//` (or `;`) comment, if any.
-    comment_col: Option<usize>,
-    /// Inside a `'lisp'` comment: the match is searched in it only.
-    lispcomm: bool,
-}
-
-/// What a phase of one scan-loop iteration decides.
-enum MatchStep {
-    /// Go on to the next phase of this iteration.
-    Go,
-    /// The iteration is over: go to the next position (nvim's `continue`).
-    Next,
-    /// Leave the loop (nvim's `break`).
-    Break,
-    /// Return this result from `find` at once.
-    Return(Option<(usize, usize)>),
-}
-
 /// `findmatchlimit` with no `initc`, from (`lnum`, `col`): choose the target, then search the `#if`
 /// chain or scan for the match.
 fn find(lines: &Lines<'_>, lnum: usize, col: usize, lisp: bool) -> Option<(usize, usize)> {
     let linep = lines.line(lnum);
     match match_target(linep, col)? {
         Start::Directive => find_directive(lines, lnum),
-        Start::Match(t) => MatchScan::new(lines, lnum, linep, t, lisp).run(),
+        Start::Match(t) => scan_start(lnum, linep, t, lisp).run(|s| iteration(lines, s)),
     }
 }
 
@@ -344,292 +298,106 @@ fn find_directive(lines: &Lines<'_>, lnum: usize) -> Option<(usize, usize)> {
     }
 }
 
-impl<'l, 'a> MatchScan<'l, 'a> {
-    /// `findmatchlimit`, "backward search: Check if this line contains a single-line comment": the scan
-    /// state at the target, with the first line's comment column (and, under `'lisp'`, whether the
-    /// cursor is in that comment).
-    fn new(lines: &'l Lines<'a>, lnum: usize, linep: &'a [u8], t: Target, lisp: bool) -> Self {
-        let mut comment_col = None;
-        if (t.backwards && t.comment_dir != 0) || lisp {
-            comment_col = check_linecomment(linep, lisp);
-        }
-        let lispcomm = lisp && comment_col.is_some_and(|cc| t.col > cc);
-        MatchScan {
-            lines,
-            lisp,
-            pos: (lnum, t.col),
-            t,
-            linep,
-            do_quotes: -1,
-            start_in_quotes: None,
-            inquote: false,
-            count: 0,
-            match_pos: (0, 0),
-            comment_col,
-            lispcomm,
-        }
-    }
+/// `%` counts the backslashes before a `"` and before a bracket alike, with its [`check_prevcol`].
+const PERCENT_BACKSLASHES: Backslashes = Backslashes {
+    quote: backslashes,
+    escape: backslashes,
+};
 
-    /// The `findmatchlimit` scan loop: each iteration runs the phases in nvim's order until one
-    /// breaks or returns; a backward comment search that ran out returns the last `/*` it found.
-    fn run(mut self) -> Option<(usize, usize)> {
-        loop {
-            match self.iteration() {
-                MatchStep::Go | MatchStep::Next => {}
-                MatchStep::Break => break,
-                MatchStep::Return(r) => return r,
-            }
-        }
-        if self.t.comment_dir < 0 && self.count > 0 {
-            return Some(self.match_pos);
-        }
-        None
+/// `findmatchlimit`, "backward search: Check if this line contains a single-line comment": the scan
+/// state at the target, with the first line's comment column (and, under `'lisp'`, whether the
+/// cursor is in that comment).
+fn scan_start(lnum: usize, linep: &[u8], t: Target, lisp: bool) -> MatchScan<'_> {
+    let mut s = MatchScan::new((lnum, t.col), linep, PERCENT_BACKSLASHES);
+    s.initc = t.initc;
+    s.findc = t.findc;
+    s.backwards = t.backwards;
+    s.comment_dir = t.comment_dir;
+    s.match_escaped = t.match_escaped;
+    s.lisp = lisp;
+    if (t.backwards && t.comment_dir != 0) || lisp {
+        s.comment_col = check_linecomment(linep, lisp);
     }
+    s.lispcomm = lisp && s.comment_col.is_some_and(|cc| t.col > cc);
+    s
+}
 
-    /// One position of the scan: move, then the comment search or the quote count and the char.
-    fn iteration(&mut self) -> MatchStep {
-        let step = self.next_pos();
-        if !matches!(step, MatchStep::Go) {
-            return step;
-        }
-        let step = self.comment_search();
-        if !matches!(step, MatchStep::Go) {
-            return step;
-        }
-        self.count_quotes();
-        self.match_char()
+/// One position of the `%` scan: move, then the comment search or the quote count and the char.
+fn iteration<'a>(lines: &Lines<'a>, s: &mut MatchScan<'a>) -> MatchStep {
+    let step = next_pos(lines, s);
+    if !matches!(step, MatchStep::Go) {
+        return step;
     }
+    if s.comment_dir != 0 {
+        return comment_search(s);
+    }
+    let lnum = s.pos.0;
+    s.count_quotes(s.linep.len(), || {
+        lnum > 0 && lines.line(lnum - 1).last() == Some(&b'\\')
+    });
+    s.match_char()
+}
 
-    /// `findmatchlimit`, "Go to the next position, forward or backward": one char on, crossing to the
-    /// previous or next line (and its comment column) at a line end; breaks at the buffer's ends and
-    /// at the edge of a `'lisp'` comment the match is searched in.
-    fn next_pos(&mut self) -> MatchStep {
-        let lisp = self.lisp;
-        let maxcol = usize::MAX;
-        if self.t.backwards {
-            if self.lispcomm && self.pos.1 < self.comment_col.unwrap_or(maxcol) {
+/// `findmatchlimit`, "Go to the next position, forward or backward": one char on, crossing to the
+/// previous or next line (and its comment column) at a line end; breaks at the buffer's ends and
+/// at the edge of a `'lisp'` comment the match is searched in.
+fn next_pos<'a>(lines: &Lines<'a>, s: &mut MatchScan<'a>) -> MatchStep {
+    let lisp = s.lisp;
+    let maxcol = usize::MAX;
+    if s.backwards {
+        if s.lispcomm && s.pos.1 < s.comment_col.unwrap_or(maxcol) {
+            return MatchStep::Break;
+        }
+        if s.pos.1 == 0 {
+            if s.pos.0 == 0 {
                 return MatchStep::Break;
             }
-            if self.pos.1 == 0 {
-                if self.pos.0 == 0 {
-                    return MatchStep::Break;
-                }
-                self.pos.0 -= 1;
-                self.linep = self.lines.line(self.pos.0);
-                self.pos.1 = self.linep.len();
-                self.do_quotes = -1;
-                if self.t.comment_dir != 0 || lisp {
-                    self.comment_col = check_linecomment(self.linep, lisp);
-                }
-                if lisp {
-                    if let Some(cc) = self.comment_col {
-                        self.pos.1 = cc;
-                    }
-                }
-            } else {
-                self.pos.1 -= 1;
-                while self.pos.1 > 0 && self.linep[self.pos.1] & 0xC0 == 0x80 {
-                    self.pos.1 -= 1;
-                }
+            s.pos.0 -= 1;
+            s.linep = lines.line(s.pos.0);
+            s.pos.1 = s.linep.len();
+            s.do_quotes = -1;
+            if s.comment_dir != 0 || lisp {
+                s.comment_col = check_linecomment(s.linep, lisp);
             }
-        } else if at(self.linep, self.pos.1) == 0 || (lisp && self.comment_col == Some(self.pos.1))
-        {
-            if self.pos.0 + 1 >= self.lines.count() || self.lispcomm {
-                return MatchStep::Break;
-            }
-            self.pos.0 += 1;
-            self.linep = self.lines.line(self.pos.0);
-            self.pos.1 = 0;
-            self.do_quotes = -1;
             if lisp {
-                self.comment_col = check_linecomment(self.linep, lisp);
+                if let Some(cc) = s.comment_col {
+                    s.pos.1 = cc;
+                }
             }
         } else {
-            self.pos.1 += char_len(self.linep, self.pos.1);
+            s.pos.1 -= 1;
+            while s.pos.1 > 0 && s.linep[s.pos.1] & 0xC0 == 0x80 {
+                s.pos.1 -= 1;
+            }
         }
-        MatchStep::Go
+    } else if at(s.linep, s.pos.1) == 0 || (lisp && s.comment_col == Some(s.pos.1)) {
+        if s.pos.0 + 1 >= lines.count() || s.lispcomm {
+            return MatchStep::Break;
+        }
+        s.pos.0 += 1;
+        s.linep = lines.line(s.pos.0);
+        s.pos.1 = 0;
+        s.do_quotes = -1;
+        if lisp {
+            s.comment_col = check_linecomment(s.linep, lisp);
+        }
+    } else {
+        s.pos.1 += char_len(s.linep, s.pos.1);
     }
+    MatchStep::Go
+}
 
-    /// `findmatchlimit`, "Note: comments do not nest, and we ignore quotes in them": on a comment
-    /// search, the `*/` ahead or, backward, the `/*` (counted) and the `*/` that ends the search.
-    fn comment_search(&mut self) -> MatchStep {
-        if self.t.comment_dir == 0 {
-            return MatchStep::Go;
-        }
-        let (linep, pos) = (self.linep, self.pos);
-        if self.t.comment_dir > 0 {
-            if at(linep, pos.1) == b'*' && at(linep, pos.1 + 1) == b'/' {
-                return MatchStep::Return(Some((pos.0, pos.1 + 1)));
-            }
-        } else if pos.1 == 0 {
-            return MatchStep::Next;
-        } else if at(linep, pos.1 - 1) == b'/'
-            && at(linep, pos.1) == b'*'
-            && (pos.1 == 1 || at(linep, pos.1 - 2) != b'*')
-            && self.comment_col.is_none_or(|cc| pos.1 < cc)
-        {
-            self.count += 1;
-            self.match_pos = (pos.0, pos.1 - 1);
-        } else if at(linep, pos.1 - 1) == b'*' && at(linep, pos.1) == b'/' {
-            if self.count > 0 {
-                return MatchStep::Return(Some(self.match_pos));
-            } else if pos.1 > 1
-                && at(linep, pos.1 - 2) == b'/'
-                && self.comment_col.is_none_or(|cc| pos.1 <= cc)
-            {
-                return MatchStep::Return(Some((pos.0, pos.1 - 2)));
-            }
-            return MatchStep::Return(None);
-        }
-        MatchStep::Next
+/// `findmatchlimit`, "Note: comments do not nest, and we ignore quotes in them": forward, the `*/`
+/// ahead; backward, the shared `/*` search ([`MatchScan::comment_backward`]).
+fn comment_search(s: &mut MatchScan<'_>) -> MatchStep {
+    if s.comment_dir < 0 {
+        return s.comment_backward();
     }
-
-    /// `findmatchlimit`, "If smart matching ('cpoptions' does not contain '%'), braces inside of
-    /// quotes are ignored, but only if there is an even number of quotes in the line": on a new line,
-    /// the parity of its quotes, and "If we find an uneven count, check current line and previous one
-    /// for a '\' at the end".
-    fn count_quotes(&mut self) {
-        let (linep, pos, backwards) = (self.linep, self.pos, self.t.backwards);
-        if self.do_quotes == -1 {
-            let mut at_start = self.do_quotes;
-            let mut i = 0;
-            while i < linep.len() {
-                if i == pos.1 + usize::from(backwards) {
-                    at_start = self.do_quotes & 1;
-                }
-                if linep[i] == b'"'
-                    && (i == 0 || linep[i - 1] != b'\'' || at(linep, i + 1) != b'\'')
-                {
-                    self.do_quotes += 1;
-                }
-                if linep[i] == b'\\' && i + 1 < linep.len() {
-                    i += 1;
-                }
-                i += 1;
-            }
-            self.do_quotes &= 1;
-            if self.do_quotes == 0 {
-                self.inquote = false;
-                if linep.last() == Some(&b'\\') {
-                    self.do_quotes = 1;
-                    if self.start_in_quotes.is_none() {
-                        self.inquote = true;
-                        self.start_in_quotes = Some(true);
-                    } else if backwards {
-                        self.inquote = true;
-                    }
-                }
-                if pos.0 > 0 && self.lines.line(pos.0 - 1).last() == Some(&b'\\') {
-                    self.do_quotes = 1;
-                    if self.start_in_quotes.is_none() {
-                        self.inquote = at_start != 0;
-                        if self.inquote {
-                            self.start_in_quotes = Some(true);
-                        }
-                    } else if !backwards {
-                        self.inquote = true;
-                    }
-                }
-            }
-        }
-        if self.start_in_quotes.is_none() {
-            self.start_in_quotes = Some(false);
-        }
+    let (linep, pos) = (s.linep, s.pos);
+    if at(linep, pos.1) == b'*' && at(linep, pos.1 + 1) == b'/' {
+        return MatchStep::Return(Some((pos.0, pos.1 + 1)));
     }
-
-    /// `findmatchlimit`, "If 'smartmatch' is set: Things inside quotes are ignored by setting
-    /// 'inquote'": a line end without a trailing `\` resets it, an unescaped `"` flips it; any other
-    /// char is skipped as a char literal or `'lisp'` `#\(`, else counted ([`Self::count_match`]).
-    fn match_char(&mut self) -> MatchStep {
-        let (linep, pos) = (self.linep, self.pos);
-        let c = at(linep, pos.1);
-        match c {
-            0 => {
-                if pos.1 == 0 || linep[pos.1 - 1] != b'\\' {
-                    self.inquote = false;
-                    self.start_in_quotes = Some(false);
-                }
-            }
-            b'"' => {
-                if self.do_quotes != 0 && backslashes(linep, pos.1).is_multiple_of(2) {
-                    self.inquote = !self.inquote;
-                    self.start_in_quotes = Some(false);
-                }
-            }
-            _ => {
-                if self.skip_char_literal(c) || self.lisp_char(c) {
-                    return MatchStep::Next;
-                }
-                return self.count_match(c);
-            }
-        }
-        MatchStep::Next
-    }
-
-    /// `findmatchlimit`, "Skip things in single quotes: 'x' or '\x'": whether `c` opens (or, backward,
-    /// closes) one; the scan then stands on its other quote.
-    fn skip_char_literal(&mut self, c: u8) -> bool {
-        if c != b'\'' || self.t.initc == b'\'' || self.t.findc == b'\'' {
-            return false;
-        }
-        let linep = self.linep;
-        let col = &mut self.pos.1;
-        if self.t.backwards {
-            if *col > 1 {
-                if linep[*col - 2] == b'\'' {
-                    *col -= 2;
-                    return true;
-                } else if linep[*col - 2] == b'\\' && *col > 2 && linep[*col - 3] == b'\'' {
-                    *col -= 3;
-                    return true;
-                }
-            }
-        } else if at(linep, *col + 1) != 0 {
-            if at(linep, *col + 1) == b'\\'
-                && at(linep, *col + 2) != 0
-                && at(linep, *col + 3) == b'\''
-            {
-                *col += 3;
-                return true;
-            } else if at(linep, *col + 2) == b'\'' {
-                *col += 2;
-                return true;
-            }
-        }
-        false
-    }
-
-    /// `findmatchlimit`, "For Lisp skip over backslashed (), {} and []. (actually, we skip #\( et
-    /// al)": whether `c` is such a character under `'lisp'`.
-    fn lisp_char(&self, c: u8) -> bool {
-        let (linep, col) = (self.linep, self.pos.1);
-        let mut p = 0;
-        self.lisp
-            && b"(){}[]".contains(&c)
-            && col > 1
-            && check_prevcol(linep, col, b'\\', &mut p)
-            && check_prevcol(linep, col - 1, b'#', &mut p)
-    }
-
-    /// `findmatchlimit`, "Check for match outside of quotes, and inside of quotes when the start is
-    /// also inside of quotes": `c` counts up as `initc`, down as `findc`, and at zero is the match;
-    /// "Only accept a match when ... escaping is what we expect".
-    fn count_match(&mut self, c: u8) -> MatchStep {
-        if (!self.inquote || self.start_in_quotes == Some(true))
-            && (c == self.t.initc || c == self.t.findc)
-            && backslashes(self.linep, self.pos.1) & 1 == self.t.match_escaped
-        {
-            if c == self.t.initc {
-                self.count += 1;
-            } else {
-                if self.count == 0 {
-                    return MatchStep::Return(Some(self.pos));
-                }
-                self.count -= 1;
-            }
-        }
-        MatchStep::Next
-    }
+    MatchStep::Next
 }
 
 #[cfg(test)]
