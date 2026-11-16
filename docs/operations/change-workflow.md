@@ -81,7 +81,7 @@ verify registry, fitness thresholds, perf baselines, the parity census and oracl
 `spec/architecture.yaml` is `architecture`, the contracts in `spec/contracts/` are `contract`, lint /
 toolchain config (`clippy.toml`, `rust-toolchain.toml`) and `scripts/` are `build`, and `tests/` and `fuzz/`
 (oracle fixtures included) are `implementation`. Code that implements a stability boundary
-(`contract_triggers` in `change-kinds.yaml`: the RJ01/RJS0 record code, `persist/journal.rs`,
+(`contract_triggers` in `change-kinds.yaml`: the RJ01/RJS0 record code, `persist/journal.rs` and `persist/journal/`,
 `remote/protocol.rs`) only **warns** when the contract leaves the matching `contracts.*` flag unset, because
 a refactor of format code need not change the format.
 

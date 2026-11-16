@@ -30,7 +30,7 @@ related:
 
 > **Shipped (RFC-0023 slice 2, D-064).** The journal is the per-transaction `RJ01` stream of §2
 > (`apps/tui/src/persist/rj01.rs`) in `$XDG_STATE_HOME/ruse/journal/`, written by
-> `apps/tui/src/persist/journal.rs` after 4 s idle, 200 changes or before a risky operation; a crash path appends
+> `apps/tui/src/persist/journal/writer.rs` after 4 s idle, 200 changes or before a risky operation; a crash path appends
 > a Checkpoint of the exact text. A legacy `<file>.ruse-journal` (`RJS0` whole-buffer snapshots) is read once and
 > archived. Undo is in-memory (`crates/core/src/undo.rs`). Still the target: the three-way recovery of §4, the
 > `InUse` owner check, archive retention and the status flags (RFC-0023 slices 3-4); the status of each save and

@@ -305,7 +305,7 @@ items:
       - A truncated tail recovers up to the last valid record
     evidence:
       - apps/tui/src/persist/rj01.rs::replay
-      - apps/tui/src/persist/journal.rs::Writer
+      - apps/tui/src/persist/journal/writer.rs::Writer
       - apps/tui/src/persist/rj01.rs::a_torn_last_record_at_every_offset_replays_the_prefix
       - apps/tui/tests/journal_roundtrip.rs::every_record_carries_a_checksum_and_the_schema_version
       - apps/tui/tests/journal_torn_write.rs::a_journal_cut_at_every_byte_of_its_last_sync_offers_the_previous_text
@@ -384,7 +384,7 @@ items:
       - Journal records are incremental edits, not full snapshots
     evidence:
       - apps/tui/src/persist/rj01.rs::encode_edit
-      - apps/tui/src/persist/journal.rs::a_large_document_journals_against_the_disk_text
+      - apps/tui/src/persist/journal/writer/tests.rs::a_large_document_journals_against_the_disk_text
       - apps/tui/tests/journal_roundtrip.rs::the_journal_replays_forward_and_inverts_back
     legacy_ids:
       - DR-PERSIST-7
