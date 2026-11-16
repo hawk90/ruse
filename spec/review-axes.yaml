@@ -102,7 +102,7 @@ domains:
       - { id: RA-STRUCT-002, title: "Crate split criteria" }
       - { id: RA-STRUCT-003, title: "Crate naming clarity" }
       - { id: RA-STRUCT-004, title: "Module depth", method: machine }
-      - { id: RA-STRUCT-005, title: "Module size", method: machine }
+      - { id: RA-STRUCT-005, title: "Module size", method: machine, automated_by: ratchet }
       - { id: RA-STRUCT-006, title: "Over-exposed public modules" }
       - { id: RA-STRUCT-007, title: "pub scope discipline" }
       - { id: RA-STRUCT-008, title: "Facade composition" }

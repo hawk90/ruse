@@ -10,7 +10,9 @@ buckets:
   cap_untraced: 18        # capabilities with an empty `prd:`               (see gov capability_coverage)
   legacy_in_prd: 56       # hand-authored parity IDs still cited by the PRD (see gov parity_discovery)
   backlog: 78             # entries in spec/parity-backlog.yaml
-  review_machine_unwired: 137   # review axes with method=machine and no automated_by (see gov review_coverage)
+  review_machine_unwired: 136   # review axes with method=machine and no automated_by (see gov review_coverage)
+  fn_over_150: 18         # non-test functions over 150 lines (RA-STRUCT-005; docs/contributing/size-ceilings.md)
+  file_over_1000: 14      # non-test .rs files over 1,000 non-test lines (same rule; data tables exempt)
 # raised — <bucket>: why this change raises its ceiling (an issue or PR reference and one sentence).
 raised:
   backlog: "#1315 moves COM-7 and EMACS-EDIT-1 out of F-001's legacy trace into the backlog, so legacy_in_prd falls by two as backlog rises by one"
