@@ -2,6 +2,10 @@
 //! (`config-model.md` Test strategy), plus the drift check that keeps [`SCHEMA`] equal to
 //! `spec/config-schema.yaml`.
 
+use std::path::Path;
+
+use super::migrate::{Change, Migration, SCHEMA_VERSION};
+use super::parse::parse_layer_in;
 use super::*;
 use crate::trust::{ruse_dir_hash, TrustStore};
 
