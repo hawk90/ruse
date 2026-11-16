@@ -28,17 +28,17 @@ pub(crate) use boundary::is_boundary;
 pub(crate) use completion::{keyword_completions, line_completions};
 pub(crate) use cursor_word::{cword_under_cursor, keyword_before_cursor, word_under_cursor};
 pub use line::off_phantom;
-pub(crate) use line::{
-    content_end, first_non_blank, last_line_start, nth_line_start, off_phantom_at, vmove,
-};
+pub(crate) use line::{content_end, first_non_blank, off_phantom_at, vmove};
 pub(crate) use word::{char_cls, current_word_end_excl, word_end_excl};
 
-use bracket::{match_bracket, method_spec, method_target, unmatched_bracket, unmatched_spec};
+use bracket::{bracket_block_target, match_bracket};
 use find_char::find_char_target;
-use line::{down, last_non_blank, lines_down, up, wrap_left, wrap_right};
+use line::{
+    column_target, down, last_non_blank, line_delta_target, line_jump_target, lines_down, up,
+    wrap_left, wrap_right,
+};
 use paragraph::{
-    next_section_line, paragraph_fails, paragraph_landing, paragraph_span, paragraph_target,
-    prev_section_line,
+    paragraph_fails, paragraph_landing, paragraph_span, paragraph_target, section_target,
 };
 use tag::tag_span;
 use word::{
@@ -222,7 +222,7 @@ pub enum Motion {
     /// Vim `]m` — go to the `count`-th next START of a method (brace block). Pure brace navigation
     /// (ruse has no language model): a faithful port of Vim's `nv_bracket_block` two-phase algorithm.
     /// EXCLUSIVE charwise under an operator (`d]m`), sharing the exclusive-linewise reduction with the
-    /// section / unmatched-brace motions. See [`method_target`] for the exact algorithm and the
+    /// section / unmatched-brace motions. See [`bracket::method_target`] for the exact algorithm and the
     /// string/comment divergence.
     MethodStartFwd,
     /// Vim `[m` — go to the `count`-th previous method start. The backward mirror of [`Motion::MethodStartFwd`].
@@ -340,236 +340,144 @@ pub(crate) fn fails_with(
 }
 
 /// The cursor target for a bare move (`w`, `3l`, `k`, …), applying `count`.
+///
+/// One arm per motion family. Most families read the count as something other than a repeat (an absolute
+/// line, a percentage, a column, a line delta) and resolve it in one call; the char / line / word steps
+/// repeat [`step`] up to `count` times. The text objects and the linewise motion have no bare-move target.
 #[must_use]
 pub(crate) fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     let n = count.max(1);
     let cur0 = cursor.min(b.len());
-    // Char-search resolves the count-th match directly (repeating a single `t` step would stick in place).
-    if let Motion::FindChar {
-        ch,
-        forward,
-        till,
-        repeat,
-    } = m
-    {
-        return find_char_target(b, cur0, ch, forward, till, repeat, count).unwrap_or(cur0);
+    match m {
+        // Char-search resolves the count-th match directly (repeating a single `t` step would stick in place).
+        Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat,
+        } => find_char_target(b, cur0, ch, forward, till, repeat, count).unwrap_or(cur0),
+        Motion::GotoLine | Motion::LastLine | Motion::GotoByte | Motion::GotoPercent => {
+            line_jump_target(b, m, count, n)
+        }
+        // Bracket match jumps to a single computed position (count is not a repeat; `count%` is deferred).
+        Motion::MatchBracket => match_bracket(b, cur0).unwrap_or(cur0),
+        // `{count}g_`: the count is `count-1` lines down, then the last non-blank char (not a repeat).
+        // Stops at the last line, never the phantom slot after a final newline (#677).
+        Motion::LineLastNonBlank => last_non_blank(b, lines_down(b, cur0, n - 1)),
+        Motion::DownFirstNonBlank | Motion::UpFirstNonBlank | Motion::LineUnderscore => {
+            line_delta_target(b, cur0, m, n)
+        }
+        Motion::SectionFwd
+        | Motion::SectionBack
+        | Motion::SectionEndFwd
+        | Motion::SectionEndBack => section_target(b, cur0, m, n),
+        Motion::UnmatchedParenBack
+        | Motion::UnmatchedParenFwd
+        | Motion::UnmatchedBraceBack
+        | Motion::UnmatchedBraceFwd
+        | Motion::MethodStartFwd
+        | Motion::MethodStartBack
+        | Motion::MethodEndFwd
+        | Motion::MethodEndBack => bracket_block_target(b, cur0, m, n),
+        Motion::Column | Motion::MidLine => column_target(b, cur0, m, n),
+        // `{count}$` / `{count}<End>`: the end of the line `count - 1` lines down (stopping at the last line).
+        Motion::LineEnd if n > 1 => target(b, lines_down(b, cur0, n - 1), m, 1),
+        // `)` / `(`: Vim's `findsent`, ported in `textobj` for `is`/`as`, where an empty line is a sentence of
+        // its own (`)` from `foo bar` stops on the blank line below it).
+        Motion::SentenceFwd | Motion::SentenceBack => {
+            crate::textobj::sentence_motion(b, cur0, m == Motion::SentenceFwd, n)
+        }
+        // `}` / `{`: a count that runs out of paragraphs fails as a whole (see `paragraph_target`).
+        Motion::ParagraphFwd | Motion::ParagraphBack => {
+            paragraph_target(b, cur0, m == Motion::ParagraphFwd, n)
+        }
+        Motion::Left
+        | Motion::Right
+        | Motion::WrapLeft
+        | Motion::WrapRight
+        | Motion::EmacsCharBack
+        | Motion::EmacsCharFwd
+        | Motion::Up
+        | Motion::Down
+        | Motion::LineStart
+        | Motion::LineFirstNonBlank
+        | Motion::LineEnd
+        | Motion::WordFwd
+        | Motion::WordBack
+        | Motion::WordEnd
+        | Motion::WordEndBack
+        | Motion::EmacsWordFwd
+        | Motion::EmacsWordBack
+        | Motion::BigWordFwd
+        | Motion::BigWordBack
+        | Motion::BigWordEnd
+        | Motion::BigWordEndBack => {
+            // `{count}h` / `{count}l` step through one line cache: a count is not a whole-line scan per step
+            // (#1224). Every step is a pure function of `(b, c)`, so `repeat_step` stops at the first step
+            // that did not move: without that a hostile count (`emacs_kill_word 4294967295` in a trace, or a
+            // huge `C-u` prefix) spun for minutes at the buffer edge (#907).
+            let steps = Steps::new(b);
+            repeat_step(n, cur0, |c| step(b, &steps, c, m))
+        }
+        // The text objects and the linewise motion have no bare-move target.
+        Motion::InnerWord
+        | Motion::AWord
+        | Motion::InnerBigWord
+        | Motion::ABigWord
+        | Motion::InnerParagraph
+        | Motion::AParagraph
+        | Motion::InnerSentence
+        | Motion::ASentence
+        | Motion::Pair { .. }
+        | Motion::Quote { .. }
+        | Motion::Tag { .. }
+        | Motion::Line => cur0,
     }
-    // Line jumps use the count as an absolute line number (or the last line), not a repeat count.
-    if m == Motion::GotoLine {
-        return first_non_blank(b, nth_line_start(b, count));
-    }
-    if m == Motion::LastLine {
-        return first_non_blank(b, last_line_start(b));
-    }
-    // `{count}go`: the count is an absolute 1-based BYTE offset (not a repeat); a count past EOF lands on the
-    // LAST byte (Vim never rests the cursor past the final char). Snapped to a char boundary.
-    // A terminated buffer's last byte is its final newline, so a count past EOF lands on the last line's last
-    // char instead (#677).
-    if m == Motion::GotoByte {
-        let t = off_phantom_at(b, (n as usize).saturating_sub(1).min(b.len()));
-        return snap(b, t.min(b.len().saturating_sub(1)));
-    }
-    // Bracket match jumps to a single computed position (count is not a repeat; `count%` is deferred).
-    if m == Motion::MatchBracket {
-        return match_bracket(b, cur0).unwrap_or(cur0);
-    }
-    // `{count}%`: the count is a PERCENTAGE — go to line `(count*line_count + 99)/100` (Vim), first
-    // non-blank. `line_count` follows the terminator model (a trailing `\n` is not a new line).
-    if m == Motion::GotoPercent {
-        let nl = crate::pos::count_newlines(b);
-        let line_count = if b.is_empty() {
-            1
-        } else if b.last() == Some(&b'\n') {
-            nl
-        } else {
-            nl + 1
-        };
-        let line = ((n as usize) * line_count)
-            .div_ceil(100)
-            .clamp(1, line_count) as u32;
-        return first_non_blank(b, nth_line_start(b, line));
-    }
-    // `{count}g_`: the count is `count-1` lines down, then the last non-blank char (not a repeat).
-    // Stops at the last line, never the phantom slot after a final newline (#677).
-    if m == Motion::LineLastNonBlank {
-        return last_non_blank(b, lines_down(b, cur0, n - 1));
-    }
-    // `+`/`<CR>` (down), `-` (up), `_` (count-1 down): the count is a line delta (not a repeat), then the
-    // first non-blank char of the target line. Clamped at the buffer edges.
-    if matches!(
-        m,
-        Motion::DownFirstNonBlank | Motion::UpFirstNonBlank | Motion::LineUnderscore
-    ) {
-        let delta: isize = match m {
-            Motion::DownFirstNonBlank => n as isize,
-            Motion::LineUnderscore => (n - 1) as isize,
-            _ => -(n as isize), // UpFirstNonBlank
-        };
-        let mut ls = line_start(b, cur0);
-        if delta >= 0 {
-            for _ in 0..delta {
-                let le = line_end(b, ls);
-                if le >= content_end(b) {
-                    break; // clamp at the last content line, not the trailing phantom
-                }
-                ls = le + 1;
-            }
-        } else {
-            for _ in 0..(-delta) {
-                if ls == 0 {
-                    break;
-                }
-                ls = line_start(b, ls - 1);
+}
+
+/// One bare-move step of a repeating motion (`h`, `l`, `j`, `k`, `0`, `^`, `$`, the word motions) from `c`.
+/// Only [`target`]'s stepping arm calls it.
+fn step(b: &[u8], steps: &Steps<'_>, c: usize, m: Motion) -> usize {
+    match m {
+        // `h`/`l` are bounded by the line; the count stops at its edge.
+        // A step is one grapheme cluster (F-002, #696): a composed char or a ZWJ emoji is one char.
+        Motion::Left if c > steps.line_start(c) => steps.prev(c),
+        Motion::Right if c < steps.line_end(c) => steps.next(c),
+        Motion::Left | Motion::Right => c,
+        Motion::WrapLeft => wrap_left(b, c),
+        Motion::WrapRight => wrap_right(b, c),
+        Motion::EmacsCharBack => prev_boundary(b, c),
+        Motion::EmacsCharFwd => next_boundary(b, c),
+        Motion::Up => up(b, c),
+        Motion::Down => down(b, c),
+        Motion::LineStart => line_start(b, c),
+        // Vim `^` / Emacs `back-to-indentation` (M-m): the first non-blank of the line (or the line end
+        // when the line is all blank). Count-agnostic — repeating stays on the same line.
+        Motion::LineFirstNonBlank => first_non_blank(b, line_start(b, c)),
+        // A bare `$` lands ON the last char of the line (Vim never rests the cursor past it in Normal),
+        // unlike the `d$` operator span which reaches the line end — see `char_span`. `{count}$` is the
+        // end of the line `count - 1` below (resolved by `target` before it steps).
+        Motion::LineEnd => {
+            let ls = line_start(b, c);
+            let le = line_end(b, c);
+            if le > ls {
+                prev_grapheme(b, le)
+            } else {
+                le
             }
         }
-        return first_non_blank(b, ls);
+        Motion::WordFwd => next_word_start(steps, c, false),
+        Motion::WordBack => prev_word_start(steps, c, false),
+        Motion::WordEnd => steps.prev(word_end_in(steps, c, false)), // land ON the last char
+        Motion::WordEndBack => prev_word_end(steps, c, false),       // Vim `ge`
+        Motion::EmacsWordFwd => emacs_word_fwd(b, c), // Emacs forward-word: two-class, land AFTER the word
+        Motion::EmacsWordBack => emacs_word_back(b, c), // Emacs backward-word: two-class mirror
+        Motion::BigWordFwd => next_word_start(steps, c, true),
+        Motion::BigWordBack => prev_word_start(steps, c, true),
+        Motion::BigWordEnd => steps.prev(word_end_in(steps, c, true)),
+        Motion::BigWordEndBack => prev_word_end(steps, c, true), // Vim `gE`
+        _ => unreachable!("`target` resolves {m:?} without stepping"),
     }
-    // Section motions (`]]`/`[[`/`][`/`[]`): jump `count` section boundaries and rest on the target line's
-    // first non-blank (column 0 for a brace/form-feed line). The count is a repeat, resolved by the scanner.
-    if matches!(
-        m,
-        Motion::SectionFwd | Motion::SectionBack | Motion::SectionEndFwd | Motion::SectionEndBack
-    ) {
-        let ls = match m {
-            Motion::SectionFwd => next_section_line(b, cur0, n, false),
-            Motion::SectionEndFwd => next_section_line(b, cur0, n, true),
-            Motion::SectionBack => prev_section_line(b, cur0, n, false),
-            _ => prev_section_line(b, cur0, n, true), // SectionEndBack
-        };
-        return first_non_blank(b, ls);
-    }
-    // Unmatched-bracket motions (`[(`/`])`/`[{`/`]}`): the count is a repeat (levels to step out); the scanner
-    // resolves it directly to a single target (or `cur0` when there is no enclosing unmatched bracket).
-    if let Some((open, close, forward)) = unmatched_spec(m) {
-        return unmatched_bracket(b, cur0, open, close, forward, n);
-    }
-    // Method (brace-block) motions (`]m`/`[m`/`]M`/`[M`): the count is baked into the two-phase scan
-    // (Vim `nv_bracket_block`), which resolves directly to a single target (or `cur0` for a no-op).
-    if let Some((forward, end)) = method_spec(m) {
-        return method_target(b, cur0, forward, end, n);
-    }
-    // `{count}|`: the count is the 1-based display column of the current line (not a repeat).
-    if m == Motion::Column {
-        return at_col(b, line_start(b, cur0), (n - 1) as usize);
-    }
-    // `gM` / `{count}gM`: the count is a PERCENTAGE of the line's character length (not a repeat); land on
-    // char index `min(count*chars/100, chars-1)`. The frontend passes 50 for a bare `gM`.
-    if m == Motion::MidLine {
-        let ls = line_start(b, cur0);
-        let chars = col_of(b, ls, line_end(b, cur0)); // char count of the line (excludes the newline)
-        if chars == 0 {
-            return ls; // empty line — nowhere to go
-        }
-        let idx = ((n as usize) * chars / 100).min(chars - 1);
-        return at_col(b, ls, idx);
-    }
-    // `{count}$` / `{count}<End>`: the end of the line `count - 1` lines down (stopping at the last line).
-    if m == Motion::LineEnd && n > 1 {
-        return target(b, lines_down(b, cur0, n - 1), m, 1);
-    }
-    // `)` / `(`: Vim's `findsent`, ported in `textobj` for `is`/`as`, where an empty line is a sentence of
-    // its own (`)` from `foo bar` stops on the blank line below it).
-    if matches!(m, Motion::SentenceFwd | Motion::SentenceBack) {
-        return crate::textobj::sentence_motion(b, cur0, m == Motion::SentenceFwd, n);
-    }
-    // `}` / `{`: a count that runs out of paragraphs fails as a whole (see `paragraph_target`).
-    if matches!(m, Motion::ParagraphFwd | Motion::ParagraphBack) {
-        return paragraph_target(b, cur0, m == Motion::ParagraphFwd, n);
-    }
-    let mut c = cur0;
-    // `{count}h` / `{count}l` step through one line cache: a count is not a whole-line scan per step (#1224).
-    let steps = Steps::new(b);
-    for _ in 0..n {
-        let prev = c;
-        c = match m {
-            // `h`/`l` are bounded by the line; the count stops at its edge.
-            // A step is one grapheme cluster (F-002, #696): a composed char or a ZWJ emoji is one char.
-            Motion::Left if c > steps.line_start(c) => steps.prev(c),
-            Motion::Right if c < steps.line_end(c) => steps.next(c),
-            Motion::Left | Motion::Right => c,
-            Motion::WrapLeft => wrap_left(b, c),
-            Motion::WrapRight => wrap_right(b, c),
-            Motion::EmacsCharBack => prev_boundary(b, c),
-            Motion::EmacsCharFwd => next_boundary(b, c),
-            Motion::Up => up(b, c),
-            Motion::Down => down(b, c),
-            Motion::LineStart => line_start(b, c),
-            // Vim `^` / Emacs `back-to-indentation` (M-m): the first non-blank of the line (or the line end
-            // when the line is all blank). Count-agnostic — repeating stays on the same line.
-            Motion::LineFirstNonBlank => first_non_blank(b, line_start(b, c)),
-            // A bare `$` lands ON the last char of the line (Vim never rests the cursor past it in Normal),
-            // unlike the `d$` operator span which reaches the line end — see `char_span`. `{count}$` is the
-            // end of the line `count - 1` below (resolved by the early return above).
-            Motion::LineEnd => {
-                let ls = line_start(b, c);
-                let le = line_end(b, c);
-                if le > ls {
-                    prev_grapheme(b, le)
-                } else {
-                    le
-                }
-            }
-            Motion::WordFwd => next_word_start(&steps, c, false),
-            Motion::WordBack => prev_word_start(&steps, c, false),
-            Motion::WordEnd => steps.prev(word_end_in(&steps, c, false)), // land ON the last char
-            Motion::WordEndBack => prev_word_end(&steps, c, false),       // Vim `ge`
-            Motion::EmacsWordFwd => emacs_word_fwd(b, c), // Emacs forward-word: two-class, land AFTER the word
-            Motion::EmacsWordBack => emacs_word_back(b, c), // Emacs backward-word: two-class mirror
-            Motion::BigWordFwd => next_word_start(&steps, c, true),
-            Motion::BigWordBack => prev_word_start(&steps, c, true),
-            Motion::BigWordEnd => steps.prev(word_end_in(&steps, c, true)),
-            Motion::BigWordEndBack => prev_word_end(&steps, c, true), // Vim `gE`
-            // FindChar / line-jumps are resolved by the early returns above; objects/linewise have no
-            // bare-move target.
-            Motion::FindChar { .. }
-            | Motion::GotoLine
-            | Motion::LastLine
-            | Motion::DownFirstNonBlank
-            | Motion::UpFirstNonBlank
-            | Motion::LineUnderscore
-            | Motion::GotoByte
-            | Motion::MatchBracket
-            | Motion::GotoPercent
-            | Motion::LineLastNonBlank
-            | Motion::Column
-            | Motion::MidLine
-            | Motion::InnerWord
-            | Motion::AWord
-            | Motion::InnerBigWord
-            | Motion::ABigWord
-            | Motion::InnerParagraph
-            | Motion::AParagraph
-            | Motion::InnerSentence
-            | Motion::ASentence
-            | Motion::SectionFwd
-            | Motion::SectionBack
-            | Motion::SectionEndFwd
-            | Motion::SectionEndBack
-            | Motion::UnmatchedParenBack
-            | Motion::UnmatchedParenFwd
-            | Motion::UnmatchedBraceBack
-            | Motion::UnmatchedBraceFwd
-            | Motion::MethodStartFwd
-            | Motion::MethodStartBack
-            | Motion::MethodEndFwd
-            | Motion::MethodEndBack
-            | Motion::Pair { .. }
-            | Motion::Quote { .. }
-            | Motion::Tag { .. }
-            | Motion::ParagraphFwd
-            | Motion::ParagraphBack
-            | Motion::SentenceFwd
-            | Motion::SentenceBack
-            | Motion::Line => c,
-        };
-        // Every step is a pure function of `(b, c)`, so a step that did not move never will: stop. Without
-        // this a hostile count (`emacs_kill_word 4294967295` in a trace, or a huge `C-u` prefix) spun for
-        // minutes at the buffer edge (#907).
-        if c == prev {
-            break;
-        }
-    }
-    c
 }
 
 /// Apply the pure step `f` up to `n` times from `start`, stopping early at a fixpoint: a step that did not
