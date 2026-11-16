@@ -50,7 +50,7 @@ common enough in real `.vimrc`/plugins that documenting them away would fail the
 D-028 stands as written: option (a), a Vim front-end and an owned Vim engine beside the wrapped one. What ships
 today is the first half, and the amendment records it.
 
-- **Front-end.** `crates/core/src/pattern.rs` is a port of nvim's `regexp.c` reader (`peekchr`, `nfa_regatom`,
+- **Front-end.** `crates/core/src/pattern/` is a port of nvim's `regexp.c` reader (`peekchr`, `nfa_regatom`,
   `nfa_regpiece`, the collection reader; #692, PR #1050). It resolves the magic levels once (§5) and lowers
   `\zs`/`\ze` to reserved empty capture groups (§4). It lowers **straight to Rust `regex` syntax**: there is no
   `RegexIr`, no `Requirements` summary and no router yet. The IR arrives with the owned engine.
@@ -265,7 +265,7 @@ trait Program {
 struct Match { start: BytePos, end: BytePos, consumed: Range<BytePos> }
 ```
 
-<!-- design-code-ack: Match — the F-009 MVP `Match` (crates/core/src/pattern.rs) carries only the
+<!-- design-code-ack: Match — the F-009 MVP `Match` (crates/core/src/pattern/mod.rs) carries only the
      REPORTED span { start, end } (already \zs/\ze-adjusted). The `consumed` true-automaton range is
      deferred: it is needed only for search-offset math (`/e`, `/s+2`) and multi-\zs edge cases, which
      are post-MVP (the command layer PRs cover plain search + :s/:g). Design is ahead of the code by
