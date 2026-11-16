@@ -14,6 +14,7 @@ related:
   - change-paths.md
   - ai-assisted-development.md
   - quickstart.md
+  - size-ceilings.md
   - ../operations/development-model.md
   - ../operations/definition-of-done.md
   - ../operations/github-workflow.md
@@ -109,6 +110,7 @@ ruse keeps **one fact in one home**:
 - [change-paths.md](change-paths.md) — the one-minute "which process is my change" guide.
 - [ai-assisted-development.md](ai-assisted-development.md) — the tool-agnostic AI policy.
 - [quickstart.md](quickstart.md) — clone → first PR.
+- [size-ceilings.md](size-ceilings.md) — function and file size targets, held by `gov ratchet`.
 - [../operations/development-model.md](../operations/development-model.md) — Spec-Gated Iterative Development.
 - [../operations/definition-of-done.md](../operations/definition-of-done.md) — when a change is done.
 - [../operations/github-workflow.md](../operations/github-workflow.md) — labels, milestones, automation.
