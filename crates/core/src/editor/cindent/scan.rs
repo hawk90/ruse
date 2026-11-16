@@ -6,54 +6,10 @@ use super::lex::{
     skip_string, skipwhite, starts, strend, MARK_COMMENT, MARK_RAW,
 };
 use super::{Ci, Pos};
+use crate::findmatch::scan::{Backslashes, MatchScan, MatchStep};
 
-/// The state `findmatchlimit` carries from one phase to the next: the target-char selection sets the
-/// direction and the chars to count, the scan loop moves `pos` and keeps the quote and comment state.
-struct MatchScan<'a> {
-    /// The current search position (nvim's static `pos`).
-    pos: Pos,
-    /// The text of line `pos.lnum`.
-    linep: &'a [u8],
-    /// The char whose match is wanted (counted up), 0 for a comment or raw-string search.
-    initc: u8,
-    /// The matching char (counted down), 0 for a comment or raw-string search.
-    findc: u8,
-    /// The cumulative number of unmatched `initc`s (or comment and raw-string starts).
-    count: i64,
-    backwards: bool,
-    /// Searching for a raw string start (`initc` `R`).
-    raw_string: bool,
-    /// True when inside quotes.
-    inquote: bool,
-    /// Searching for a comment or raw-string start; only ever backward here.
-    comment_dir: bool,
-    /// How many lines the search has gone so far.
-    traveled: i64,
-    /// 1 when the match wanted is escaped (an odd number of backslashes before it).
-    match_escaped: usize,
-    /// The start of a `//` comment on the line, if any.
-    comment_col: Option<usize>,
-    /// The parity of the quotes on the line, -1 until counted.
-    do_quotes: i32,
-    /// Whether the search started inside quotes, `None` until known.
-    start_in_quotes: Option<bool>,
-    /// The last comment or raw-string start found.
-    match_pos: Pos,
-}
-
-/// What a phase of one `findmatchlimit` loop iteration decides.
-enum MatchStep {
-    /// Go on to the next phase of this iteration.
-    Go,
-    /// The iteration is over: go to the next position (nvim's `continue`).
-    Next,
-    /// Leave the loop (nvim's `break`).
-    Break,
-    /// Return this result from `findmatchlimit` at once.
-    Return(Option<Pos>),
-}
-
-/// The number of backslashes right before `linep[col]`.
+/// The number of backslashes right before `linep[col]` (nvim's `check_prevcol` loop, stepping back
+/// with `utf_head_off`).
 fn backslashes_before(linep: &[u8], col: usize) -> usize {
     let mut bslcnt = 0;
     let mut col = col;
@@ -67,6 +23,26 @@ fn backslashes_before(linep: &[u8], col: usize) -> usize {
     bslcnt
 }
 
+/// The number of backslash bytes right before `linep[col]` (nvim's loop before a `"`).
+fn backslash_bytes_before(linep: &[u8], col: usize) -> usize {
+    linep[..col]
+        .iter()
+        .rev()
+        .take_while(|&&b| b == b'\\')
+        .count()
+}
+
+/// The C indent counts as nvim does: raw bytes before a `"`, `utf_head_off` steps before a bracket.
+const CINDENT_BACKSLASHES: Backslashes = Backslashes {
+    quote: backslash_bytes_before,
+    escape: backslashes_before,
+};
+
+/// The scan position as the C indent's [`Pos`] (1-based line).
+fn to_pos((lnum, col): (usize, usize)) -> Pos {
+    Pos { lnum, col }
+}
+
 impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
     /// `findmatchlimit(NULL, initc, flags, maxtravel)` from the cursor. `initc` is `*` (a `/*` comment
     /// start, backward), `R` (a raw string start, backward), a bracket (its match: `{`, `(`, `[` look
@@ -78,20 +54,11 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
     /// raw-string search that ran out returns the last start it found.
     pub(super) fn findmatchlimit(&self, initc: u8, blockstop: bool, maxtravel: i64) -> Option<Pos> {
         let mut s = self.fml_target(initc)?;
-        if s.backwards && s.comment_dir {
+        if s.backwards && s.comment_dir != 0 {
             s.comment_col = check_linecomment(s.linep);
         }
-        loop {
-            match self.fml_step(&mut s, blockstop, maxtravel) {
-                MatchStep::Go | MatchStep::Next => {}
-                MatchStep::Break => break,
-                MatchStep::Return(found) => return found,
-            }
-        }
-        if s.comment_dir && s.count > 0 {
-            return Some(s.match_pos);
-        }
-        None
+        s.run(|s| self.fml_step(s, blockstop, maxtravel))
+            .map(to_pos)
     }
 
     /// `findmatchlimit`, "if initc given, look in the table for the matching character" ("'/' and
@@ -105,12 +72,12 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
         let mut initc = initc;
         let backwards;
         let mut raw_string = false;
-        let mut comment_dir = false; // only ever backward here
+        let mut comment_dir = 0; // only ever backward (-1) here
         let mut match_escaped = 0usize;
         let pairs: [(u8, u8); 3] = [(b'(', b')'), (b'{', b'}'), (b'[', b']')];
         match initc {
             b'*' | b'R' => {
-                comment_dir = true;
+                comment_dir = -1;
                 backwards = true;
                 raw_string = initc == b'R';
                 initc = 0;
@@ -160,23 +127,14 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
                 }
             }
         }
-        Some(MatchScan {
-            pos,
-            linep,
-            initc,
-            findc,
-            count: 0,
-            backwards,
-            raw_string,
-            inquote: false,
-            comment_dir,
-            traveled: 0,
-            match_escaped,
-            comment_col: None,
-            do_quotes: -1,
-            start_in_quotes: None,
-            match_pos: Pos::default(),
-        })
+        let mut s = MatchScan::new((pos.lnum, pos.col), linep, CINDENT_BACKSLASHES);
+        s.initc = initc;
+        s.findc = findc;
+        s.backwards = backwards;
+        s.raw_string = raw_string;
+        s.comment_dir = comment_dir;
+        s.match_escaped = match_escaped;
+        Some(s)
     }
 
     /// One iteration of the `findmatchlimit` scan loop (`while (!got_int)`): its phases in nvim's
@@ -190,54 +148,54 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
         if !matches!(step, MatchStep::Go) {
             return step;
         }
-        if s.comment_dir {
+        if s.comment_dir != 0 {
             return self.fml_comment(s);
         }
-        self.fml_count_quotes(s);
-        if s.start_in_quotes.is_none() {
-            s.start_in_quotes = Some(false);
-        }
-        fml_match_char(s)
+        let lnum = s.pos.0;
+        s.count_quotes(strend(s.linep, 0), || {
+            lnum > 1 && last_byte(self.line(lnum - 1)) == b'\\'
+        });
+        s.match_char()
     }
 
     /// `findmatchlimit`, "Go to the next position, forward or backward": the previous or next char,
     /// crossing to the next line at a line end, until the buffer edge or `maxtravel` lines.
     fn fml_advance(&self, s: &mut MatchScan<'a>, maxtravel: i64) -> MatchStep {
         if s.backwards {
-            if s.pos.col == 0 {
-                if s.pos.lnum <= 1 {
+            if s.pos.1 == 0 {
+                if s.pos.0 <= 1 {
                     return MatchStep::Break;
                 }
-                s.pos.lnum -= 1;
+                s.pos.0 -= 1;
                 if maxtravel > 0 {
                     s.traveled += 1;
                     if s.traveled > maxtravel {
                         return MatchStep::Break;
                     }
                 }
-                s.linep = self.line(s.pos.lnum);
+                s.linep = self.line(s.pos.0);
                 s.do_quotes = -1;
-                if s.comment_dir {
+                if s.comment_dir != 0 {
                     // The comment and raw-string searches only stop on their marks, which never
                     // cross a line end: a line without one is passed over at once (as the scan
                     // would, char by char).
                     let bit = if s.raw_string { MARK_RAW } else { MARK_COMMENT };
-                    if !self.has_mark(s.pos.lnum, bit) {
-                        s.pos.col = 0;
+                    if !self.has_mark(s.pos.0, bit) {
+                        s.pos.1 = 0;
                         return MatchStep::Next;
                     }
                     s.comment_col = check_linecomment(s.linep);
                 }
-                s.pos.col = strend(s.linep, 0);
+                s.pos.1 = strend(s.linep, 0);
             } else {
-                s.pos.col -= 1;
-                s.pos.col -= head_off(s.linep, s.pos.col);
+                s.pos.1 -= 1;
+                s.pos.1 -= head_off(s.linep, s.pos.1);
             }
-        } else if at(s.linep, s.pos.col) == 0 {
-            if s.pos.lnum >= self.count() {
+        } else if at(s.linep, s.pos.1) == 0 {
+            if s.pos.0 >= self.count() {
                 return MatchStep::Break;
             }
-            s.pos.lnum += 1;
+            s.pos.0 += 1;
             if maxtravel != 0 {
                 let t = s.traveled;
                 s.traveled += 1;
@@ -245,115 +203,42 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
                     return MatchStep::Break;
                 }
             }
-            s.linep = self.line(s.pos.lnum);
-            s.pos.col = 0;
+            s.linep = self.line(s.pos.0);
+            s.pos.1 = 0;
             s.do_quotes = -1;
         } else {
-            s.pos.col += char_len(s.linep, s.pos.col);
+            s.pos.1 += char_len(s.linep, s.pos.1);
         }
         MatchStep::Go
     }
 
     /// `findmatchlimit`, the `comment_dir` branch: "Note: comments do not nest, and we ignore quotes
-    /// in them", with "Possible start of raw string" for `R` and "A comment may contain / * or / /, it
-    /// may also start or end with / * /. Ignore a / * after / / and after *." for `*`. A comment end
-    /// returns the start found (or the `/*` it closes); anything else goes to the next position.
+    /// in them", with "Possible start of raw string" for `R`; for `*` the shared backward `/*`
+    /// search ([`MatchScan::comment_backward`]).
     fn fml_comment(&self, s: &mut MatchScan<'a>) -> MatchStep {
+        if !s.raw_string {
+            return s.comment_backward();
+        }
         let linep = s.linep;
-        let pos = s.pos;
+        let pos = to_pos(s.pos);
         if pos.col == 0 {
             return MatchStep::Next;
         }
-        if s.raw_string {
-            if at(linep, pos.col - 1) == b'R'
-                && at(linep, pos.col) == b'"'
-                && linep[pos.col + 1..strend(linep, 0)].contains(&b'(')
-            {
-                let end = if s.count > 0 { s.match_pos } else { self.cur };
-                if !self.find_rawstring_end(linep, pos, end) {
-                    s.count += 1;
-                    s.match_pos = pos;
-                    s.match_pos.col -= 1;
-                }
-            }
-        } else if at(linep, pos.col - 1) == b'/'
-            && at(linep, pos.col) == b'*'
-            && (pos.col == 1 || at(linep, pos.col - 2) != b'*')
-            && s.comment_col.is_none_or(|cc| pos.col < cc)
+        if at(linep, pos.col - 1) == b'R'
+            && at(linep, pos.col) == b'"'
+            && linep[pos.col + 1..strend(linep, 0)].contains(&b'(')
         {
-            s.count += 1;
-            s.match_pos = pos;
-            s.match_pos.col -= 1;
-        } else if at(linep, pos.col - 1) == b'*' && at(linep, pos.col) == b'/' {
-            let found = if s.count > 0 {
-                s.match_pos
-            } else if pos.col > 1
-                && at(linep, pos.col - 2) == b'/'
-                && s.comment_col.is_none_or(|cc| pos.col <= cc)
-            {
-                Pos {
-                    col: pos.col - 2,
-                    ..pos
-                }
+            let end = if s.count > 0 {
+                to_pos(s.match_pos)
             } else {
-                return MatchStep::Return(None);
+                self.cur
             };
-            return MatchStep::Return(Some(found));
+            if !self.find_rawstring_end(linep, pos, end) {
+                s.count += 1;
+                s.match_pos = (pos.lnum, pos.col - 1);
+            }
         }
         MatchStep::Next
-    }
-
-    /// `findmatchlimit`, "If smart matching ('cpoptions' does not contain '%'), braces inside of
-    /// quotes are ignored, but only if there is an even number of quotes in the line" with "If we
-    /// find an uneven count, check current line and previous one for a '\' at the end". Runs once
-    /// per line (`do_quotes == -1`).
-    fn fml_count_quotes(&self, s: &mut MatchScan<'a>) {
-        if s.do_quotes != -1 {
-            return;
-        }
-        let linep = s.linep;
-        let mut at_start = s.do_quotes;
-        let end = strend(linep, 0);
-        let mut i = 0;
-        while i < end {
-            if i == s.pos.col + usize::from(s.backwards) {
-                at_start = s.do_quotes & 1;
-            }
-            if linep[i] == b'"' && (i == 0 || linep[i - 1] != b'\'' || at(linep, i + 1) != b'\'') {
-                s.do_quotes += 1;
-            }
-            if linep[i] == b'\\' && at(linep, i + 1) != 0 {
-                i += 1;
-            }
-            i += 1;
-        }
-        s.do_quotes &= 1;
-        if s.do_quotes == 0 {
-            s.inquote = false;
-            if end > 0 && linep[end - 1] == b'\\' {
-                s.do_quotes = 1;
-                if s.start_in_quotes.is_none() {
-                    s.inquote = true;
-                    s.start_in_quotes = Some(true);
-                } else if s.backwards {
-                    s.inquote = true;
-                }
-            }
-            if s.pos.lnum > 1 {
-                let prev = self.line(s.pos.lnum - 1);
-                if last_byte(prev) == b'\\' {
-                    s.do_quotes = 1;
-                    if s.start_in_quotes.is_none() {
-                        s.inquote = at_start != 0;
-                        if s.inquote {
-                            s.start_in_quotes = Some(true);
-                        }
-                    } else if !s.backwards {
-                        s.inquote = true;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -361,87 +246,13 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
 /// that brace, else the end of the search.
 fn fml_blockstop(s: &MatchScan<'_>, blockstop: bool) -> MatchStep {
     let c0 = at(s.linep, 0);
-    if s.pos.col == 0 && blockstop && (c0 == b'{' || c0 == b'}') {
+    if s.pos.1 == 0 && blockstop && (c0 == b'{' || c0 == b'}') {
         if c0 == s.findc && s.count == 0 {
             return MatchStep::Return(Some(s.pos));
         }
         return MatchStep::Break;
     }
     MatchStep::Go
-}
-
-/// `findmatchlimit`, the `switch (c = ...)` on the char at `pos`: "If 'smartmatch' is set: Things
-/// inside quotes are ignored by setting 'inquote'", "Skip things in single quotes: 'x' or '\x'", and
-/// "Check for match outside of quotes, and inside of quotes when the start is also inside of quotes"
-/// with "Only accept a match when ... escaping is what we expect". Returns the match when `count`
-/// is back at 0.
-fn fml_match_char(s: &mut MatchScan<'_>) -> MatchStep {
-    let linep = s.linep;
-    let c = at(linep, s.pos.col);
-    match c {
-        0 => {
-            if s.pos.col == 0 || linep[s.pos.col - 1] != b'\\' {
-                s.inquote = false;
-                s.start_in_quotes = Some(false);
-            }
-        }
-        b'"' => {
-            if s.do_quotes != 0 {
-                let n = linep[..s.pos.col]
-                    .iter()
-                    .rev()
-                    .take_while(|&&b| b == b'\\')
-                    .count();
-                if n % 2 == 0 {
-                    s.inquote = !s.inquote;
-                    s.start_in_quotes = Some(false);
-                }
-            }
-        }
-        _ => {
-            if c == b'\'' && s.initc != b'\'' && s.findc != b'\'' {
-                if s.backwards {
-                    if s.pos.col > 1 {
-                        if linep[s.pos.col - 2] == b'\'' {
-                            s.pos.col -= 2;
-                            return MatchStep::Next;
-                        } else if linep[s.pos.col - 2] == b'\\'
-                            && s.pos.col > 2
-                            && linep[s.pos.col - 3] == b'\''
-                        {
-                            s.pos.col -= 3;
-                            return MatchStep::Next;
-                        }
-                    }
-                } else if at(linep, s.pos.col + 1) != 0 {
-                    if at(linep, s.pos.col + 1) == b'\\'
-                        && at(linep, s.pos.col + 2) != 0
-                        && at(linep, s.pos.col + 3) == b'\''
-                    {
-                        s.pos.col += 3;
-                        return MatchStep::Next;
-                    } else if at(linep, s.pos.col + 2) == b'\'' {
-                        s.pos.col += 2;
-                        return MatchStep::Next;
-                    }
-                }
-            }
-            if (!s.inquote || s.start_in_quotes == Some(true)) && (c == s.initc || c == s.findc) {
-                let bslcnt = backslashes_before(linep, s.pos.col);
-                if bslcnt & 1 == s.match_escaped {
-                    if c == s.initc {
-                        s.count += 1;
-                    } else {
-                        if s.count == 0 {
-                            return MatchStep::Return(Some(s.pos));
-                        }
-                        s.count -= 1;
-                    }
-                }
-            }
-        }
-    }
-    MatchStep::Next
 }
 
 impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
