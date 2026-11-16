@@ -32,7 +32,7 @@ related:
 
 ## Problem
 
-The multi-buffer arena exists (`crates/core/src/workspace.rs`, F-007). What does not exist is the layer
+The multi-buffer arena exists (`crates/core/src/workspace/`, F-007). What does not exist is the layer
 that lets state be **shared across buffers** or **point into another buffer**. Concretely, three fields
 that Vim/Emacs treat as editor-global are stored on `View` and cloned on `:split`:
 
@@ -41,7 +41,7 @@ that Vim/Emacs treat as editor-global are stored on `View` and cloned on `:split
 - `jumps: Vec<usize>` / `jump_idx` (single-buffer offsets)
 
 `:split` clones the whole `View` (`Workspace::split`), so these diverge between panes; and the
-swap-trick (`crates/core/src/workspace.rs`) only ever reconstitutes the **focused** `(Document, View)` into an
+swap-trick (`crates/core/src/workspace/mod.rs`) only ever reconstitutes the **focused** `(Document, View)` into an
 `EditorState`, so cross-buffer code has nowhere to stand. Buffers also have no lifecycle model
 (no Listed/Unlisted/Hidden, no kind), so a special buffer (editable `q:`, picker results) has no home.
 
@@ -67,7 +67,7 @@ keyword completion. (`:ls`/`:bnext`/`:bprev`/`:bd` work, and the buffer and file
   (view-window-workspace.md §8.3). Keeps this change internal (no persistent-format contract).
 - **Multi-client scope** (D-012) — whether some registers become per-client; single workspace/client here.
 - **Generational handles** (INV-HANDLE) — the `None`-hole + assert model is kept; hardening is separate.
-- **Recursive layout tree / tab pages** — layout stays the flat MVP list (workspace.rs:20-23).
+- **Recursive layout tree / tab pages** — layout stays the flat MVP list (`workspace/mod.rs` module docs).
 - **The full multi-selection Selection set** (NAT-5, D-027) — orthogonal; not required here.
 
 ## Terminology
@@ -103,8 +103,8 @@ The dividing line follows Vim/Emacs semantics, not implementation convenience.
 |---|---|---|
 | `RegisterStore` (unnamed, `a`-`z`, `"0`, `"1`-`"9`, `"-`, `"+`/`"*` mirror) | `View.registers` (`editor/mod.rs:167`) | Vim registers are global; D-026 "one shared store" |
 | Uppercase/global marks `mA`-`mZ`, special globals | absent (`named_marks` a-z only) | Vim `mA`-`mZ` are global; D-027 `NamedMap` |
-| Alternate buffer `alt` + `"#`/`"%` bridge | `alt` on Workspace (`workspace.rs:111`); `"#` absent | one alternate per window-set; already partly here |
-| Last search pattern / last Ex line (`"/`, `":`) | synced per-command (`set_special_registers`, `workspace.rs:336`) | already effectively global; formalize |
+| Alternate buffer `alt` + `"#`/`"%` bridge | `alt` on Workspace (`workspace/mod.rs`); `"#` absent | one alternate per window-set; already partly here |
+| Last search pattern / last Ex line (`"/`, `":`) | synced per-command (`set_special_registers`, `workspace/registers.rs`) | already effectively global; formalize |
 
 **Buffer-local (stays on `View`, or per-Document):**
 
@@ -124,7 +124,7 @@ file. So it stays per-View, but each entry becomes `(DocumentId, Anchor)` instea
 
 ### The extended swap-trick
 
-Today (`workspace.rs:275-314`):
+Today (`Workspace::with_view`, `workspace/mod.rs`):
 
 ```rust
 // illustrative
