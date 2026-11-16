@@ -320,286 +320,332 @@ impl ExCmd {
             toks: raw.split_whitespace(),
             line,
         };
-        let ex = match verb {
-            "ex_substitute" => {
-                let (first, last) = (a.num()?, a.num()?);
-                let flags = a.sub_flags()?;
-                let (pattern, replacement) = (a.text()?, a.text()?);
-                let answers = match a.toks.next() {
-                    None => None,
-                    Some(t) => Some(a.answers(t)?),
-                };
-                ExCmd::Substitute {
-                    first,
-                    last,
-                    pattern,
-                    replacement,
-                    flags,
-                    answers,
-                }
+        // The families' verbs are disjoint, so trying them in turn finds the one arm a single `match`
+        // would. The decoders sit in this order in the file too: `trace.rs` scrapes the `"verb" =>` arms
+        // of this file for its fuzz verb list, so every new verb arm belongs in one of them, here.
+        let mut found = None;
+        for decode in [
+            decode_line_edit,
+            decode_text_replace,
+            decode_mark_option,
+            decode_state,
+        ] {
+            if let Some(ex) = decode(verb, &mut a)? {
+                found = Some(ex);
+                break;
             }
-            "ex_global" => {
-                let kind = a.tok()?;
-                let marks = a.marks()?;
-                let cmd = match kind {
-                    "d" => GlobalCmd::Delete,
-                    "s" => {
-                        let flags = a.sub_flags()?;
-                        GlobalCmd::Substitute {
-                            flags,
-                            pattern: a.text()?,
-                            replacement: a.text()?,
-                        }
-                    }
-                    _ => return Err(a.bad()),
-                };
-                ExCmd::Global { marks, cmd }
-            }
-            "ex_delete" => ExCmd::Delete {
-                first: a.num()?,
-                last: a.num()?,
-                reg: a.reg()?,
-            },
-            "ex_yank" => ExCmd::Yank {
-                first: a.num()?,
-                last: a.num()?,
-                reg: a.reg()?,
-            },
-            "ex_join" => ExCmd::Join {
-                first: a.num()?,
-                last: a.num()?,
-                no_space: a.flag()?,
-            },
-            "ex_shift" => {
-                let (first, last) = (a.num()?, a.num()?);
-                let left = match a.tok()? {
-                    "<" => true,
-                    ">" => false,
-                    _ => return Err(a.bad()),
-                };
-                let levels: u32 = a.tok()?.parse().map_err(|_| a.bad())?;
-                if levels > MAX_SHIFT_LEVELS {
-                    return Err(a.bad());
-                }
-                ExCmd::Shift {
-                    first,
-                    last,
-                    left,
-                    levels,
-                }
-            }
-            "ex_move" => ExCmd::Move {
-                first: a.num()?,
-                last: a.num()?,
-                dest: a.num()?,
-            },
-            "ex_copy" => ExCmd::Copy {
-                first: a.num()?,
-                last: a.num()?,
-                dest: a.num()?,
-            },
-            "ex_put" => ExCmd::Put {
-                dest: a.num()?,
-                reg: a.reg()?,
-            },
-            "ex_sort" => {
-                let (first, last) = (a.num()?, a.num()?);
-                let mut opts = a.sort_flags()?;
-                opts.pattern = match a.tok()? {
-                    "-" => None,
-                    t => {
-                        let h = t.strip_prefix("p:").ok_or_else(|| a.bad())?;
-                        Some(a.decode_text(h)?)
-                    }
-                };
-                ExCmd::Sort { first, last, opts }
-            }
-            "ex_retab" => {
-                let (first, last, bang) = (a.num()?, a.num()?, a.flag()?);
-                // One number (older traces) or a comma list of stops (#1163).
-                let tabstop = match a.tok()? {
-                    "-" => None,
-                    t => Some(
-                        VarStops::parse(t)
-                            .filter(|v| !v.is_empty())
-                            .ok_or_else(|| a.bad())?,
-                    ),
-                };
-                ExCmd::Retab {
-                    first,
-                    last,
-                    bang,
-                    tabstop,
-                }
-            }
-            "ex_read" => ExCmd::ReadText {
-                dest: a.num()?,
-                cursor_on_last: a.flag()?,
-                bytes: a.bytes()?,
-            },
-            "ex_filter" => ExCmd::FilterReplace {
-                first: a.num()?,
-                last: a.num()?,
-                bytes: a.bytes()?,
-            },
-            "ex_mark" => {
-                let line = a.num()?;
-                let name = a.tok()?.parse::<u32>().ok().and_then(char::from_u32);
-                let nonblank = match a.toks.next() {
-                    None => false,
-                    Some("^") => true,
-                    Some(_) => return Err(a.bad()),
-                };
-                ExCmd::Mark {
-                    line,
-                    name: name.ok_or_else(|| a.bad())?,
-                    nonblank,
-                }
-            }
-            "ex_set" => {
-                let name = a.tok()?;
-                if name == "softtabstop" || name == "wrapmargin" {
-                    let n: i64 = a.tok()?.parse().map_err(|_| a.bad())?;
-                    let ok = (i64::from(i32::MIN)..=i64::from(i32::MAX)).contains(&n);
-                    if !ok {
-                        return Err(a.bad());
-                    }
-                    ExCmd::Set(if name == "wrapmargin" {
-                        EditorOption::WrapMargin(n)
-                    } else {
-                        EditorOption::SoftTabStop(n)
-                    })
-                } else if let Some(make) = string_option(name) {
-                    ExCmd::Set(make(a.text()?))
-                } else {
-                    let value = a.num()?;
-                    let flag = |v: usize| match v {
-                        0 => Some(false),
-                        1 => Some(true),
-                        _ => None,
-                    };
-                    let opt = match name {
-                        "autoindent" => flag(value).map(EditorOption::AutoIndent),
-                        "smartindent" => flag(value).map(EditorOption::SmartIndent),
-                        "copyindent" => flag(value).map(EditorOption::CopyIndent),
-                        "preserveindent" => flag(value).map(EditorOption::PreserveIndent),
-                        "smarttab" => flag(value).map(EditorOption::SmartTab),
-                        "shiftround" => flag(value).map(EditorOption::ShiftRound),
-                        "ignorecase" => flag(value).map(EditorOption::IgnoreCase),
-                        "smartcase" => flag(value).map(EditorOption::SmartCase),
-                        "expandtab" => flag(value).map(EditorOption::ExpandTab),
-                        "tabstop" => (1..=MAX_TABSTOP)
-                            .contains(&value)
-                            .then_some(EditorOption::TabStop(value)),
-                        "shiftwidth" => {
-                            (value <= MAX_OPTION_INT).then_some(EditorOption::ShiftWidth(value))
-                        }
-                        "textwidth" => {
-                            (value <= MAX_OPTION_INT).then_some(EditorOption::TextWidth(value))
-                        }
-                        "caretgravity" => flag(value).map(|between| {
-                            EditorOption::CaretGravity(if between {
-                                CaretGravity::BetweenChar
-                            } else {
-                                CaretGravity::OnChar
-                            })
-                        }),
-                        "joinspaces" => flag(value).map(EditorOption::JoinSpaces),
-                        "lisp" => flag(value).map(EditorOption::Lisp),
-                        "cindent" => flag(value).map(EditorOption::CIndent),
-                        _ => None,
-                    };
-                    ExCmd::Set(opt.ok_or_else(|| a.bad())?)
-                }
-            }
-            "ex_place" => ExCmd::Place(BytePos(a.num()?)),
-            "ex_want" => match a.tok()? {
-                "$" => ExCmd::Want(super::super::range::MAXCOL),
-                n => ExCmd::Want(n.parse().map_err(|_| a.bad())?),
-            },
-            "ex_undo_sync" => ExCmd::UndoSync,
-            "ex_edits" => {
-                let origin = match a.tok()? {
-                    "user" => TransactionOrigin::UserInput,
-                    "macro" => TransactionOrigin::Macro,
-                    "plugin" => TransactionOrigin::Plugin,
-                    "lsp" => TransactionOrigin::Lsp,
-                    "ai" => TransactionOrigin::AiAgent,
-                    "remote" => TransactionOrigin::RemotePeer,
-                    "reload" => TransactionOrigin::Reload,
-                    _ => return Err(a.bad()),
-                };
-                // Both limits are checked before a byte is decoded (INV-FAIL-BOUNDED).
-                let toks: Vec<&str> = a.toks.by_ref().take(MAX_APPLY_EDITS + 1).collect();
-                if toks.len() > MAX_APPLY_EDITS {
-                    return Err(a.too_large());
-                }
-                let text_len = toks
-                    .iter()
-                    .map(|t| t.rsplit(':').next().map_or(0, |h| h.len() / 2))
-                    .fold(0usize, usize::saturating_add);
-                if text_len > MAX_APPLY_EDIT_BYTES {
-                    return Err(a.too_large());
-                }
-                let edits = toks
-                    .into_iter()
-                    .map(|t| {
-                        let mut parts = t.splitn(3, ':');
-                        let mut pos = || -> Result<BytePos, CommandParseError> {
-                            parts
-                                .next()
-                                .and_then(|p| p.parse().ok())
-                                .map(BytePos)
-                                .ok_or_else(|| a.bad())
-                        };
-                        let (start, end) = (pos()?, pos()?);
-                        let text = a.decode_text(parts.next().ok_or_else(|| a.bad())?)?;
-                        Ok((start, end, text))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                ExCmd::Edits { origin, edits }
-            }
-            "ex_keepjumps" => ExCmd::KeepJumps(a.flag()?),
-            "ex_modifiable" => ExCmd::Modifiable(a.flag()?),
-            "ex_modified" => ExCmd::Modified(a.flag()?),
-            "ex_register" => {
-                let name = a.reg()?;
-                if !RegisterStore::is_slot(name) {
-                    return Err(a.bad());
-                }
-                let kind = a.tok()?;
-                let t = a.tok()?;
-                if t.len() / 2 > MAX_REGISTER_BYTES {
-                    return Err(a.too_large());
-                }
-                let bytes = a.decode(t)?;
-                let value = match kind {
-                    "c" => Register::charwise(bytes),
-                    // A linewise value ends in a newline; one without would come back changed.
-                    "l" if bytes.last() == Some(&b'\n') => Register::linewise(bytes),
-                    k => match k.strip_prefix('b').map(str::parse::<usize>) {
-                        Some(Ok(width)) if width <= MAX_REGISTER_BYTES => {
-                            Register::blockwise_width(bytes, width)
-                        }
-                        _ => return Err(a.bad()),
-                    },
-                };
-                ExCmd::Register { name, value }
-            }
-            "ex_begin" => ExCmd::Begin(match a.tok()? {
-                "normal" => GroupKind::Normal,
-                "global" => GroupKind::Global,
-                "macro" => GroupKind::Macro,
-                _ => return Err(a.bad()),
-            }),
-            "ex_end" => ExCmd::End,
-            other => return Err(CommandParseError::UnknownVerb(other.to_string())),
+        }
+        let Some(ex) = found else {
+            return Err(CommandParseError::UnknownVerb(verb.to_string()));
         };
         if a.toks.next().is_some() {
             return Err(a.bad());
         }
         Ok(ex)
     }
+}
+
+/// The [`ExCmd::from_parts`] decoder for the line edits on a range: `:s`, `:g`, `:d`, `:y`, `:j`,
+/// `:>`/`:<`, `:m`, `:t` and `:put`; `Ok(None)` for another family's verb.
+fn decode_line_edit(verb: &str, a: &mut Args<'_>) -> Result<Option<ExCmd>, CommandParseError> {
+    Ok(Some(match verb {
+        "ex_substitute" => {
+            let (first, last) = (a.num()?, a.num()?);
+            let flags = a.sub_flags()?;
+            let (pattern, replacement) = (a.text()?, a.text()?);
+            let answers = match a.toks.next() {
+                None => None,
+                Some(t) => Some(a.answers(t)?),
+            };
+            ExCmd::Substitute {
+                first,
+                last,
+                pattern,
+                replacement,
+                flags,
+                answers,
+            }
+        }
+        "ex_global" => {
+            let kind = a.tok()?;
+            let marks = a.marks()?;
+            let cmd = match kind {
+                "d" => GlobalCmd::Delete,
+                "s" => {
+                    let flags = a.sub_flags()?;
+                    GlobalCmd::Substitute {
+                        flags,
+                        pattern: a.text()?,
+                        replacement: a.text()?,
+                    }
+                }
+                _ => return Err(a.bad()),
+            };
+            ExCmd::Global { marks, cmd }
+        }
+        "ex_delete" => ExCmd::Delete {
+            first: a.num()?,
+            last: a.num()?,
+            reg: a.reg()?,
+        },
+        "ex_yank" => ExCmd::Yank {
+            first: a.num()?,
+            last: a.num()?,
+            reg: a.reg()?,
+        },
+        "ex_join" => ExCmd::Join {
+            first: a.num()?,
+            last: a.num()?,
+            no_space: a.flag()?,
+        },
+        "ex_shift" => {
+            let (first, last) = (a.num()?, a.num()?);
+            let left = match a.tok()? {
+                "<" => true,
+                ">" => false,
+                _ => return Err(a.bad()),
+            };
+            let levels: u32 = a.tok()?.parse().map_err(|_| a.bad())?;
+            if levels > MAX_SHIFT_LEVELS {
+                return Err(a.bad());
+            }
+            ExCmd::Shift {
+                first,
+                last,
+                left,
+                levels,
+            }
+        }
+        "ex_move" => ExCmd::Move {
+            first: a.num()?,
+            last: a.num()?,
+            dest: a.num()?,
+        },
+        "ex_copy" => ExCmd::Copy {
+            first: a.num()?,
+            last: a.num()?,
+            dest: a.num()?,
+        },
+        "ex_put" => ExCmd::Put {
+            dest: a.num()?,
+            reg: a.reg()?,
+        },
+        _ => return Ok(None),
+    }))
+}
+
+/// The [`ExCmd::from_parts`] decoder for the range rewrites with resolved text: `:sort`, `:retab`,
+/// `:read` and the filter; `Ok(None)` for another family's verb.
+fn decode_text_replace(verb: &str, a: &mut Args<'_>) -> Result<Option<ExCmd>, CommandParseError> {
+    Ok(Some(match verb {
+        "ex_sort" => {
+            let (first, last) = (a.num()?, a.num()?);
+            let mut opts = a.sort_flags()?;
+            opts.pattern = match a.tok()? {
+                "-" => None,
+                t => {
+                    let h = t.strip_prefix("p:").ok_or_else(|| a.bad())?;
+                    Some(a.decode_text(h)?)
+                }
+            };
+            ExCmd::Sort { first, last, opts }
+        }
+        "ex_retab" => {
+            let (first, last, bang) = (a.num()?, a.num()?, a.flag()?);
+            // One number (older traces) or a comma list of stops (#1163).
+            let tabstop = match a.tok()? {
+                "-" => None,
+                t => Some(
+                    VarStops::parse(t)
+                        .filter(|v| !v.is_empty())
+                        .ok_or_else(|| a.bad())?,
+                ),
+            };
+            ExCmd::Retab {
+                first,
+                last,
+                bang,
+                tabstop,
+            }
+        }
+        "ex_read" => ExCmd::ReadText {
+            dest: a.num()?,
+            cursor_on_last: a.flag()?,
+            bytes: a.bytes()?,
+        },
+        "ex_filter" => ExCmd::FilterReplace {
+            first: a.num()?,
+            last: a.num()?,
+            bytes: a.bytes()?,
+        },
+        _ => return Ok(None),
+    }))
+}
+
+/// The [`ExCmd::from_parts`] decoder for `:mark` and `:set`; `Ok(None)` for another family's verb.
+fn decode_mark_option(verb: &str, a: &mut Args<'_>) -> Result<Option<ExCmd>, CommandParseError> {
+    Ok(Some(match verb {
+        "ex_mark" => {
+            let line = a.num()?;
+            let name = a.tok()?.parse::<u32>().ok().and_then(char::from_u32);
+            let nonblank = match a.toks.next() {
+                None => false,
+                Some("^") => true,
+                Some(_) => return Err(a.bad()),
+            };
+            ExCmd::Mark {
+                line,
+                name: name.ok_or_else(|| a.bad())?,
+                nonblank,
+            }
+        }
+        "ex_set" => {
+            let name = a.tok()?;
+            if name == "softtabstop" || name == "wrapmargin" {
+                let n: i64 = a.tok()?.parse().map_err(|_| a.bad())?;
+                let ok = (i64::from(i32::MIN)..=i64::from(i32::MAX)).contains(&n);
+                if !ok {
+                    return Err(a.bad());
+                }
+                ExCmd::Set(if name == "wrapmargin" {
+                    EditorOption::WrapMargin(n)
+                } else {
+                    EditorOption::SoftTabStop(n)
+                })
+            } else if let Some(make) = string_option(name) {
+                ExCmd::Set(make(a.text()?))
+            } else {
+                let value = a.num()?;
+                let flag = |v: usize| match v {
+                    0 => Some(false),
+                    1 => Some(true),
+                    _ => None,
+                };
+                let opt = match name {
+                    "autoindent" => flag(value).map(EditorOption::AutoIndent),
+                    "smartindent" => flag(value).map(EditorOption::SmartIndent),
+                    "copyindent" => flag(value).map(EditorOption::CopyIndent),
+                    "preserveindent" => flag(value).map(EditorOption::PreserveIndent),
+                    "smarttab" => flag(value).map(EditorOption::SmartTab),
+                    "shiftround" => flag(value).map(EditorOption::ShiftRound),
+                    "ignorecase" => flag(value).map(EditorOption::IgnoreCase),
+                    "smartcase" => flag(value).map(EditorOption::SmartCase),
+                    "expandtab" => flag(value).map(EditorOption::ExpandTab),
+                    "tabstop" => (1..=MAX_TABSTOP)
+                        .contains(&value)
+                        .then_some(EditorOption::TabStop(value)),
+                    "shiftwidth" => {
+                        (value <= MAX_OPTION_INT).then_some(EditorOption::ShiftWidth(value))
+                    }
+                    "textwidth" => {
+                        (value <= MAX_OPTION_INT).then_some(EditorOption::TextWidth(value))
+                    }
+                    "caretgravity" => flag(value).map(|between| {
+                        EditorOption::CaretGravity(if between {
+                            CaretGravity::BetweenChar
+                        } else {
+                            CaretGravity::OnChar
+                        })
+                    }),
+                    "joinspaces" => flag(value).map(EditorOption::JoinSpaces),
+                    "lisp" => flag(value).map(EditorOption::Lisp),
+                    "cindent" => flag(value).map(EditorOption::CIndent),
+                    _ => None,
+                };
+                ExCmd::Set(opt.ok_or_else(|| a.bad())?)
+            }
+        }
+        _ => return Ok(None),
+    }))
+}
+
+/// The [`ExCmd::from_parts`] decoder for the cursor, edit-batch, buffer-flag, register and undo-group
+/// records; `Ok(None)` for another family's verb.
+fn decode_state(verb: &str, a: &mut Args<'_>) -> Result<Option<ExCmd>, CommandParseError> {
+    Ok(Some(match verb {
+        "ex_place" => ExCmd::Place(BytePos(a.num()?)),
+        "ex_want" => match a.tok()? {
+            "$" => ExCmd::Want(super::super::range::MAXCOL),
+            n => ExCmd::Want(n.parse().map_err(|_| a.bad())?),
+        },
+        "ex_undo_sync" => ExCmd::UndoSync,
+        "ex_edits" => {
+            let origin = match a.tok()? {
+                "user" => TransactionOrigin::UserInput,
+                "macro" => TransactionOrigin::Macro,
+                "plugin" => TransactionOrigin::Plugin,
+                "lsp" => TransactionOrigin::Lsp,
+                "ai" => TransactionOrigin::AiAgent,
+                "remote" => TransactionOrigin::RemotePeer,
+                "reload" => TransactionOrigin::Reload,
+                _ => return Err(a.bad()),
+            };
+            // Both limits are checked before a byte is decoded (INV-FAIL-BOUNDED).
+            let toks: Vec<&str> = a.toks.by_ref().take(MAX_APPLY_EDITS + 1).collect();
+            if toks.len() > MAX_APPLY_EDITS {
+                return Err(a.too_large());
+            }
+            let text_len = toks
+                .iter()
+                .map(|t| t.rsplit(':').next().map_or(0, |h| h.len() / 2))
+                .fold(0usize, usize::saturating_add);
+            if text_len > MAX_APPLY_EDIT_BYTES {
+                return Err(a.too_large());
+            }
+            let edits = toks
+                .into_iter()
+                .map(|t| {
+                    let mut parts = t.splitn(3, ':');
+                    let mut pos = || -> Result<BytePos, CommandParseError> {
+                        parts
+                            .next()
+                            .and_then(|p| p.parse().ok())
+                            .map(BytePos)
+                            .ok_or_else(|| a.bad())
+                    };
+                    let (start, end) = (pos()?, pos()?);
+                    let text = a.decode_text(parts.next().ok_or_else(|| a.bad())?)?;
+                    Ok((start, end, text))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            ExCmd::Edits { origin, edits }
+        }
+        "ex_keepjumps" => ExCmd::KeepJumps(a.flag()?),
+        "ex_modifiable" => ExCmd::Modifiable(a.flag()?),
+        "ex_modified" => ExCmd::Modified(a.flag()?),
+        "ex_register" => {
+            let name = a.reg()?;
+            if !RegisterStore::is_slot(name) {
+                return Err(a.bad());
+            }
+            let kind = a.tok()?;
+            let t = a.tok()?;
+            if t.len() / 2 > MAX_REGISTER_BYTES {
+                return Err(a.too_large());
+            }
+            let bytes = a.decode(t)?;
+            let value = match kind {
+                "c" => Register::charwise(bytes),
+                // A linewise value ends in a newline; one without would come back changed.
+                "l" if bytes.last() == Some(&b'\n') => Register::linewise(bytes),
+                k => match k.strip_prefix('b').map(str::parse::<usize>) {
+                    Some(Ok(width)) if width <= MAX_REGISTER_BYTES => {
+                        Register::blockwise_width(bytes, width)
+                    }
+                    _ => return Err(a.bad()),
+                },
+            };
+            ExCmd::Register { name, value }
+        }
+        "ex_begin" => ExCmd::Begin(match a.tok()? {
+            "normal" => GroupKind::Normal,
+            "global" => GroupKind::Global,
+            "macro" => GroupKind::Macro,
+            _ => return Err(a.bad()),
+        }),
+        "ex_end" => ExCmd::End,
+        _ => return Ok(None),
+    }))
 }
 
 /// The tokens of one `ex_*` line, read in order.
