@@ -1,6 +1,6 @@
 //! The command-line namespace's owned state (F-026) and its line editor (`:help cmdline-editing`). The
 //! `InputEngine` methods that route keys here (`open_cmdline`, `open_minibuffer`, `cmdline`,
-//! `feed_cmdline`, `submit_search`) stay in the engine core; the editing primitives — caret motion,
+//! `feed_cmdline`, `submit_search`) live in [`super::feed_cmdline`]; the editing primitives — caret motion,
 //! deletion, overstrike, the `c_CTRL-V` literal and `c_CTRL-K` digraph collectors — live on [`CmdLine`],
 //! which owns no history ring and knows nothing about registers or documents.
 
