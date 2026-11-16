@@ -714,7 +714,7 @@ items:
       - DR-ID-2
     source:
       - design-requirements.md §7 IDs, Generations, Time
-    notes: 'AnchorId is generational; ViewId/DocumentId are bare indexes (workspace.rs: generational validation is post-MVP).'
+    notes: 'AnchorId is generational; ViewId/DocumentId are bare indexes (workspace/mod.rs: generational validation is post-MVP).'
   - id: ID-003
     title: Process-local IDs never persisted in external protocols
     area: id
@@ -788,7 +788,7 @@ items:
       - Two views of one document have independent cursor, mode and scroll
     evidence:
       - crates/core/src/editor/mod.rs::View
-      - crates/core/src/workspace.rs::split_gives_two_views_one_buffer_independent_cursors
+      - crates/core/src/workspace/tests/windows_tests.rs::split_gives_two_views_one_buffer_independent_cursors
     legacy_ids:
       - DR-MULTI-2
     source:
