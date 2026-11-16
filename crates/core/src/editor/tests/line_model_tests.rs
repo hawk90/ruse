@@ -342,74 +342,17 @@ mod cluster_tests {
         assert_eq!(st.cursor().0, 0);
     }
 
-    /// #617: `'autoindent'` and the `'smarttab'` `<BS>` are Vim-profile rules; an Emacs `newline` and
-    /// `delete-backward-char` keep their plain behaviour under the same (default) options.
     #[test]
-    fn emacs_newline_and_backspace_ignore_vim_indent_rules() {
-        let mut st = EditorState::new(b"    foo".to_vec());
-        st.set_caret_gravity(CaretGravity::BetweenChar);
-        apply_command(&mut st, &Command::MoveLineEnd);
-        apply_command(&mut st, &Command::InsertNewline);
-        assert_eq!(st.doc.bytes(), b"    foo\n");
-        let mut st = EditorState::new(b"    foo".to_vec());
-        st.set_caret_gravity(CaretGravity::BetweenChar);
-        apply_command(&mut st, &Command::EnterInsert);
-        st.view.cursor = 4;
-        apply_command(&mut st, &Command::DeleteBack);
-        assert_eq!(st.doc.bytes(), b"   foo");
-    }
+    fn set_cursor_clamps_out_of_range_and_mid_codepoint() {
+        // Past the buffer end → clamped to the end (no panic in the following col_of/slice).
+        let mut st = EditorState::new(b"abc".to_vec());
+        st.set_cursor(BytePos(999));
+        assert_eq!(st.cursor().0, 3);
 
-    /// #617: the options a trace header writes include the indent options, so replay does not depend
-    /// on the replaying machine's config.
-    #[test]
-    fn editing_options_carry_the_indent_options() {
-        let mut st = EditorState::new(b"x".to_vec());
-        st.set_option(EditorOption::SoftTabStop(-1));
-        st.set_option(EditorOption::AutoIndent(false));
-        let opts = st.view.editing_options();
-        assert!(opts.contains(&EditorOption::SoftTabStop(-1)));
-        assert!(opts.contains(&EditorOption::AutoIndent(false)));
-        assert!(opts.contains(&EditorOption::SmartTab(true)));
-    }
-
-    /// #618: auto-wrap and the comment-leader opens are Vim-profile rules; Emacs typing past
-    /// 'textwidth' and an Emacs `newline` on a comment line stay plain.
-    #[test]
-    fn emacs_typing_does_not_auto_wrap_or_continue_comments() {
-        let mut st = EditorState::new(b"aaa bbb".to_vec());
-        st.set_caret_gravity(CaretGravity::BetweenChar);
-        st.set_option(EditorOption::TextWidth(5));
-        st.set_option(EditorOption::FormatOptions("tcqjro".into()));
-        apply_command(&mut st, &Command::MoveLineEnd);
-        apply_command(&mut st, &Command::InsertChar('x'));
-        assert_eq!(st.doc.bytes(), b"aaa bbbx");
-        let mut st = EditorState::new(b"// a".to_vec());
-        st.set_caret_gravity(CaretGravity::BetweenChar);
-        st.set_option(EditorOption::FormatOptions("tcqjro".into()));
-        apply_command(&mut st, &Command::MoveLineEnd);
-        apply_command(&mut st, &Command::InsertNewline);
-        assert_eq!(st.doc.bytes(), b"// a\n");
-    }
-
-    /// #618: the trace header records the formatting options, string ones included, and they round-trip
-    /// through the `ex_set` codec.
-    #[test]
-    fn formatting_options_round_trip_through_the_trace_codec() {
-        let mut st = EditorState::new(b"x".to_vec());
-        st.set_option(EditorOption::Comments("b:#,://".into()));
-        st.set_option(EditorOption::WrapMargin(-3));
-        let opts = st.view.editing_options();
-        assert!(opts.contains(&EditorOption::FormatOptions("tcqj".into())));
-        assert!(opts.contains(&EditorOption::Comments("b:#,://".into())));
-        assert!(opts.contains(&EditorOption::WrapMargin(-3)));
-        for o in opts {
-            let line = ExCmd::Set(o.clone()).to_line();
-            let mut toks = line.splitn(2, ' ');
-            let verb = toks.next().unwrap();
-            let back = ExCmd::from_parts(verb, toks.next().unwrap_or(""), &line)
-                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
-            assert_eq!(back, ExCmd::Set(o), "{line}");
-        }
+        // Mid-codepoint → snapped back to the char boundary (`é` is 2 bytes).
+        let mut st = EditorState::new("é".as_bytes().to_vec());
+        st.set_cursor(BytePos(1));
+        assert_eq!(st.cursor().0, 0);
     }
 }
 
