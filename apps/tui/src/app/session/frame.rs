@@ -1,5 +1,7 @@
 //! The passes `Session::pre_frame` runs before each render (#1355): fold reconcile, the crash-rescue
 //! journals, the `:s///c` follow and the per-window scroll. Each borrows the `Session` fields it uses.
+//! The frame entry points themselves live here too (#1496): [`Session::pre_frame`],
+//! [`Session::post_render`], the poll timeout, the status-line flags and the fold invariant check.
 
 use super::normal_keys::focused_folds;
 use super::*;
@@ -383,3 +385,142 @@ fn place_window(
     win.cursor = Some((cursor, vcol));
     (win, top, leftcol, skipcol)
 }
+
+impl Session {
+    /// Panic unless the focused buffer's folds are well formed over it (in range; a manual set flat, an
+    /// indent set nested) and every manual fold anchor is live in its document — the fold part of the
+    /// invariant walker (#906). Only the focused buffer's folds are reconciled each frame, so only they are
+    /// checked against their text.
+    pub(crate) fn assert_fold_invariants(&self) {
+        let buf = self.ws.focused_buffer();
+        if let Some(fv) = self.folds.get(&buf) {
+            let lines = crate::app::dispatch::line_count(self.ws.focused().doc.bytes());
+            let manual = self.fold_method.get(&buf) != Some(&crate::input::FoldMethod::Indent);
+            crate::folds::assert_invariants(fv, lines, manual);
+        }
+        for (id, a) in &self.fold_anchors {
+            if let Some(doc) = self.ws.document(*id) {
+                for anchor in a.anchor_ids() {
+                    assert!(
+                        doc.resolve_anchor(anchor).is_some(),
+                        "a fold anchor of buffer {id:?} is not live"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The per-frame work that precedes the render and the key read: snapshot the focused buffer, refresh
+    /// the line index, reconcile folds, publish the crash-rescue state, follow a `:s///c` match, and scroll
+    /// each pane to its cursor. `cols`×`term_rows` is the terminal size.
+    pub(crate) fn pre_frame(&mut self, cols: u16, term_rows: u16) -> FrameCtx {
+        // Snapshot the FOCUSED buffer once for the frame (line index, folds, highlight parse). `text_arc()`
+        // is an Arc refcount bump (not an O(buffer) copy): a committed edit builds a fresh Arc, so this handle
+        // keeps pointing at the bytes captured here even after the later `&mut ws` borrows edit the doc.
+        let (revision, snapshot) = {
+            let f = self.ws.focused();
+            (f.doc.revision(), f.doc.text_arc())
+        };
+        // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
+        // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
+        self.line_idx
+            .refresh_for(self.ws.focused_buffer(), revision, &snapshot);
+        self.reconcile_folds(revision, &snapshot);
+        self.publish_rescue();
+        self.follow_confirm();
+        let (text_rows, rects, wins) = self.scroll_windows(cols, term_rows);
+        FrameCtx {
+            revision,
+            snapshot,
+            rects,
+            wins,
+            cols,
+            text_rows,
+        }
+    }
+
+    /// The per-frame work after the render: apply the LSP coordinator's deferred results (opening a buffer
+    /// mutates `highlighters`, which the frame's highlight spans borrowed until render ended), then open the
+    /// references / code-action pickers it collected.
+    pub(crate) fn post_render(&mut self, frame: &FrameCtx) {
+        // An LSP edit batch (format, rename, a server's `workspace/applyEdit`) is a risky operation: the
+        // typing before it reaches the journal first (RFC-0023 §4, #1202).
+        if self.lsp.has_edit_batch() {
+            self.sync_journals();
+        }
+        let recorded = &mut self.recorded;
+        self.lsp.apply_pending(
+            &mut self.ws,
+            &mut self.files,
+            &mut self.highlighters,
+            &frame.snapshot,
+            &mut self.status,
+            &mut |ws, ex| run_ex(ex, ws, recorded),
+        );
+        if let Some(locs) = self.lsp.take_refs() {
+            self.overlay = Some(Overlay::Refs(ref_picker::open(locs, self.lsp.cwd())));
+        }
+        if let Some(actions) = self.lsp.take_actions() {
+            self.overlay = Some(Overlay::Actions(action_picker::open(actions)));
+        }
+    }
+
+    /// Async output (PTY, F-011; LSP diagnostics, F-014) must render without a keypress, so the loop polls
+    /// with a timeout while either is live. With neither it keeps the pure blocking read (no spin) — a
+    /// terminal ticks fast, an LSP-only session more slowly.
+    pub(crate) fn poll_ms(&self) -> Option<u64> {
+        let mut poll_ms: Option<u64> = None;
+        #[cfg(unix)]
+        if !self.terminals.is_empty() {
+            poll_ms = Some(TERM_TICK_MS);
+        }
+        if poll_ms.is_none() && self.lsp.has_live_client() {
+            poll_ms = Some(LSP_TICK_MS);
+        }
+        // Wake for a journal sync that falls due while no key arrives (RFC-0023 §4's idle trigger), and
+        // for the idle look at the files on disk (§8).
+        for ms in [
+            self.journal_wake_ms(),
+            self.disk_wake_ms(),
+            self.auto_save_wake_ms(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            poll_ms = Some(poll_ms.map_or(ms, |p| p.min(ms)));
+        }
+        poll_ms
+    }
+
+    /// The status-line flags after the focused buffer's `[+]` (RFC-0023 §8): `[RO]` for a `'readonly'` buffer (nvim's `%r`, #1211), `[journal!]` when the last
+    /// write or sync of its modified buffer's journal failed (#938).
+    pub(crate) fn status_flags(&self) -> String {
+        let mut flags = String::new();
+        let id = self.ws.focused_buffer();
+        if self.readonly.get(&self.files, id) {
+            flags.push_str("[RO]");
+        }
+        if self.journal_failed.contains(&id) && self.ws.focused().doc.is_modified() {
+            flags.push_str("[journal!]");
+        }
+        if self.disk_changed.contains(&id) {
+            flags.push_str("[disk changed]");
+        }
+        if self.files.get(&id).is_some_and(|bf| bf.large) {
+            flags.push_str("[large]");
+        }
+        if self.config.safe_mode.is_some() {
+            flags.push_str("[Config: safe-mode]");
+        }
+        flags
+    }
+}
+
+/// F-011: when a terminal is live the event loop polls for a key with this timeout (≈30fps) instead of
+/// blocking, so asynchronous PTY output renders within one tick. Only the terminal-active path polls.
+#[cfg(unix)]
+const TERM_TICK_MS: u64 = 33;
+
+/// F-014: with only a language server live (no terminal), poll more slowly — diagnostics arrive infrequently,
+/// so a ~10fps tick keeps them prompt without spinning.
+const LSP_TICK_MS: u64 = 100;
