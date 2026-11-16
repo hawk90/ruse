@@ -535,7 +535,7 @@ features:
       # command-registry/palette this feature ships, so it is READY-WITH-SCOPE (carve-out), not a blocker.
       parity: []
       design: [../docs/design/command-engine.md, ../docs/architecture/architecture.md#2, ../docs/design/render-and-frontends.md]
-      verify: [../crates/core/src/registry.rs, ../crates/core/src/command.rs, ../apps/tui/src/ui/palette.rs]
+      verify: [../crates/core/src/registry.rs, ../crates/core/src/command/mod.rs, ../apps/tui/src/ui/palette.rs]
     acceptance:
       - Commands are invocable by stable namespaced ID independent of any key binding.
       - The palette lists only context-appropriate commands and shows each command's current binding.
