@@ -887,6 +887,17 @@ pub(crate) struct Session {
     pending_insert: Option<Option<(crate::input::StartKind, bool)>>,
 }
 
+/// What an Ex command asks the session to do once its own work is done.
+#[derive(Default)]
+struct ExAfter {
+    /// An Ex line to run after it (`:e +cmd`).
+    then_run: Option<String>,
+    /// `:trust` / `:untrust`: record or remove the workspace config's trust.
+    trust_change: Option<bool>,
+    /// `:config-reload`: read the config layers again.
+    config_reload: bool,
+}
+
 impl Session {
     pub(crate) fn new(init: SessionInit) -> Session {
         let SessionInit {
@@ -2537,48 +2548,113 @@ impl Session {
                 return;
             }
         };
+        // Every command is routed by name, so a new `Ex` variant fails the build here.
+        let after = match ex {
+            ex @ (Ex::NoHighlight
+            | Ex::InspectConfig(..)
+            | Ex::Diagnostics
+            | Ex::Registers
+            | Ex::Ascii
+            | Ex::Digraphs
+            | Ex::Marks
+            | Ex::Jumps
+            | Ex::Changes
+            | Ex::CheckHealth
+            | Ex::Buffers
+            | Ex::Pwd
+            | Ex::Print { .. }
+            | Ex::Z(..)
+            | Ex::LineNumber(..)) => self.ex_show(ex, frame),
+            ex @ (Ex::Format
+            | Ex::Rename(..)
+            | Ex::References
+            | Ex::CodeAction
+            | Ex::Trust
+            | Ex::Untrust
+            | Ex::ConfigReload) => self.ex_services(ex, frame),
+            ex @ (Ex::WriteAll { .. }
+            | Ex::Quit
+            | Ex::QuitForce
+            | Ex::QuitAll { .. }
+            | Ex::CQuit(..)
+            | Ex::Hide
+            | Ex::Close
+            | Ex::Split
+            | Ex::VSplit
+            | Ex::Only
+            | Ex::Enew
+            | Ex::BufferNext
+            | Ex::BufferPrev
+            | Ex::Buffer(..)
+            | Ex::BufferDelete { .. }) => self.ex_windows(ex),
+            ex @ (Ex::Edit(..)
+            | Ex::Read { .. }
+            | Ex::Write(..)
+            | Ex::SaveAs { .. }
+            | Ex::Cd(..)
+            | Ex::File(..)
+            | Ex::Find { .. }
+            | Ex::Drop(..)
+            | Ex::SaveTrace(..)
+            | Ex::Terminal) => self.ex_files(ex, frame),
+            ex @ (Ex::Delete(..)
+            | Ex::Yank(..)
+            | Ex::Join { .. }
+            | Ex::Move(..)
+            | Ex::Copy(..)
+            | Ex::Shift { .. }
+            | Ex::Put { .. }
+            | Ex::Sort(..)
+            | Ex::Retab { .. }
+            | Ex::Substitute(..)
+            | Ex::RepeatSubstitute { .. }
+            | Ex::Global(..)
+            | Ex::Normal { .. }
+            | Ex::Filter { .. }
+            | Ex::Shell(..)
+            | Ex::Earlier(..)
+            | Ex::Later(..)
+            | Ex::Mark { .. }
+            | Ex::Fold(..)
+            | Ex::FoldOpen { .. }
+            | Ex::FoldDo { .. }) => self.ex_lines(ex, frame),
+            ex @ (Ex::SetOptions(..)
+            | Ex::Lmap { .. }
+            | Ex::Lunmap { .. }
+            | Ex::StartInsert { .. }
+            | Ex::StopInsert
+            | Ex::CheckTime
+            | Ex::Fail(..)
+            | Ex::Unknown(..)) => self.ex_misc(ex, frame),
+        };
+        if let Some(grant) = after.trust_change {
+            self.change_config_trust(grant);
+        }
+        if after.config_reload {
+            self.reload_config(true);
+        }
+        if let Some(line) = after.then_run {
+            let opened = self.status.take();
+            self.execute_ex_one(line, frame);
+            // The open's own report stays unless the command said something (an error, a count).
+            if self.status.is_empty() {
+                self.status.restore(opened);
+            }
+        }
+    }
+
+    /// The Ex commands that only show something: messages, listings and the view-only overlays.
+    fn ex_show(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
+        let after = ExAfter::default();
         let Session {
             ws,
-            files,
-            highlighters,
-            recorded,
-            engine,
-            quit,
             search_hl,
-            ui_opts,
             overlay,
-            #[cfg(unix)]
-            terminals,
-            lsp,
             status,
-            alt_file,
-            pending_insert,
             ..
         } = self;
-        let snapshot = &frame.snapshot;
-        // An Ex line a command asks to run after it (`:e +cmd`).
-        let mut then_run = None;
-        let mut trust_change = None;
-        let mut config_reload = false;
         match ex {
             Ex::NoHighlight => *search_hl = None, // `:noh` clears the search highlight (F-009 #1)
-            Ex::SetOptions(line) => self.ex_set(line, frame),
-            // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
-            // the request; the response is dispatched + applied (or opens a picker) on a later frame.
-            ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
-                lsp.on_ex(&ex, ws, files, snapshot, status);
-            }
-            // `:trust` (D-058): the user grants workspace trust for this session; language servers
-            // start on the next frame's sync. It also records the content-bound trust of the workspace
-            // config (D-062, #614), and `:untrust` removes that record (both below, after this match).
-            Ex::Trust => {
-                lsp.grant_trust(status);
-                trust_change = Some(true);
-            }
-            Ex::Untrust => trust_change = Some(false),
-            // `:config-reload` (Helix's name, #1152): read the config layers again now (below, after this
-            // match); it also leaves safe mode.
-            Ex::ConfigReload => config_reload = true,
             Ex::InspectConfig(key) => self.ex_inspect_config(key),
             Ex::Diagnostics => self.ex_diagnostics(frame),
             Ex::Registers => self.ex_registers(),
@@ -2594,7 +2670,6 @@ impl Session {
                 *overlay = Some(Overlay::Digraphs(p));
             }
             Ex::Marks => self.ex_marks(),
-            Ex::Mark { range, name } => self.ex_mark(range, name),
             // `:jumps` / `:changes` (F-003): position viewers over the jumplist / change list;
             // Enter jumps. Both use the position-viewer overlay.
             ex @ (Ex::Jumps | Ex::Changes) => {
@@ -2613,37 +2688,70 @@ impl Session {
                     )));
                 }
             }
-            Ex::Terminal => self.ex_terminal(frame),
-            // Lang-Arg map maintenance (F-027): the map is engine state.
-            Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
-            Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
-            // `:[range]normal[!] {keys}` replays the key payload through the input `engine` → the same
-            // `Command` pipeline as typed keys / macro replay.
-            Ex::Normal { range, keys, .. } => self.ex_normal(range, &keys, frame),
-            ex @ Ex::Global(_) => self.ex_global(ex, frame),
-            Ex::Fold(range) => self.ex_fold(range),
-            Ex::FoldOpen {
-                range,
-                open,
-                recursive,
-            } => self.ex_fold_open(range, open, recursive),
-            Ex::FoldDo { range, closed, cmd } => self.ex_fold_do(range, closed, cmd, frame),
             Ex::CheckHealth => self.ex_checkhealth(),
-            // `:earlier`/`:later` walk chronological undo time by recording + applying N of the
-            // g-/g+ commands (done HERE so they land in `recorded` for trace fidelity).
-            // `:checktime`: the look itself follows the command ([`Session::execute_ex_one`]).
-            Ex::CheckTime => {}
-            Ex::Earlier(n) => time_travel(true, n, ws, files, recorded, status, quit),
-            Ex::Later(n) => time_travel(false, n, ws, files, recorded, status, quit),
-            Ex::Edit(spec) => then_run = self.ex_edit(spec),
-            Ex::Read { addr, source } => self.ex_read(addr, source),
-            Ex::Filter { range, cmd } => self.ex_filter(range, cmd),
-            Ex::Shell(cmd) => self.ex_shell(cmd),
+            Ex::Buffers => status.echo(buffer_list_line(ws)),
+            Ex::Print { range, flags } => self.ex_print(range, flags),
+            Ex::Z(spec) => self.ex_z(spec, frame),
+            Ex::LineNumber(range) => self.ex_line_number(range),
+            // `:pwd` / `:cd` (#610). Buffer files keep pointing at the same files across a `:cd`.
+            Ex::Pwd => match std::env::current_dir() {
+                Ok(d) => status.info(d.display().to_string()),
+                Err(e) => status.error(e.to_string()),
+            },
+            _ => unreachable!("routed by execute_ex_parsed"),
+        }
+        after
+    }
+
+    /// The Ex commands for the language servers, workspace trust and the config layers.
+    fn ex_services(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
+        let mut after = ExAfter::default();
+        let Session {
+            ws,
+            files,
+            lsp,
+            status,
+            ..
+        } = self;
+        let snapshot = &frame.snapshot;
+        match ex {
+            // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
+            // the request; the response is dispatched + applied (or opens a picker) on a later frame.
+            ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
+                lsp.on_ex(&ex, ws, files, snapshot, status);
+            }
+            // `:trust` (D-058): the user grants workspace trust for this session; language servers
+            // start on the next frame's sync. It also records the content-bound trust of the workspace
+            // config (D-062, #614), and `:untrust` removes that record (both below, after this match).
+            Ex::Trust => {
+                lsp.grant_trust(status);
+                after.trust_change = Some(true);
+            }
+            Ex::Untrust => after.trust_change = Some(false),
+            // `:config-reload` (Helix's name, #1152): read the config layers again now (below, after this
+            // match); it also leaves safe mode.
+            Ex::ConfigReload => after.config_reload = true,
+            _ => unreachable!("routed by execute_ex_parsed"),
+        }
+        after
+    }
+
+    /// The window, buffer and quit commands.
+    fn ex_windows(&mut self, ex: Ex) -> ExAfter {
+        let after = ExAfter::default();
+        let Session {
+            ws,
+            files,
+            highlighters,
+            quit,
+            status,
+            alt_file,
+            #[cfg(unix)]
+            terminals,
+            ..
+        } = self;
+        match ex {
             Ex::BufferDelete { force } => self.ex_bdelete(force),
-            Ex::RepeatSubstitute { range, flags } => self.ex_repeat_substitute(range, flags),
-            ex @ Ex::Substitute(_) => self.ex_substitute(ex),
-            Ex::Write(spec) => self.ex_write(spec),
-            Ex::SaveAs { bang, file, opts } => self.ex_saveas(bang, file, opts),
             // `:wa` / `:wqa` / `:xa`: write every modified buffer with a file (a terminal has none to write).
             Ex::WriteAll { quit: then_quit } => {
                 #[cfg(unix)]
@@ -2678,63 +2786,6 @@ impl Session {
                 status.echo("window vsplit");
             }
             Ex::Only => self.ex_only(),
-            Ex::SaveTrace(p) => self.ex_save_trace(p),
-            Ex::Delete(range, reg, flags) => self.ex_delete(range, reg, flags),
-            Ex::Yank(range, reg) => self.ex_yank(range, reg),
-            Ex::Join { range, bang } => self.ex_join(range, bang),
-            // `:[range]m {addr}` — move the range's lines to after the destination line.
-            Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, dest) => {
-                status.error("E16: Invalid range");
-            }
-            Ex::Move(range, dest) => {
-                let ((first, last), dest) = (ws.resolve_range(range), ws.resolve_addr(dest));
-                let moved = dest.and_then(|dest| {
-                    match run_ex(ExCmd::Move { first, last, dest }, ws, recorded) {
-                        ExOutcome::Relocated(n) => n,
-                        _ => None,
-                    }
-                });
-                match moved {
-                    // Moved onto itself (`:2m2`): nothing to report.
-                    Some(n) => give_report(status, report::moved(n, ui_opts.report)),
-                    None => status.error("E134: Cannot move a range of lines into itself"),
-                }
-            }
-            Ex::Copy(range, dest) => self.ex_copy(range, dest),
-            Ex::Shift {
-                range,
-                left,
-                levels,
-            } => self.ex_shift(range, left, levels),
-            Ex::Put { addr, reg, above } => self.ex_put(addr, reg, above),
-            // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
-            mut ex @ Ex::Sort(..) => {
-                if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
-                    status.error(msg.to_string());
-                    return;
-                }
-                let Ex::Sort(range, spec) = ex else {
-                    unreachable!("bound by the arm's pattern")
-                };
-                let (first, last) = ws.resolve_range(range);
-                let ex = ExCmd::Sort {
-                    first,
-                    last,
-                    opts: spec,
-                };
-                let sorted = match run_ex(ex, ws, recorded) {
-                    ExOutcome::Failed(e) => Err(e),
-                    out => Ok(lines_outcome(&out)),
-                };
-                match sorted {
-                    // nvim's `msgmore` for the lines `u` dropped; a sort that drops none says nothing.
-                    Ok(removed) => {
-                        give_report(status, report::more(-to_i64(removed), ui_opts.report))
-                    }
-                    // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
-                    Err(e) => status.error(regex_error_msg(&e)),
-                }
-            }
             // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
             // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
             Ex::Enew => {
@@ -2742,7 +2793,6 @@ impl Session {
                 ws.focus_buffer(id);
                 status.echo(format!("[No Name] (buffer {})", id.0));
             }
-            Ex::Buffers => status.echo(buffer_list_line(ws)),
             Ex::BufferNext => {
                 ws.cycle_buffer(true);
                 status.echo(focused_buffer_label(ws));
@@ -2778,43 +2828,155 @@ impl Session {
                     None => status.error("E23: no alternate buffer"),
                 }
             }
-            Ex::Print { range, flags } => self.ex_print(range, flags),
-            Ex::Z(spec) => self.ex_z(spec, frame),
-            Ex::LineNumber(range) => self.ex_line_number(range),
+            _ => unreachable!("routed by execute_ex_parsed"),
+        }
+        after
+    }
+
+    /// The file commands: edit, read, write, the trace, and the terminal.
+    fn ex_files(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
+        let mut after = ExAfter::default();
+        let Session { .. } = self;
+        match ex {
+            Ex::Terminal => self.ex_terminal(frame),
+            Ex::Edit(spec) => after.then_run = self.ex_edit(spec),
+            Ex::Read { addr, source } => self.ex_read(addr, source),
+            Ex::Write(spec) => self.ex_write(spec),
+            Ex::SaveAs { bang, file, opts } => self.ex_saveas(bang, file, opts),
+            Ex::SaveTrace(p) => self.ex_save_trace(p),
+            Ex::Cd(dir) => self.ex_cd(dir),
+            Ex::File(cmd) => self.ex_file(cmd),
+            Ex::Find { split, spec } => after.then_run = self.ex_find(split, spec),
+            Ex::Drop(spec) => after.then_run = self.ex_drop(spec),
+            _ => unreachable!("routed by execute_ex_parsed"),
+        }
+        after
+    }
+
+    /// The line-editing Ex commands: delete/yank/put, move/copy, shifts, sort, substitute, `:g`, `:normal`, filters, folds and time travel.
+    fn ex_lines(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
+        let after = ExAfter::default();
+        let Session {
+            ws,
+            files,
+            recorded,
+            engine,
+            quit,
+            ui_opts,
+            status,
+            ..
+        } = self;
+        match ex {
+            Ex::Mark { range, name } => self.ex_mark(range, name),
+            // `:[range]normal[!] {keys}` replays the key payload through the input `engine` → the same
+            // `Command` pipeline as typed keys / macro replay.
+            Ex::Normal { range, keys, .. } => self.ex_normal(range, &keys, frame),
+            ex @ Ex::Global(_) => self.ex_global(ex, frame),
+            Ex::Fold(range) => self.ex_fold(range),
+            Ex::FoldOpen {
+                range,
+                open,
+                recursive,
+            } => self.ex_fold_open(range, open, recursive),
+            Ex::FoldDo { range, closed, cmd } => self.ex_fold_do(range, closed, cmd, frame),
+            Ex::Earlier(n) => time_travel(true, n, ws, files, recorded, status, quit),
+            Ex::Later(n) => time_travel(false, n, ws, files, recorded, status, quit),
+            Ex::Filter { range, cmd } => self.ex_filter(range, cmd),
+            Ex::Shell(cmd) => self.ex_shell(cmd),
+            Ex::RepeatSubstitute { range, flags } => self.ex_repeat_substitute(range, flags),
+            ex @ Ex::Substitute(_) => self.ex_substitute(ex),
+            Ex::Delete(range, reg, flags) => self.ex_delete(range, reg, flags),
+            Ex::Yank(range, reg) => self.ex_yank(range, reg),
+            Ex::Join { range, bang } => self.ex_join(range, bang),
+            // `:[range]m {addr}` — move the range's lines to after the destination line.
+            Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, dest) => {
+                status.error("E16: Invalid range");
+            }
+            Ex::Move(range, dest) => {
+                let ((first, last), dest) = (ws.resolve_range(range), ws.resolve_addr(dest));
+                let moved = dest.and_then(|dest| {
+                    match run_ex(ExCmd::Move { first, last, dest }, ws, recorded) {
+                        ExOutcome::Relocated(n) => n,
+                        _ => None,
+                    }
+                });
+                match moved {
+                    // Moved onto itself (`:2m2`): nothing to report.
+                    Some(n) => give_report(status, report::moved(n, ui_opts.report)),
+                    None => status.error("E134: Cannot move a range of lines into itself"),
+                }
+            }
+            Ex::Copy(range, dest) => self.ex_copy(range, dest),
+            Ex::Shift {
+                range,
+                left,
+                levels,
+            } => self.ex_shift(range, left, levels),
+            Ex::Put { addr, reg, above } => self.ex_put(addr, reg, above),
+            // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
+            mut ex @ Ex::Sort(..) => {
+                if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
+                    status.error(msg.to_string());
+                    return after;
+                }
+                let Ex::Sort(range, spec) = ex else {
+                    unreachable!("bound by the arm's pattern")
+                };
+                let (first, last) = ws.resolve_range(range);
+                let ex = ExCmd::Sort {
+                    first,
+                    last,
+                    opts: spec,
+                };
+                let sorted = match run_ex(ex, ws, recorded) {
+                    ExOutcome::Failed(e) => Err(e),
+                    out => Ok(lines_outcome(&out)),
+                };
+                match sorted {
+                    // nvim's `msgmore` for the lines `u` dropped; a sort that drops none says nothing.
+                    Ok(removed) => {
+                        give_report(status, report::more(-to_i64(removed), ui_opts.report))
+                    }
+                    // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
+                    Err(e) => status.error(regex_error_msg(&e)),
+                }
+            }
             Ex::Retab {
                 range,
                 bang,
                 tabstop,
             } => self.ex_retab(range, bang, tabstop),
+            _ => unreachable!("routed by execute_ex_parsed"),
+        }
+        after
+    }
+
+    /// Options, language maps, the Insert starts, `:checktime` and the parse errors.
+    fn ex_misc(&mut self, ex: Ex, frame: &FrameCtx) -> ExAfter {
+        let after = ExAfter::default();
+        let Session {
+            engine,
+            status,
+            pending_insert,
+            ..
+        } = self;
+        match ex {
+            Ex::SetOptions(line) => self.ex_set(line, frame),
+            // Lang-Arg map maintenance (F-027): the map is engine state.
+            Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
+            Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
+            // `:earlier`/`:later` walk chronological undo time by recording + applying N of the
+            // g-/g+ commands (done HERE so they land in `recorded` for trace fidelity).
+            // `:checktime`: the look itself follows the command ([`Session::execute_ex_one`]).
+            Ex::CheckTime => {}
             // `:startinsert` and friends (#609) start Insert once the whole line has run.
             Ex::StartInsert { kind, bang } => *pending_insert = Some(Some((kind, bang))),
             Ex::StopInsert => *pending_insert = Some(None),
-            // `:pwd` / `:cd` (#610). Buffer files keep pointing at the same files across a `:cd`.
-            Ex::Pwd => match std::env::current_dir() {
-                Ok(d) => status.info(d.display().to_string()),
-                Err(e) => status.error(e.to_string()),
-            },
-            Ex::Cd(dir) => self.ex_cd(dir),
-            Ex::File(cmd) => self.ex_file(cmd),
-            Ex::Find { split, spec } => then_run = self.ex_find(split, spec),
-            Ex::Drop(spec) => then_run = self.ex_drop(spec),
             Ex::Fail(msg) => status.error(msg),
             Ex::Unknown(s) => status.error(format!("E492: Not an editor command: {s}")),
+            _ => unreachable!("routed by execute_ex_parsed"),
         }
-        if let Some(grant) = trust_change {
-            self.change_config_trust(grant);
-        }
-        if config_reload {
-            self.reload_config(true);
-        }
-        if let Some(line) = then_run {
-            let opened = self.status.take();
-            self.execute_ex_one(line, frame);
-            // The open's own report stays unless the command said something (an error, a count).
-            if self.status.is_empty() {
-                self.status.restore(opened);
-            }
-        }
+        after
     }
 
     /// Each window's display as its options and its scroll position are now (#615), for a frame that does
