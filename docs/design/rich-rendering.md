@@ -131,7 +131,7 @@ The layout pass is the single owner of the buffer↔display mapping. It exposes 
 - `byte_of(row, col) -> byte` — used by mouse/click and by column-motion agreement.
 
 This also finally unifies the **column split** flagged in the audit: core motions currently count *character*
-columns (`motion.rs:col_of/at_col/vcol_of`, `View.curswant`) while the caret is *drawn* in *cell* columns —
+columns (`motion/boundary.rs:col_of/at_col/vcol_of`, `View.curswant`) while the caret is *drawn* in *cell* columns —
 they agree only for all-width-1 lines. The layout pass makes the display column authoritative;
 `goal_col: CellCol` (today design-only in [view-window-workspace.md](view-window-workspace.md)) becomes real,
 and vertical motion (`j`/`k`) sticks to a *display* column across concealed/virtual content — matching Emacs.
