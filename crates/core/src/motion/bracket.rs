@@ -202,8 +202,24 @@ pub(super) fn method_target(
     }
 }
 
+/// The target of an unmatched-bracket or method motion: one scan resolves the count, so it is not a
+/// repeat of a single step.
+pub(super) fn bracket_block_target(b: &[u8], cur0: usize, m: Motion, n: u32) -> usize {
+    // Unmatched-bracket motions (`[(`/`])`/`[{`/`]}`): the count is a repeat (levels to step out); the scanner
+    // resolves it directly to a single target (or `cur0` when there is no enclosing unmatched bracket).
+    if let Some((open, close, forward)) = unmatched_spec(m) {
+        return unmatched_bracket(b, cur0, open, close, forward, n);
+    }
+    // Method (brace-block) motions (`]m`/`[m`/`]M`/`[M`): the count is baked into the two-phase scan
+    // (Vim `nv_bracket_block`), which resolves directly to a single target (or `cur0` for a no-op).
+    if let Some((forward, end)) = method_spec(m) {
+        return method_target(b, cur0, forward, end, n);
+    }
+    unreachable!("{m:?} is not an unmatched-bracket or method motion")
+}
+
 /// Whether a motion is one of the method (brace-block) family, with `(forward, end)` flags.
-pub(super) fn method_spec(m: Motion) -> Option<(bool, bool)> {
+fn method_spec(m: Motion) -> Option<(bool, bool)> {
     match m {
         Motion::MethodStartFwd => Some((true, false)),
         Motion::MethodStartBack => Some((false, false)),
@@ -214,7 +230,7 @@ pub(super) fn method_spec(m: Motion) -> Option<(bool, bool)> {
 }
 
 /// The (open, close, forward) triple for an unmatched-bracket motion, or `None` for any other motion.
-pub(super) fn unmatched_spec(m: Motion) -> Option<(u8, u8, bool)> {
+fn unmatched_spec(m: Motion) -> Option<(u8, u8, bool)> {
     match m {
         Motion::UnmatchedParenBack => Some((b'(', b')', false)),
         Motion::UnmatchedParenFwd => Some((b'(', b')', true)),

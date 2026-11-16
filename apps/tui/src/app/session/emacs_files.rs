@@ -657,232 +657,264 @@ impl Session {
         match p {
             EmacsPrompt::YesOrNo {
                 question,
-                mut typed,
+                typed,
                 then,
-            } => match key.code {
-                KeyCode::Enter => match typed.as_str() {
-                    "yes" => {
-                        self.status.clear();
-                        self.emacs_then(then, true);
-                    }
-                    "no" => self.status.clear(),
-                    _ => {
-                        self.status.echo("Please answer yes or no.");
-                        self.emacs_prompt = Some(EmacsPrompt::YesOrNo {
-                            question,
-                            typed: String::new(),
-                            then,
-                        });
-                    }
-                },
-                KeyCode::Backspace => {
-                    typed.pop();
-                    self.ask(EmacsPrompt::YesOrNo {
-                        question,
-                        typed,
-                        then,
-                    });
-                }
-                KeyCode::Char(c)
-                    if !key
-                        .modifiers
-                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                {
-                    typed.push(c);
-                    self.ask(EmacsPrompt::YesOrNo {
-                        question,
-                        typed,
-                        then,
-                    });
-                }
-                _ => self.ask(EmacsPrompt::YesOrNo {
-                    question,
-                    typed,
-                    then,
-                }),
-            },
-            EmacsPrompt::YOrN { question, then } => {
-                if plain(key, 'y') || plain(key, 'Y') || plain(key, ' ') {
-                    self.status.clear();
-                    self.emacs_then(then, true);
-                } else if plain(key, 'n') || plain(key, 'N') || key.code == KeyCode::Backspace {
-                    self.status.clear();
-                } else {
-                    self.status
-                        .echo(format!("Please answer y or n.  {question}(y or n) "));
-                    self.emacs_prompt = Some(EmacsPrompt::YOrN { question, then });
-                }
-            }
+            } => self.answer_yes_or_no(question, typed, then, key),
+            EmacsPrompt::YOrN { question, then } => self.answer_y_or_n(question, then, key),
             EmacsPrompt::SaveSome {
                 queue,
                 at,
                 saved,
                 then,
-            } => {
-                let id = queue[at];
-                let here = EmacsPrompt::SaveSome {
-                    queue: queue.clone(),
-                    at,
-                    saved,
-                    then: then.clone(),
-                };
-                if plain(key, 'y') || plain(key, ' ') {
-                    let next = EmacsPrompt::SaveSome {
-                        queue: queue.clone(),
-                        at,
-                        saved: saved + 1,
-                        then: then.clone(),
-                    };
-                    if self.save_one(id, next) {
-                        self.save_some_next(queue, at, saved + 1, then);
-                    }
-                } else if plain(key, 'n') || key.code == KeyCode::Backspace {
-                    self.save_some_next(queue, at, saved, then);
-                } else if key.code == KeyCode::Char('~')
-                    && key.modifiers.contains(KeyModifiers::ALT)
-                {
-                    if let Some(d) = self.ws.document_mut(id) {
-                        d.mark_saved();
-                    }
-                    self.save_some_next(queue, at, saved, then);
-                } else if plain(key, '!') {
-                    for &b in &queue[at..] {
-                        if self.files.contains_key(&b) {
-                            let Session {
-                                ws, files, status, ..
-                            } = self;
-                            crate::app::abandon::write_buffer(ws, files, b, status);
-                        }
-                    }
-                    self.status.clear();
-                    self.emacs_then(then, true);
-                } else if plain(key, '.') {
-                    let done = EmacsPrompt::SaveSome {
-                        queue: vec![id],
-                        at: 0,
-                        saved: saved + 1,
-                        then: then.clone(),
-                    };
-                    if self.save_one(id, done) {
-                        self.status.clear();
-                        self.emacs_then(then, true);
-                    }
-                } else if plain(key, 'q') || key.code == KeyCode::Enter {
-                    self.status.clear();
-                    self.emacs_then(then, true);
-                } else {
-                    // `C-r`, `C-f`, `d` and `C-h` are Emacs's view, diff and help actions, which ruse does
-                    // not offer here; Emacs says the same for a key it does not know.
-                    self.ask(here);
-                }
-            }
+            } => self.answer_save_some(queue, at, saved, then, key),
             EmacsPrompt::LargeFile { name, question } => {
-                if plain(key, 'y') || plain(key, 'Y') {
-                    self.status.clear();
-                    self.visit(&name, false);
-                } else if plain(key, 'l') || plain(key, 'L') {
-                    self.status.clear();
-                    self.visit(&name, true);
-                } else if plain(key, 'n') || plain(key, 'N') {
-                    self.status.error("Aborted");
-                } else {
-                    self.ask(EmacsPrompt::LargeFile { name, question });
-                }
+                self.answer_large_file(name, question, key)
             }
             EmacsPrompt::ReadFile {
                 prompt,
-                mut typed,
+                typed,
                 purpose,
-            } => match key.code {
-                KeyCode::Enter => {
+            } => self.answer_read_file(prompt, typed, purpose, key),
+        }
+    }
+
+    /// `yes-or-no-p`: type `yes` or `no`, then `RET`.
+    fn answer_yes_or_no(&mut self, question: String, mut typed: String, then: Then, key: KeyEvent) {
+        match key.code {
+            KeyCode::Enter => match typed.as_str() {
+                "yes" => {
                     self.status.clear();
-                    match purpose {
-                        ReadFor::FindFile { confirmed } => {
-                            // `confirm-nonexistent-file-or-buffer` t: a new file's name needs a second
-                            // `RET` (`[Confirm]`); `after-completion` asks only after a completion, which
-                            // this minibuffer does not offer.
-                            let name = crate::persist::backup::expand(typed.trim());
-                            let fresh = !name.is_empty()
-                                && !std::path::Path::new(&name).exists()
-                                && expand_wildcards(&name).is_empty();
-                            if fresh
-                                && !confirmed
-                                && self.emacs_vars().confirm_nonexistent_file_or_buffer == "t"
-                            {
-                                let shown = format!("{prompt}{typed} [Confirm]");
-                                self.ask(EmacsPrompt::ReadFile {
-                                    prompt,
-                                    typed,
-                                    purpose: ReadFor::FindFile { confirmed: true },
-                                });
-                                self.status.echo(shown);
-                            } else {
-                                self.find_file(&typed);
-                            }
+                    self.emacs_then(then, true);
+                }
+                "no" => self.status.clear(),
+                _ => {
+                    self.status.echo("Please answer yes or no.");
+                    self.emacs_prompt = Some(EmacsPrompt::YesOrNo {
+                        question,
+                        typed: String::new(),
+                        then,
+                    });
+                }
+            },
+            KeyCode::Backspace => {
+                typed.pop();
+                self.ask(EmacsPrompt::YesOrNo {
+                    question,
+                    typed,
+                    then,
+                });
+            }
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                typed.push(c);
+                self.ask(EmacsPrompt::YesOrNo {
+                    question,
+                    typed,
+                    then,
+                });
+            }
+            _ => self.ask(EmacsPrompt::YesOrNo {
+                question,
+                typed,
+                then,
+            }),
+        }
+    }
+
+    /// `y-or-n-p`: one key.
+    fn answer_y_or_n(&mut self, question: String, then: Then, key: KeyEvent) {
+        if plain(key, 'y') || plain(key, 'Y') || plain(key, ' ') {
+            self.status.clear();
+            self.emacs_then(then, true);
+        } else if plain(key, 'n') || plain(key, 'N') || key.code == KeyCode::Backspace {
+            self.status.clear();
+        } else {
+            self.status
+                .echo(format!("Please answer y or n.  {question}(y or n) "));
+            self.emacs_prompt = Some(EmacsPrompt::YOrN { question, then });
+        }
+    }
+
+    /// `save-some-buffers`: one buffer at a time, `!` for the rest, `.` for this one only, `q` to stop.
+    fn answer_save_some(
+        &mut self,
+        queue: Vec<DocumentId>,
+        at: usize,
+        saved: usize,
+        then: Then,
+        key: KeyEvent,
+    ) {
+        let id = queue[at];
+        let here = EmacsPrompt::SaveSome {
+            queue: queue.clone(),
+            at,
+            saved,
+            then: then.clone(),
+        };
+        if plain(key, 'y') || plain(key, ' ') {
+            let next = EmacsPrompt::SaveSome {
+                queue: queue.clone(),
+                at,
+                saved: saved + 1,
+                then: then.clone(),
+            };
+            if self.save_one(id, next) {
+                self.save_some_next(queue, at, saved + 1, then);
+            }
+        } else if plain(key, 'n') || key.code == KeyCode::Backspace {
+            self.save_some_next(queue, at, saved, then);
+        } else if key.code == KeyCode::Char('~') && key.modifiers.contains(KeyModifiers::ALT) {
+            if let Some(d) = self.ws.document_mut(id) {
+                d.mark_saved();
+            }
+            self.save_some_next(queue, at, saved, then);
+        } else if plain(key, '!') {
+            for &b in &queue[at..] {
+                if self.files.contains_key(&b) {
+                    let Session {
+                        ws, files, status, ..
+                    } = self;
+                    crate::app::abandon::write_buffer(ws, files, b, status);
+                }
+            }
+            self.status.clear();
+            self.emacs_then(then, true);
+        } else if plain(key, '.') {
+            let done = EmacsPrompt::SaveSome {
+                queue: vec![id],
+                at: 0,
+                saved: saved + 1,
+                then: then.clone(),
+            };
+            if self.save_one(id, done) {
+                self.status.clear();
+                self.emacs_then(then, true);
+            }
+        } else if plain(key, 'q') || key.code == KeyCode::Enter {
+            self.status.clear();
+            self.emacs_then(then, true);
+        } else {
+            // `C-r`, `C-f`, `d` and `C-h` are Emacs's view, diff and help actions, which ruse does
+            // not offer here; Emacs says the same for a key it does not know.
+            self.ask(here);
+        }
+    }
+
+    /// The large-file question: open, open literally, or abort.
+    fn answer_large_file(&mut self, name: String, question: String, key: KeyEvent) {
+        if plain(key, 'y') || plain(key, 'Y') {
+            self.status.clear();
+            self.visit(&name, false);
+        } else if plain(key, 'l') || plain(key, 'L') {
+            self.status.clear();
+            self.visit(&name, true);
+        } else if plain(key, 'n') || plain(key, 'N') {
+            self.status.error("Aborted");
+        } else {
+            self.ask(EmacsPrompt::LargeFile { name, question });
+        }
+    }
+
+    /// A file name read in the minibuffer: `find-file`, `write-file`, or the name a `save-some-buffers` buffer is saved as.
+    fn answer_read_file(
+        &mut self,
+        prompt: String,
+        mut typed: String,
+        purpose: ReadFor,
+        key: KeyEvent,
+    ) {
+        match key.code {
+            KeyCode::Enter => {
+                self.status.clear();
+                match purpose {
+                    ReadFor::FindFile { confirmed } => {
+                        // `confirm-nonexistent-file-or-buffer` t: a new file's name needs a second
+                        // `RET` (`[Confirm]`); `after-completion` asks only after a completion, which
+                        // this minibuffer does not offer.
+                        let name = crate::persist::backup::expand(typed.trim());
+                        let fresh = !name.is_empty()
+                            && !std::path::Path::new(&name).exists()
+                            && expand_wildcards(&name).is_empty();
+                        if fresh
+                            && !confirmed
+                            && self.emacs_vars().confirm_nonexistent_file_or_buffer == "t"
+                        {
+                            let shown = format!("{prompt}{typed} [Confirm]");
+                            self.ask(EmacsPrompt::ReadFile {
+                                prompt,
+                                typed,
+                                purpose: ReadFor::FindFile { confirmed: true },
+                            });
+                            self.status.echo(shown);
+                        } else {
+                            self.find_file(&typed);
                         }
-                        ReadFor::WriteFile => {
-                            let name = crate::persist::backup::expand(typed.trim());
-                            if name.is_empty() {
-                                return;
-                            }
-                            if std::path::Path::new(&name).exists() {
-                                let base = std::path::Path::new(&name)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().into_owned())
-                                    .unwrap_or_default();
-                                self.ask_yes(
-                                    format!("File {base} exists; overwrite? "),
-                                    true,
-                                    Then::WriteFile(name),
-                                );
-                            } else {
-                                self.write_file(&name);
-                            }
+                    }
+                    ReadFor::WriteFile => {
+                        let name = crate::persist::backup::expand(typed.trim());
+                        if name.is_empty() {
+                            return;
                         }
-                        ReadFor::SaveAs { buf, rest } => {
-                            let name = crate::persist::backup::expand(typed.trim());
-                            self.write_new_file(buf, &name);
-                            match *rest {
-                                EmacsPrompt::SaveSome {
-                                    queue,
-                                    at,
-                                    saved,
-                                    then,
-                                } if queue.len() > 1 || at > 0 => {
-                                    self.save_some_next(queue, at, saved, then)
-                                }
-                                EmacsPrompt::SaveSome { then, .. } => self.emacs_then(then, true),
-                                other => self.ask(other),
+                        if std::path::Path::new(&name).exists() {
+                            let base = std::path::Path::new(&name)
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_default();
+                            self.ask_yes(
+                                format!("File {base} exists; overwrite? "),
+                                true,
+                                Then::WriteFile(name),
+                            );
+                        } else {
+                            self.write_file(&name);
+                        }
+                    }
+                    ReadFor::SaveAs { buf, rest } => {
+                        let name = crate::persist::backup::expand(typed.trim());
+                        self.write_new_file(buf, &name);
+                        match *rest {
+                            EmacsPrompt::SaveSome {
+                                queue,
+                                at,
+                                saved,
+                                then,
+                            } if queue.len() > 1 || at > 0 => {
+                                self.save_some_next(queue, at, saved, then)
                             }
+                            EmacsPrompt::SaveSome { then, .. } => self.emacs_then(then, true),
+                            other => self.ask(other),
                         }
                     }
                 }
-                KeyCode::Backspace => {
-                    typed.pop();
-                    self.ask(EmacsPrompt::ReadFile {
-                        prompt,
-                        typed,
-                        purpose: unconfirmed(purpose),
-                    });
-                }
-                KeyCode::Char(c)
-                    if !key
-                        .modifiers
-                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                {
-                    typed.push(c);
-                    self.ask(EmacsPrompt::ReadFile {
-                        prompt,
-                        typed,
-                        purpose: unconfirmed(purpose),
-                    });
-                }
-                _ => self.ask(EmacsPrompt::ReadFile {
+            }
+            KeyCode::Backspace => {
+                typed.pop();
+                self.ask(EmacsPrompt::ReadFile {
                     prompt,
                     typed,
-                    purpose,
-                }),
-            },
+                    purpose: unconfirmed(purpose),
+                });
+            }
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                typed.push(c);
+                self.ask(EmacsPrompt::ReadFile {
+                    prompt,
+                    typed,
+                    purpose: unconfirmed(purpose),
+                });
+            }
+            _ => self.ask(EmacsPrompt::ReadFile {
+                prompt,
+                typed,
+                purpose,
+            }),
         }
     }
 
