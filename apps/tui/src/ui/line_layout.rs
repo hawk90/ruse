@@ -275,6 +275,69 @@ struct Walk<'t, 'a> {
     trail_start: usize,
 }
 
+impl<'t, 'a> Walk<'t, 'a> {
+    /// The facts the walk of `line` reads, and the virtual columns of the plain ASCII run it skips before
+    /// `min_vcol` ([`layout_from`]; only when `skippable`, i.e. nothing is concealed).
+    fn new(
+        line: &'t [u8],
+        lay: &'a Layout<'t>,
+        skippable: bool,
+        min_vcol: usize,
+        max_vcol: usize,
+        max_byte: usize,
+    ) -> (Walk<'t, 'a>, usize) {
+        // Every char takes a cell (but concealed ones), so the graphemes past the limits plus a margin for
+        // the 'linebreak' look-ahead are never read.
+        let slack = 1024;
+        let width = lay.width.max(1);
+        let ts = lay.tabstop;
+        let sbr = if lay.wrap { lay.showbreak } else { "" };
+        let sbr_w = str_width(sbr);
+        let bri = match (lay.wrap, &lay.breakindent) {
+            (true, Some(o)) => breakindent(line, o, ts, width, sbr_w),
+            _ => 0,
+        };
+        let bytes = line;
+        let blank = |b: &&u8| matches!(**b, b' ' | b'\t');
+        let head_w = (bri + sbr_w).min(width.saturating_sub(1));
+        let (skip_bytes, skip_vcol) = if skippable && !(lay.wrap && lay.linebreak) {
+            ascii_skip(
+                line,
+                lay.wrap,
+                width,
+                head_w,
+                min_vcol.min(max_vcol),
+                max_byte,
+            )
+        } else {
+            (0, 0)
+        };
+        let w = Walk {
+            lay,
+            width,
+            ts,
+            list_tab: lay.list.is_none_or(|l| l.tab.is_some()),
+            sbr,
+            bri,
+            // A continuation row's head never takes the whole row.
+            head_w,
+            bytes,
+            // The run skipped ends between two ASCII bytes, a cluster boundary with no context reaching back
+            // across it, so the rest segments as it does in the whole line.
+            graphemes: cells::glyphs(&line[skip_bytes..])
+                .map(|(i, g)| (i + skip_bytes, g))
+                .take_while(|&(i, _)| i <= max_byte.saturating_add(slack))
+                .take(max_vcol.saturating_sub(skip_vcol).saturating_add(slack))
+                .collect(),
+            lbr_from: (lay.wrap && lay.linebreak)
+                .then(|| bytes.iter().take_while(|&&b| lay.breakat.has(b)).count()),
+            lead_end: bytes.iter().take_while(blank).count(),
+            trail_start: bytes.len() - bytes.iter().rev().take_while(blank).count(),
+        };
+        (w, skip_vcol)
+    }
+}
+
 impl<'t> Walk<'t, '_> {
     fn is_break(&self, b: usize, g: Glyph<'_>) -> bool {
         matches!(g, Glyph::Text(s) if s.len() == 1) && self.lay.breakat.has(self.bytes[b])
@@ -494,61 +557,20 @@ pub(crate) fn layout_from<'t>(
     max_vcol: usize,
     max_byte: usize,
 ) -> LineLayout<'t> {
-    // Every char takes a cell (but concealed ones), so the graphemes past the limits plus a margin for
-    // the 'linebreak' look-ahead are never read.
-    let line = line.line_bytes();
-    let slack = 1024;
-    let width = lay.width.max(1);
-    let ts = lay.tabstop;
-    let sbr = if lay.wrap { lay.showbreak } else { "" };
-    let sbr_w = str_width(sbr);
-    let bri = match (lay.wrap, &lay.breakindent) {
-        (true, Some(o)) => breakindent(line, o, ts, width, sbr_w),
-        _ => 0,
-    };
-    let bytes = line;
-    let blank = |b: &&u8| matches!(**b, b' ' | b'\t');
-    let head_w = (bri + sbr_w).min(width.saturating_sub(1));
-    let (skip_bytes, skip_vcol) = if conceal.is_empty() && !(lay.wrap && lay.linebreak) {
-        ascii_skip(
-            line,
-            lay.wrap,
-            width,
-            head_w,
-            min_vcol.min(max_vcol),
-            max_byte,
-        )
-    } else {
-        (0, 0)
-    };
-    let w = Walk {
+    let (w, skip_vcol) = Walk::new(
+        line.line_bytes(),
         lay,
-        width,
-        ts,
-        list_tab: lay.list.is_none_or(|l| l.tab.is_some()),
-        sbr,
-        bri,
-        // A continuation row's head never takes the whole row.
-        head_w,
-        bytes,
-        // The run skipped ends between two ASCII bytes, a cluster boundary with no context reaching back
-        // across it, so the rest segments as it does in the whole line.
-        graphemes: cells::glyphs(&line[skip_bytes..])
-            .map(|(i, g)| (i + skip_bytes, g))
-            .take_while(|&(i, _)| i <= max_byte.saturating_add(slack))
-            .take(max_vcol.saturating_sub(skip_vcol).saturating_add(slack))
-            .collect(),
-        lbr_from: (lay.wrap && lay.linebreak)
-            .then(|| bytes.iter().take_while(|&&b| lay.breakat.has(b)).count()),
-        lead_end: bytes.iter().take_while(blank).count(),
-        trail_start: bytes.len() - bytes.iter().rev().take_while(blank).count(),
-    };
+        conceal.is_empty(),
+        min_vcol,
+        max_vcol,
+        max_byte,
+    );
     let mut out = LineLayout {
         chars: Vec::with_capacity(w.graphemes.len()),
         cells: Vec::with_capacity(w.graphemes.len()),
         total: 0,
         rows: 1,
-        width,
+        width: w.width,
         wrap: lay.wrap,
         with_cells: max_vcol != usize::MAX || max_byte == usize::MAX,
     };
@@ -561,184 +583,16 @@ pub(crate) fn layout_from<'t>(
             break;
         }
         if let Some(&(s, _, virt)) = conceal.iter().find(|&&(s, e, _)| b >= s && b < e) {
-            // A concealed cluster takes no cells; the range's first one paints its replacement text.
-            if s == b {
-                for vg in virt.unwrap_or("").graphemes(true) {
-                    let cw = usize::from(cluster_width(vg));
-                    out.cells.push(Cell {
-                        vcol,
-                        text: CellText::Str(vg),
-                        width: cw,
-                        byte: None,
-                        kind: CellKind::Text,
-                    });
-                    vcol += cw;
-                }
-            }
-            out.chars.push(CharSpan {
-                byte: b,
-                len: g.len(),
-                vcol,
-                head: 0,
-                size: 0,
-                is_tab: false,
-            });
+            vcol = out.push_concealed(vcol, b, g.len(), (s == b).then_some(virt));
             continue;
         }
-        let is_tab = g == Glyph::Text("\t");
-        let (size, head, mb_added) = w.size(gi, vcol);
-        out.chars.push(CharSpan {
-            byte: b,
-            len: g.len(),
-            vcol,
-            head,
-            size,
-            is_tab,
-        });
-        if is_tab {
-            // The tab's own cells take the `'listchars'` fill; a `'linebreak'` padding after them stays
-            // blank, except after a one-cell tab, whose fill runs on through it (nvim's `win_line`).
-            let plain = plain_size(g, vcol, ts, w.list_tab, false, false);
-            let content = if plain == 1 {
-                size - head
-            } else {
-                plain.min(size - head)
-            };
-            let kind = if lay.list.is_some() {
-                CellKind::Whitespace
-            } else {
-                CellKind::Text
-            };
-            out.push_span(&w, vcol, size, b, |k| {
-                if k < content {
-                    (w.tab_cell(k, content), 1, kind)
-                } else {
-                    (CellText::Blank, 1, CellKind::Text)
-                }
-            });
-        } else if let Some(shown) = shown_as(g, lay.uhex) {
-            // An unprintable char shows transcribed, one cell per char (`^[`, `<85>`), as nvim's
-            // SpecialKey: never the raw control byte (#1181); a byte that is not UTF-8 shows as `<ff>`
-            // (#1251).
-            let cells: Vec<char> = shown.chars().collect();
-            out.push_span(&w, vcol, size, b, |k| match cells.get(k) {
-                Some(&c) if crate::screen::cluster_width(c.encode_utf8(&mut [0; 4])) == 1 => {
-                    (CellText::Char(c), 1, CellKind::Whitespace)
-                }
-                _ => (CellText::Blank, 1, CellKind::Text),
-            });
-        } else if let Glyph::Text(g) = g {
-            let (text, kind) = w.glyph(b, g);
-            let gw = usize::from(cluster_width(g)).max(1);
-            out.push_span(&w, vcol, size, b, |k| {
-                if k < mb_added {
-                    (CellText::Char('>'), 1, CellKind::NonText)
-                } else if k == mb_added {
-                    (text.clone(), gw, kind)
-                } else {
-                    (CellText::Blank, 1, CellKind::Text)
-                }
-            });
-        }
-        vcol += size;
+        vcol += out.push_char(&w, gi, vcol);
     }
-    out.total = vcol;
-    let mut end = vcol;
-    if let Some(eol) = lay.list.and_then(|l| l.eol).filter(|_| !truncated) {
-        let mut at = vcol;
-        if out.starts_row(at) && w.head_w > 0 {
-            out.push_head(&w, at);
-            at += w.head_w;
-        }
-        out.cells.push(Cell {
-            vcol: at,
-            text: CellText::Char(eol),
-            width: 1,
-            byte: Some(bytes.len()),
-            kind: CellKind::NonText,
-        });
-        end = at + 1;
-    }
-    out.rows = if lay.wrap {
-        end.div_ceil(width).max(1)
-    } else {
-        1
-    };
+    out.finish(&w, vcol, truncated);
     out
 }
 
 impl<'t> LineLayout<'t> {
-    /// Whether virtual column `vcol` starts a continuation row.
-    fn starts_row(&self, vcol: usize) -> bool {
-        self.wrap && vcol >= self.width && vcol.is_multiple_of(self.width)
-    }
-
-    /// Push the head of the continuation row that starts at `vcol`: the `'breakindent'` indent and the
-    /// `'showbreak'` text, the latter first under `briopt` `sbr`.
-    fn push_head(&mut self, w: &Walk<'t, '_>, vcol: usize) {
-        if !self.with_cells {
-            return;
-        }
-        let sbr_first = w.lay.breakindent.is_some_and(|o| o.sbr);
-        let mut at = vcol;
-        if !sbr_first {
-            at += w.bri;
-        }
-        for sg in w.sbr.graphemes(true) {
-            let cw = usize::from(cluster_width(sg));
-            if at + cw > vcol + w.head_w {
-                break;
-            }
-            self.cells.push(Cell {
-                vcol: at,
-                text: if sg == "\t" {
-                    CellText::Blank
-                } else {
-                    CellText::Str(sg)
-                },
-                width: cw,
-                byte: None,
-                kind: CellKind::NonText,
-            });
-            at += cw;
-        }
-    }
-
-    /// Push the cells of the char at byte `byte` spanning `[vcol, vcol + size)`: the head of each
-    /// continuation row it starts or crosses, and its content cells, the `k`th of which `content(k)`
-    /// names (a glyph wider than one cell covers the next ones).
-    fn push_span(
-        &mut self,
-        w: &Walk<'t, '_>,
-        vcol: usize,
-        size: usize,
-        byte: usize,
-        mut content: impl FnMut(usize) -> (CellText<'t>, usize, CellKind),
-    ) {
-        if !self.with_cells {
-            return;
-        }
-        let mut p = vcol;
-        let mut k = 0;
-        while p < vcol + size {
-            if w.head_w > 0 && self.starts_row(p) {
-                self.push_head(w, p);
-                p += w.head_w;
-                continue;
-            }
-            let (text, cw, kind) = content(k);
-            self.cells.push(Cell {
-                vcol: p,
-                text,
-                width: cw,
-                byte: Some(byte),
-                kind,
-            });
-            p += cw.max(1);
-            k += cw.max(1);
-        }
-    }
-
     /// The screen `(row, col)` of virtual column `vcol` (row 0 without wrapping).
     pub(crate) fn place(&self, vcol: usize) -> (usize, usize) {
         if self.wrap {
@@ -792,6 +646,8 @@ impl<'t> LineLayout<'t> {
         last
     }
 }
+
+mod cell_steps;
 
 #[cfg(test)]
 mod tests;
