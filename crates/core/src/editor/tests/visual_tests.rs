@@ -1295,6 +1295,110 @@ mod blockwise_tests {
         assert_eq!(text(&st), "abc\ndef\nghi");
     }
 
+    /// The emptied buffer with `"a` holding charwise `ab` and the unnamed register linewise `ab\n` (as
+    /// `"ayiwggdG` leaves them), in `kind` Visual mode on its one line.
+    fn emptied_in_visual(kind: SelectKind) -> EditorState {
+        let mut st = EditorState::new(Vec::new());
+        st.view
+            .registers
+            .yank(Some('a'), crate::Register::charwise(b"ab".to_vec()));
+        st.view
+            .registers
+            .delete(None, crate::Register::linewise(b"ab\n".to_vec()));
+        apply_command(&mut st, &Command::EnterVisual { kind });
+        st
+    }
+
+    const PUT_SWAP: Command = Command::PasteSelection {
+        swap: true,
+        count: 1,
+    };
+
+    #[test]
+    fn visual_put_on_the_emptied_buffer_puts_and_keeps_the_registers() {
+        // #1346 (nvim v0.12.6): `op_delete` deletes nothing in the emptied buffer (`ML_EMPTY`), so `v"ap`,
+        // `V"ap` and `<C-v>"ap` put `ab` and the unnamed register keeps `ab\n` linewise.
+        for kind in [
+            SelectKind::Charwise,
+            SelectKind::Linewise,
+            SelectKind::Blockwise,
+        ] {
+            let mut st = emptied_in_visual(kind);
+            apply_command(&mut st, &Command::SetRegister(Some('a')));
+            apply_command(&mut st, &PUT_SWAP);
+            assert_eq!(text(&st), "ab\n", "{kind:?}");
+            let want_col = usize::from(kind != SelectKind::Linewise);
+            assert_eq!(st.cursor().0, want_col, "{kind:?}");
+            let unnamed = st.view.registers.get(None);
+            assert_eq!(unnamed.text(), b"ab\n", "{kind:?}");
+            assert!(unnamed.is_linewise(), "{kind:?}");
+            // One undo takes the put and the emptied line back: the buffer is emptied again.
+            apply_command(&mut st, &Command::Undo);
+            assert_eq!(text(&st), "", "{kind:?}");
+        }
+        // `vp` / `vP` of the linewise unnamed register splits the line: nvim gives `["", "ab"]`.
+        for swap in [true, false] {
+            let mut st = emptied_in_visual(SelectKind::Charwise);
+            apply_command(&mut st, &Command::PasteSelection { swap, count: 1 });
+            assert_eq!(text(&st), "\nab\n", "swap {swap}");
+            assert_eq!(st.cursor().0, 1, "swap {swap}");
+            assert_eq!(st.view.registers.get(None).text(), b"ab\n");
+        }
+        // A count puts the text that many times: `v3"ap` gives `ababab`, the cursor on its last char.
+        let mut st = emptied_in_visual(SelectKind::Charwise);
+        apply_command(&mut st, &Command::SetRegister(Some('a')));
+        apply_command(
+            &mut st,
+            &Command::PasteSelection {
+                swap: true,
+                count: 3,
+            },
+        );
+        assert_eq!(text(&st), "ababab\n");
+        assert_eq!(st.cursor().0, 5);
+    }
+
+    #[test]
+    fn visual_put_on_an_empty_line_deletes_nothing_where_nvim_does() {
+        // #1346 (nvim v0.12.6): a charwise selection on the empty LAST line has nothing to delete, so
+        // `yiwjvp` on `ab\n\n` puts `ab` there and the unnamed register keeps `ab`.
+        let yank_then = |initial: &str, kind: SelectKind, put: Command| {
+            let mut st = run(initial, &[Command::Yank(1, Motion::InnerWord)]);
+            for c in [Command::MoveDown, Command::EnterVisual { kind }, put] {
+                apply_command(&mut st, &c);
+            }
+            st
+        };
+        let st = yank_then("ab\n\n", SelectKind::Charwise, PUT_SWAP);
+        assert_eq!(text(&st), "ab\nab\n");
+        assert_eq!(st.cursor().0, 4);
+        assert_eq!(st.view.registers.get(None).text(), b"ab");
+        // A linewise register splits the empty last line: `yyjvp` gives `["ab", "", "ab", ""]`.
+        let mut st = run("ab\n\n", &[Command::Yank(1, Motion::Line)]);
+        for c in [
+            Command::MoveDown,
+            Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+            PUT_SWAP,
+        ] {
+            apply_command(&mut st, &c);
+        }
+        assert_eq!(text(&st), "ab\n\nab\n\n");
+        assert_eq!(st.cursor().0, 4);
+        // A one-row block on an empty line deletes nothing either, mid-buffer too: `yiwj<C-v>p` on
+        // `ab\n\ncd\n` puts `ab` on that line and the unnamed register keeps `ab` charwise.
+        let st = yank_then("ab\n\ncd\n", SelectKind::Blockwise, PUT_SWAP);
+        assert_eq!(text(&st), "ab\nab\ncd\n");
+        let unnamed = st.view.registers.get(None);
+        assert_eq!(unnamed.text(), b"ab");
+        assert!(!unnamed.is_linewise() && !unnamed.is_blockwise());
+        // A charwise selection on an empty line that is not the last takes its newline (nvim joins).
+        let st = yank_then("ab\n\ncd\n", SelectKind::Charwise, PUT_SWAP);
+        assert_eq!(text(&st), "ab\nabcd\n");
+        assert_eq!(st.view.registers.get(None).text(), b"\n");
+    }
+
     #[test]
     fn visual_repeat_measures_screen_columns() {
         // #1064 (nvim v0.12.6, ts=4): `vld` over `<Tab>a` is five cells, so `.` on a plain line deletes five.

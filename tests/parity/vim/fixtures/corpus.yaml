@@ -73106,6 +73106,1229 @@
       }
     },
     {
+      "name": "vput_emptied_char_sel_named_char_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "\"ayiwggdGv\"ap",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_line_sel_named_char_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "\"ayiwggdGV\"ap",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_block_sel_named_char_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "\"ayiwggdG<C-v>\"ap",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_line_sel_unnamed_line_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "ggdGVp",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_unnamed_line_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "ggdGvp",
+      "expect": {
+        "text": [
+          "",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_block_sel_unnamed_line_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "ggdG<C-v>p",
+      "expect": {
+        "text": [
+          "",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_reg0",
+      "lines": [
+        "ab"
+      ],
+      "keys": "yiwggdGv\"0p",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_reg0_P",
+      "lines": [
+        "ab"
+      ],
+      "keys": "yiwggdGv\"0P",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_line_sel_reg0_P",
+      "lines": [
+        "ab"
+      ],
+      "keys": "yiwggdGV\"0P",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_block_sel_reg0_P",
+      "lines": [
+        "ab"
+      ],
+      "keys": "yiwggdG<C-v>\"0P",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_unnamed_line_reg_P",
+      "lines": [
+        "ab"
+      ],
+      "keys": "ggdGvP",
+      "expect": {
+        "text": [
+          "",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_yanked_line_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "yyggdGvp",
+      "expect": {
+        "text": [
+          "",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_named_line_reg",
+      "lines": [
+        "ab"
+      ],
+      "keys": "\"ayyggdGv\"ap",
+      "expect": {
+        "text": [
+          "",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_count",
+      "lines": [
+        "ab"
+      ],
+      "keys": "\"ayiwggdGv3\"ap",
+      "expect": {
+        "text": [
+          "ababab"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_undo",
+      "lines": [
+        "ab"
+      ],
+      "keys": "\"ayiwggdGv\"apu",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_by_dd_char_sel",
+      "lines": [
+        ""
+      ],
+      "keys": "iab<Esc>yiwddvp",
+      "expect": {
+        "text": [
+          "",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vdelete_emptied_char_sel_keeps_regs",
+      "lines": [
+        "ab"
+      ],
+      "keys": "yiwggdGvd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vdelete_emptied_line_sel_keeps_regs",
+      "lines": [
+        "ab"
+      ],
+      "keys": "yiwggdGVd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_last_line_char_sel",
+      "lines": [
+        "ab",
+        ""
+      ],
+      "keys": "yiwjvp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_last_line_char_sel_P",
+      "lines": [
+        "ab",
+        ""
+      ],
+      "keys": "yiwjvP",
+      "expect": {
+        "text": [
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_last_line_line_reg",
+      "lines": [
+        "ab",
+        ""
+      ],
+      "keys": "yyjvp",
+      "expect": {
+        "text": [
+          "ab",
+          "",
+          "ab",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_char_sel",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwjvp",
+      "expect": {
+        "text": [
+          "ab",
+          "abcd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_char_sel_P",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwjvP",
+      "expect": {
+        "text": [
+          "ab",
+          "abcd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_line_sel",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwjVp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_block_sel",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwj<C-v>p",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_char_sel_line_reg",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yyjvp",
+      "expect": {
+        "text": [
+          "ab",
+          "",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_line_sel_line_reg",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yyjVp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_count",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwjv3p",
+      "expect": {
+        "text": [
+          "ab",
+          "abababcd"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_dot",
+      "lines": [
+        "ab",
+        "",
+        "cd",
+        ""
+      ],
+      "keys": "yiwjvpjj.",
+      "expect": {
+        "text": [
+          "ab",
+          "abcd",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_undo",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwjvpu",
+      "expect": {
+        "text": [
+          "ab",
+          "",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_last_line_count",
+      "lines": [
+        "ab",
+        ""
+      ],
+      "keys": "yiwjv3p",
+      "expect": {
+        "text": [
+          "ab",
+          "ababab"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_last_line_undo",
+      "lines": [
+        "ab",
+        ""
+      ],
+      "keys": "yiwjvpu",
+      "expect": {
+        "text": [
+          "ab",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_last_line_block_sel",
+      "lines": [
+        "ab",
+        ""
+      ],
+      "keys": "yiwj<C-v>p",
+      "expect": {
+        "text": [
+          "ab",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_block_sel_line_reg",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yyj<C-v>p",
+      "expect": {
+        "text": [
+          "ab",
+          "",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_mid_line_block_sel_line_reg_P",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yyj<C-v>P",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_two_lines_block_sel",
+      "lines": [
+        "ab",
+        "",
+        "",
+        "cd"
+      ],
+      "keys": "yiwj<C-v>jp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_and_text_block_sel",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwj<C-v>jp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "abd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\nc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_char_sel_dot_repeats_the_delete",
+      "lines": [
+        "ab",
+        "xy",
+        "zw"
+      ],
+      "keys": "yiwjvpj.",
+      "expect": {
+        "text": [
+          "ab",
+          "aby",
+          "z"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "w",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_empty_last_line_dot",
+      "lines": [
+        "ab",
+        "xy",
+        ""
+      ],
+      "keys": "\"ayiwjv\"apj.",
+      "expect": {
+        "text": [
+          "ab",
+          "aby",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vput_emptied_char_sel_undo_dot",
+      "lines": [
+        "ab"
+      ],
+      "keys": "\"ayiwggdGv\"apu.",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vdelete_empty_mid_line_block_sel_keeps_regs",
+      "lines": [
+        "ab",
+        "",
+        "cd"
+      ],
+      "keys": "yiwj<C-v>d",
+      "expect": {
+        "text": [
+          "ab",
+          "",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "vdelete_empty_last_line_char_sel_keeps_regs",
+      "lines": [
+        "ab",
+        ""
+      ],
+      "keys": "yiwjvd",
+      "expect": {
+        "text": [
+          "ab",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
       "name": "exr_d_past_end",
       "lines": [
         "a",

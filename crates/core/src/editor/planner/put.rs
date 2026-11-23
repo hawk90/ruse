@@ -117,7 +117,10 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Pla
 /// The put goes before the cursor, or after it when the delete left the cursor on the last character of
 /// the line or file (Vim's "cursor at the end" test). The register is read before the delete, so `p` of the
 /// unnamed register still puts the old text; `p` then leaves the deleted text in the unnamed register, `P`
-/// leaves the registers as they were. The whole replacement is one edit and one undo step.
+/// leaves the registers as they were. A selection with nothing in it to delete (nvim's `op_delete` returns
+/// first) only puts and leaves the registers as they were too: any selection on the emptied buffer's line
+/// (`ML_EMPTY`), a charwise one on the empty last line, and a one-row block on an empty line (#1346). The
+/// whole replacement is one edit and one undo step.
 pub(super) fn plan_paste_selection(
     st: &EditorState,
     b: &[u8],
@@ -130,10 +133,12 @@ pub(super) fn plan_paste_selection(
     };
     let ts = st.view.indent.tabs();
     let reg = st.view.registers.get(st.view.pending_register).clone();
-    // 1. The delete: its edits, the captured text, and where the cursor sits afterwards.
-    let del = match delete_selection(b, kind, anchor, cur, ts, st.view.curswant == MAXCOL) {
-        Ok(del) => del,
-        Err(s) => return nop(s, Mode::Normal),
+    // 1. The delete: its edits, the captured text, and where the cursor sits afterwards. The emptied
+    //    buffer's line is no text to delete.
+    let del = if st.on_emptied_line {
+        SelectionDelete::nothing(0, kind == SelectKind::Blockwise)
+    } else {
+        delete_selection(b, kind, anchor, cur, ts, st.view.curswant == MAXCOL)
     };
     let b2 = EditList::new(del.edits)
         .expect("selection deletes are disjoint (one per line)")
@@ -158,9 +163,13 @@ pub(super) fn plan_paste_selection(
     {
         b3.pop();
     }
+    // Lines put on the emptied buffer's line leave it below them; nvim deletes that empty last line.
+    if st.on_emptied_line && b3.ends_with(b"\n\n") {
+        b3.pop();
+    }
     // 4. One edit from the old text to the new. The replaced text goes to the unnamed register, not the one
-    //    being put (nvim deletes with no register named, #707).
-    let set_register = swap.then_some(RegWrite::Replaced(del.deleted));
+    //    being put (nvim deletes with no register named, #707); a delete of nothing writes no register.
+    let set_register = del.deleted.filter(|_| swap).map(RegWrite::Replaced);
     replacement_plan(b, &b3, cursor, set_register)
 }
 
@@ -168,13 +177,27 @@ pub(super) fn plan_paste_selection(
 /// right after the delete (before [`settle_cursor`]), and a block selection's first and last line.
 struct SelectionDelete {
     edits: Vec<Edit>,
-    deleted: Register,
+    /// The deleted text, or `None` when the selection had nothing to delete.
+    deleted: Option<Register>,
     cursor: usize,
     block_lines: Option<(usize, usize)>,
 }
 
+impl SelectionDelete {
+    /// A delete of nothing with the cursor at `at` (a one-row block's line when `block`).
+    fn nothing(at: usize, block: bool) -> SelectionDelete {
+        SelectionDelete {
+            edits: Vec::new(),
+            deleted: None,
+            cursor: at,
+            block_lines: block.then_some((0, 0)),
+        }
+    }
+}
+
 /// Plans the delete of the `kind` selection between `anchor` and `cur` (`to_eol`: a block selection runs
-/// to each line's end, `$`). An empty charwise selection is `Err` with the cursor its no-op plan rests on.
+/// to each line's end, `$`). A charwise selection on the empty last line and a one-row block on an empty
+/// line delete nothing (nvim's `op_delete` deletes and yanks nothing there).
 fn delete_selection(
     b: &[u8],
     kind: SelectKind,
@@ -182,10 +205,19 @@ fn delete_selection(
     cur: usize,
     ts: Tabs,
     to_eol: bool,
-) -> Result<SelectionDelete, usize> {
-    Ok(match kind {
+) -> SelectionDelete {
+    match kind {
         SelectKind::Blockwise => {
             let block = block_geom(b, anchor, cur, ts, to_eol);
+            if let [row] = block.rows[..] {
+                if row.ls == line_end(b, row.ls) {
+                    let line = crate::pos::raw::line_of(b, row.ls);
+                    return SelectionDelete {
+                        block_lines: Some((line, line)),
+                        ..SelectionDelete::nothing(row.ls, true)
+                    };
+                }
+            }
             let dels: Vec<Edit> = block
                 .rows
                 .iter()
@@ -197,7 +229,7 @@ fn delete_selection(
             let first = crate::pos::raw::line_of(b, top.ls);
             SelectionDelete {
                 edits: dels,
-                deleted: reg,
+                deleted: Some(reg),
                 cursor: top.ds + top.out_l,
                 block_lines: Some((first, first + block.rows.len() - 1)),
             }
@@ -212,7 +244,7 @@ fn delete_selection(
             };
             SelectionDelete {
                 edits: vec![Edit::delete(BytePos(s0), e - s0)],
-                deleted: captured(b, s, e, true),
+                deleted: Some(captured(b, s, e, true)),
                 cursor: s0,
                 block_lines: None,
             }
@@ -220,16 +252,16 @@ fn delete_selection(
         SelectKind::Charwise => {
             let (s, e) = selection_range(b, anchor, cur, false);
             if s >= e {
-                return Err(s);
+                return SelectionDelete::nothing(s, false);
             }
             SelectionDelete {
                 edits: vec![Edit::delete(BytePos(s), e - s)],
-                deleted: captured(b, s, e, false),
+                deleted: Some(captured(b, s, e, false)),
                 cursor: s,
                 block_lines: None,
             }
         }
-    })
+    }
 }
 
 /// Normal mode cannot rest past a line's last character: a delete that emptied the end of its line (or took
