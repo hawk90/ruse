@@ -179,7 +179,11 @@ fn apply_action(st: &mut EditorState, action: Action, mode: Mode, entry: &Entry)
         }),
         Action::LineUndo => out.nav_target = st.line_undo_at(entry.cursor),
         Action::JumpChange { older } => {
-            out.nav_target = st.view.nav_change(older);
+            // A change on a line shortened since rests on its last char, as `` `a `` does (#728).
+            out.nav_target = st
+                .view
+                .nav_change(older)
+                .map(|p| planner::mark_char_target(st.doc.bytes(), p, mode));
             if out.nav_target.is_none() {
                 // nvim's `nv_pcmark`: each end of the change list has its own error.
                 let msg = if st.view.changes.is_empty() {

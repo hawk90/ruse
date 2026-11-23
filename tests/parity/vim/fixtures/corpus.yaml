@@ -172002,6 +172002,716 @@
         "failed": false,
         "mode": "n"
       }
+    },
+    {
+      "name": "i728_bt_after_D",
+      "lines": [
+        "abc"
+      ],
+      "keys": "$ma0lD`a",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_after_D_iZ",
+      "lines": [
+        "abc"
+      ],
+      "keys": "$max`aiZ<Esc>",
+      "expect": {
+        "text": [
+          "aZb"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_after_x",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "$ma0d$`a",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_after_dw_line2",
+      "lines": [
+        "x",
+        "abc def"
+      ],
+      "keys": "j$mak0jdwgg`a",
+      "expect": {
+        "text": [
+          "x",
+          "def"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_after_dw",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "$ma0dw`a",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_qt_after_D",
+      "lines": [
+        "  abc def"
+      ],
+      "keys": "$ma0wD'a",
+      "expect": {
+        "text": [
+          "  "
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abc def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_empty_line",
+      "lines": [
+        "abc",
+        "x"
+      ],
+      "keys": "$ma0Dj`a",
+      "expect": {
+        "text": [
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_empty_line_iZ",
+      "lines": [
+        "abc",
+        "x"
+      ],
+      "keys": "$ma0Dj`aiZ<Esc>",
+      "expect": {
+        "text": [
+          "Z",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_qt_empty_line",
+      "lines": [
+        "abc",
+        "x"
+      ],
+      "keys": "$ma0Dj'a",
+      "expect": {
+        "text": [
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_d_bt_after_D",
+      "lines": [
+        "abcdef",
+        "xyz"
+      ],
+      "keys": "$ma0llDj0d`a",
+      "expect": {
+        "text": [
+          "a",
+          "xyz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_d_bt_after_D_fwd",
+      "lines": [
+        "abcdef",
+        "xyz"
+      ],
+      "keys": "$ma0llD0d`a",
+      "expect": {
+        "text": [
+          "b",
+          "xyz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_y_bt_after_D",
+      "lines": [
+        "abcdef",
+        "xyz"
+      ],
+      "keys": "$ma0llDj0y`a",
+      "expect": {
+        "text": [
+          "ab",
+          "xyz"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_v_bt_after_D",
+      "lines": [
+        "abcdef",
+        "xyz"
+      ],
+      "keys": "$ma0llDj0v`ad",
+      "expect": {
+        "text": [
+          "abyz"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "\nx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_c_bt_after_D",
+      "lines": [
+        "abcdef",
+        "xyz"
+      ],
+      "keys": "$ma0llDj0c`aZ<Esc>",
+      "expect": {
+        "text": [
+          "aZ",
+          "xyz"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_after_undo_redo",
+      "lines": [
+        "abc"
+      ],
+      "keys": "$ma0lDu<C-r>`a",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_after_D_undo",
+      "lines": [
+        "abc"
+      ],
+      "keys": "$ma0lDu0`a",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "bc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_bracket_after_D",
+      "lines": [
+        "abc def",
+        "x"
+      ],
+      "keys": "wyiw0lDj`]",
+      "expect": {
+        "text": [
+          "a",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "def",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_lbracket_after_D",
+      "lines": [
+        "abc def",
+        "x"
+      ],
+      "keys": "wyiw0Dj`[",
+      "expect": {
+        "text": [
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "def",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_gt_after_D",
+      "lines": [
+        "abc def",
+        "x"
+      ],
+      "keys": "wve<Esc>0lDj`>",
+      "expect": {
+        "text": [
+          "a",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_lt_after_D",
+      "lines": [
+        "abc def",
+        "x"
+      ],
+      "keys": "wve<Esc>0Dj`<",
+      "expect": {
+        "text": [
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_dot_after_D",
+      "lines": [
+        "abc def",
+        "x"
+      ],
+      "keys": "$xx0Dj`.",
+      "expect": {
+        "text": [
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_dot_after_ins",
+      "lines": [
+        "abc def",
+        "x"
+      ],
+      "keys": "AZZ<Esc>0Dj`.",
+      "expect": {
+        "text": [
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc defZZ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_gsemi_after_D",
+      "lines": [
+        "abc def",
+        "x"
+      ],
+      "keys": "$x0lDjg;",
+      "expect": {
+        "text": [
+          "a",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bc de",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_bt_mark_in_visual",
+      "lines": [
+        "abcdef",
+        "xyz"
+      ],
+      "keys": "$ma0llDjv`ay",
+      "expect": {
+        "text": [
+          "ab",
+          "xyz"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\nxy",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "\nxy",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i728_v_qt_blank_line",
+      "lines": [
+        "  abc def",
+        "xyz"
+      ],
+      "keys": "$ma0wDjv'ay",
+      "expect": {
+        "text": [
+          "  ",
+          "xyz"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": " \nxy",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": " \nxy",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }
