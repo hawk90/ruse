@@ -2,7 +2,11 @@
 //! `CTRL-K`, `CTRL-V`, `CTRL-X`) and chords, the insert-session helpers, the completion-cycle API, and
 //! `feed_replace`. Moved out of `input/mod.rs` as an `impl InputEngine` block.
 
-use super::*;
+use super::{
+    digraph, is_chord, plain, ChangeIntent, Command, Completion, DigraphPending, ExprTarget, Feed,
+    InputEngine, KeyCode, KeyEvent, KeyModifiers, LiteralBase, LiteralEntry, Mode, Motion, Ns,
+    Resolved, Suspended, UnmatchedKey,
+};
 
 impl InputEngine {
     /// Whether the Insert namespace is in a PLAIN-TEXT context right now: not mid a `CTRL-G`/`CTRL-R`

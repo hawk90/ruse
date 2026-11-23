@@ -2,6 +2,7 @@
 //! `journal.rs` (#1389).
 
 use super::*;
+use crate::persist::journal::read_journal;
 use crate::persist::journal::tests::{available, insert, opened, scratch, step, unreplayable};
 
 /// The writer starts a journal at the first change (Header + Checkpoint of the text it applied to),

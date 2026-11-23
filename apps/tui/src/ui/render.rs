@@ -3,8 +3,7 @@
 
 use std::io::{self, Write};
 
-use crossterm::style::Print;
-use crossterm::{cursor, queue, terminal};
+use crossterm::{queue, terminal};
 
 use ruse_core::{Command, Mode, SelectKind, SplitDir, Workspace};
 

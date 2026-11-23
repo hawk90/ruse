@@ -1,6 +1,6 @@
 //! Showing option values: `:set opt?` and `:set all`. Split from `set_cmd.rs` (#1388).
 
-use super::*;
+use super::{OptDef, OptVal};
 
 /// How `:set opt?` shows a value: `  name=value` for a number or string, `  name` / `noname` for a
 /// boolean (nvim's `showoneopt`).

@@ -1,7 +1,7 @@
 //! The test fault-injection harness: a step to fail and the directories synced. Split from `atomic.rs`
 //! (#1395).
 
-use super::*;
+use super::PathBuf;
 
 /// The steps a test can make fail, for the failures a real filesystem will not produce on demand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

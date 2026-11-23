@@ -1,6 +1,6 @@
 //! Journal file names that fit `NAME_MAX`. Split from `journal.rs` (#1389).
 
-use super::*;
+use super::{fs, is_live_other, owner, read_head, rj01, Path, PathBuf};
 
 /// The journal this process may write for a document whose journal is `journal`: that file, unless a live
 /// other session owns it (#1193), a newer ruse wrote it (kept for that version, RFC-0023 §7), or it is a

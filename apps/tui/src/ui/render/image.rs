@@ -1,6 +1,6 @@
 //! Image blocks and virtual lines (F-031). Split from `render.rs` (#1386).
 
-use super::*;
+use super::{graphics, highlight, screen, Rect};
 
 /// The image's `(left_col, cols)` within the pane: sized to the image's natural aspect (from its pixel
 /// dimensions) and CENTRED horizontally, rather than stretched to full width. Unknown dimensions fall back

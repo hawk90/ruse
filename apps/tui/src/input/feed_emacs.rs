@@ -2,7 +2,10 @@
 //! keymap) and `feed_emacs_prefix` (the `C-x` / `C-c` maps). Moved out of `input/mod.rs` as an
 //! `impl InputEngine` block; the keymap tables and data types live in [`emacs`](super::emacs).
 
-use super::*;
+use super::{
+    emacs, emacs_repeat, fold_emacs_count, Command, EmacsArg, EmacsBinding, EmacsKey, Feed,
+    InputEngine, KeyCode, KeyEvent, KeyModifiers, Resolved, Step, UnmatchedKey,
+};
 
 impl InputEngine {
     /// The Emacs profile's dispatch (F-012, minimal slice). Non-modal: the global-map's `C-` motions

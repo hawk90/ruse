@@ -1,6 +1,9 @@
 //! The file commands (`:w`, `:sav`, `:e`, `:r`) and their `++opt` options. Split from `ex.rs` (#1385).
 
-use super::*;
+use super::{
+    parse_line_addr, parse_sub_range, EditSpec, Ex, FileFormatOpt, FileOpts, LineAddr, ReadSource,
+    WriteSpec, WriteTarget, ARGUMENT_REQUIRED,
+};
 
 /// The file commands [`parse_file_command`] reads.
 #[derive(Clone, Copy, PartialEq, Eq)]

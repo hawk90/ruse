@@ -1,7 +1,7 @@
 //! The status line: the mode, the buffer, its flags and the message, paged when it is taller than the
 //! screen. Split from `render()` (#1399).
 
-use super::*;
+use super::{paint_row, screen, Mode, SelectKind, Workspace};
 
 /// What the status line reads besides the workspace.
 #[derive(Clone, Copy)]

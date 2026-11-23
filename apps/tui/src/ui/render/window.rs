@@ -1,6 +1,9 @@
 //! Painting one window: its text, the gutter, and the cursorline and colorcolumn overlays. Split from `render.rs` (#1386).
 
-use super::*;
+use super::{
+    collect_image, graphics, highlight, paint_grid, paint_image_cells, paint_missing_image,
+    paint_virt_block, screen, Mode, PaneText, Rect, TermViews, WinView, Workspace,
+};
 
 /// What one window paints (F-006; wrap, gutter and `'list'` #615, #616).
 pub(crate) struct PaneInput<'a> {

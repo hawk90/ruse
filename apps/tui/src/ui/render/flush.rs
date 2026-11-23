@@ -1,6 +1,9 @@
 //! Diff the frame against the previous one and emit only the changed cells (F-006 #1). Split from `render.rs` (#1386).
 
-use super::*;
+use crossterm::cursor;
+use crossterm::style::Print;
+
+use super::{io, queue, screen, Write};
 
 /// Emit only the cells that changed between `cur` and `prev` (F-006 #1). Each changed run is one
 /// `MoveTo` then its cells, printed with lazy SGR (colour/reverse) changes; a continuation cell is

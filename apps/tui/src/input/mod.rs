@@ -9,7 +9,7 @@ use ruse_core::keymap::{Resolved, UnmatchedKey};
 use ruse_core::VisualOp;
 use ruse_core::{
     BlockInsertKind, Command, ForcedWise, GlobalCmd, LineAddr, Mode, Motion, OpKind, SearchOffset,
-    SearchOp, SelectKind, SubFlags, SubRange, WordCase,
+    SearchOp, SelectKind, SubRange, WordCase,
 };
 // The unit tests glob-import this module (`use crate::input::*`); the mark operator moved to `operator`.
 #[cfg(test)]

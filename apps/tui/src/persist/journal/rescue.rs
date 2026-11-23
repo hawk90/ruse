@@ -1,6 +1,11 @@
 //! The crash-path rescue. Split from `journal.rs` (#1389).
 
-use super::*;
+use std::io::Write;
+
+use super::{
+    claim, io, make_private_dir, now_ms, open_regular, owner, rj01, whole, write_private,
+    FileFormat, OpenOptions, Path, PathBuf, Read,
+};
 
 /// The crash-path write (panic hook, fatal signal, I/O error exit): put the exact current `text` in the
 /// journal at `journal`, or, when a live other session owns that one, in this process's own beside it

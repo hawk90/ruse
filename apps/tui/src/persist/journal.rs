@@ -29,7 +29,7 @@
 //! * **Retention** (RFC §9, #934). [`super::retention`] sweeps the archive at startup, once a day.
 
 use std::fs::{self, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};

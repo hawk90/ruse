@@ -1,7 +1,7 @@
 //! Installing the config layers into the options, workspace trust of the config, and live reload (#614,
 //! #1152). Split from `session.rs` (#1423).
 
-use super::*;
+use super::{Editing, Session};
 
 impl Session {
     /// Install the loaded config ([`Session::config`]) into the options, with provenance (#614). At

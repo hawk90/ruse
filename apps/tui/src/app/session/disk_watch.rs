@@ -1,7 +1,9 @@
 //! The recovery journals, the look at the files on disk (RFC-0023 §8) and `autosave`: their syncs and
 //! their wake-ups. Split from `session.rs` (#1423).
 
-use super::*;
+use super::{
+    health, io, persist, DocumentId, Editing, Files, HashMap, HashSet, Session, Status, Workspace,
+};
 
 impl Session {
     /// Remove the journal of every buffer this session could have journaled (#862), on a normal quit: each
