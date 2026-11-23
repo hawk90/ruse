@@ -28,7 +28,7 @@ ruse already has two recorders, and neither fits:
 
 - **Dot-repeat** records a `ChangeIntent` → `Feed::Replay(Vec<Command>)` (`apps/tui/src/input/mod.rs`): a
   RESOLVED, re-parameterizable *change*. It is scoped to one change, not a free key sequence.
-- **The F-022 command trace** records `recorded: Vec<Command>` (`apps/tui/src/app/session.rs`): resolved
+- **The F-022 command trace** records `recorded: Vec<Command>` (`apps/tui/src/app/session/editing.rs`): resolved
   commands for deterministic replay of a whole session.
 
 Both are the wrong granularity. Macros are a **third, separate mechanism**: capture `KeyEvent`s, store the
@@ -72,7 +72,7 @@ stays backward-compatible. Fn, Alt, and Shift-specials have no encoding yet (#81
 ## 4. Frontend flow (session)
 
 The state machine is `keys::MacroState` (`apps/tui/src/keys.rs`), so the record→stop→replay cycle is unit-testable
-off the terminal. The session key loop (`apps/tui/src/app/session.rs`) calls it for every key and keeps the
+off the terminal. The session key path (`apps/tui/src/app/session/keys.rs`) calls it for every key and keeps the
 register I/O, which lives in the core `Workspace`:
 
 - **State:** the recording buffer (`Option<(char, Vec<KeyEvent>)>`), the `q`/`@` prefix flags, the replay queue,

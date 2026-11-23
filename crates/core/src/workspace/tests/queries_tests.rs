@@ -228,7 +228,7 @@ fn goto_declaration_first_match_from_top_and_jumplist() {
 
     let mut w = Workspace::new(src.clone());
     w.place_focused_cursor(BytePos(last_foo));
-    // Mirror the frontend rewrite (session.rs): keyword under cursor → whole-word first-match jump.
+    // Mirror the frontend rewrite (app/session/commands.rs): keyword under cursor → whole-word first-match jump.
     let word = w.word_under_cursor().expect("on a keyword");
     assert_eq!(word, "foo");
     w.apply(&Command::GotoFirstMatch(format!("\\<{word}\\>")));
