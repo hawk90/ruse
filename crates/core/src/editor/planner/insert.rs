@@ -42,6 +42,10 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         | Command::ReplaceBackspace
         | Command::VirtualReplaceType(..)
         | Command::VirtualReplaceChar(..) => plan_replace_typed(st, b, cur, hint, cmd),
+        // `<CR>` in Replace keeps replacing on the new line, and `<BS>` can take it back (#727).
+        Command::InsertNewline if matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) => {
+            plan_replace_typed(st, b, cur, hint, cmd)
+        }
         Command::InsertChar(..)
         | Command::InsertNewline
         | Command::OpenLineIndent { .. }

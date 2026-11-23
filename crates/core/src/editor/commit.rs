@@ -73,6 +73,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             st.view.visual_one_end = None;
         }
     }
+    let replace_run = matches!(plan.action, Action::ReplaceTxn { .. });
     let applied = apply_action(st, plan.action, plan.mode, &entry);
     // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
     // text unpredictably — clamp and snap to a char boundary either way.
@@ -96,8 +97,12 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     }
     let leaving_entry = set_change_marks(st, &entry, &plan.set_register, &applied);
     st.view.snap_offsets(st.doc.bytes());
-    // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
-    if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
+    // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit, and
+    // on a caret jump inside one (`<Left>`, `<End>`): nvim's `stop_arrow` starts a fresh run there, so a
+    // `<BS>` after it restores nothing typed before it (#727).
+    if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace)
+        || (!replace_run && st.view.cursor != entry.cursor)
+    {
         st.view.replace_stack.clear();
     }
     // A blockwise insert-replicate session lives only while Insert is held; drop it on any exit (the
@@ -161,12 +166,9 @@ fn apply_action(st: &mut EditorState, action: Action, mode: Mode, entry: &Entry)
             pop,
         } => {
             out.edit_span = apply_planned(st, edits, hint, entry);
-            if pop {
-                st.view.replace_stack.pop();
-            }
-            if let Some(entry) = push {
-                st.view.replace_stack.push(entry);
-            }
+            let keep = st.view.replace_stack.len().saturating_sub(pop);
+            st.view.replace_stack.truncate(keep);
+            st.view.replace_stack.extend(push);
         }
         Action::Undo => undo_nav(st, &mut out, mode, |d, t| {
             UndoStep::Undo.take(d, entry.cursor, t)

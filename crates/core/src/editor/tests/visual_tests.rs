@@ -189,6 +189,139 @@ mod visual_swap_tests {
         assert_eq!(text(&st), "hello", "undo reverts the whole R session");
     }
 
+    // #727, nvim v0.12.6 (`--clean`): fixtures r727_* in tools/parity/oracle.py.
+    #[test]
+    fn replace_cr_stays_in_replace_and_bs_joins_it_back() {
+        // `lRX<CR>Y<Esc>` on "abcdef" → "aX" / "Ydef": the new line is still overwritten.
+        let st = run(
+            "abcdef",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterReplace,
+                Command::ReplaceType('X'),
+                Command::InsertNewline,
+                Command::ReplaceType('Y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "aX\nYdef");
+        // `RX<CR><BS><BS><Esc>` on "abc" → "abc": the first <BS> joins, the second restores `a`.
+        let st = run(
+            "abc",
+            &[
+                Command::EnterReplace,
+                Command::ReplaceType('X'),
+                Command::InsertNewline,
+                Command::ReplaceBackspace,
+                Command::ReplaceBackspace,
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "abc");
+        // `lRX<CR><BS><BS><Esc>` on "ab  cd" → "ab  cd": the blanks the break dropped come back.
+        let st = run(
+            "ab  cd",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterReplace,
+                Command::ReplaceType('X'),
+                Command::InsertNewline,
+                Command::ReplaceBackspace,
+                Command::ReplaceBackspace,
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "ab  cd");
+    }
+
+    #[test]
+    fn replace_cr_autoindents_and_smarttab_bs_takes_the_indent_back() {
+        // `wlRX<CR>Y<Esc>` on "  abcdef" → "  aX" / "  Ydef"; `wlRX<CR><BS><BS><Esc>` → "  aXcdef".
+        let lead = [
+            Command::Move(1, Motion::WordFwd),
+            Command::Move(1, Motion::Right),
+        ];
+        let typed = |tail: &[Command]| {
+            let mut cmds = lead.to_vec();
+            cmds.extend([
+                Command::EnterReplace,
+                Command::ReplaceType('X'),
+                Command::InsertNewline,
+            ]);
+            cmds.extend_from_slice(tail);
+            cmds.push(Command::EnterNormal);
+            text(&run("  abcdef", &cmds))
+        };
+        assert_eq!(typed(&[Command::ReplaceType('Y')]), "  aX\n  Ydef");
+        assert_eq!(typed(&[Command::ReplaceBackspace]), "  aX\ncdef");
+        assert_eq!(
+            typed(&[Command::ReplaceBackspace, Command::ReplaceBackspace]),
+            "  aXcdef"
+        );
+    }
+
+    #[test]
+    fn a_caret_jump_in_replace_starts_a_fresh_bs_run() {
+        // `Rxy<Left><Left><BS><Esc>` on "abcd" → "xycd": nothing typed before the jump comes back.
+        let st = run(
+            "abcd",
+            &[
+                Command::EnterReplace,
+                Command::ReplaceType('x'),
+                Command::ReplaceType('y'),
+                Command::Move(1, Motion::Left),
+                Command::Move(1, Motion::Left),
+                Command::ReplaceBackspace,
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "xycd");
+        // `Rxy<Left>Z<BS><Esc>` → "xycd": what is typed after the jump still comes back.
+        let st = run(
+            "abcd",
+            &[
+                Command::EnterReplace,
+                Command::ReplaceType('x'),
+                Command::ReplaceType('y'),
+                Command::Move(1, Motion::Left),
+                Command::ReplaceType('Z'),
+                Command::ReplaceBackspace,
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "xycd");
+        assert_eq!(st.cursor(), BytePos(0));
+    }
+
+    #[test]
+    fn virtual_replace_cr_moves_onto_the_next_line() {
+        // `lgRX<CR>Y<Esc>` on "abcdef" / "ghij" → "aX" / "Yhij": the rest of the line goes, the next
+        // line is overwritten; `lgRX<CR><BS><Esc>` → "aXcdef" / "ghij"; on the last line a line is added.
+        let typed = |initial: &str, tail: &[Command]| {
+            let mut cmds = vec![
+                Command::Move(1, Motion::Right),
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('X'),
+                Command::InsertNewline,
+            ];
+            cmds.extend_from_slice(tail);
+            cmds.push(Command::EnterNormal);
+            text(&run(initial, &cmds))
+        };
+        let y = Command::VirtualReplaceType('Y');
+        assert_eq!(typed("abcdef\nghij", std::slice::from_ref(&y)), "aX\nYhij");
+        assert_eq!(
+            typed("abcdef\nghij", &[Command::ReplaceBackspace]),
+            "aXcdef\nghij"
+        );
+        let bs = Command::ReplaceBackspace;
+        assert_eq!(
+            typed("abcdef\nghij", &[y.clone(), bs.clone(), bs.clone(), bs]),
+            "abcdef\nghij"
+        );
+        assert_eq!(typed("abcdef\n", &[y]), "aX\nY\n");
+    }
+
     #[test]
     fn ctrl_g_u_breaks_the_undo_group_mid_insert_session() {
         // `i ab <C-g>u cd <Esc>`: BreakUndo splits the insert session into two undo groups, so the first

@@ -10,14 +10,14 @@ pub(super) enum Action {
         edits: EditList,
         hint: GroupHint,
     },
-    /// A Replace-mode edit that also updates the `<BS>`-restore stack: apply `edits`, then `push` an entry
-    /// (`Some(orig)` overwrote / `None` appended) and/or `pop` one on backspace. Distinct from `Txn` only
-    /// because the stack mutation must ride with the edit.
+    /// A Replace-mode edit that also updates the `<BS>`-restore stack: apply `edits`, `pop` that many
+    /// entries (a backspace), then `push` one entry per char now before the cursor (`Some(orig)` overwrote
+    /// it / `None` added it). Distinct from `Txn` only because the stack mutation must ride with the edit.
     ReplaceTxn {
         edits: EditList,
         hint: GroupHint,
-        push: Option<Option<Vec<u8>>>,
-        pop: bool,
+        push: Vec<Option<Vec<u8>>>,
+        pop: usize,
     },
     Undo,
     Redo,

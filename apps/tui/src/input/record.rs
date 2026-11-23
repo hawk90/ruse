@@ -77,7 +77,23 @@ impl InputEngine {
                 });
             }
             if let Some(rec) = self.recording.as_mut() {
-                rec.insert.push(cmd.clone());
+                // A caret jump in Replace restarts the record as a plain `i` (nvim's `stop_arrow` writes
+                // "1i"), so the keys typed after it replay as Insert keys: they insert (#727). A body that
+                // switched into Replace itself (`i_<Insert>`) replays its overwrites as they are.
+                let as_insert = |rec: &ChangeIntent| {
+                    rec.lead == Command::EnterInsert
+                        && !rec.insert.iter().any(|c| {
+                            matches!(c, Command::EnterReplace | Command::EnterVirtualReplace)
+                        })
+                };
+                let body = match cmd {
+                    Command::ReplaceType(c) | Command::VirtualReplaceType(c) if as_insert(rec) => {
+                        Command::InsertChar(*c)
+                    }
+                    Command::ReplaceBackspace if as_insert(rec) => Command::DeleteBack,
+                    _ => cmd.clone(),
+                };
+                rec.insert.push(body);
                 // The `<Esc>` that leaves Insert (recorded here so replay leaves Insert too) closes the change.
                 if *cmd == Command::EnterNormal {
                     let closed = self.recording.take();
