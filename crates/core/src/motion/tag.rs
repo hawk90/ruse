@@ -41,10 +41,11 @@ pub(super) fn tag_span(b: &[u8], cur: usize, around: bool, count: u32) -> (usize
         let end = j + 1; // one past the `>`
         let interior = &b[start + 1..j];
         if interior.first() == Some(&b'/') {
-            // Close tag `</name>`: pop to the matching open, forming a pair.
+            // Close tag `</name>`: pop to the matching open, forming a pair. Names match without regard
+            // to case: nvim's `current_tagblock` searches with `\c`, so `<A>x</a>` is a block.
             let name = tag_name(&interior[1..]);
             while let Some((oname, os, oe)) = stack.pop() {
-                if oname == name {
+                if oname.eq_ignore_ascii_case(name) {
                     if os <= cur && cur < end {
                         enclosing.push((os, oe, start, end));
                     }
@@ -108,6 +109,36 @@ mod tag_object_tests {
         assert_eq!(char_span(b"plain text", 3, tag(false), 1), (3, 3));
         // A self-closing tag has no content to enclose the cursor.
         assert_eq!(char_span(b"<br/>x", 5, tag(true), 1), (5, 5));
+    }
+
+    /// nvim v0.12.6 (#760): open and close names match without regard to case.
+    #[test]
+    fn names_match_without_regard_to_case() {
+        let b = b"<A>x</a>";
+        assert_eq!(
+            char_span(b, 3, tag(false), 1),
+            (3, 4),
+            "dit on <A>x</a> deletes x"
+        );
+        assert_eq!(
+            char_span(b, 0, tag(false), 1),
+            (3, 4),
+            "from the open tag too"
+        );
+        assert_eq!(char_span(b"y<Div>x</DIV>z", 6, tag(true), 1), (1, 13));
+        let nested = b"<a><B>x</b></A>"; // <a>[0,15), <B>[3,11)
+        assert_eq!(
+            char_span(nested, 6, tag(true), 1),
+            (3, 11),
+            "dat = <B>x</b>"
+        );
+        assert_eq!(
+            char_span(nested, 6, tag(false), 2),
+            (3, 11),
+            "2dit = <a>'s inner"
+        );
+        // `<a><A>x</a></A>`: `</a>` closes the innermost open `<A>`, so `dit` deletes only `x`.
+        assert_eq!(char_span(b"<a><A>x</a></A>", 6, tag(false), 1), (6, 7));
     }
 
     #[test]

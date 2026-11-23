@@ -171433,6 +171433,575 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "i760_pct_quoted_open",
+      "lines": [
+        "(\"(\")"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(\"(\")"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_quoted_open_x",
+      "lines": [
+        "(\"(\")"
+      ],
+      "keys": "%x",
+      "expect": {
+        "text": [
+          "(\"(\""
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": ")",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_quoted_close_back",
+      "lines": [
+        "(\")\")"
+      ],
+      "keys": "$%",
+      "expect": {
+        "text": [
+          "(\")\")"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_from_in_quote",
+      "lines": [
+        "x \"(a)\" y"
+      ],
+      "keys": "f(%",
+      "expect": {
+        "text": [
+          "x \"(a)\" y"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_from_in_quote_skip",
+      "lines": [
+        "x \"( \")\" )\" y"
+      ],
+      "keys": "f(%",
+      "expect": {
+        "text": [
+          "x \"( \")\" )\" y"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_two_strings",
+      "lines": [
+        "(\"(\" \")\")"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(\"(\" \")\")"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_single_quote",
+      "lines": [
+        "(a '(' b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a '(' b)"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_d_quoted",
+      "lines": [
+        "(\"(\") z"
+      ],
+      "keys": "d%",
+      "expect": {
+        "text": [
+          " z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "(\"(\")",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_v_quoted",
+      "lines": [
+        "(\"(\") z"
+      ],
+      "keys": "v%d",
+      "expect": {
+        "text": [
+          " z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "(\"(\")",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_pct_escaped_quote",
+      "lines": [
+        "(\"\\\"(\" )"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(\"\\\"(\" )"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dit_mixed_case",
+      "lines": [
+        "<A>x</a>"
+      ],
+      "keys": "dit",
+      "expect": {
+        "text": [
+          "<A></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dit_mixed_case_inside",
+      "lines": [
+        "<A>x</a>"
+      ],
+      "keys": "fxdit",
+      "expect": {
+        "text": [
+          "<A></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dat_mixed_case",
+      "lines": [
+        "y<Div>x</DIV>z"
+      ],
+      "keys": "fxdat",
+      "expect": {
+        "text": [
+          "yz"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "<Div>x</DIV>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_cit_mixed_case",
+      "lines": [
+        "<P>hi</p>"
+      ],
+      "keys": "fhcitZ<Esc>",
+      "expect": {
+        "text": [
+          "<P>Z</p>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "hi",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_vit_mixed_case",
+      "lines": [
+        "<A>xy</a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          "<A></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "xy",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_yat_mixed_case",
+      "lines": [
+        "<B>x</b>"
+      ],
+      "keys": "fxyat$p",
+      "expect": {
+        "text": [
+          "<B>x</b><B>x</b>"
+        ],
+        "cursor": [
+          1,
+          15
+        ],
+        "reg_unnamed": {
+          "text": "<B>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "<B>x</b>",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dit_nested_mixed",
+      "lines": [
+        "<a><B>x</b></A>"
+      ],
+      "keys": "fx2dit",
+      "expect": {
+        "text": [
+          "<a></A>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<B>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dat_nested_mixed",
+      "lines": [
+        "<a><B>x</b></A>"
+      ],
+      "keys": "fxdat",
+      "expect": {
+        "text": [
+          "<a></A>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<B>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dit_mixed_attrs",
+      "lines": [
+        "<Div class=\"c\">x</div>"
+      ],
+      "keys": "fxdit",
+      "expect": {
+        "text": [
+          "<Div class=\"c\"></div>"
+        ],
+        "cursor": [
+          1,
+          15
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dit_mixed_multiline",
+      "lines": [
+        "<Div>",
+        "x",
+        "</dIV>"
+      ],
+      "keys": "jdit",
+      "expect": {
+        "text": [
+          "<Div></dIV>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "\nx\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i760_dit_same_tag_diff_case_nest",
+      "lines": [
+        "<a><A>x</a></A>"
+      ],
+      "keys": "fxdit",
+      "expect": {
+        "text": [
+          "<a><A></a></A>"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }

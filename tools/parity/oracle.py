@@ -5200,6 +5200,28 @@ FIXTURES: list[dict] = [
     {"name": "i761_5dis", "lines": ["A. B."], "keys": "5dis"},
     {"name": "i761_3dap", "lines": ["a", "", "b"], "keys": "3dap"},
     {"name": "i761_3daw_then_x", "lines": ["a b"], "keys": "3dawx"},
+    # --- #760 `%` across quotes, and tag objects matching names without regard to case. ---
+    {"name": "i760_pct_quoted_open", "lines": ['("(")'], "keys": "%"},
+    {"name": "i760_pct_quoted_open_x", "lines": ['("(")'], "keys": "%x"},
+    {"name": "i760_pct_quoted_close_back", "lines": ['(")")'], "keys": "$%"},
+    {"name": "i760_pct_from_in_quote", "lines": ['x "(a)" y'], "keys": "f(%"},
+    {"name": "i760_pct_from_in_quote_skip", "lines": ['x "( ")" )" y'], "keys": "f(%"},
+    {"name": "i760_pct_two_strings", "lines": ['("(" ")")'], "keys": "%"},
+    {"name": "i760_pct_single_quote", "lines": ["(a '(' b)"], "keys": "%"},
+    {"name": "i760_pct_d_quoted", "lines": ['("(") z'], "keys": "d%"},
+    {"name": "i760_pct_v_quoted", "lines": ['("(") z'], "keys": "v%d"},
+    {"name": "i760_pct_escaped_quote", "lines": ['("\\"(" )'], "keys": "%"},
+    {"name": "i760_dit_mixed_case", "lines": ["<A>x</a>"], "keys": "dit"},
+    {"name": "i760_dit_mixed_case_inside", "lines": ["<A>x</a>"], "keys": "fxdit"},
+    {"name": "i760_dat_mixed_case", "lines": ["y<Div>x</DIV>z"], "keys": "fxdat"},
+    {"name": "i760_cit_mixed_case", "lines": ["<P>hi</p>"], "keys": "fhcitZ<Esc>"},
+    {"name": "i760_vit_mixed_case", "lines": ["<A>xy</a>"], "keys": "fxvitd"},
+    {"name": "i760_yat_mixed_case", "lines": ["<B>x</b>"], "keys": "fxyat$p"},
+    {"name": "i760_dit_nested_mixed", "lines": ["<a><B>x</b></A>"], "keys": "fx2dit"},
+    {"name": "i760_dat_nested_mixed", "lines": ["<a><B>x</b></A>"], "keys": "fxdat"},
+    {"name": "i760_dit_mixed_attrs", "lines": ['<Div class="c">x</div>'], "keys": "fxdit"},
+    {"name": "i760_dit_mixed_multiline", "lines": ["<Div>", "x", "</dIV>"], "keys": "jdit"},
+    {"name": "i760_dit_same_tag_diff_case_nest", "lines": ["<a><A>x</a></A>"], "keys": "fxdit"},
 ]
 
 
