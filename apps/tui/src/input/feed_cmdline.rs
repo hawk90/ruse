@@ -535,9 +535,11 @@ impl InputEngine {
         let text = std::mem::take(&mut cl.buffer);
         // Expression-register prompt (`"=` / `<C-r>=`): hand the collected expression to the editor,
         // which evaluates it. `Paste` arms the `"=` register for the next paste; `Insert` splices the
-        // result at the caret. An empty/malformed expression degrades in the editor (empty result).
+        // result at the caret. A malformed expression degrades in the editor (empty result).
         if let Some(target) = expr {
             self.cmdline = None;
+            // An empty expression is the last one again (nvim's `expr_line`, #1342).
+            let text = self.take_expr_line(text);
             return match target {
                 ExprTarget::Paste => Feed::Cmd(Command::SetExprRegister(text)),
                 ExprTarget::Insert => Feed::Cmd(Command::InsertEval(text)),

@@ -139,6 +139,14 @@ pub enum Ex {
         /// `:put!` — above the addressed line instead of below it.
         above: bool,
     },
+    /// `:[line]put[!] ={expr}` (#1342) — put the result of `expr` LINEWISE through the `"=` register, as
+    /// [`Ex::Put`] puts a register. `expr` is the rest of the line up to a comment, with `\"` and `\|`
+    /// unescaped; an empty one means the last expression (nvim's `expr_line`).
+    PutExpr {
+        addr: LineAddr,
+        expr: String,
+        above: bool,
+    },
     /// `:set` / `:setlocal` / `:setglobal` and its arguments (#614, `set_cmd.rs`). The session runs it
     /// against the option values it and the core hold.
     SetOptions(super::set_cmd::SetLine),
@@ -649,8 +657,8 @@ pub fn parse_ex(line: &str) -> Ex {
                     left,
                     levels,
                 }
-            } else if let Some((addr, reg, above)) = parse_put(line) {
-                Ex::Put { addr, reg, above }
+            } else if let Some(put) = parse_put(line) {
+                put
             } else if let Some(ex) = parse_sort(line) {
                 ex
             } else if let Some(set) = super::set_cmd::parse_set_command(line) {

@@ -65,3 +65,38 @@ fn file_and_directory_messages() {
         "E186: No previous directory"
     );
 }
+
+/// `:put ={expr}` (#1342), against nvim v0.12.6: the result goes into `"=` and is put as lines; a bad
+/// expression is E15 naming it, and puts nothing; an empty one is the last expression, whether typed in a
+/// `:put =`, at a `"=` prompt or at an Insert `<C-r>=` prompt.
+#[test]
+fn put_expression_puts_its_result_and_reports_a_bad_one() {
+    let mut h = Headless::vim("a\n");
+    h.keys(":put ='x'..'y'<CR>");
+    assert_eq!(h.text(), "a\nxy\n");
+    assert_eq!(h.registers().get(Some('=')).text(), b"xy");
+    assert_eq!(h.status(), "");
+    // An empty expression reuses the last one; `''` still puts one (empty) line.
+    h.keys(":0put =<CR>:$put =''<CR>");
+    assert_eq!(h.text(), "xy\na\nxy\n\n");
+
+    let mut h = Headless::vim("a\nb\nc\nd\n");
+    h.keys(":3put =1+<CR>");
+    assert_eq!(h.text(), "a\nb\nc\nd\n");
+    assert_eq!(h.status(), "E15: Invalid expression: \"1+\"");
+    // The cursor is on the addressed line, as nvim's `ex_put` puts it before it reads the register.
+    assert_eq!(h.cursor_row_col(), (3, 0));
+    // The bad expression is the last one now.
+    h.keys(":put =<CR>");
+    assert_eq!(h.status(), "E15: Invalid expression: \"1+\"");
+
+    // With no expression ever typed, an empty one puts nothing and says nothing.
+    assert_eq!(status_after("a\n", ":put =<CR>"), "");
+
+    let mut h = Headless::vim("a\n");
+    h.keys("\"='q'<CR>p:put =<CR>");
+    assert_eq!(h.text(), "aq\nq\n");
+    let mut h = Headless::vim("a\n");
+    h.keys("i<C-r>='w'<CR><Esc>:put =<CR>");
+    assert_eq!(h.text(), "wa\nw\n");
+}

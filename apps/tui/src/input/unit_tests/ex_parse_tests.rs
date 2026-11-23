@@ -184,6 +184,51 @@ fn parse_put() {
     assert!(matches!(parse_ex("put ab"), Ex::Unknown(_)));
 }
 
+/// #1342: `:put ={expr}` takes the rest of the line as the expression, as nvim v0.12.6 reads it (the
+/// `i1342_*` oracle fixtures): the `=` may follow the verb or its `!` directly, an unescaped `"` starts a
+/// comment, and `\"` / `\|` lose their backslash.
+#[test]
+fn parse_put_expression() {
+    use ruse_core::LineAddr;
+    let put = |addr, expr: &str, above| Ex::PutExpr {
+        addr,
+        expr: expr.into(),
+        above,
+    };
+    assert_eq!(parse_ex("put ='z'"), put(LineAddr::Current, "'z'", false));
+    assert_eq!(parse_ex("put='z'"), put(LineAddr::Current, "'z'", false));
+    assert_eq!(parse_ex("pu ='z'"), put(LineAddr::Current, "'z'", false));
+    assert_eq!(parse_ex("0put ='z'"), put(LineAddr::Line(0), "'z'", false));
+    assert_eq!(parse_ex("$put ='z'"), put(LineAddr::Last, "'z'", false));
+    assert_eq!(parse_ex("put! ='z'"), put(LineAddr::Current, "'z'", true));
+    assert_eq!(parse_ex("put!='z'"), put(LineAddr::Current, "'z'", true));
+    assert_eq!(
+        parse_ex("put ='x'..'y'"),
+        put(LineAddr::Current, "'x'..'y'", false)
+    );
+    // Blanks after the `=` belong to the expression; the empty one is the last expression.
+    assert_eq!(parse_ex("put = 'z'"), put(LineAddr::Current, " 'z'", false));
+    assert_eq!(parse_ex("put ="), put(LineAddr::Current, "", false));
+    // `"` starts a comment (with the blanks before it gone); `\"` is a quote and `\|` a bar.
+    assert_eq!(parse_ex("put =\"a\""), put(LineAddr::Current, "", false));
+    assert_eq!(
+        parse_ex("put ='a' \" c"),
+        put(LineAddr::Current, "'a'", false)
+    );
+    assert_eq!(
+        parse_ex(r#"put =\"a\nb\""#),
+        put(LineAddr::Current, r#""a\nb""#, false)
+    );
+    assert_eq!(
+        parse_ex(r#"put =\"a\\\""#),
+        put(LineAddr::Current, r#""a\\""#, false)
+    );
+    assert_eq!(
+        parse_ex(r"put ='a'\|'b'"),
+        put(LineAddr::Current, "'a'|'b'", false)
+    );
+}
+
 /// #1234: the command name is the whole run of letters, so a word that only starts like a command is
 /// E492 (nvim v0.12.6, the `exn_*` oracle fixtures) and never runs that command.
 #[test]

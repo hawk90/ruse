@@ -17,13 +17,19 @@ impl EditorState {
     /// (the bare `:put` default). The cursor lands on the first non-blank of the LAST inserted line
     /// (verified against nvim v0.12.4). `reg` is the register name (`None` = the unnamed register); reading
     /// it reuses the shared [`RegisterStore`](crate::register::RegisterStore), never a new store. Returns
-    /// the number of lines inserted (0 — a no-op leaving the cursor put — if the register is empty).
+    /// the number of lines inserted (0 — a no-op leaving the cursor put — if the register was never
+    /// written). A register written with nothing (`qaq`, an expression that is `''`) puts one empty line,
+    /// as nvim does (#1342).
     pub fn put_lines(&mut self, addr: LineAddr, reg: Option<char>) -> usize {
         // Reuse the shared register store: read the named slot's bytes (unnamed when `reg` is None). The
         // put is a command read of that text: split on '\n' the same way (a normalized LINEWISE register
         // ends with a '\n', which adds no empty line; a CHARWISE one with no trailing newline still splits
         // into whole lines — the linewise-forcing rule), the cursor on the LAST inserted line.
-        let reg_text = self.view.registers.get(reg).text().to_vec();
+        let slot = self.view.registers.get(reg);
+        let mut reg_text = slot.text().to_vec();
+        if reg_text.is_empty() && slot.is_set() {
+            reg_text.push(b'\n');
+        }
         self.read_lines(addr, &reg_text, true)
     }
 

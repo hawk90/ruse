@@ -25,18 +25,12 @@ impl Session {
     /// line (a charwise register is still put as whole lines — the linewise-forcing rule).
     pub(super) fn ex_put(&mut self, addr: LineAddr, reg: Option<char>, above: bool) {
         let Session { ed, ui_opts, .. } = self;
-        let put_addr = addr;
+        let target = put_target(ed, addr);
         // `:put!` puts above the line (#609).
         let addr = if above {
             crate::app::ex_more::put_above(addr)
         } else {
             addr
-        };
-        let target = {
-            let pane = ed.ws.focused();
-            let b = pane.doc.bytes();
-            let cur = ruse_core::pos::line_of(b, pane.view.cursor());
-            put_addr.insert_index(cur, crate::app::dispatch::line_count(b))
         };
         let n = ed.ws.resolve_addr(addr).map_or(0, |dest| {
             lines_outcome(&run_ex(
@@ -57,6 +51,38 @@ impl Session {
                 .error(format!("E353: Nothing in register {}", reg.unwrap_or('"')));
         } else {
             ed.status.clear();
+        }
+    }
+
+    /// `:[line]put[!] ={expr}` (#1342): evaluate `expr` (an empty one is the last expression, nvim's
+    /// `expr_line`), store the result in the `"=` register and put it as [`Session::ex_put`] puts a
+    /// register. An expression that does not evaluate puts nothing: `E15` with the cursor on the
+    /// addressed line, as nvim's `ex_put` moves it there before it reads the register. With no expression
+    /// at all (an empty one, none typed before) nothing is put and nothing is said.
+    pub(super) fn ex_put_expr(&mut self, addr: LineAddr, expr: String, above: bool) {
+        let expr = self.engine.take_expr_line(expr);
+        let ed = &mut self.ed;
+        // Empty here: no expression was ever typed, and nvim puts nothing without a message.
+        let failed = match (!expr.is_empty()).then(|| ruse_core::eval_expr(&expr)) {
+            Some(Ok(bytes)) => {
+                let value = ruse_core::Register::expr_result(bytes);
+                let name = Some('=');
+                run_ex(
+                    ExCmd::Register { name, value },
+                    &mut ed.ws,
+                    &mut ed.recorded,
+                );
+                return self.ex_put(addr, name, above);
+            }
+            Some(Err(_)) => true,
+            None => false,
+        };
+        if let Some(line) = put_target(ed, addr) {
+            goto_line(line.max(1), ed);
+        }
+        if failed {
+            ed.status
+                .error(format!("E15: Invalid expression: \"{expr}\""));
         }
     }
 
@@ -441,4 +467,13 @@ impl Session {
             n => format!("{n} windows closed"),
         });
     }
+}
+
+/// The 1-based line a `:put` at `addr` leaves the cursor on when it puts nothing (the addressed line, as
+/// nvim's `ex_put` moves the cursor there before it reads the register), or `None` off the buffer.
+fn put_target(ed: &Editing, addr: LineAddr) -> Option<usize> {
+    let pane = ed.ws.focused();
+    let b = pane.doc.bytes();
+    let cur = ruse_core::pos::line_of(b, pane.view.cursor());
+    addr.insert_index(cur, crate::app::dispatch::line_count(b))
 }

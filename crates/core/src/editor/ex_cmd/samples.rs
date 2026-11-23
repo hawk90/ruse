@@ -208,6 +208,10 @@ pub(crate) fn samples() -> Vec<ExCmd> {
             name: Some('a'),
             value: Register::blockwise_width(b"ab\nc".to_vec(), 4),
         },
+        ExCmd::Register {
+            name: Some('='),
+            value: Register::expr_result(b"x\n".to_vec()),
+        },
         ExCmd::Begin(GroupKind::Normal),
         ExCmd::Begin(GroupKind::Global),
         ExCmd::Begin(GroupKind::Macro),

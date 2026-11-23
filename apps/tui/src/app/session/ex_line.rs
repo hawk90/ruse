@@ -457,6 +457,7 @@ impl Session {
             | Ex::Copy(..)
             | Ex::Shift { .. }
             | Ex::Put { .. }
+            | Ex::PutExpr { .. }
             | Ex::Sort(..)
             | Ex::Retab { .. }
             | Ex::Substitute(..)
@@ -771,6 +772,7 @@ impl Session {
                 levels,
             } => self.ex_shift(range, left, levels),
             Ex::Put { addr, reg, above } => self.ex_put(addr, reg, above),
+            Ex::PutExpr { addr, expr, above } => self.ex_put_expr(addr, expr, above),
             // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
             mut ex @ Ex::Sort(..) => {
                 if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
