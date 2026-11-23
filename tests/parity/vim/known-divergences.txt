@@ -13,6 +13,7 @@ v_iw_change # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a lin
 v_swap_ends_o # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 visual_seq_negatives # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_dollar_d_visual # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
+v_caret_all_blank_line_d # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 visual_o_swap_then_extend # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 visual_unmatched_paren_fwd_delete # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 v_l_stops_at_last_char # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)

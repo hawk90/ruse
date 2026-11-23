@@ -611,6 +611,703 @@
       }
     },
     {
+      "name": "caret_all_blank_line_bare",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "^",
+      "expect": {
+        "text": [
+          "    ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "caret_all_blank_from_col0",
+      "lines": [
+        "   ",
+        "x"
+      ],
+      "keys": "0^",
+      "expect": {
+        "text": [
+          "   ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "caret_all_blank_tabs",
+      "lines": [
+        "\t \t",
+        "x"
+      ],
+      "keys": "^",
+      "expect": {
+        "text": [
+          "\t \t",
+          "x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gcaret_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "g^",
+      "expect": {
+        "text": [
+          "    ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "underscore_all_blank_line",
+      "lines": [
+        "x",
+        "    "
+      ],
+      "keys": "j_",
+      "expect": {
+        "text": [
+          "x",
+          "    "
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "j_onto_all_blank_line_caret",
+      "lines": [
+        "abcdef",
+        "   "
+      ],
+      "keys": "j^",
+      "expect": {
+        "text": [
+          "abcdef",
+          "   "
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "d_caret_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "0d^",
+      "expect": {
+        "text": [
+          " ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "   ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "regs": {
+          "1": {
+            "text": "",
+            "type": ""
+          },
+          "2": {
+            "text": "",
+            "type": ""
+          },
+          "3": {
+            "text": "",
+            "type": ""
+          },
+          "4": {
+            "text": "",
+            "type": ""
+          },
+          "5": {
+            "text": "",
+            "type": ""
+          },
+          "6": {
+            "text": "",
+            "type": ""
+          },
+          "7": {
+            "text": "",
+            "type": ""
+          },
+          "8": {
+            "text": "",
+            "type": ""
+          },
+          "9": {
+            "text": "",
+            "type": ""
+          },
+          "-": {
+            "text": "   ",
+            "type": "charwise"
+          }
+        }
+      }
+    },
+    {
+      "name": "c_caret_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "0c^Z<Esc>",
+      "expect": {
+        "text": [
+          "Z ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "   ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "plus_onto_all_blank_line",
+      "lines": [
+        "x",
+        "    "
+      ],
+      "keys": "+",
+      "expect": {
+        "text": [
+          "x",
+          "    "
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "minus_onto_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "j-",
+      "expect": {
+        "text": [
+          "    ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "I_on_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "IZ<Esc>",
+      "expect": {
+        "text": [
+          "    Z",
+          "x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "y_caret_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "0y^P",
+      "expect": {
+        "text": [
+          "       ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "   ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "   ",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "d_gcaret_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "0dg^",
+      "expect": {
+        "text": [
+          " ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "   ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "regs": {
+          "1": {
+            "text": "",
+            "type": ""
+          },
+          "2": {
+            "text": "",
+            "type": ""
+          },
+          "3": {
+            "text": "",
+            "type": ""
+          },
+          "4": {
+            "text": "",
+            "type": ""
+          },
+          "5": {
+            "text": "",
+            "type": ""
+          },
+          "6": {
+            "text": "",
+            "type": ""
+          },
+          "7": {
+            "text": "",
+            "type": ""
+          },
+          "8": {
+            "text": "",
+            "type": ""
+          },
+          "9": {
+            "text": "",
+            "type": ""
+          },
+          "-": {
+            "text": "   ",
+            "type": "charwise"
+          }
+        }
+      }
+    },
+    {
+      "name": "d_caret_all_blank_tabs",
+      "lines": [
+        "\t \t",
+        "x"
+      ],
+      "keys": "0d^",
+      "expect": {
+        "text": [
+          "\t",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\t ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "regs": {
+          "1": {
+            "text": "",
+            "type": ""
+          },
+          "2": {
+            "text": "",
+            "type": ""
+          },
+          "3": {
+            "text": "",
+            "type": ""
+          },
+          "4": {
+            "text": "",
+            "type": ""
+          },
+          "5": {
+            "text": "",
+            "type": ""
+          },
+          "6": {
+            "text": "",
+            "type": ""
+          },
+          "7": {
+            "text": "",
+            "type": ""
+          },
+          "8": {
+            "text": "",
+            "type": ""
+          },
+          "9": {
+            "text": "",
+            "type": ""
+          },
+          "-": {
+            "text": "\t ",
+            "type": "charwise"
+          }
+        }
+      }
+    },
+    {
+      "name": "v_caret_all_blank_line_d",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "0v^d",
+      "expect": {
+        "text": [
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "    ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            3
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_caret_all_blank_line_esc",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "0v^<Esc>",
+      "expect": {
+        "text": [
+          "    ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "d_caret_count_all_blank_line",
+      "lines": [
+        "    ",
+        "x"
+      ],
+      "keys": "03d^",
+      "expect": {
+        "text": [
+          " ",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "   ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "regs": {
+          "1": {
+            "text": "",
+            "type": ""
+          },
+          "2": {
+            "text": "",
+            "type": ""
+          },
+          "3": {
+            "text": "",
+            "type": ""
+          },
+          "4": {
+            "text": "",
+            "type": ""
+          },
+          "5": {
+            "text": "",
+            "type": ""
+          },
+          "6": {
+            "text": "",
+            "type": ""
+          },
+          "7": {
+            "text": "",
+            "type": ""
+          },
+          "8": {
+            "text": "",
+            "type": ""
+          },
+          "9": {
+            "text": "",
+            "type": ""
+          },
+          "-": {
+            "text": "   ",
+            "type": "charwise"
+          }
+        }
+      }
+    },
+    {
       "name": "dG_to_last_line",
       "lines": [
         "alpha",

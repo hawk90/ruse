@@ -108,6 +108,19 @@ pub(crate) fn first_non_blank(b: &[u8], line_start_pos: usize) -> usize {
     i
 }
 
+/// Vim's `^` (`beginline(BL_WHITE | BL_FIX)`): the first non-blank of the line containing `pos`, but on an
+/// all-blank line the LAST blank, never the line end past it (#762). An empty line stays at its start.
+/// [`first_non_blank`] keeps the line end there, which is Emacs `back-to-indentation` and Vim `I`.
+pub(crate) fn first_non_blank_fix(b: &[u8], pos: usize) -> usize {
+    let ls = line_start(b, pos);
+    let t = first_non_blank(b, ls);
+    if t > ls && t == line_end(b, ls) {
+        prev_grapheme(b, t)
+    } else {
+        t
+    }
+}
+
 /// The last non-blank char of the line containing `pos` (Vim `g_`), or the line start when the line is
 /// blank/empty. Lands ON the char (like `$`), not past it.
 pub(super) fn last_non_blank(b: &[u8], pos: usize) -> usize {
