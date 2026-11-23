@@ -2,8 +2,8 @@
 //! one-shot `{count}gr{char}`.
 
 use super::{
-    edit, motion, next_boundary, nop, one, prev_boundary, prev_grapheme, BytePos, Command, Edit,
-    EditorState, GroupHint, Mode, Plan,
+    auto_indents, edit, motion, next_boundary, nop, one, prev_boundary, prev_grapheme, BytePos,
+    Command, Edit, EditorState, GroupHint, Mode, Plan,
 };
 use crate::editor::planner::MAX_PUT_BYTES;
 use crate::editor::Action;
@@ -20,6 +20,7 @@ pub(super) fn plan_replace_typed(
     match cmd {
         Command::ReplaceType(c) => replace_type(b, cur, hint, c),
         Command::ReplaceBackspace => replace_backspace(st, b, cur, hint),
+        Command::InsertNewline => replace_newline(st, b, cur, hint),
         Command::VirtualReplaceType(c) => plan_virtual_replace_type(st, b, cur, *c, hint),
         Command::VirtualReplaceChar(count, c) => {
             plan_virtual_replace_char(st, b, cur, *count, *c, hint)
@@ -39,51 +40,133 @@ fn replace_type(b: &[u8], cur: usize, hint: GroupHint, c: &char) -> Plan {
         let nb = next_boundary(b, cur);
         (
             one(Edit::replace(BytePos(cur), nb - cur, typed)),
-            Some(Some(b[cur..nb].to_vec())),
+            vec![Some(b[cur..nb].to_vec())],
         )
     } else {
         // At end-of-line there is nothing to overwrite: append, remembered as `None` (backspace deletes).
-        (one(Edit::insert(BytePos(cur), typed)), Some(None))
+        (one(Edit::insert(BytePos(cur), typed)), vec![None])
     };
     Plan {
         action: Action::ReplaceTxn {
             edits,
             hint,
             push,
-            pop: false,
+            pop: 0,
         },
         is_edit: true,
         ..nop(cur + tn, Mode::Replace)
     }
 }
 
+/// `<CR>` in Replace (`R`) and Virtual Replace (`gR`) mode, nvim's `ins_eol` → `open_line`: the new line
+/// takes the autoindent, and every char it puts before the cursor goes on the `<BS>` stack, so `<BS>`
+/// joins the line back and restores what the break took (#727).
+///
+/// `R` splits the line at the cursor; the blanks after it go (they come back with the line break). `gR`
+/// keeps the text below in place: the rest of the line is deleted and replacing goes on at the start of
+/// the next line, the indent overwriting its first chars; only on the last line is a line added.
+fn replace_newline(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) -> Plan {
+    let mode = st.view.mode;
+    let (ls, le) = (line_start(b, cur), line_end(b, cur));
+    let indents = auto_indents(st);
+    let pad = if indents {
+        st.view
+            .indent
+            .open_indent(b, ls, cur, true, &st.view.format.cinwords)
+            .0
+    } else {
+        Vec::new()
+    };
+    let mut ins = Vec::with_capacity(pad.len() + 1);
+    ins.push(b'\n');
+    ins.extend_from_slice(&pad);
+    let cursor = cur + ins.len();
+    // `<BS>` over the break puts back the text the edit took from `[cur, end)` other than the break
+    // itself; each indent char overwrote one of the next line's chars (`gR`) or was added.
+    let (end, broken, mut push): (usize, Vec<u8>, Vec<Option<Vec<u8>>>) =
+        if mode == Mode::VirtualReplace && le + 1 < b.len() {
+            let mut end = le + 1;
+            let mut push = Vec::with_capacity(pad.len() + 1);
+            push.push(None);
+            for _ in &pad {
+                if end < b.len() && b[end] != b'\n' {
+                    let nb = next_boundary(b, end);
+                    push.push(Some(b[end..nb].to_vec()));
+                    end = nb;
+                } else {
+                    push.push(None);
+                }
+            }
+            (end, b[cur..=le].to_vec(), push)
+        } else if mode == Mode::VirtualReplace {
+            (le, b[cur..le].to_vec(), vec![None; pad.len() + 1])
+        } else {
+            let mut after = cur;
+            while indents && after < le && matches!(b[after], b' ' | b'\t') {
+                after += 1;
+            }
+            (after, b[cur..after].to_vec(), vec![None; pad.len() + 1])
+        };
+    if !broken.is_empty() {
+        push[0] = Some(broken);
+    }
+    Plan {
+        action: Action::ReplaceTxn {
+            edits: one(Edit::replace(BytePos(cur), end - cur, ins)),
+            hint,
+            push,
+            pop: 0,
+        },
+        is_edit: true,
+        ..nop(cursor, mode)
+    }
+}
+
 /// Shared by Replace (`R`) and Virtual Replace (`gR`) — the restore stack is identical; the mode is
 /// preserved so `<BS>` stays in whichever replace mode is active.
+///
+/// In the indent `'smarttab'` steps back to the previous shiftwidth stop as in Insert (nvim's `ins_bs`),
+/// taking back every char it crosses; a char typed before the run began (a caret jump, the session start)
+/// is crossed but kept.
 fn replace_backspace(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) -> Plan {
-    match st.view.replace_stack.last() {
+    let stack = &st.view.replace_stack;
+    if stack.is_empty() {
         // At the session start `<BS>` only moves the cursor left (Vim does not restore past the start).
-        None => {
-            let ls = line_start(b, cur);
-            let c = if cur > ls { prev_grapheme(b, cur) } else { cur };
-            nop(c, st.view.mode)
+        let ls = line_start(b, cur);
+        let c = if cur > ls { prev_grapheme(b, cur) } else { cur };
+        return nop(c, st.view.mode);
+    }
+    let ls = line_start(b, cur);
+    let from = match st.view.indent.backspace(b, ls, cur, st.view.typed_space) {
+        // A step that lands between two stops would retype spaces; that rare case takes one char.
+        Some((from, 0)) => from,
+        _ => prev_boundary(b, cur),
+    };
+    // The chars in `[from, cur)`, last first, each paired with the newest entry not yet used.
+    let mut back = Vec::new();
+    let mut at = cur;
+    while at > from {
+        let start = prev_boundary(b, at);
+        back.push(start..at);
+        at = start;
+    }
+    let pop = back.len().min(stack.len());
+    let mut restored = Vec::new();
+    for (k, span) in back.iter().enumerate().rev() {
+        match stack.len().checked_sub(k + 1) {
+            Some(i) => restored.extend_from_slice(stack[i].as_deref().unwrap_or_default()),
+            None => restored.extend_from_slice(&b[span.clone()]),
         }
-        Some(entry) => {
-            let start = prev_boundary(b, cur); // the last typed char occupies [start, cur)
-            let edits = match entry {
-                Some(orig) => one(Edit::replace(BytePos(start), cur - start, orig.clone())),
-                None => one(Edit::delete(BytePos(start), cur - start)),
-            };
-            Plan {
-                action: Action::ReplaceTxn {
-                    edits,
-                    hint,
-                    push: None,
-                    pop: true,
-                },
-                is_edit: true,
-                ..nop(start, st.view.mode)
-            }
-        }
+    }
+    Plan {
+        action: Action::ReplaceTxn {
+            edits: one(Edit::replace(BytePos(from), cur - from, restored)),
+            hint,
+            push: Vec::new(),
+            pop,
+        },
+        is_edit: true,
+        ..nop(from, st.view.mode)
     }
 }
 
@@ -103,7 +186,7 @@ fn plan_virtual_replace_type(
     let le = line_end(b, cur);
     let (edits, push, cursor) = if cur >= le {
         // End-of-line: nothing to overwrite — append (backspace deletes it).
-        (one(Edit::insert(BytePos(cur), typed)), Some(None), cur + tn)
+        (one(Edit::insert(BytePos(cur), typed)), vec![None], cur + tn)
     } else if b[cur] == b'\t' {
         // Over a TAB: it spans `w` virtual columns to the next tabstop. While more than one column
         // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column, replace
@@ -112,11 +195,11 @@ fn plan_virtual_replace_type(
         let vcol = motion::vcol_of(b, ls, cur, st.view.indent.tabs());
         let w = st.view.indent.tabs().padding(vcol);
         if w > 1 {
-            (one(Edit::insert(BytePos(cur), typed)), Some(None), cur + tn)
+            (one(Edit::insert(BytePos(cur), typed)), vec![None], cur + tn)
         } else {
             (
                 one(Edit::replace(BytePos(cur), 1, typed)),
-                Some(Some(vec![b'\t'])),
+                vec![Some(vec![b'\t'])],
                 cur + tn,
             )
         }
@@ -125,7 +208,7 @@ fn plan_virtual_replace_type(
         let nb = next_boundary(b, cur);
         (
             one(Edit::replace(BytePos(cur), nb - cur, typed)),
-            Some(Some(b[cur..nb].to_vec())),
+            vec![Some(b[cur..nb].to_vec())],
             cur + tn,
         )
     };
@@ -134,7 +217,7 @@ fn plan_virtual_replace_type(
             edits,
             hint,
             push,
-            pop: false,
+            pop: 0,
         },
         is_edit: true,
         ..nop(cursor, Mode::VirtualReplace)

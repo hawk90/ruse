@@ -728,6 +728,14 @@ impl InputEngine {
         if key.code == KeyCode::Insert && key.modifiers.is_empty() && mode == Mode::Replace {
             return self.action(Command::EnterInsert);
         }
+        // The unmodified cursor keys move the caret as in Insert (`:help ins-special-special`): the jump
+        // breaks the undo sequence, starts a fresh run whose `<BS>` restores nothing typed before it, and
+        // restarts the `.` record as a plain insert (nvim's `stop_arrow` appends "1i", #727).
+        if key.modifiers.is_empty() {
+            if let Some(cmd) = insert_cursor_command(key.code) {
+                return self.insert_cursor_move(cmd);
+            }
+        }
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Replace).resolve(&key.code) {
             let cmd = value.clone();
             return self.action(cmd);
