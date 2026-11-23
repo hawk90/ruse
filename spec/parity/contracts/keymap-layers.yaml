@@ -49,8 +49,8 @@ model:
   why_not_flat: >
     A flat map per mode is what the shipped engine has, and it cannot express Emacs's major-mode
     tier or Helix's derived mode without a special case per profile. The special cases are the
-    failure mode this whole layer exists to prevent: `apps/tui/src/input.rs` already special-cases
-    Insert ahead of a single `Feed::Ignored` fallthrough, which is one `closed/ignore` policy
+    failure mode this whole layer exists to prevent: `apps/tui/src/input.rs` (now `input/mod.rs`)
+    special-cased Insert ahead of a single `Feed::Ignored` fallthrough, which is one `closed/ignore` policy
     standing in for the five `open` ones vim-style.yaml enumerates.
 
 # ---------------------------------------------------------------------------------------------
