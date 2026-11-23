@@ -92,6 +92,7 @@ proptest! {
                     || !e.activations.is_empty()
                     || e.insert.ctrl_g
                     || e.insert.ctrl_r
+                    || e.insert.ctrl_x // the `i_CTRL-X` submode awaits its selector (#602)
                     || e.insert.keep_undo // `CTRL-G U` arms the next `<Left>`/`<Right>` (#1076)
                     || e.cmdline.is_some(); // an open command-line namespace is real pending state (F-026)
                 prop_assert!(has_state, "Feed::Pending but the engine is idle");
@@ -102,6 +103,7 @@ proptest! {
                 prop_assert!(e.activations.is_empty(), "one-shot leaked after {:?}", feed);
                 prop_assert!(!e.insert.ctrl_g, "ctrl-g prefix leaked after {:?}", feed);
                 prop_assert!(!e.insert.ctrl_r, "ctrl-r prefix leaked after {:?}", feed);
+                prop_assert!(!e.insert.ctrl_x, "ctrl-x submode leaked after {:?}", feed);
             }
         }
     }

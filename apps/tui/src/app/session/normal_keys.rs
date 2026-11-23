@@ -378,7 +378,7 @@ impl Session {
     }
 
     /// The Insert-mode keys the session resolves for the engine: `CTRL-E`/`CTRL-Y`, the page keys,
-    /// `CTRL-N`/`CTRL-P` and `CTRL-X CTRL-L`. Whether one took `key`.
+    /// `CTRL-N`/`CTRL-P` and `CTRL-X CTRL-L`/`CTRL-N`/`CTRL-P`. Whether one took `key`.
     pub(super) fn insert_chord_owns(
         &mut self,
         key: KeyEvent,
@@ -431,10 +431,18 @@ impl Session {
         // keys just step the cached cycle. The engine emits (and dot-records) a `CompleteWord` swapping the
         // completion region. Guarded by `insert_plain_text_ctx` (a pending Insert prefix still owns its key).
         // Other completion sources / the popup menu are out of scope for this slice (deferred).
-        if vim_insert && (is_ctrl(key, 'n') || is_ctrl(key, 'p')) && engine.insert_plain_text_ctx()
+        // `i_CTRL-X CTRL-N` / `CTRL-X CTRL-P` search the current buffer only — the same source this
+        // `CTRL-N`/`CTRL-P` already uses — so the submode key starts a fresh keyword cycle (#602).
+        let ctrl_x_keyword = engine.insert_ctrl_x_pending();
+        if vim_insert
+            && (is_ctrl(key, 'n') || is_ctrl(key, 'p'))
+            && (ctrl_x_keyword || engine.insert_plain_text_ctx())
         {
             let forward = is_ctrl(key, 'n');
-            let feed = if engine.completion_active() {
+            if ctrl_x_keyword {
+                engine.end_insert_ctrl_x();
+            }
+            let feed = if engine.completion_active() && !ctrl_x_keyword {
                 engine.complete_cycle(forward)
             } else {
                 let (base, cands) = ed.ws.keyword_completion();
@@ -449,8 +457,8 @@ impl Session {
         // armed the submode in the engine (`insert_ctrl_x_pending`); this `CTRL-L` resolves the candidate
         // lines here (the engine has no buffer — the same split as `i_CTRL-N`) and starts the cycle. A bare
         // `CTRL-L` while a cycle is already active steps it FORWARD (nvim's whole-line continuation key);
-        // `CTRL-N`/`CTRL-P` cycle it too (the block above). Deferred: `CTRL-X CTRL-N/CTRL-P` (local keyword)
-        // and `CTRL-X CTRL-F` (filename) sources, and the popup menu — all out of scope for this slice.
+        // `CTRL-N`/`CTRL-P` cycle it too (the block above). Deferred: the `CTRL-X CTRL-F` (filename) and other
+        // sources, and the popup menu — all out of scope for this slice.
         if vim_insert && is_ctrl(key, 'l') {
             if engine.insert_ctrl_x_pending() {
                 let (base, cands) = ed.ws.line_completion();

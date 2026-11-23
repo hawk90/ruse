@@ -1060,36 +1060,35 @@ fn insert_ctrl_n_dot_repeats_literal_text() {
 /// for prefix "foobar" on a fresh last line: foobar baz, foobar qux, <orig "foobar"> (the two identical
 /// "foobar baz" lines dedupe to one).
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
 fn insert_ctrl_x_ctrl_l_completes_and_cycles_lines() {
     let mut h = session("foobar baz\nfoobar qux\nfoobar baz\nhello world");
     feed_str(&mut h, "Gofoobar"); // open a fresh last line, type the prefix "foobar"
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar"
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar\n"
     );
     feed_str(&mut h, "<C-x><C-l>");
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar baz",
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar baz\n",
         "C-x C-l → first matching line"
     );
     feed_str(&mut h, "<C-l>");
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux",
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux\n",
         "bare C-l → next matching line"
     );
     feed_str(&mut h, "<C-l>");
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar",
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar\n",
         "next C-l → back to the original typed text"
     );
     feed_str(&mut h, "<C-l>");
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar baz",
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar baz\n",
         "next C-l wraps → first line again"
     );
 }
@@ -1097,26 +1096,25 @@ fn insert_ctrl_x_ctrl_l_completes_and_cycles_lines() {
 /// `CTRL-N` / `CTRL-P` cycle an ACTIVE whole-line completion just like the keyword cycle: from the first
 /// selected line `C-N` advances and `C-P` retreats, through the same `[candidates…, ORIGINAL]` stops.
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
 fn insert_ctrl_x_ctrl_l_cycles_with_ctrl_n_and_ctrl_p() {
     let mut h = session("foobar baz\nfoobar qux\nfoobar baz\nhello world");
     feed_str(&mut h, "Gofoobar<C-x><C-l>"); // → "foobar baz" (first candidate)
     feed_str(&mut h, "<C-n>");
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux",
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux\n",
         "C-n advances to the next line"
     );
     feed_str(&mut h, "<C-n>");
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar",
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar\n",
         "C-n reaches the original text"
     );
     feed_str(&mut h, "<C-p>");
     assert_eq!(
         buf(&h),
-        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux",
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux\n",
         "C-p retreats to the previous line"
     );
 }
@@ -1125,14 +1123,13 @@ fn insert_ctrl_x_ctrl_l_cycles_with_ctrl_n_and_ctrl_p() {
 /// with two leading spaces) matches a 4-space-indented "    indented alpha" and the result is
 /// "  indented alpha" — the typed indent preserved, the candidate's own indent dropped (nvim v0.12.4).
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
 fn insert_ctrl_x_ctrl_l_ignores_indent_but_keeps_current() {
     let mut h = session("    indented alpha\nplain beta");
     feed_str(&mut h, "Go  in"); // fresh line, two spaces + "in"
     feed_str(&mut h, "<C-x><C-l>");
     assert_eq!(
         buf(&h),
-        "    indented alpha\nplain beta\n  indented alpha",
+        "    indented alpha\nplain beta\n  indented alpha\n",
         "indent ignored for match; current line's own indent preserved"
     );
 }
@@ -1141,95 +1138,93 @@ fn insert_ctrl_x_ctrl_l_ignores_indent_but_keeps_current() {
 /// "foo bar" and "    foo bar" offer ONE "foo bar" candidate. Order is backward-from-caret, so "foo baz"
 /// (just above) comes first.
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
 fn insert_ctrl_x_ctrl_l_dedupes_by_content() {
     let mut h = session("foo bar\n    foo bar\nfoo baz");
     feed_str(&mut h, "Gofoo"); // new last line, prefix "foo"
     feed_str(&mut h, "<C-x><C-l>");
     assert_eq!(
         buf(&h),
-        "foo bar\n    foo bar\nfoo baz\nfoo baz",
+        "foo bar\n    foo bar\nfoo baz\nfoo baz\n",
         "first candidate is the nearest line above (backward scan)"
     );
     feed_str(&mut h, "<C-l>");
     assert_eq!(
         buf(&h),
-        "foo bar\n    foo bar\nfoo baz\nfoo bar",
+        "foo bar\n    foo bar\nfoo baz\nfoo bar\n",
         "next candidate is 'foo bar' (both indented/plain copies dedupe to one)"
     );
     feed_str(&mut h, "<C-l>");
     assert_eq!(
         buf(&h),
-        "foo bar\n    foo bar\nfoo baz\nfoo",
+        "foo bar\n    foo bar\nfoo baz\nfoo\n",
         "only two candidates → next C-l returns to the original"
     );
 }
 
 /// A prefix no line starts with is a no-op (Vim bells; the buffer is untouched and Insert continues).
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
 fn insert_ctrl_x_ctrl_l_no_match_is_noop() {
     let mut h = session("foo bar\nbaz");
     feed_str(&mut h, "Gozz"); // prefix "zz" — no line starts with it
     feed_str(&mut h, "<C-x><C-l>");
     assert_eq!(
         buf(&h),
-        "foo bar\nbaz\nzz",
+        "foo bar\nbaz\nzz\n",
         "no candidate → nothing changes"
     );
     feed_str(&mut h, "x<Esc>"); // still in Insert: typing continues normally
     assert_eq!(
         buf(&h),
-        "foo bar\nbaz\nzzx",
+        "foo bar\nbaz\nzzx\n",
         "completion was inert, insert continues"
     );
 }
 
 /// Any other key ACCEPTS the current line and ends completion; typing then resumes normally.
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
 fn insert_ctrl_x_ctrl_l_accept_on_other_key() {
     let mut h = session("hello world");
     feed_str(&mut h, "ohel<C-x><C-l>!<Esc>"); // complete → "hello world", then '!' appends
     assert_eq!(
         buf(&h),
-        "hello world\nhello world!",
+        "hello world\nhello world!\n",
         "other key accepts the completed line"
     );
 }
 
-/// A `CTRL-X` submode armed then cancelled by an out-of-scope key does NOT complete; the deferred
-/// `CTRL-X CTRL-N` (local keyword) is such a cancel here — the buffer is untouched and Insert continues.
+/// `CTRL-X CTRL-N` completes a keyword from the current buffer (not a whole line), and an unsupported
+/// selector (`CTRL-F`, the deferred filename source) cancels the submode cleanly; Insert continues after
+/// both (nvim v0.12.6).
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
-fn insert_ctrl_x_then_unhandled_key_cancels_submode() {
+fn insert_ctrl_x_ctrl_n_completes_a_keyword_and_unhandled_key_cancels() {
     let mut h = session("hello world");
-    feed_str(&mut h, "ohel<C-x><C-n>"); // C-x C-n is out of scope → cancels, no completion
+    feed_str(&mut h, "ohel<C-x><C-n>");
     assert_eq!(
         buf(&h),
-        "hello world\nhel",
-        "C-x C-n cancels; no whole-line completion"
+        "hello world\nhello\n",
+        "C-x C-n completes the keyword, not the line"
     );
     feed_str(&mut h, "p<Esc>");
+    assert_eq!(buf(&h), "hello world\nhellop\n", "insert continues");
+    feed_str(&mut h, "ozz<C-x><C-f>q<Esc>");
     assert_eq!(
         buf(&h),
-        "hello world\nhelp",
-        "insert continues after the cancelled submode"
+        "hello world\nhellop\nzzq\n",
+        "an unsupported selector inserts nothing and ends the submode"
     );
 }
 
 /// Dot-repeat replays the LITERAL completed line (matches nvim): `hel` + C-x C-l accepts "hello world";
 /// `.` on a fresh line re-inserts it, NOT a re-resolution against the new context.
 #[test]
-#[ignore = "#602: the LSP coordinator swallows CTRL-X in Insert, so CTRL-X CTRL-L never reaches the engine"]
 fn insert_ctrl_x_ctrl_l_dot_repeats_literal_line() {
     let mut h = session("hello world");
     feed_str(&mut h, "ohel<C-x><C-l><Esc>");
-    assert_eq!(buf(&h), "hello world\nhello world");
+    assert_eq!(buf(&h), "hello world\nhello world\n");
     feed_str(&mut h, ".");
     assert_eq!(
         buf(&h),
-        "hello world\nhello world\nhello world",
+        "hello world\nhello world\nhello world\n",
         "`.` replays the accepted completion line literally"
     );
 }
