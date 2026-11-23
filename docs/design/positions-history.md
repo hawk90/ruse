@@ -367,6 +367,11 @@ One stored position; the *jump command* picks the projection:
 
 - `` `a `` → resolve to the **exact** stored `(line, col)`, charwise/exclusive (the anchor's position).
 - `'a` → resolve to **first-non-blank of the stored line**, linewise.
+- Clamping (#728, Vim's `check_cursor` / `beginline(BL_WHITE | BL_FIX)`): a stored position left past a
+  line that has since been shortened resolves onto that line's last char in Normal mode and under an
+  operator (`` d`a `` takes only up to that char), and onto its newline in Visual (the selection takes
+  it). `'a` onto an all-blank line lands on its last blank; an empty line keeps column 0. `g;`/`g,` clamp
+  the same way.
 
 Because a mark-jump command has `is_jump = true`, executing `` `a `` also pushes the jumplist (§4.1) and
 updates the `` `` `` "position before last jump" special mark. This composition is why one command stream +

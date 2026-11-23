@@ -24,12 +24,12 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         },
         // `` `[ `` — to the FIRST char of the last changed/yanked text. No-op before any change/yank.
         Command::GotoChangeMarkStart => match st.view.change_mark_start() {
-            Some(BytePos(pos)) => nop(mark_char_target(b, pos), st.view.mode),
+            Some(BytePos(pos)) => nop(mark_char_target(b, pos, st.view.mode), st.view.mode),
             None => beep(cur, st.view.mode),
         },
         // `` `] `` — to the LAST char of the last changed/yanked text (EOL-clamped). No-op if unset.
         Command::GotoChangeMarkEnd => match st.view.change_mark_end() {
-            Some(BytePos(pos)) => nop(mark_char_target(b, pos), st.view.mode),
+            Some(BytePos(pos)) => nop(mark_char_target(b, pos, st.view.mode), st.view.mode),
             None => beep(cur, st.view.mode),
         },
         // `'[` — LINEWISE to the first non-blank of the `[` mark's line. No-op if unset.
@@ -52,7 +52,7 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 } else {
                     s
                 };
-                nop(mark_char_target(b, pos), st.view.mode)
+                nop(mark_char_target(b, pos, st.view.mode), st.view.mode)
             }
             None => beep(cur, st.view.mode),
         },
@@ -66,7 +66,7 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 } else {
                     e
                 };
-                nop(mark_char_target(b, pos), st.view.mode)
+                nop(mark_char_target(b, pos, st.view.mode), st.view.mode)
             }
             None => beep(cur, st.view.mode),
         },
@@ -104,7 +104,7 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         // `` `{a-z} `` — jump to a named mark (snapped). No-op if unset.
         // A mark past a line's last char (`` `^ `` after `A`) lands on that char, as Vim's `check_cursor`.
         Command::GotoNamedMark(ch) => match st.view.named_mark(*ch) {
-            Some(BytePos(pos)) => nop(mark_char_target(b, pos), st.view.mode),
+            Some(BytePos(pos)) => nop(mark_char_target(b, pos, st.view.mode), st.view.mode),
             None => beep(cur, st.view.mode),
         },
         // `'{a-z}` — LINEWISE to the first non-blank of a named mark's line. No-op if unset.
@@ -118,7 +118,9 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
             let Some(BytePos(mark)) = st.view.named_mark(*name) else {
                 return beep(cur, st.view.mode);
             };
-            let mark = motion::snap(b, mark.min(b.len()));
+            // A mark left past a shortened line's end rests on its last char, as `` `a `` alone does (Vim's
+            // `check_cursor` under the operator, #728), so `` d`a `` from below takes that char's line tail.
+            let mark = mark_char_target(b, mark, Mode::Normal);
             let (lo, hi) = (cur.min(mark), cur.max(mark));
             if *linewise {
                 // `'a` lands on the first non-blank of the mark's line.
@@ -160,11 +162,17 @@ fn moved(action: Action, cursor: usize, mode: Mode) -> Plan {
 /// clamp — a mark that lands on (or past) the line's newline pulls back onto the line's last char. This is
 /// what makes `` `] `` land on the last inserted/changed char even when the stored mark is the exclusive
 /// insert end-caret or the trailing '\n' of a linewise span (matching Neovim's on-jump clamp).
-fn mark_char_target(b: &[u8], pos: usize) -> usize {
+///
+/// In Visual mode Vim's `check_cursor` lets the cursor rest one past the last char (`'selection'`
+/// inclusive), so there a mark past a shortened line's end lands on its newline and the selection takes
+/// it (#728).
+pub(in crate::editor) fn mark_char_target(b: &[u8], pos: usize, mode: Mode) -> usize {
     let p = motion::snap(b, pos.min(b.len()));
     let le = line_end(b, p);
     let ls = line_start(b, p);
-    if p >= le && ls < le {
+    if mode.selection().is_some() {
+        p.min(le)
+    } else if p >= le && ls < le {
         prev_grapheme(b, le)
     } else {
         p

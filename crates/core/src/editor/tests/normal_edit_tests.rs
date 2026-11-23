@@ -890,6 +890,112 @@ mod single_key_edit_tests {
         );
     }
 
+    /// `$ma0llD`: mark `a` on the `f` of "abcdef", then the line cut to "ab" — the mark now sits past it.
+    fn shortened_under_mark_a() -> Vec<Command> {
+        vec![
+            Command::Move(1, Motion::LineEnd),
+            Command::SetNamedMark('a'),
+            Command::Move(1, Motion::LineStart),
+            Command::Move(2, Motion::Right),
+            Command::Delete(1, Motion::LineEnd),
+        ]
+    }
+
+    fn op_to_a(op: crate::command::MarkOp) -> Command {
+        Command::OpToMark {
+            op,
+            name: 'a',
+            linewise: false,
+        }
+    }
+
+    #[test]
+    fn op_to_a_mark_past_a_shortened_line_takes_its_last_char() {
+        use crate::command::MarkOp;
+        // #728, nvim v0.12.6 (fixtures i728_d_bt_after_D, i728_y_bt_after_D): from the next line's start,
+        // `` d`a `` / `` y`a `` reach back to the `b` the mark clamps onto, and the exclusive end at column 0
+        // pulls back off the newline — so only "b" goes.
+        let mut cmds = shortened_under_mark_a();
+        cmds.extend([
+            Command::Move(1, Motion::Down),
+            Command::Move(1, Motion::LineStart),
+            op_to_a(MarkOp::Delete),
+        ]);
+        let st = run("abcdef\nxyz", &cmds);
+        assert_eq!(text(&st), "a\nxyz");
+        assert_eq!(st.cursor().0, 0);
+        let mut cmds = shortened_under_mark_a();
+        cmds.extend([
+            Command::Move(1, Motion::Down),
+            Command::Move(1, Motion::LineStart),
+            op_to_a(MarkOp::Yank),
+        ]);
+        let st = run("abcdef\nxyz", &cmds);
+        assert_eq!(text(&st), "ab\nxyz");
+        assert_eq!(st.cursor().0, 1, "y`a rests on the clamped mark");
+        // Forward on the same line (i728_d_bt_after_D_fwd): `0d`a` takes "a" only, not the whole "ab".
+        let mut cmds = shortened_under_mark_a();
+        cmds.extend([Command::Move(1, Motion::LineStart), op_to_a(MarkOp::Delete)]);
+        let st = run("abcdef\nxyz", &cmds);
+        assert_eq!(text(&st), "b\nxyz");
+    }
+
+    #[test]
+    fn visual_jump_to_a_mark_past_a_shortened_line_rests_on_its_newline() {
+        // #728, nvim v0.12.6 (i728_v_bt_after_D): Visual lets the cursor sit one past the last char, so
+        // `` v`a `` from the next line stops on "ab"'s newline (byte 2) rather than on `b`.
+        let mut cmds = shortened_under_mark_a();
+        cmds.extend([
+            Command::Move(1, Motion::Down),
+            Command::Move(1, Motion::LineStart),
+            Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+            Command::GotoNamedMark('a'),
+        ]);
+        let st = run("abcdef\nxyz", &cmds);
+        assert_eq!(st.cursor().0, 2);
+    }
+
+    #[test]
+    fn quote_mark_onto_a_line_left_all_blank_takes_its_last_blank() {
+        // #728, nvim v0.12.6 (i728_qt_after_D): `$ma0wD` leaves "  "; `'a` lands on its last blank
+        // (`beginline(BL_WHITE | BL_FIX)`), not the newline after it.
+        let st = run(
+            "  abc def",
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::SetNamedMark('a'),
+                Command::Move(1, Motion::LineStart),
+                Command::Move(1, Motion::WordFwd),
+                Command::Delete(1, Motion::LineEnd),
+                Command::GotoNamedMarkLine('a'),
+            ],
+        );
+        assert_eq!(text(&st), "  ");
+        assert_eq!(st.cursor().0, 1);
+    }
+
+    #[test]
+    fn older_change_on_a_shortened_line_rests_on_its_last_char() {
+        // #728, nvim v0.12.6 (i728_gsemi_after_D): `$x` records a change at column 6, `0lD` cuts the line to
+        // "a"; from the next line `g;` lands on that `a`, not on its newline.
+        let st = run(
+            "abc def\nx",
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::DeleteForward(1),
+                Command::Move(1, Motion::LineStart),
+                Command::Move(1, Motion::Right),
+                Command::Delete(1, Motion::LineEnd),
+                Command::Move(1, Motion::Down),
+                Command::GotoOlderChange,
+            ],
+        );
+        assert_eq!(text(&st), "a\nx");
+        assert_eq!(st.cursor().0, 0);
+    }
+
     #[test]
     fn jumplist_records_jumps_and_ctrl_o_ctrl_i_walk_it() {
         // Lines: "one\ntwo\nthree\nfour" — jump gg (to line 1) then G (to last line), building the jumplist,

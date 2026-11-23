@@ -15,6 +15,7 @@ mod emacs;
 mod insert;
 mod lines;
 mod marks;
+pub(super) use marks::mark_char_target;
 mod operator;
 mod put;
 mod recase;
@@ -499,10 +500,10 @@ fn hspace_end(b: &[u8], from: usize) -> usize {
 }
 
 /// The apostrophe-mark (`'{a-z}` / `'.`) target for a mark at `pos`: the first non-blank of that position's
-/// LINE (Vim's linewise mark jump), clamped into range.
+/// LINE (Vim's linewise mark jump, `beginline(BL_WHITE | BL_FIX)`), clamped into range. On an all-blank
+/// line that is the last blank, never the newline past it (#728).
 fn mark_line_target(b: &[u8], pos: usize) -> usize {
-    let p = pos.min(b.len());
-    motion::first_non_blank(b, crate::pos::raw::line_start(b, p))
+    motion::first_non_blank_fix(b, pos.min(b.len()))
 }
 
 /// A caret key that takes an Insert cursor off a line it opened with an untouched autoindent (or comment
