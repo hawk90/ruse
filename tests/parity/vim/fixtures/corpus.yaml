@@ -109750,6 +109750,1388 @@
       }
     },
     {
+      "name": "xl_octal_leading_zero",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=010+1<CR>p",
+      "expect": {
+        "text": [
+          "a9"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_octal_0o",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0o17<CR>p",
+      "expect": {
+        "text": [
+          "a15"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_octal_0O",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0O17<CR>p",
+      "expect": {
+        "text": [
+          "a15"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_octal_neg",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=-010<CR>p",
+      "expect": {
+        "text": [
+          "a-8"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_decimal_08",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=08<CR>p",
+      "expect": {
+        "text": [
+          "a8"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_decimal_09",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=09<CR>p",
+      "expect": {
+        "text": [
+          "a9"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_decimal_018",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=018<CR>p",
+      "expect": {
+        "text": [
+          "a18"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_hex_lower",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0xab<CR>p",
+      "expect": {
+        "text": [
+          "a171"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_hex_upper",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0XAB<CR>p",
+      "expect": {
+        "text": [
+          "a171"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_hex_0x10",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0x10<CR>p",
+      "expect": {
+        "text": [
+          "a16"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_binary",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0b11<CR>p",
+      "expect": {
+        "text": [
+          "a3"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_binary_upper",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0B101<CR>p",
+      "expect": {
+        "text": [
+          "a5"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_hex_no_digit",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0x<CR>p",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_binary_bad_digit",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0b12<CR>p",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_octal_bad_digit",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0o18<CR>p",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_digit_separator",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=1'000<CR>p",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E488",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_saturate_decimal",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=99999999999999999999<CR>p",
+      "expect": {
+        "text": [
+          "a9223372036854775807"
+        ],
+        "cursor": [
+          1,
+          19
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_saturate_hex",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0xffffffffffffffffff<CR>p",
+      "expect": {
+        "text": [
+          "a9223372036854775807"
+        ],
+        "cursor": [
+          1,
+          19
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_saturate_octal",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0777777777777777777777777<CR>p",
+      "expect": {
+        "text": [
+          "a9223372036854775807"
+        ],
+        "cursor": [
+          1,
+          19
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_saturate_negative",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=-9223372036854775808<CR>p",
+      "expect": {
+        "text": [
+          "a-9223372036854775807"
+        ],
+        "cursor": [
+          1,
+          20
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_float_exponent",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=1.5e3<CR>p",
+      "expect": {
+        "text": [
+          "a1500.0"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_float_neg_exponent",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=1.5e-3<CR>p",
+      "expect": {
+        "text": [
+          "a0.0015"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_float_neg_zero",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=-0.0<CR>p",
+      "expect": {
+        "text": [
+          "a-0.0"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_float_leading_zero",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=010.5<CR>p",
+      "expect": {
+        "text": [
+          "a10.5"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_float_overflow_inf",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=1.0e400<CR>p",
+      "expect": {
+        "text": [
+          "ainf"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_float_overflow_neg_inf",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=-1.0e400<CR>p",
+      "expect": {
+        "text": [
+          "a-inf"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_float_needs_fraction",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=1e3<CR>p",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_concat_not_float",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=1.5.2<CR>p",
+      "expect": {
+        "text": [
+          "a152"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_hex_then_concat",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=0x10.5<CR>p",
+      "expect": {
+        "text": [
+          "a165"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_hex_byte",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\x41\"<CR>p",
+      "expect": {
+        "text": [
+          "aA"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_hex_byte_upper",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\X41\"<CR>p",
+      "expect": {
+        "text": [
+          "aA"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_hex_one_digit",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\x4g\"<CR>p",
+      "expect": {
+        "text": [
+          "a\u0004g"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_hex_no_digit",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\x\"<CR>p",
+      "expect": {
+        "text": [
+          "ax"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_hex_raw_byte",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\xff\"<CR>p",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿ"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_unicode_u",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\u20ac\"<CR>p",
+      "expect": {
+        "text": [
+          "a€"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_unicode_U",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\U0001F600\"<CR>p",
+      "expect": {
+        "text": [
+          "a😀"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_escape_e",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\e\"<CR>p",
+      "expect": {
+        "text": [
+          "a\u001b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_key_esc",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\<lt>Esc>\"<CR>p",
+      "expect": {
+        "text": [
+          "a\u001b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_key_ctrl",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\<lt>C-a>\"<CR>p",
+      "expect": {
+        "text": [
+          "a\u0001"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_key_lt",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\<lt>lt>x\"<CR>p",
+      "expect": {
+        "text": [
+          "a<x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_key_unknown",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\<lt>Bogus>\"<CR>p",
+      "expect": {
+        "text": [
+          "a<Bogus>"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_newline",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "\"=\"x\\ny\"<CR>p",
+      "expect": {
+        "text": [
+          "ax",
+          "y",
+          "b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_tab",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"x\\ty\"<CR>p",
+      "expect": {
+        "text": [
+          "ax\ty"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_backslash",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\\\\"<CR>p",
+      "expect": {
+        "text": [
+          "a\\"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_quote",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\\"\"<CR>p",
+      "expect": {
+        "text": [
+          "a\""
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_octal",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\101\\1012\"<CR>p",
+      "expect": {
+        "text": [
+          "aAA2"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_octal_raw_byte",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\777\"<CR>p",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿ"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_nul_ends",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"x\\0y\"<CR>p",
+      "expect": {
+        "text": [
+          "ax"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_str_other_escape",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"=\"\\z\\8\"<CR>p",
+      "expect": {
+        "text": [
+          "az8"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_sq_doubled_quote",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"='it''s'<CR>p",
+      "expect": {
+        "text": [
+          "ait's"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "xl_sq_backslash_literal",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"='a\\nb'<CR>p",
+      "expect": {
+        "text": [
+          "aa\\nb"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
       "name": "srx_caret_next_line",
       "lines": [
         "x",

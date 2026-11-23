@@ -47,10 +47,10 @@ pub(super) enum Action {
     /// the pending register it just set — every other action clears it once its command has consumed it.
     SetPending(Option<char>),
     /// Store an evaluated expression result into the `"=` register and arm `=` as the one-shot pending
-    /// register (`"=<expr><CR>`). The carried string is the already-formatted result (EMPTY on an
+    /// register (`"=<expr><CR>`). The carried bytes are the already-formatted result (EMPTY on an
     /// evaluation error); [`commit`] writes it into the slot and sets the pending register, then returns
     /// early exactly like [`Action::SetPending`] so the following `p`/`P` reads it.
-    SetExprPending(String),
+    SetExprPending(Vec<u8>),
     /// Arm a blockwise insert-replicate session (`CTRL-V` then `I`/`A`/`c`): apply `edits` (the block
     /// delete for `c`, and/or top-row padding for `A`), then install `session` so the following `<Esc>`
     /// replicates the text typed on the top row down every other block row (see [`BlockInsert`]).

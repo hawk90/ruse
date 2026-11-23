@@ -134,9 +134,7 @@ fn plan_splice(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Co
         // `i_CTRL-R=<expr><CR>` — evaluate the expression (a minimal-honest arithmetic/string calculator,
         // NOT full Vimscript) and splice the formatted result at the caret, staying in Insert. A malformed
         // or unsupported expression evaluates to the empty string and inserts nothing (Vim's degrade).
-        Command::InsertEval(e) => {
-            insert_or_nop(cur, crate::expr::eval_or_empty(e).into_bytes(), hint)
-        }
+        Command::InsertEval(e) => insert_or_nop(cur, crate::expr::eval_or_empty(e), hint),
         // An empty paste of any kind is a no-op in the current mode.
         Command::InsertPaste(text) | Command::ReplacePaste(text) | Command::EmacsPaste(text)
             if text.is_empty() =>
