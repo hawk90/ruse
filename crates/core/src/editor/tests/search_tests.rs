@@ -872,3 +872,178 @@ fn a_search_with_no_pattern_fails_and_resets_the_wanted_column() {
         "the wanted column is the cursor's, not the line's end"
     );
 }
+
+fn visual(kind: SelectKind) -> Command {
+    Command::EnterVisual { kind }
+}
+
+fn charwise() -> Mode {
+    Mode::Visual {
+        kind: SelectKind::Charwise,
+    }
+}
+
+/// #723: `gn` in Visual EXTENDS the selection to the match — the anchor stays. nvim 0.12.6:
+/// `a foo b` + `/foo<CR>0vgnd` → ` b`, register `a foo`; `0vgn<Esc>` leaves the cursor on col 4.
+#[test]
+fn visual_gn_extends_the_selection_to_the_match() {
+    let mut st = run(
+        "a foo b",
+        &[
+            visual(SelectKind::Charwise),
+            gn(SearchOp::Move, 1, "foo", false),
+        ],
+    );
+    assert_eq!(st.mode(), charwise());
+    assert_eq!(st.cursor(), BytePos(4));
+    assert_eq!(st.selection_span(), Some((BytePos(0), BytePos(5))));
+    apply_command(&mut st, &Command::DeleteSelection);
+    assert_eq!(st.as_str().unwrap(), " b");
+    assert_eq!(st.register().text(), b"a foo");
+}
+
+/// #723: `gN` in Visual extends backward to the match start. nvim: `a foo b` + `$vgNd` → `a `, register
+/// `foo b`; `$vgN<Esc>` leaves the cursor on col 2.
+#[test]
+fn visual_gn_backward_extends_to_the_match_start() {
+    let mut st = run(
+        "a foo b",
+        &[
+            eol(),
+            visual(SelectKind::Charwise),
+            gn(SearchOp::Move, 1, "foo", true),
+        ],
+    );
+    assert_eq!(st.cursor(), BytePos(2));
+    assert_eq!(st.selection_span(), Some((BytePos(2), BytePos(7))));
+    apply_command(&mut st, &Command::DeleteSelection);
+    assert_eq!(st.as_str().unwrap(), "a ");
+    assert_eq!(st.register().text(), b"foo b");
+}
+
+/// #723: a selection that already ends on a match's last char extends to the NEXT match; one ending inside
+/// a match finishes that match. nvim: `a foo b foo c` + `0wvllgn<Esc>` → cursor col 10; `0wlvgnd` →
+/// `a f b foo c`, register `oo`.
+#[test]
+fn visual_gn_on_a_covered_match_reaches_the_next() {
+    let right = |n| Command::Move(n, Motion::Right);
+    let st = run(
+        "a foo b foo c",
+        &[
+            right(2),
+            visual(SelectKind::Charwise),
+            right(2),
+            gn(SearchOp::Move, 1, "foo", false),
+        ],
+    );
+    assert_eq!(st.cursor(), BytePos(10));
+    assert_eq!(st.selection_span(), Some((BytePos(2), BytePos(11))));
+    let st = run(
+        "a foo b foo c",
+        &[
+            right(3),
+            visual(SelectKind::Charwise),
+            gn(SearchOp::Move, 1, "foo", false),
+        ],
+    );
+    assert_eq!(st.selection_span(), Some((BytePos(3), BytePos(5))));
+}
+
+/// #723: from `V` (or CTRL-V) `gn` switches to charwise Visual and keeps the anchor. nvim:
+/// `x\na foo b\ny` + `/foo<CR>ggVgnd` → ` b\ny`, register `x\na foo` charwise.
+#[test]
+fn visual_line_gn_switches_to_charwise_and_extends() {
+    for kind in [SelectKind::Linewise, SelectKind::Blockwise] {
+        let mut st = run(
+            "x\na foo b\ny",
+            &[visual(kind), gn(SearchOp::Move, 1, "foo", false)],
+        );
+        assert_eq!(st.mode(), charwise(), "{kind:?}");
+        assert_eq!(st.cursor(), BytePos(6), "{kind:?}");
+        apply_command(&mut st, &Command::DeleteSelection);
+        assert_eq!(st.as_str().unwrap(), " b\ny", "{kind:?}");
+        assert_eq!(st.register().text(), b"x\na foo", "{kind:?}");
+        assert!(!st.register().is_linewise(), "{kind:?}");
+    }
+}
+
+/// #723: a count advances matches, and the search wraps; with the cursor past the last match `gn` wraps to
+/// the first one and lands on its START (the match is before the anchor). nvim: `a foo b foo c foo d` +
+/// `0v2gnd` → ` c foo d`; `a foo b foo c` + `$vgn<Esc>` → cursor col 2, selection 2..12; `0vgNd` →
+/// `oo c`.
+#[test]
+fn visual_gn_counts_and_wraps() {
+    let mut st = run(
+        "a foo b foo c foo d",
+        &[
+            visual(SelectKind::Charwise),
+            gn(SearchOp::Move, 2, "foo", false),
+        ],
+    );
+    apply_command(&mut st, &Command::DeleteSelection);
+    assert_eq!(st.as_str().unwrap(), " c foo d");
+    let st = run(
+        "a foo b foo c",
+        &[
+            eol(),
+            visual(SelectKind::Charwise),
+            gn(SearchOp::Move, 1, "foo", false),
+        ],
+    );
+    assert_eq!(st.cursor(), BytePos(2));
+    assert_eq!(st.selection_span(), Some((BytePos(2), BytePos(13))));
+    let mut st = run(
+        "a foo b foo c",
+        &[
+            visual(SelectKind::Charwise),
+            gn(SearchOp::Move, 1, "foo", true),
+        ],
+    );
+    assert_eq!(st.cursor(), BytePos(8));
+    apply_command(&mut st, &Command::DeleteSelection);
+    assert_eq!(st.as_str().unwrap(), "oo c");
+}
+
+/// #723: with the cursor before the anchor, `gn` takes the first match starting after the char past the
+/// cursor and puts the cursor on its start. nvim: `afoo bfoo c` + `$v0gnd` → `afoo b`, register `foo c`.
+#[test]
+fn visual_gn_with_the_cursor_before_the_anchor() {
+    let mut st = run(
+        "afoo bfoo c",
+        &[
+            eol(),
+            visual(SelectKind::Charwise),
+            Command::Move(1, Motion::LineStart),
+            gn(SearchOp::Move, 1, "foo", false),
+        ],
+    );
+    assert_eq!(st.cursor(), BytePos(6));
+    apply_command(&mut st, &Command::DeleteSelection);
+    assert_eq!(st.as_str().unwrap(), "afoo b");
+    assert_eq!(st.register().text(), b"foo c");
+}
+
+/// #723: no match fails and keeps the selection as it was. nvim: `a bar b` + `0vlgn<Esc>` → cursor col 1,
+/// `'<`/`'>` 0..1.
+#[test]
+fn visual_gn_with_no_match_keeps_the_selection() {
+    let st = run(
+        "a bar b",
+        &[
+            visual(SelectKind::Charwise),
+            Command::Move(1, Motion::Right),
+            gn(SearchOp::Move, 1, "foo", false),
+        ],
+    );
+    assert_eq!(st.mode(), charwise());
+    assert_eq!(st.selection_span(), Some((BytePos(0), BytePos(2))));
+}
+
+/// Bare `gN` from Normal anchors on the match's last char with the cursor on its start (nvim: `a foo b` +
+/// `$gN<Esc>` → cursor col 2).
+#[test]
+fn gn_backward_from_normal_puts_the_cursor_on_the_match_start() {
+    let st = run("a foo b", &[eol(), gn(SearchOp::Move, 1, "foo", true)]);
+    assert_eq!(st.cursor(), BytePos(2));
+    assert_eq!(st.selection_span(), Some((BytePos(2), BytePos(5))));
+}

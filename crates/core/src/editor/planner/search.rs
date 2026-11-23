@@ -204,26 +204,60 @@ fn plan_search_object(
     backward: bool,
     hint: GroupHint,
 ) -> Plan {
+    // Bare `gn`/`gN` in Visual (any kind) EXTENDS the selection (#723): the anchor stays, only the cursor
+    // moves. The operator forms never run in Visual (`d` there deletes the selection).
+    let visual = match (op, st.view.mode) {
+        (SearchOp::Move, Mode::Visual { .. }) => st.view.anchor,
+        _ => None,
+    };
     let found = (!pattern.is_empty())
-        .then(|| search_object_match(st, b, cur, count, pattern, backward))
+        .then(|| search_object_match(st, b, cur, count, pattern, backward, visual))
         .flatten();
     let Some((s, e)) = found else {
         // No match, or no previous pattern (empty, #1184): nvim's `current_search` fails (`clearopbeep`),
-        // so `dgn` is no change for `.` (#1179).
+        // so `dgn` is no change for `.` (#1179). In Visual the selection stays as it was.
         return beep(cur, st.view.mode);
     };
     match op {
-        // Bare `gn`/`gN`: enter charwise Visual with the match selected (anchor at its start, cursor on its
-        // last char). `commit` applies `set_anchor` after its enter-selection default, so this span wins.
-        SearchOp::Move => Plan {
-            set_anchor: Some(s),
-            ..nop(
-                motion::prev_grapheme(b, e),
-                Mode::Visual {
-                    kind: SelectKind::Charwise,
+        // Bare `gn`/`gN` (nvim `current_search`): enter (or switch to) charwise Visual over the match.
+        SearchOp::Move => {
+            let charwise = Mode::Visual {
+                kind: SelectKind::Charwise,
+            };
+            let last = motion::prev_grapheme(b, e);
+            match visual {
+                // From Normal: `gn` anchors at the match start with the cursor on its last char; `gN` the
+                // other way round. `commit` applies `set_anchor` after its enter-selection default.
+                None if backward => Plan {
+                    set_anchor: Some(last),
+                    ..nop(s, charwise)
                 },
-            )
-        },
+                None => Plan {
+                    set_anchor: Some(s),
+                    ..nop(last, charwise)
+                },
+                // In Visual the anchor is kept (`commit` keeps it while a selection stays one). `gN` puts the
+                // cursor on the match start. `gn` puts it on the match's last char when the anchor is before
+                // the match end — or on the match start when the cursor sat before the anchor — and on the
+                // match start when the whole match is before the anchor (nvim's cursor placement verbatim,
+                // including the cursor landing on the match end when that is the anchor itself).
+                Some(_) if backward => nop(s, charwise),
+                Some(anchor) => {
+                    let to = if anchor < e {
+                        if cur < anchor {
+                            s
+                        } else {
+                            last
+                        }
+                    } else if e < anchor {
+                        s
+                    } else {
+                        e
+                    };
+                    nop(to, charwise)
+                }
+            }
+        }
         SearchOp::Delete => {
             let reg = captured(b, s, e, false);
             edit_yank(
@@ -518,7 +552,7 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
             backward,
             ..
         } => {
-            let (s, e) = search_object_match(st, b, cur, *count, pattern, *backward)?;
+            let (s, e) = search_object_match(st, b, cur, *count, pattern, *backward, None)?;
             Some((
                 crate::pos::raw::line_of(b, s),
                 crate::pos::raw::line_of(b, prev_boundary(b, e)),
@@ -635,6 +669,7 @@ fn plan_search_lines(
 }
 
 /// The match `[start, end)` `gn`/`gN` selects (see [`plan_search_object`]), or `None` with no match.
+/// `visual` is the anchor when a bare `gn`/`gN` runs in Visual (#723), which shifts where the search starts.
 fn search_object_match(
     st: &EditorState,
     b: &[u8],
@@ -642,27 +677,83 @@ fn search_object_match(
     count: u32,
     pattern: &str,
     backward: bool,
+    visual: Option<usize>,
 ) -> Option<(usize, usize)> {
     let spans = match_spans(b, pattern, st.view.search_options());
     if spans.is_empty() {
         return None;
     }
     let len = spans.len();
-    // The match to start from: forward, the first whose end is past the cursor (the one containing it, or
-    // the next), wrapping to the first; backward, the one containing the cursor, else the last that starts
-    // before it, wrapping to the last.
+    // The match to start from, after nvim's `current_search` (a backward-then-forward search pair, so a
+    // match at the cursor is found). Outside Visual: forward, the first whose last char is at or past the
+    // cursor (the one containing it, or the next); backward, the last that starts at or before it. In
+    // Visual the search starts one char past the cursor (`incl`, forward) or before it (`decl`, backward),
+    // so a selection that already ends on a match's last char extends to the NEXT match; and with the
+    // cursor before the anchor, forward skips the backward half and takes the first match starting after
+    // that next char. Either direction wraps around the document.
     let start_idx = if backward {
+        let from = if visual.is_some() {
+            visual_decl(b, cur)
+        } else {
+            cur
+        };
         spans
             .iter()
-            .rposition(|&(s, e)| s <= cur && cur < e)
-            .or_else(|| spans.iter().rposition(|&(s, _)| s < cur))
-            .unwrap_or(len - 1)
+            .position(|&(s, _)| s > from)
+            .map_or(len - 1, |i| (i + len - 1) % len)
     } else {
-        spans.iter().position(|&(_, e)| e > cur).unwrap_or(0)
+        match visual {
+            Some(anchor) if cur < anchor => {
+                let from = visual_incl(b, cur);
+                spans.iter().position(|&(s, _)| s > from).unwrap_or(0)
+            }
+            Some(_) => {
+                let from = visual_incl(b, cur);
+                spans
+                    .iter()
+                    .position(|&(_, e)| motion::prev_grapheme(b, e) >= from)
+                    .unwrap_or(0)
+            }
+            None => spans.iter().position(|&(_, e)| e > cur).unwrap_or(0),
+        }
     };
     // Advance `count-1` further matches in the direction of travel, wrapping around the document.
     let steps = i64::from(count.max(1)) - 1;
     let delta = if backward { -steps } else { steps };
     let idx = (start_idx as i64 + delta).rem_euclid(len as i64) as usize;
     Some(spans[idx])
+}
+
+/// Vim's `incl()` on a byte offset: one char forward, stepping past a line's end onto the next line's start
+/// (where `gn` in Visual starts searching, #723). At the buffer's end it stays put.
+fn visual_incl(b: &[u8], pos: usize) -> usize {
+    if pos >= b.len() {
+        return pos;
+    }
+    if b[pos] == b'\n' {
+        return pos + 1;
+    }
+    let next = motion::next_grapheme(b, pos);
+    if next + 1 < b.len() && b[next] == b'\n' {
+        next + 1
+    } else {
+        next
+    }
+}
+
+/// Vim's `decl()` on a byte offset: one char back, from a line's start onto the previous line's last char
+/// (its end, when it is empty) — where `gN` in Visual starts searching (#723). At offset 0 it stays put.
+fn visual_decl(b: &[u8], pos: usize) -> usize {
+    if pos == 0 {
+        return 0;
+    }
+    if b[pos - 1] != b'\n' {
+        return motion::prev_grapheme(b, pos);
+    }
+    let eol = pos - 1;
+    if eol > 0 && b[eol - 1] != b'\n' {
+        motion::prev_grapheme(b, eol)
+    } else {
+        eol
+    }
 }

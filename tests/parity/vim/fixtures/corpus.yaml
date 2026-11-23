@@ -24254,6 +24254,1057 @@
       }
     },
     {
+      "name": "gn_visual_extend_d",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>0vgnd",
+      "expect": {
+        "text": [
+          " b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gn_extend_y",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>0vgny",
+      "expect": {
+        "text": [
+          "a foo b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a foo",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "visual_gn_extend_esc",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>0vgn<Esc>",
+      "expect": {
+        "text": [
+          "a foo b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            4
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gN_visual_extend_back_d",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>$vgNd",
+      "expect": {
+        "text": [
+          "a "
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "foo b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gN_extend_back_esc",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>$vgN<Esc>",
+      "expect": {
+        "text": [
+          "a foo b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            6
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gn_visual_extend_l_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0lvgnd",
+      "expect": {
+        "text": [
+          "a b foo c"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": " foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_line_d",
+      "lines": [
+        "x",
+        "a foo b",
+        "y"
+      ],
+      "keys": "/foo<CR>ggVgnd",
+      "expect": {
+        "text": [
+          " b",
+          "y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x\na foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gn_line_esc",
+      "lines": [
+        "x",
+        "a foo b",
+        "y"
+      ],
+      "keys": "/foo<CR>ggVgn<Esc>",
+      "expect": {
+        "text": [
+          "x",
+          "a foo b",
+          "y"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            4
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gn_visual_block_d",
+      "lines": [
+        "x",
+        "a foo b",
+        "y"
+      ],
+      "keys": "/foo<CR>gg<C-v>gnd",
+      "expect": {
+        "text": [
+          " b",
+          "y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x\na foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_on_match_start_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0wvgnd",
+      "expect": {
+        "text": [
+          "a  b foo c"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_in_match_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0wlvgnd",
+      "expect": {
+        "text": [
+          "a f b foo c"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "oo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_covers_match_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0wvllgnd",
+      "expect": {
+        "text": [
+          "a  c"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "foo b foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gn_covers_match_esc",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0wvllgn<Esc>",
+      "expect": {
+        "text": [
+          "a foo b foo c"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            10
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gn_visual_twice_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0vgngnd",
+      "expect": {
+        "text": [
+          " c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a foo b foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_count_d",
+      "lines": [
+        "a foo b foo c foo d"
+      ],
+      "keys": "/foo<CR>0v2gnd",
+      "expect": {
+        "text": [
+          " c foo d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a foo b foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gN_visual_count_d",
+      "lines": [
+        "a foo b foo c foo d"
+      ],
+      "keys": "/foo<CR>$v2gNd",
+      "expect": {
+        "text": [
+          "a foo b "
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "foo c foo d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_wrap_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>$vgnd",
+      "expect": {
+        "text": [
+          "a "
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "foo b foo c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gn_wrap_esc",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>$vgn<Esc>",
+      "expect": {
+        "text": [
+          "a foo b foo c"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            12
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gN_visual_wrap_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0vgNd",
+      "expect": {
+        "text": [
+          "oo c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a foo b f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_no_match_fail_d",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>:s/foo/bar/<CR>0vlgnd",
+      "expect": {
+        "text": [
+          "bar b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_visual_no_match_fail",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>:s/foo/bar/<CR>0vlgn",
+      "expect": {
+        "text": [
+          "a bar b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "gn_visual_cursor_before_anchor_d",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>$v0gnd",
+      "expect": {
+        "text": [
+          "a "
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "foo b foo c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gn_cursor_before_anchor_esc",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>$v0gn<Esc>",
+      "expect": {
+        "text": [
+          "a foo b foo c"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            12
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gn_visual_cursor_before_anchor_next_d",
+      "lines": [
+        "afoo bfoo c"
+      ],
+      "keys": "/foo<CR>$v0gnd",
+      "expect": {
+        "text": [
+          "afoo b"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "foo c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gN_cursor_after_anchor_esc",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0v$gN<Esc>",
+      "expect": {
+        "text": [
+          "a foo b foo c"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            8
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gn_visual_multiline_d",
+      "lines": [
+        "foo",
+        "x",
+        "foo"
+      ],
+      "keys": "/foo<CR>ggjvgnd",
+      "expect": {
+        "text": [
+          "foo",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x\nfoo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gN_visual_multiline_d",
+      "lines": [
+        "foo",
+        "x",
+        "foo"
+      ],
+      "keys": "/foo<CR>ggjvgNd",
+      "expect": {
+        "text": [
+          "",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo\nx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gN_visual_line_start_d",
+      "lines": [
+        "a foo",
+        "bar"
+      ],
+      "keys": "/foo<CR>Gvly0vgNd",
+      "expect": {
+        "text": [
+          "a ar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "foo\nb",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "r",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "visual_gn_anchor_at_match_end_esc",
+      "lines": [
+        "a foo b foo"
+      ],
+      "keys": "/foo<CR>05lv0gn<Esc>",
+      "expect": {
+        "text": [
+          "a foo b foo"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            5
+          ],
+          ">": [
+            1,
+            5
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "gn_visual_dot_after_d",
+      "lines": [
+        "a foo b foo c foo d"
+      ],
+      "keys": "/foo<CR>0vgnd.",
+      "expect": {
+        "text": [
+          "o c foo d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": " b fo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_plain_esc",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>0gn<Esc>",
+      "expect": {
+        "text": [
+          "a foo b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gN_plain_esc",
+      "lines": [
+        "a foo b"
+      ],
+      "keys": "/foo<CR>$gN<Esc>",
+      "expect": {
+        "text": [
+          "a foo b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_cgn_dot_dot",
+      "lines": [
+        "foo foo foo"
+      ],
+      "keys": "/foo<CR>cgnbar<Esc>..",
+      "expect": {
+        "text": [
+          "bar bar bar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "gn_cgn_dot_after_visual_gn",
+      "lines": [
+        "a foo b foo c"
+      ],
+      "keys": "/foo<CR>0cgnX<Esc>0vgn<Esc>.",
+      "expect": {
+        "text": [
+          "a X b X c"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
       "name": "doubled_format_g_form",
       "lines": [
         "word word word word word word word word word word word word word word word word word word word word word word word word"
