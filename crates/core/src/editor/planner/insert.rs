@@ -204,10 +204,12 @@ fn plan_delete_back(
     cmd: &Command,
 ) -> Plan {
     match cmd {
-        // `i_CTRL-W` — delete the word before the caret (within the current line), staying in Insert.
+        // `i_CTRL-W` — delete the word before the caret (within the current line), staying in Insert. At
+        // the line start it joins the line to the one above, as `<BS>` does (nvim v0.12.6, default
+        // 'backspace' "indent,eol,start"; #726).
         Command::InsertDeleteWordBack => {
             if motion::at_bol(b, cur) {
-                return nop(cur, Mode::Insert);
+                return join_line_above(b, cur, hint);
             }
             // Clamped to the line's start, found only when the word motion crossed a `\n` (#1231).
             let wb = motion::target(b, cur, Motion::WordBack, 1);
@@ -217,6 +219,12 @@ fn plan_delete_back(
             };
             // If the word motion did not move (e.g. only whitespace precedes), delete one grapheme instead.
             let start = if wb < cur { wb } else { prev_boundary(b, cur) };
+            // It stops once where this Insert began (Vim's `Insstart_orig`, 'backspace' "start"), but
+            // only after deleting at least one char: from the start itself it deletes on past it.
+            let start = match st.view.insstart {
+                Some(s) if start < s && s < cur => s,
+                _ => start,
+            };
             edit(
                 one(Edit::delete(BytePos(start), cur - start)),
                 start,
@@ -496,21 +504,28 @@ fn enter_normal(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) -> Plan
     }
 }
 
+/// `i_CTRL-W` / `i_CTRL-U` at the line start `ls`: delete the `\n` before it, joining the line to the one
+/// above with the caret at the join, staying in Insert; on the buffer's first line, nothing to do.
+fn join_line_above(b: &[u8], ls: usize, hint: GroupHint) -> Plan {
+    if ls == 0 {
+        return nop(ls, Mode::Insert);
+    }
+    debug_assert_eq!(b[ls - 1], b'\n');
+    edit(
+        one(Edit::delete(BytePos(ls - 1), 1)),
+        ls - 1,
+        Mode::Insert,
+        hint,
+    )
+}
+
 /// `i_CTRL-U` (nvim v0.12.6, default 'backspace' "indent,eol,start" and 'autoindent'): delete the text
 /// entered before the caret on this line; with none, delete back to the first non-blank, and from
 /// there the indent too. At the line start it joins the line to the one above, as `<BS>` does.
 fn delete_to_line_start(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) -> Plan {
     let ls = line_start(b, cur);
     if cur <= ls {
-        if ls == 0 {
-            return nop(cur, Mode::Insert);
-        }
-        return edit(
-            one(Edit::delete(BytePos(ls - 1), 1)),
-            ls - 1,
-            Mode::Insert,
-            hint,
-        );
+        return join_line_above(b, ls, hint);
     }
     let mut fnb = ls;
     while fnb < cur && matches!(b[fnb], b' ' | b'\t') {
