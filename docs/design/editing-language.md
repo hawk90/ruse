@@ -85,9 +85,10 @@ bool`); class changes only fall on char boundaries, so positions stay valid. `cw
 per pair type, so `([)]` matches `(`↔`)` exactly as Vim), and the match may be on **another line** (only the
 initial "which bracket" scan is line-local: if the cursor is not on a bracket, the first bracket forward on
 the current line is matched). As an operator target it is **charwise-inclusive** — `d%` deletes both brackets
-and everything between. `count%` jumps to that percentage of the file (`Motion::GotoPercent`). Deferred:
-language-aware matching (strings/comments) and
-configurable `matchpairs`.
+and everything between. `count%` jumps to that percentage of the file (`Motion::GotoPercent`). Matching follows nvim's
+`findmatchlimit` (#1163, `crates/core/src/findmatch.rs`) under the default `'cpoptions'` (no `%`): brackets
+in quotes and character literals, escaped brackets, `/* */` comments, `#if`/`#else`/`#endif` chains and the
+`'lisp'` rules; `("(")` matches its last `)` (#760). Deferred: configurable `matchpairs` and `'cpoptions'`.
 
 ## v0 — line-jump motions (SHIPPED)
 
