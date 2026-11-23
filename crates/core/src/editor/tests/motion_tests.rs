@@ -487,6 +487,88 @@ mod line_jump_tests {
         apply_command(&mut blank, &Command::Move(1, Motion::LineFirstNonBlank));
         assert_eq!(blank.view.cursor, 3, "all-blank line: land at its end");
     }
+
+    // #762: Vim `^` is `beginline(BL_WHITE | BL_FIX)` — on an all-blank line it stops on the LAST blank,
+    // under an operator and in Visual too, never on the line break past it. Ground truth: nvim v0.12.6.
+    fn vim(initial: &[u8], cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    #[test]
+    fn caret_on_an_all_blank_line_rests_on_the_last_blank() {
+        // nvim `^` on ["    ", "x"] -> cursor [1, 3]; on ["\t \t", "x"] -> [1, 2].
+        let st = vim(b"    \nx", &[Command::Move(1, Motion::LineFirstNonBlank)]);
+        assert_eq!(st.view.cursor, 3);
+        let st = vim(b"\t \t\nx", &[Command::Move(1, Motion::LineFirstNonBlank)]);
+        assert_eq!(st.view.cursor, 2);
+    }
+
+    #[test]
+    fn d_caret_on_an_all_blank_line_keeps_the_last_blank() {
+        // nvim `0d^` on ["    ", "x"] -> [" ", "x"], register "   " charwise, cursor [1, 0].
+        let st = vim(b"    \nx", &[Command::Delete(1, Motion::LineFirstNonBlank)]);
+        assert_eq!(text(&st), " \nx");
+        assert_eq!(st.register().text(), b"   ");
+        assert!(!st.register().is_linewise());
+        assert_eq!(st.view.cursor, 0);
+        // A count changes nothing (`03d^`), and tabs count as blanks (`0d^` on "\t \t" keeps the last tab).
+        let st = vim(b"    \nx", &[Command::Delete(3, Motion::LineFirstNonBlank)]);
+        assert_eq!(text(&st), " \nx");
+        let st = vim(
+            b"\t \t\nx",
+            &[Command::Delete(1, Motion::LineFirstNonBlank)],
+        );
+        assert_eq!(text(&st), "\t\nx");
+        assert_eq!(st.register().text(), b"\t ");
+    }
+
+    #[test]
+    fn c_and_y_caret_on_an_all_blank_line_stop_before_the_last_blank() {
+        // nvim `0c^Z<Esc>` -> ["Z ", "x"]; `0y^` yanks "   ".
+        let mut st = vim(b"    \nx", &[Command::Change(1, Motion::LineFirstNonBlank)]);
+        assert_eq!(text(&st), " \nx");
+        assert_eq!(st.register().text(), b"   ");
+        assert_eq!(st.mode(), Mode::Insert);
+        apply_command(&mut st, &Command::InsertChar('Z'));
+        assert_eq!(text(&st), "Z \nx");
+        let st = vim(b"    \nx", &[Command::Yank(1, Motion::LineFirstNonBlank)]);
+        assert_eq!(text(&st), "    \nx");
+        assert_eq!(st.register().text(), b"   ");
+    }
+
+    #[test]
+    fn visual_caret_on_an_all_blank_line_does_not_select_the_line_break() {
+        // nvim `0v^d` on ["    ", "x"] -> ["", "x"], register "    " charwise: the lines stay apart.
+        let st = vim(
+            b"    \nx",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::LineFirstNonBlank),
+            ],
+        );
+        assert_eq!(st.view.cursor, 3);
+        let mut st = st;
+        apply_command(&mut st, &Command::DeleteSelection);
+        assert_eq!(text(&st), "\nx");
+        assert_eq!(st.register().text(), b"    ");
+        assert!(!st.register().is_linewise());
+    }
+
+    #[test]
+    fn emacs_back_to_indentation_keeps_the_line_end_on_an_all_blank_line() {
+        // Emacs 31.1 `back-to-indentation` on "   " -> point 3 (the oracle's back_to_indentation_all_blank).
+        let mut st = EditorState::new(b"   \nx".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_cursor(BytePos(0));
+        apply_command(&mut st, &Command::Move(1, Motion::LineFirstNonBlank));
+        assert_eq!(st.view.cursor, 3);
+    }
 }
 
 #[cfg(test)]

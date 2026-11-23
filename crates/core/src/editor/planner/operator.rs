@@ -273,6 +273,11 @@ fn plan_move(
         {
             line_end(b, motion::target(b, cur, *m, *count))
         }
+        // A Visual `^` on an all-blank line rests on the last blank (`BL_FIX`), not the line break past it,
+        // so `v^d` keeps the lines apart (#762). The Emacs profile keeps `back-to-indentation`'s line end.
+        Motion::LineFirstNonBlank if st.view.caret == CaretGravity::OnChar => {
+            motion::first_non_blank_fix(b, cur)
+        }
         _ => *memo.get_or_init(|| motion::target(b, cur, *m, *count)),
     };
     // Normal mode never rests on a non-empty line's trailing newline, whatever the motion: `j`/`k`

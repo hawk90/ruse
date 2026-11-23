@@ -28,7 +28,7 @@ pub(crate) use boundary::is_boundary;
 pub(crate) use completion::{keyword_completions, line_completions};
 pub(crate) use cursor_word::{cword_under_cursor, keyword_before_cursor, word_under_cursor};
 pub use line::off_phantom;
-pub(crate) use line::{content_end, first_non_blank, off_phantom_at, vmove};
+pub(crate) use line::{content_end, first_non_blank, first_non_blank_fix, off_phantom_at, vmove};
 pub(crate) use word::{char_cls, current_word_end_excl, word_end_excl};
 
 use bracket::{bracket_block_target, match_bracket};
@@ -598,9 +598,15 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             let e = repeat_step(n, cur, |e| prev_word_end(&s, e, big));
             (e, next_grapheme(b, cur))
         }
-        // `^` / `|` / `go` / `gM` are exclusive and can point either way (indent / column / byte / line-%,
-        // left or right): ordered pair from the cursor to the absolute target.
-        Motion::LineFirstNonBlank | Motion::Column | Motion::GotoByte | Motion::MidLine => {
+        // `^` is exclusive and stops on an all-blank line's LAST blank (`BL_FIX`), so `0d^` there keeps that
+        // blank instead of emptying the line (#762).
+        Motion::LineFirstNonBlank => {
+            let t = first_non_blank_fix(b, cur);
+            (cur.min(t), cur.max(t))
+        }
+        // `|` / `go` / `gM` are exclusive and can point either way (column / byte / line-%, left or right):
+        // ordered pair from the cursor to the absolute target.
+        Motion::Column | Motion::GotoByte | Motion::MidLine => {
             let t = target(b, cur, m, n);
             (cur.min(t), cur.max(t))
         }
