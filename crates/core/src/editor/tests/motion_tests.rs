@@ -439,6 +439,42 @@ mod line_jump_tests {
     }
 
     #[test]
+    fn count_percent_past_100_fails() {
+        // nvim v0.12.6 (`nv_percent`): a count above 100 beeps and leaves the cursor, under an operator the
+        // buffer and registers too, and in Visual the selection (#761). `100%` still reaches the last line.
+        for count in [101, 1000] {
+            for cmd in [
+                Command::Move(count, Motion::GotoPercent),
+                Command::Delete(count, Motion::GotoPercent),
+            ] {
+                let mut st = EditorState::new(b"a\nb\nc\nd".to_vec());
+                st.set_cursor(BytePos(2));
+                let effects = apply_command(&mut st, &cmd);
+                assert!(effects.contains(&Effect::Beep), "{cmd:?}");
+                assert_eq!(text(&st), "a\nb\nc\nd", "{cmd:?}");
+                assert_eq!(st.cursor().0, 2, "{cmd:?}");
+                assert_eq!(st.register().text(), b"", "{cmd:?}");
+            }
+        }
+        // `jv101%d`: the failed jump keeps the one-char selection, so `d` deletes only `b`.
+        let mut st = EditorState::new(b"a\nb\nc\nd".to_vec());
+        st.set_cursor(BytePos(2));
+        apply_command(
+            &mut st,
+            &Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+        );
+        let effects = apply_command(&mut st, &Command::Move(101, Motion::GotoPercent));
+        assert!(effects.contains(&Effect::Beep));
+        apply_command(&mut st, &Command::DeleteSelection);
+        assert_eq!(text(&st), "a\n\nc\nd");
+        assert_eq!(st.register().text(), b"b");
+        let st = run("a\nb\nc\nd", &[Command::Delete(100, Motion::GotoPercent)]);
+        assert_eq!(text(&st), "", "d100% from line 1 deletes every line");
+    }
+
+    #[test]
     fn goto_byte_moves_to_the_nth_byte() {
         // `{count}go` — count is a 1-based byte offset. "abc\ndef": 'a'=1,'b'=2,'c'=3,'\n'=4,'d'=5...
         let st = run("abc\ndef", &[Command::Move(5, Motion::GotoByte)]);

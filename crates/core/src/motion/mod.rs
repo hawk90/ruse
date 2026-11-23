@@ -249,8 +249,9 @@ pub(crate) use crate::pos::raw::{line_end, line_start};
 ///   bracket, `[(`/`])`/`[{`/`]}` without an enclosing one, and `{count}$` (count > 1) on the last line.
 /// - `it`/`at` under an operator outside a tag pair (the block, quote and sentence objects fail through
 ///   `textobj::object_fails`).
+/// - `{count}%` with a count above 100 (`nv_percent`), bare, under an operator and in Visual (#761).
 ///
-/// Every other motion (line jumps, `0`, `^`, `$`, `|`, sections, …) never fails here.
+/// Every other motion (the other line jumps, `0`, `^`, `$`, `|`, sections, …) never fails here.
 ///
 /// `memo` holds (or receives) the motion's target, `target(b, cursor, m, count)`, so a planner that goes
 /// on to move does not run the motion twice (#1231). The line's ends are told by the bytes around a
@@ -327,6 +328,8 @@ pub(crate) fn fails_with(
         // `{count}dd`/`yy`/`cc`/`>>` move `count - 1` lines down first (`nv_lineop` → `cursor_down`), so on
         // the last line a count above 1 fails like `j` there (#1176).
         Motion::Line => op && n > 1 && last_line(),
+        // `{count}%` past 100 percent has no line to go to: nvim beeps instead of clamping (#761).
+        Motion::GotoPercent => count > 100,
         // `it`/`at` outside a tag pair (or a count past its nesting) cancel the operator (#1179). The `at`
         // span holds the tags themselves, so it is empty only when there is no pair.
         Motion::Tag { .. } => {
@@ -955,6 +958,7 @@ mod line_pass_tests {
             // `{count}dd`/`yy`/`cc`/`>>` move `count - 1` lines down first (`nv_lineop` → `cursor_down`), so on
             // the last line a count above 1 fails like `j` there (#1176).
             Motion::Line => op && n > 1 && last_line,
+            Motion::GotoPercent => count > 100,
             // `it`/`at` outside a tag pair (or a count past its nesting) cancel the operator (#1179). The `at`
             // span holds the tags themselves, so it is empty only when there is no pair.
             Motion::Tag { .. } => {
