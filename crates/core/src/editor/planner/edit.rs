@@ -3,7 +3,7 @@
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
 use super::{beep, captured, edit, edit_yank, nop, one, plan_join, recase_bytes};
-use crate::editor::{advance_graphemes, advance_n, block_geom, selection_range};
+use crate::editor::{advance_graphemes, advance_n, block_geom, selection_range, MAXCOL};
 use crate::motion::{line_end, line_start, prev_boundary, prev_grapheme};
 use crate::{
     BytePos, CaretGravity, Command, Edit, EditList, EditorState, GroupHint, Mode, Plan, SelectKind,
@@ -185,11 +185,10 @@ fn plan_increment_number(
     hint: GroupHint,
     delta: i64,
 ) -> Plan {
-    // `CTRL-A`/`CTRL-X`: adjust the number at or after the cursor on the current line. A `0x`-prefixed
-    // hex literal increments in hex (`0x1f`→`0x20`); otherwise a decimal (with optional `-` sign).
+    // `CTRL-A`/`CTRL-X`: adjust the number under or after the cursor on the current line (`incr_number`).
     let ls = crate::pos::raw::line_start(b, cur);
     let le = line_end(b, cur);
-    match incr_number(b, ls, le, cur, delta) {
+    match incr_number(b, ls, le, cur, delta, None) {
         Some((start, old_len, bytes, cursor)) => edit(
             one(Edit::replace(BytePos(start), old_len, bytes)),
             cursor,
@@ -204,16 +203,13 @@ fn plan_increment_number(
 /// Plain form adds `delta` to every line; `sequential` (the `g` form) adds `delta`, `2·delta`, `3·delta`…
 /// to successive numbered lines — the classic "turn a column of 1s into 1,2,3…".
 ///
-/// The unifying rule across all three shapes: on each line, search from the SELECTION'S LEFT EDGE
-/// (`incr_number` finds the first number at/after it, expanding to the whole number). This makes a
-/// column of numbers that are NOT the first on their line increment correctly — the whole point of the
-/// feature — for both `CTRL-V` (block left column) and `v` (the start column on the first line):
-///   - BLOCKWISE (`CTRL-V`): the first character each row touches (`block_geom`).
-///   - LINEWISE (`V`): the line start (whole lines).
-///   - CHARWISE (`v`): the selection start on the first line, the line start on continuation lines.
-///
-/// (Charwise does not yet CLIP a number sitting past the selection end on the last line — a rare edge,
-/// noted as a follow-up.)
+/// Each line contributes its selected part, as nvim's `op_addsub` hands `do_addsub` a start column and a
+/// length: the number must START inside that part and is read no further than its end (#717). This
+/// makes a column of numbers that are NOT the first on their line increment correctly:
+///   - BLOCKWISE (`CTRL-V`): the characters each row touches (`block_geom`; `$` runs to each line end).
+///   - LINEWISE (`V`): the whole line.
+///   - CHARWISE (`v`): from the selection start on the first line (the line start on the others) to the
+///     selection end on the last line (the line end on the others).
 fn plan_increment_selection(
     st: &EditorState,
     b: &[u8],
@@ -225,13 +221,16 @@ fn plan_increment_selection(
     let Some(anchor) = st.view.anchor else {
         return nop(cur, Mode::Normal);
     };
-    // Per selected line: (line_start, search_from).
-    let lines: Vec<(usize, usize)> = match st.view.mode.selection() {
-        Some(SelectKind::Blockwise) => block_geom(b, anchor, cur, st.view.indent.tabs(), false)
-            .rows
-            .iter()
-            .map(|r| (r.ls, r.ds))
-            .collect(),
+    // Per selected line: (line_start, from, until) — the selected bytes `from..until`.
+    let lines: Vec<(usize, usize, usize)> = match st.view.mode.selection() {
+        Some(SelectKind::Blockwise) => {
+            let to_eol = st.view.curswant == MAXCOL;
+            block_geom(b, anchor, cur, st.view.indent.tabs(), to_eol)
+                .rows
+                .iter()
+                .map(|r| (r.ls, r.ds.min(r.le), r.de.min(r.le)))
+                .collect()
+        }
         kind => {
             let linewise = kind == Some(SelectKind::Linewise);
             let (s, e) = selection_range(b, anchor, cur, linewise);
@@ -241,8 +240,8 @@ fn plan_increment_selection(
             // linewise line) starts at its own line start.
             let mut from = if linewise { ls } else { s.max(ls) };
             while ls < e && ls <= b.len() {
-                out.push((ls, from));
                 let le = line_end(b, ls);
+                out.push((ls, from, if linewise { le } else { e.min(le) }));
                 if le >= b.len() {
                     break;
                 }
@@ -258,13 +257,19 @@ fn plan_increment_selection(
     // block's left column). It is INDEPENDENT of which line changed (or whether any did) and of the
     // number's own last digit — so a multi-digit result (`007`→`008`) or a numberless first line
     // (`abc` above the numbers) still homes here. Verified against nvim v0.12.4 (parity fixtures).
-    let caret = lines.first().map_or(cur, |&(_ls, from)| from);
+    let caret = lines.first().map_or(cur, |&(_ls, from, _until)| from);
     let mut steps: i64 = 0; // numbered lines seen so far (the sequence multiplier)
-    for (ls, from) in lines {
+    for (ls, from, until) in lines {
         let le = line_end(b, ls);
         steps += 1;
-        let this = if sequential { delta * steps } else { delta };
-        if let Some((start, old_len, bytes, _cursor)) = incr_number(b, ls, le, from, this) {
+        let this = if sequential {
+            delta.saturating_mul(steps)
+        } else {
+            delta
+        };
+        if let Some((start, old_len, bytes, _cursor)) =
+            incr_number(b, ls, le, from, this, Some(until))
+        {
             edits.push(Edit::replace(BytePos(start), old_len, bytes));
         } else {
             steps -= 1; // a line with no number does not advance the sequence
@@ -277,106 +282,214 @@ fn plan_increment_selection(
     edit(list, caret, Mode::Normal, hint)
 }
 
-/// Add `delta` to the first number at or after `from` on the line `ls..le`, matching Neovim `nrformats`
-/// (decimal, and `0x`/`0b`/`0o` based literals). Returns `(start, old_len, new_bytes, cursor)` — an
-/// absolute-offset replacement plus the offset of its last digit (where Vim leaves the caret) — or `None`
-/// when the rest of the line holds no number. This is the shared engine for `CTRL-A`/`CTRL-X` (one call at
-/// the cursor) and Visual increment (one call per selected line).
+/// Add `delta` to a number on the line `ls..le`, as nvim's `do_addsub` (ops.c) does with the default
+/// `nrformats=bin,hex` (ruse has no `nrformats` option, so octal, alpha and unsigned are never on).
+/// Returns `(start, old_len, new_bytes, cursor)` — an absolute-offset replacement plus the offset of its
+/// last character (where Vim leaves the caret) — or `None` when no number is found. The shared engine
+/// for `CTRL-A`/`CTRL-X` (`visual: None`, `from` the cursor) and Visual increment (`visual: Some(until)`,
+/// one call per selected line over `from..until`).
+///
+/// The number model (#717) is nvim's: a decimal is an unsigned 64-bit magnitude plus a sign, which
+/// saturates at `u64::MAX` when its digits overflow (`vim_str2nr`) and then stays unchanged; a `0x`/`0b`
+/// literal is unsigned and wraps modulo 2^64. Leading zeros keep the width, and hex renders in the case of
+/// the number's LAST letter (`0xAB`→`0xAC`, `0x9F`→`0xa0`). A `-` before a based literal is not a sign;
+/// `0o17` and `017` are decimals, as octal is not in the default formats.
 fn incr_number(
     b: &[u8],
     ls: usize,
     le: usize,
     from: usize,
     delta: i64,
+    visual: Option<usize>,
 ) -> Option<(usize, usize, Vec<u8>, usize)> {
-    // First decimal digit at or after `from` (Vim searches forward). A based literal always has one (its
-    // `0`), so this anchors every base.
-    let mut d = from.max(ls);
-    while d < le && !b[d].is_ascii_digit() {
-        d += 1;
+    let p = &b[ls..le];
+    let pos = from.max(ls) - ls; // nvim's `pos->col`
+    if pos >= p.len() {
+        return None; // the cursor is at or past the line end
     }
-    if d >= le {
-        return None; // no number on the rest of the line
-    }
-    // Detect a based literal `0x`/`0X` (hex), `0b`/`0B` (binary), or `0o`/`0O` (octal). Two ways `d` (the
-    // first decimal digit) can land on one: the `0` prefix starts AT `d`, or `d` sits inside the digit run
-    // (walk left over base-max hex digits — the widest alphabet — to a base letter, and check the `0`).
-    let radix_of = |c: u8| match c {
-        b'x' | b'X' => Some(16u32),
-        b'o' | b'O' => Some(8),
-        b'b' | b'B' => Some(2),
-        _ => None,
+    let isbdigit = |c: u8| c == b'0' || c == b'1';
+    // A `0x`/`0X` + hex digit, or `0b`/`0B` + binary digit, with its base letter at `c`.
+    let hex_at = |c: usize| {
+        c > 0
+            && matches!(p[c], b'x' | b'X')
+            && p[c - 1] == b'0'
+            && p.get(c + 1).is_some_and(u8::is_ascii_hexdigit)
     };
-    let is_digit_of = |c: u8, radix: u32| (c as char).is_digit(radix);
-    let based_at_d = b[d] == b'0'
-        && b.get(d + 1)
-            .copied()
-            .and_then(radix_of)
-            .is_some_and(|r| b.get(d + 2).copied().is_some_and(|c| is_digit_of(c, r)));
-    let mut hleft = d;
-    while hleft > ls && b[hleft - 1].is_ascii_hexdigit() {
-        hleft -= 1;
-    }
-    let based_inside = hleft >= ls + 2 && b[hleft - 2] == b'0' && radix_of(b[hleft - 1]).is_some();
-    if based_at_d || based_inside {
-        let prefix = if based_at_d { d } else { hleft - 2 };
-        let radix = radix_of(b[prefix + 1]).unwrap_or(16);
-        let letter = b[prefix + 1]; // keep the original `x`/`X`/`b`/`B`/`o`/`O` case (Vim does)
-        let mut end = prefix + 2;
-        while end < le && is_digit_of(b[end], radix) {
-            end += 1;
+    let bin_at = |c: usize| {
+        c > 0
+            && matches!(p[c], b'b' | b'B')
+            && p[c - 1] == b'0'
+            && p.get(c + 1).copied().is_some_and(isbdigit)
+    };
+    let mut col = pos;
+    let mut negative = false;
+    let mut was_positive = true;
+    match visual {
+        None => {
+            // Is the cursor on a based literal after its `0x`/`0b`? Walk left over binary, then hex
+            // digits to the base letter; when that found no `0x`, rescan over decimal digits only.
+            while col > 0 && isbdigit(p[col]) {
+                col -= 1;
+            }
+            while col > 0 && p[col].is_ascii_hexdigit() {
+                col -= 1;
+            }
+            if !hex_at(col) {
+                col = pos;
+                while col > 0 && p[col].is_ascii_digit() {
+                    col -= 1;
+                }
+            }
+            if hex_at(col) || bin_at(col) {
+                col -= 1; // to the literal's `0`
+            } else {
+                // Search forward, then backward, for the start of a decimal.
+                col = pos;
+                while col < p.len() && !p[col].is_ascii_digit() {
+                    col += 1;
+                }
+                while col > 0 && p[col - 1].is_ascii_digit() {
+                    col -= 1;
+                }
+            }
         }
-        let val: i128 = std::str::from_utf8(&b[prefix + 2..end])
-            .ok()
-            .and_then(|s| i128::from_str_radix(s, radix).ok())
-            .unwrap_or(0);
-        // Based literals stay non-negative (Vim wraps at 0 for the default unsigned view); the numeric body
-        // is rendered in its own base (lowercase digits), keeping the original `0{letter}` prefix.
-        let n = (val + i128::from(delta)).max(0);
-        let body = match radix {
-            2 => format!("{n:b}"),
-            8 => format!("{n:o}"),
-            _ => format!("{n:x}"),
+        Some(until) => {
+            // Visual searches forward only, within the selection; a `-` is a sign only when selected too.
+            let mut length = until.saturating_sub(ls + pos);
+            while col < p.len() && length > 0 && !p[col].is_ascii_digit() {
+                let next = crate::motion::next_grapheme(p, col).max(col + 1);
+                length = length.saturating_sub(next - col);
+                col = next;
+            }
+            if length == 0 {
+                return None;
+            }
+            if col > pos && p[col - 1] == b'-' {
+                negative = true;
+                was_positive = false;
+            }
+        }
+    }
+    let firstdigit = *p.get(col)?;
+    if !firstdigit.is_ascii_digit() {
+        return None; // no number
+    }
+    if visual.is_none() && col > 0 && p[col - 1] == b'-' {
+        col -= 1; // a negative number
+        negative = true;
+    }
+    // A Visual number is read no further than the selection (nvim's `maxlen`).
+    let maxlen = visual
+        .map_or(p.len(), |until| until.min(le))
+        .saturating_sub(ls + col);
+    let (pre, mut length, mut n, overflow) = str2nr(&p[col..col + maxlen]);
+    if pre != 0 && negative {
+        // A `-` before a hex or binary literal is not a sign.
+        col += 1;
+        length -= 1;
+        negative = false;
+    }
+    let subtract = (delta < 0) ^ negative;
+    let amount = delta.unsigned_abs();
+    let oldn = n;
+    if !overflow {
+        // A number too big to read is not changed.
+        n = if subtract {
+            n.wrapping_sub(amount)
+        } else {
+            n.wrapping_add(amount)
         };
-        let new_text = format!("0{}{body}", letter as char);
-        let bytes = new_text.into_bytes();
-        let cursor = prefix + bytes.len().saturating_sub(1);
-        return Some((prefix, end - prefix, bytes, cursor));
     }
-    // Decimal: the maximal digit run around `d`, plus a leading `-` sign if directly before it.
-    let mut start = d;
-    while start > ls && b[start - 1].is_ascii_digit() {
-        start -= 1;
+    if pre == 0 {
+        // A decimal that wraps flips its sign (nvim's arithmetic, asymmetric as it is).
+        if subtract {
+            if n > oldn {
+                n = 1u64.wrapping_add(n ^ u64::MAX);
+                negative = !negative;
+            }
+        } else if n < oldn {
+            n ^= u64::MAX;
+            negative = !negative;
+        }
+        if n == 0 {
+            negative = false;
+        }
     }
-    let mut end = d;
-    while end < le && b[end].is_ascii_digit() {
-        end += 1;
+    if visual.is_some() && !was_positive && !negative && col > 0 {
+        // The selected `-` goes with the sign.
+        col -= 1;
+        length += 1;
     }
-    let num_start = if start > ls && b[start - 1] == b'-' {
-        start - 1
-    } else {
-        start
+    let old = &p[col..col + length];
+    let todel = length;
+    if old[0] == b'-' {
+        length -= 1; // the kept width excludes the sign
+    }
+    // Hex digits take the case of the old number's last letter (the `x`/`X` included).
+    let hexupper = old
+        .iter()
+        .rev()
+        .find(|c| c.is_ascii_alphabetic())
+        .is_some_and(u8::is_ascii_uppercase);
+    let mut out: Vec<u8> = Vec::with_capacity(length + 24);
+    if negative && (visual.is_none() || was_positive) {
+        out.push(b'-');
+    }
+    if pre != 0 {
+        out.extend_from_slice(&[b'0', pre]);
+        length -= 2;
+    }
+    let digits = match pre {
+        b'b' | b'B' if n == 0 => String::new(), // no binary digits for 0: the zero padding supplies them
+        b'b' | b'B' => format!("{n:b}"),
+        b'x' | b'X' if hexupper => format!("{n:X}"),
+        b'x' | b'X' => format!("{n:x}"),
+        _ => n.to_string(),
     };
-    // Parse (i128 to absorb any i64 span), add the delta, and re-render. An unparseable/overflowing run is
-    // left untouched (returned as a no-op replacement of itself).
-    let val: i128 = std::str::from_utf8(&b[num_start..end])
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    let result = val + i128::from(delta);
-    // Vim preserves a leading-zero field WIDTH: `007`→`008`, `099`→`100` (grows only on carry), `-007`→
-    // `-006`. Only when the original magnitude (digits, excluding sign) had a leading zero — a plain `42`
-    // is never padded. The width is measured on the magnitude and re-applied after sign handling.
-    let orig_mag_width = end - start;
-    let had_leading_zero = orig_mag_width > 1 && b[start] == b'0';
-    let mag = result.unsigned_abs().to_string();
-    let mag = if had_leading_zero && mag.len() < orig_mag_width {
-        format!("{mag:0>orig_mag_width$}")
-    } else {
-        mag
+    // Leading zeros keep the number's width (`007`→`008`, `0x00ff`→`0x0100`).
+    if firstdigit == b'0' {
+        out.resize(out.len() + length.saturating_sub(digits.len()), b'0');
+    }
+    out.extend_from_slice(digits.as_bytes());
+    let start = ls + col;
+    let cursor = start + out.len() - 1;
+    Some((start, todel, out, cursor))
+}
+
+/// nvim's `vim_str2nr` (charset.c) as `do_addsub` calls it with `STR2NR_BIN | STR2NR_HEX`: an optional
+/// `-`, a `0x`/`0X`/`0b`/`0B` prefix when a digit of that base follows, then the digits. Returns `(prefix
+/// letter or 0, bytes read, unsigned magnitude, overflowed)`; an overflow saturates at `u64::MAX`.
+fn str2nr(s: &[u8]) -> (u8, usize, u64, bool) {
+    let mut i = usize::from(s.first() == Some(&b'-'));
+    let mut pre = 0u8;
+    if s.get(i) == Some(&b'0') {
+        match (s.get(i + 1).copied(), s.get(i + 2).copied()) {
+            (Some(c @ (b'x' | b'X')), Some(d)) if d.is_ascii_hexdigit() => pre = c,
+            (Some(c @ (b'b' | b'B')), Some(b'0' | b'1')) => pre = c,
+            _ => {}
+        }
+    }
+    let radix: u32 = match pre {
+        b'x' | b'X' => 16,
+        b'b' | b'B' => 2,
+        _ => 10,
     };
-    let new_text = if result < 0 { format!("-{mag}") } else { mag };
-    let bytes = new_text.into_bytes();
-    let cursor = num_start + bytes.len().saturating_sub(1); // land on the last digit (Vim)
-    Some((num_start, end - num_start, bytes, cursor))
+    if pre != 0 {
+        i += 2;
+    }
+    let (mut un, mut overflow) = (0u64, false);
+    while let Some(d) = s.get(i).and_then(|&c| char::from(c).to_digit(radix)) {
+        match un
+            .checked_mul(u64::from(radix))
+            .and_then(|v| v.checked_add(u64::from(d)))
+        {
+            Some(v) if !overflow => un = v,
+            _ => {
+                un = u64::MAX;
+                overflow = true;
+            }
+        }
+        i += 1;
+    }
+    (pre, i, un, overflow)
 }
