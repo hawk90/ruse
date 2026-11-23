@@ -341,11 +341,10 @@ impl RegisterStore {
     }
 
     /// Store an evaluated expression result into the `"=` register: linewise when it ends in a newline, as
-    /// nvim puts `"="x\n"` on a line of its own (#1022), else charwise. `result` is the already-formatted
+    /// nvim puts `"="x\n"` on a line of its own (#1022), else charwise. `bytes` is the already-formatted
     /// output of [`crate::expr::eval`] — an EMPTY string when evaluation failed, so a following paste/insert
     /// does nothing (Vim's degrade). This never touches any other slot.
-    pub fn set_expr(&mut self, result: String) {
-        let bytes = result.into_bytes();
+    pub fn set_expr(&mut self, bytes: Vec<u8>) {
         self.expr = if bytes.last() == Some(&b'\n') {
             Register::linewise(bytes)
         } else {
@@ -889,9 +888,9 @@ mod tests {
     #[test]
     fn expr_result_ending_in_newline_is_linewise() {
         let mut s = RegisterStore::new();
-        s.set_expr("x\n".into());
+        s.set_expr(b"x\n".to_vec());
         assert!(s.expr().is_linewise());
-        s.set_expr("x".into());
+        s.set_expr(b"x".to_vec());
         assert!(!s.expr().is_linewise());
     }
 

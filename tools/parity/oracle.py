@@ -15,7 +15,7 @@ WHY THE SELFTEST GATES EVERYTHING (spec/parity/upstreams.yaml#oracle_selftest):
 
 THE NON-CORRUPTION TECHNIQUE (this harness's answer to that hazard):
     1. Observation is READ-ONLY and happens AFTER mutation, never through a mutating call. Keys are
-       fed with `nvim_feedkeys(nvim_replace_termcodes(keys, true, false, true), 'xt', false)` — mode
+       fed with `nvim_feedkeys(nvim_replace_termcodes(keys, true, true, true), 'xt', false)` — mode
        'x' executes synchronously and RETURNS, so every read (`nvim_buf_get_lines`,
        `nvim_win_get_cursor`, `getreg`/`getregtype`) runs against already-settled state. No read
        command is itself an editing command (the `vim -es` / `execute-kbd-macro` trap). 't' feeds
@@ -82,7 +82,7 @@ vim.v.errmsg = ''
 local base_seq = vim.fn.undotree().seq_cur
 -- `nvim_buf_set_lines` sets `'.`; with no change since, that mark is the oracle's, not the keys'.
 local base_tick = vim.b.changedtick
-local tc = vim.api.nvim_replace_termcodes(input.keys, true, false, true)
+local tc = vim.api.nvim_replace_termcodes(input.keys, true, true, true)
 if input.probe_failed then
   -- Fed NOT as typed, the keys after a failed command are flushed (Vim's beep_flush and the flush on an
   -- error message), so a sentinel queued after the keys runs only if no command failed. Nothing else of
@@ -361,7 +361,8 @@ def run_neovim(
 
 # --- The fixture corpus: ALREADY-IMPLEMENTED ruse ops. `expect` is captured from the oracle, never
 #     hand-written; the (lines, keys) here are the only human-authored part. `<Esc>` is passed
-#     verbatim to nvim_replace_termcodes and is understood identically by the Rust key tokenizer.
+#     verbatim to nvim_replace_termcodes and is understood identically by the Rust key tokenizer;
+#     `<lt>` is a literal `<` on both sides (do_lt, #764), so keys can type the text `<Esc>`.
 # A 100-line buffer for the page-scroll fixtures, and the setup that gives nvim ruse's 23-row window
 # (an 80x24 terminal with no status line under the text) and ruse's scrolloff.
 HUNDRED = [f"line {i}" for i in range(1, 101)]
@@ -3947,6 +3948,60 @@ FIXTURES: list[dict] = [
     {"name": "rg_hash_dd", "lines": ["a", "b", "c"], "keys": '"#dd"0p"1p'},
     {"name": "rg_expr_newline_is_linewise", "lines": ["a", "b"], "keys": '"="x\\n"<CR>p'},
     {"name": "rg_expr_plain_is_charwise", "lines": ["a", "b"], "keys": '"="x"<CR>p'},
+    #     EXPRESSION LITERALS (#764): `"=` number and string literals as nvim's eval_number / eval_string
+    #     read them. Bases, saturation, float forms, double-quoted escapes and `''`. Errors leave the
+    #     register empty, so `p` puts nothing.
+    {"name": "xl_octal_leading_zero", "lines": ["a"], "keys": '"=010+1<CR>p'},
+    {"name": "xl_octal_0o", "lines": ["a"], "keys": '"=0o17<CR>p'},
+    {"name": "xl_octal_0O", "lines": ["a"], "keys": '"=0O17<CR>p'},
+    {"name": "xl_octal_neg", "lines": ["a"], "keys": '"=-010<CR>p'},
+    {"name": "xl_decimal_08", "lines": ["a"], "keys": '"=08<CR>p'},
+    {"name": "xl_decimal_09", "lines": ["a"], "keys": '"=09<CR>p'},
+    {"name": "xl_decimal_018", "lines": ["a"], "keys": '"=018<CR>p'},
+    {"name": "xl_hex_lower", "lines": ["a"], "keys": '"=0xab<CR>p'},
+    {"name": "xl_hex_upper", "lines": ["a"], "keys": '"=0XAB<CR>p'},
+    {"name": "xl_hex_0x10", "lines": ["a"], "keys": '"=0x10<CR>p'},
+    {"name": "xl_binary", "lines": ["a"], "keys": '"=0b11<CR>p'},
+    {"name": "xl_binary_upper", "lines": ["a"], "keys": '"=0B101<CR>p'},
+    {"name": "xl_hex_no_digit", "lines": ["a"], "keys": '"=0x<CR>p'},
+    {"name": "xl_binary_bad_digit", "lines": ["a"], "keys": '"=0b12<CR>p'},
+    {"name": "xl_octal_bad_digit", "lines": ["a"], "keys": '"=0o18<CR>p'},
+    {"name": "xl_digit_separator", "lines": ["a"], "keys": "\"=1'000<CR>p"},
+    {"name": "xl_saturate_decimal", "lines": ["a"], "keys": '"=99999999999999999999<CR>p'},
+    {"name": "xl_saturate_hex", "lines": ["a"], "keys": '"=0xffffffffffffffffff<CR>p'},
+    {"name": "xl_saturate_octal", "lines": ["a"], "keys": '"=0777777777777777777777777<CR>p'},
+    {"name": "xl_saturate_negative", "lines": ["a"], "keys": '"=-9223372036854775808<CR>p'},
+    {"name": "xl_float_exponent", "lines": ["a"], "keys": '"=1.5e3<CR>p'},
+    {"name": "xl_float_neg_exponent", "lines": ["a"], "keys": '"=1.5e-3<CR>p'},
+    {"name": "xl_float_neg_zero", "lines": ["a"], "keys": '"=-0.0<CR>p'},
+    {"name": "xl_float_leading_zero", "lines": ["a"], "keys": '"=010.5<CR>p'},
+    {"name": "xl_float_overflow_inf", "lines": ["a"], "keys": '"=1.0e400<CR>p'},
+    {"name": "xl_float_overflow_neg_inf", "lines": ["a"], "keys": '"=-1.0e400<CR>p'},
+    {"name": "xl_float_needs_fraction", "lines": ["a"], "keys": '"=1e3<CR>p'},
+    {"name": "xl_concat_not_float", "lines": ["a"], "keys": '"=1.5.2<CR>p'},
+    {"name": "xl_hex_then_concat", "lines": ["a"], "keys": '"=0x10.5<CR>p'},
+    {"name": "xl_str_hex_byte", "lines": ["a"], "keys": '"="\\x41"<CR>p'},
+    {"name": "xl_str_hex_byte_upper", "lines": ["a"], "keys": '"="\\X41"<CR>p'},
+    {"name": "xl_str_hex_one_digit", "lines": ["a"], "keys": '"="\\x4g"<CR>p'},
+    {"name": "xl_str_hex_no_digit", "lines": ["a"], "keys": '"="\\x"<CR>p'},
+    {"name": "xl_str_hex_raw_byte", "lines": ["a"], "keys": '"="\\xff"<CR>p', "bytes": True},
+    {"name": "xl_str_unicode_u", "lines": ["a"], "keys": '"="\\u20ac"<CR>p'},
+    {"name": "xl_str_unicode_U", "lines": ["a"], "keys": '"="\\U0001F600"<CR>p'},
+    {"name": "xl_str_escape_e", "lines": ["a"], "keys": '"="\\e"<CR>p'},
+    {"name": "xl_str_key_esc", "lines": ["a"], "keys": '"="\\<lt>Esc>"<CR>p'},
+    {"name": "xl_str_key_ctrl", "lines": ["a"], "keys": '"="\\<lt>C-a>"<CR>p'},
+    {"name": "xl_str_key_lt", "lines": ["a"], "keys": '"="\\<lt>lt>x"<CR>p'},
+    {"name": "xl_str_key_unknown", "lines": ["a"], "keys": '"="\\<lt>Bogus>"<CR>p'},
+    {"name": "xl_str_newline", "lines": ["a", "b"], "keys": '"="x\\ny"<CR>p'},
+    {"name": "xl_str_tab", "lines": ["a"], "keys": '"="x\\ty"<CR>p'},
+    {"name": "xl_str_backslash", "lines": ["a"], "keys": '"="\\\\"<CR>p'},
+    {"name": "xl_str_quote", "lines": ["a"], "keys": '"="\\""<CR>p'},
+    {"name": "xl_str_octal", "lines": ["a"], "keys": '"="\\101\\1012"<CR>p'},
+    {"name": "xl_str_octal_raw_byte", "lines": ["a"], "keys": '"="\\777"<CR>p', "bytes": True},
+    {"name": "xl_str_nul_ends", "lines": ["a"], "keys": '"="x\\0y"<CR>p'},
+    {"name": "xl_str_other_escape", "lines": ["a"], "keys": '"="\\z\\8"<CR>p'},
+    {"name": "xl_sq_doubled_quote", "lines": ["a"], "keys": "\"='it''s'<CR>p"},
+    {"name": "xl_sq_backslash_literal", "lines": ["a"], "keys": "\"='a\\nb'<CR>p"},
     #     SEARCH WITH ANCHORS AND ZERO-WIDTH MATCHES (#737, #705, #1046-#1049): what `/`, `?`, `n`, `N` and
     #     `:s///g` do with `^`, `$`, `\<`, `\zs`, `\ze` and overlapping matches.
     {"name": "srx_caret_next_line", "lines": ["x", "foo"], "keys": "/^foo<CR>"},

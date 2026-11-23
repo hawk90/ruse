@@ -138,3 +138,11 @@ vb_dollar_tilde # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a
 vb_dollar_gv # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 vb_dollar_p # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 obs_marks_set_and_moved # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
+
+# #764: the text and registers match (a bad literal leaves "= empty); ruse's "= gives no E-message
+# for a failed expression, where nvim reports E15 / E488.
+xl_hex_no_digit # #764: "= reports no E15 for a failed expression; the text matches
+xl_binary_bad_digit # #764: "= reports no E15 for a failed expression; the text matches
+xl_octal_bad_digit # #764: "= reports no E15 for a failed expression; the text matches
+xl_float_needs_fraction # #764: "= reports no E15 for a failed expression; the text matches
+xl_digit_separator # #764: "= reports no E488 for a failed expression; the text matches

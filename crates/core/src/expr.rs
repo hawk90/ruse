@@ -6,7 +6,13 @@
 //! - integer and float arithmetic `+ - * / %` with parentheses, unary `-`/`+`, and correct precedence;
 //! - Vim's int-vs-float result rules (`1+1`->`2`, `3/2`->`1` truncated integer division, `3.0/2`->`1.5`,
 //!   floats printed in Vim's `%g`-like 6-significant form — all verified against nvim v0.12.4);
-//! - string literals in single quotes (`''` escapes a quote) or double quotes (`\n \t \r \\ \"` escapes);
+//! - number literals as nvim's `eval_number` reads them (verified against nvim v0.12.6): decimal, octal
+//!   (`010`, `0o17`; `08`/`018` fall back to decimal), hex (`0x1F`), binary (`0b11`), saturating at
+//!   `i64::MAX` like `vim_str2nr`, and floats (`1.5`, `1.5e3`; a fraction is required, so `1e3` is an error);
+//! - string literals in single quotes (`''` escapes a quote) or double quotes with nvim's backslash escapes
+//!   (`\n \t \r \b \e \f \\ \"`, octal `\101`, `\x41`, `€`, `\U0001F600`, and the `\<Esc>`-style keys
+//!   that stand for a character, see [`lex_double_quote`]). A result is bytes, not always UTF-8
+//!   (`"\xff"`), and a NUL ends a string literal as it does in nvim;
 //! - the `.` string-concatenation operator with number->string coercion (`'n='.5` -> `n=5`, `'v'.(1+2)`
 //!   -> `v3`).
 //!
@@ -66,7 +72,7 @@ impl fmt::Display for ExprError {
 /// # Errors
 /// Returns [`ExprError`] when the input is empty, fails to parse, applies an operator to the wrong type, or
 /// divides/mods by zero.
-pub fn eval(input: &str) -> Result<String, ExprError> {
+pub fn eval(input: &str) -> Result<Vec<u8>, ExprError> {
     if input.trim().is_empty() {
         return Err(ExprError::Empty);
     }
@@ -87,7 +93,7 @@ pub fn eval(input: &str) -> Result<String, ExprError> {
 /// degrade Vim applies to a broken `"=` expression (the paste/insert then inserts nothing). This is the
 /// entry point the editor's expression-register commands call.
 #[must_use]
-pub fn eval_or_empty(input: &str) -> String {
+pub fn eval_or_empty(input: &str) -> Vec<u8> {
     eval(input).unwrap_or_default()
 }
 
@@ -97,21 +103,21 @@ pub fn eval_or_empty(input: &str) -> String {
 enum Value {
     Int(i64),
     Float(f64),
-    Str(String),
+    Str(Vec<u8>),
 }
 
 impl Value {
     /// The register payload: how Vim `:echo` would render this value.
-    fn into_display(self) -> String {
+    fn into_display(self) -> Vec<u8> {
         match self {
-            Value::Int(i) => i.to_string(),
-            Value::Float(f) => format_vim_float(f),
+            Value::Int(i) => i.to_string().into_bytes(),
+            Value::Float(f) => format_vim_float(f).into_bytes(),
             Value::Str(s) => s,
         }
     }
 
     /// The `.`-concatenation coercion: numbers render to their display form, strings pass through.
-    fn coerce_str(self) -> String {
+    fn coerce_str(self) -> Vec<u8> {
         self.into_display()
     }
 }
@@ -122,10 +128,10 @@ impl Value {
 /// is `<= -4` or `>= 7`.
 fn format_vim_float(v: f64) -> String {
     if v == 0.0 {
-        return "0.0".to_string();
+        // nvim keeps the sign of a negative zero: `-0.0` -> `-0.0`.
+        return if v.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
     }
-    // Non-finite results have no Vim-echo form here (division guards zero divisors; an overflowing multiply
-    // is the only other source). Render a stable placeholder rather than "inf"/"NaN" leaking to the buffer.
+    // Non-finite values print as nvim's do: `1.0e400` and an overflowing multiply give `inf` / `-inf`.
     if !v.is_finite() {
         return if v.is_nan() {
             "nan".to_string()
@@ -184,7 +190,7 @@ fn strip_fractional_zeros(s: &str) -> String {
 enum Token {
     Int(i64),
     Float(f64),
-    Str(String),
+    Str(Vec<u8>),
     Plus,
     Minus,
     Star,
@@ -197,12 +203,21 @@ enum Token {
 
 /// Tokenize `input`. Whitespace separates tokens and is otherwise ignored. A `.` immediately between two
 /// digit runs (`3.0`) is a float; a `.` anywhere else is the concatenation operator (`2.'x'`, `'a'.'b'`).
+/// A number right after the `.` operator (signs and blanks between allowed) is never a float, as nvim's
+/// `eval7` reads that operand with `want_string`: `1.5.2` is `1 . 5 . 2` -> `152`.
 fn lex(input: &str) -> Result<Vec<Token>, ExprError> {
     let bytes = input.as_bytes();
     let mut tokens = Vec::new();
     let mut i = 0;
+    let mut after_dot = false;
     while i < bytes.len() {
         let c = bytes[i];
+        let want_string = after_dot;
+        after_dot = match c {
+            b'.' => true,
+            b' ' | b'\t' | b'\r' | b'\n' | b'+' | b'-' => after_dot,
+            _ => false,
+        };
         match c {
             b' ' | b'\t' | b'\r' | b'\n' => i += 1,
             b'+' => {
@@ -238,17 +253,17 @@ fn lex(input: &str) -> Result<Vec<Token>, ExprError> {
                 i += 1;
             }
             b'\'' => {
-                let (tok, next) = lex_single_quote(input, i)?;
+                let (tok, next) = lex_single_quote(bytes, i)?;
                 tokens.push(tok);
                 i = next;
             }
             b'"' => {
-                let (tok, next) = lex_double_quote(input, i)?;
+                let (tok, next) = lex_double_quote(bytes, i)?;
                 tokens.push(tok);
                 i = next;
             }
             b'0'..=b'9' => {
-                let (tok, next) = lex_number(input, i)?;
+                let (tok, next) = lex_number(bytes, i, want_string)?;
                 tokens.push(tok);
                 i = next;
             }
@@ -263,119 +278,290 @@ fn lex(input: &str) -> Result<Vec<Token>, ExprError> {
     Ok(tokens)
 }
 
-/// Lex a number starting at `start` (on an ASCII digit). Consumes an integer part, an optional `.digits`
-/// fraction (only when a digit follows the dot — otherwise the dot is left for the concat operator), and an
-/// optional `[eE][+-]?digits` exponent. Yields [`Token::Int`] unless a fraction/exponent makes it a float.
-fn lex_number(input: &str, start: usize) -> Result<(Token, usize), ExprError> {
-    let bytes = input.as_bytes();
-    let mut i = start;
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        i += 1;
+/// Lex a number starting at `start` (on an ASCII digit) as nvim's `eval_number` does. A float is digits,
+/// `.`, digits and an optional `[eE][+-]?digits` exponent that does not run on into a letter or another `.`
+/// (so `1.5x` and `1.5.2` are not floats, and `1e3` needs a fraction); `want_string`, the operand of the
+/// `.` operator, rules a float out. Anything else is an integer read by [`str2nr`], and a letter or digit
+/// right after it is an error, as nvim's strict read makes it (`0b12`, `0o8`, `0x`, `1e3`).
+fn lex_number(bytes: &[u8], start: usize, want_string: bool) -> Result<(Token, usize), ExprError> {
+    if !want_string {
+        if let Some(end) = float_end(bytes, start) {
+            let text = String::from_utf8_lossy(&bytes[start..end]);
+            let f: f64 = text
+                .parse()
+                .map_err(|_| ExprError::Parse(format!("invalid float {text:?}")))?;
+            return Ok((Token::Float(f), end));
+        }
     }
-    let mut is_float = false;
-    // A fraction only if a digit follows the '.', so `3.0` is a float but `2.'x'` / `2.5.3` keep the dot
-    // as the concat operator.
-    if i + 1 < bytes.len() && bytes[i] == b'.' && bytes[i + 1].is_ascii_digit() {
-        is_float = true;
-        i += 1;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
+    let (n, end) = str2nr(bytes, start);
+    if bytes.get(end).is_some_and(u8::is_ascii_alphanumeric) {
+        return Err(ExprError::Parse(format!(
+            "invalid number {:?}",
+            String::from_utf8_lossy(&bytes[start..=end])
+        )));
+    }
+    Ok((Token::Int(n), end))
+}
+
+/// Where the float literal at `start` ends, or `None` when the text there is not one (nvim's
+/// `eval_number` test before it calls `strtod`).
+fn float_end(b: &[u8], start: usize) -> Option<usize> {
+    let digits = |mut i: usize| {
+        while b.get(i).is_some_and(u8::is_ascii_digit) {
             i += 1;
         }
+        i
+    };
+    let mut p = digits(start);
+    if b.get(p) != Some(&b'.') || !b.get(p + 1).is_some_and(u8::is_ascii_digit) {
+        return None;
     }
-    // An exponent must be followed by (an optional sign and) at least one digit to count.
-    if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
-        let mut j = i + 1;
-        if j < bytes.len() && (bytes[j] == b'+' || bytes[j] == b'-') {
-            j += 1;
+    p = digits(p + 1);
+    if matches!(b.get(p), Some(b'e' | b'E')) {
+        let mut q = p + 1;
+        if matches!(b.get(q), Some(b'+' | b'-')) {
+            q += 1;
         }
-        if j < bytes.len() && bytes[j].is_ascii_digit() {
-            is_float = true;
-            i = j;
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
-                i += 1;
-            }
+        if !b.get(q).is_some_and(u8::is_ascii_digit) {
+            return None;
         }
+        p = digits(q);
     }
-    let text = &input[start..i];
-    if is_float {
-        let f: f64 = text
-            .parse()
-            .map_err(|_| ExprError::Parse(format!("invalid float {text:?}")))?;
-        Ok((Token::Float(f), i))
-    } else {
-        let n: i64 = text
-            .parse()
-            .map_err(|_| ExprError::Parse(format!("integer {text:?} out of range")))?;
-        Ok((Token::Int(n), i))
+    if b.get(p)
+        .is_some_and(|&c| c.is_ascii_alphabetic() || c == b'.')
+    {
+        return None;
     }
+    Some(p)
+}
+
+/// nvim's `vim_str2nr` with `STR2NR_ALL`, as `eval_number` reads an integer literal at `start` (an ASCII
+/// digit): a `0x`/`0X` hex, `0b`/`0B` binary or `0o`/`0O` octal prefix when a digit of that base follows it,
+/// a leading `0` octal when every digit of the run is below 8 (`010` is 8, `018` is 18), else decimal.
+/// Returns the value and the end of the digits; a magnitude past `i64::MAX` saturates there, as nvim's
+/// does (`0xffffffffffffffff` and `99999999999999999999` are both 9223372036854775807).
+fn str2nr(b: &[u8], start: usize) -> (i64, usize) {
+    let at = |i: usize| b.get(start + i).copied().unwrap_or(0);
+    let leading_octal = || {
+        let mut run = b[start + 1..]
+            .iter()
+            .take_while(|c| c.is_ascii_digit())
+            .peekable();
+        run.peek().is_some() && run.all(|&c| c <= b'7')
+    };
+    let (radix, mut i): (u32, usize) = match (at(0), at(1)) {
+        (b'0', b'x' | b'X') if at(2).is_ascii_hexdigit() => (16, 2),
+        (b'0', b'b' | b'B') if matches!(at(2), b'0' | b'1') => (2, 2),
+        (b'0', b'o' | b'O') if matches!(at(2), b'0'..=b'7') => (8, 2),
+        (b'0', _) if leading_octal() => (8, 1),
+        _ => (10, 0),
+    };
+    let mut un: u64 = 0;
+    while let Some(d) = char::from(at(i)).to_digit(radix) {
+        un = un
+            .checked_mul(u64::from(radix))
+            .and_then(|v| v.checked_add(u64::from(d)))
+            .unwrap_or(u64::MAX);
+        i += 1;
+    }
+    (i64::try_from(un).unwrap_or(i64::MAX), start + i)
 }
 
 /// Lex a single-quoted string starting at the opening quote (`start`). Vim's rule: a doubled `''` is a
 /// literal single quote; there are no backslash escapes. An unterminated literal is a parse error.
-fn lex_single_quote(input: &str, start: usize) -> Result<(Token, usize), ExprError> {
-    let bytes = input.as_bytes();
+fn lex_single_quote(bytes: &[u8], start: usize) -> Result<(Token, usize), ExprError> {
     let mut i = start + 1;
-    let mut out = String::new();
-    while i < bytes.len() {
-        if bytes[i] == b'\'' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
-                out.push('\'');
+    let mut out = Vec::new();
+    while let Some(&c) = bytes.get(i) {
+        if c == b'\'' {
+            if bytes.get(i + 1) == Some(&b'\'') {
+                out.push(b'\'');
                 i += 2;
             } else {
                 return Ok((Token::Str(out), i + 1));
             }
         } else {
-            // Push the whole UTF-8 char, not the raw byte, so multi-byte text survives.
-            let ch = next_char(input, i);
-            out.push(ch);
-            i += ch.len_utf8();
+            out.push(c);
+            i += 1;
         }
     }
     Err(ExprError::Parse("unterminated single-quoted string".into()))
 }
 
-/// Lex a double-quoted string starting at the opening quote (`start`). Supports the common backslash
-/// escapes `\\ \" \n \t \r`; any other `\x` keeps the character `x` literally (a minimal, useful subset of
-/// Vim's escapes). An unterminated literal is a parse error.
-fn lex_double_quote(input: &str, start: usize) -> Result<(Token, usize), ExprError> {
-    let bytes = input.as_bytes();
+/// Lex a double-quoted string starting at the opening quote (`start`) with nvim's escapes (`:help
+/// expr-quote`, verified against nvim v0.12.6):
+///
+/// - `\b \e \f \n \r \t` (BS, ESC, FF, NL, CR, TAB), `\\` and `\"`;
+/// - `\101`: one to three octal digits, one byte (`\777` is 0xff, the value cut to a byte as nvim's is);
+/// - `\x41` / `\X41`: one or two hex digits, one raw byte (`\xff` is not UTF-8);
+/// - `€` (up to four hex digits) and `\U0001F600` (up to eight): the character's UTF-8 bytes, encoded
+///   as nvim's `utf_char2bytes` does (see [`push_utf8`]); with no hex digit, `\x`, `\u` give `x`, `u`;
+/// - `\<Esc>`: a key that stands for one character (see [`special_key`]); any other `\<` is a plain `<`;
+/// - a backslash before any other character drops: `\z` is `z`.
+///
+/// A NUL (`\0`, `\x00`, `\u0000`) ends the string, since nvim's strings are C strings. An unterminated
+/// literal is a parse error.
+fn lex_double_quote(bytes: &[u8], start: usize) -> Result<(Token, usize), ExprError> {
     let mut i = start + 1;
-    let mut out = String::new();
-    while i < bytes.len() {
-        match bytes[i] {
-            b'"' => return Ok((Token::Str(out), i + 1)),
-            b'\\' if i + 1 < bytes.len() => {
-                let esc = bytes[i + 1];
-                match esc {
-                    b'n' => out.push('\n'),
-                    b't' => out.push('\t'),
-                    b'r' => out.push('\r'),
-                    b'\\' => out.push('\\'),
-                    b'"' => out.push('"'),
-                    _ => {
-                        let ch = next_char(input, i + 1);
-                        out.push(ch);
-                        i += ch.len_utf8();
-                        i += 1;
-                        continue;
+    let mut out = Vec::new();
+    while let Some(&c) = bytes.get(i) {
+        if c == b'"' {
+            if let Some(nul) = out.iter().position(|&b| b == 0) {
+                out.truncate(nul);
+            }
+            return Ok((Token::Str(out), i + 1));
+        }
+        if c != b'\\' {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        let Some(&e) = bytes.get(i + 1) else { break };
+        i += 2;
+        match e {
+            b'b' => out.push(0x08),
+            b'e' => out.push(0x1b),
+            b'f' => out.push(0x0c),
+            b'n' => out.push(b'\n'),
+            b'r' => out.push(b'\r'),
+            b't' => out.push(b'\t'),
+            b'x' | b'X' | b'u' | b'U' => {
+                let max = match e {
+                    b'x' | b'X' => 2,
+                    b'u' => 4,
+                    _ => 8,
+                };
+                let (mut nr, mut n) = (0u32, 0);
+                while n < max {
+                    let Some(d) = bytes.get(i).and_then(|&h| char::from(h).to_digit(16)) else {
+                        break;
+                    };
+                    nr = (nr << 4) | d;
+                    i += 1;
+                    n += 1;
+                }
+                if n == 0 {
+                    out.push(e);
+                } else if matches!(e, b'x' | b'X') {
+                    out.push(nr.to_le_bytes()[0]);
+                } else {
+                    // nvim holds the value in a C `int`, so `\UFFFFFFFF` is -1.
+                    push_utf8(i32::from_ne_bytes(nr.to_ne_bytes()), &mut out);
+                }
+            }
+            b'0'..=b'7' => {
+                let mut nr = u32::from(e - b'0');
+                for _ in 0..2 {
+                    match bytes.get(i) {
+                        Some(&d @ b'0'..=b'7') => {
+                            nr = nr * 8 + u32::from(d - b'0');
+                            i += 1;
+                        }
+                        _ => break,
                     }
                 }
-                i += 2;
+                out.push(nr.to_le_bytes()[0]);
             }
-            _ => {
-                let ch = next_char(input, i);
-                out.push(ch);
-                i += ch.len_utf8();
-            }
+            b'<' => match special_key(&bytes[i..]) {
+                Some((key, len)) => {
+                    out.extend_from_slice(&key);
+                    i += len;
+                }
+                None => out.push(b'<'),
+            },
+            // Any other escaped byte stands for itself; a multi-byte character's continuation bytes follow
+            // as plain bytes.
+            other => out.push(other),
         }
     }
     Err(ExprError::Parse("unterminated double-quoted string".into()))
 }
 
-/// The Unicode scalar at byte offset `i` (which must be a char boundary). Used so string literals carry
-/// multi-byte text through unchanged.
-fn next_char(input: &str, i: usize) -> char {
-    input[i..].chars().next().unwrap_or('\u{FFFD}')
+/// nvim's `utf_char2bytes`: a value below 0x80 (a negative one too, which nvim's signed compare lets
+/// through) is one byte, cut from the value; above, the 2- to 6-byte form of the original UTF-8, which
+/// also encodes surrogates and values past U+10FFFF (`\uD800` is `ed a0 80`, `\U7FFFFFFF` six bytes).
+fn push_utf8(c: i32, out: &mut Vec<u8>) {
+    let Ok(u) = u32::try_from(c) else {
+        out.push(c.to_le_bytes()[0]);
+        return;
+    };
+    let (n, lead): (u32, u32) = match u {
+        0..=0x7f => (1, 0),
+        0x80..=0x7ff => (2, 0xc0),
+        0x800..=0xffff => (3, 0xe0),
+        0x1_0000..=0x1f_ffff => (4, 0xf0),
+        0x20_0000..=0x3ff_ffff => (5, 0xf8),
+        _ => (6, 0xfc),
+    };
+    let byte = |v: u32| v.to_le_bytes()[0];
+    out.push(byte(lead | (u >> (6 * (n - 1)))));
+    for k in (0..n - 1).rev() {
+        out.push(byte(0x80 | ((u >> (6 * k)) & 0x3f)));
+    }
+}
+
+/// The key a `\<...>` escape names, from `rest` (the text after `\<`): its bytes and how much of `rest` it
+/// spans, through the `>`. Only the keys that stand for one character are read, with nvim's case-blind
+/// names: `<Esc>`, `<CR>`/`<Return>`/`<Enter>`, `<NL>`/`<LF>`/`<Linefeed>`, `<Tab>`, `<Space>`, `<lt>`,
+/// `<Bslash>`, `<Bar>`, `<Char-N>` (decimal, `0`-octal or `0x`-hex), `<C-x>` for a letter or one of
+/// `[ \ ] ^ _ ?`, and `<S-x>` for a letter.
+///
+/// `None` leaves a plain `<`, as nvim does for a name it does not know (`"\<Bogus>"` is `<Bogus>`). Divergence:
+/// the keys nvim encodes as a K_SPECIAL byte sequence (`<BS>`, `<Del>`, `<Left>`, `<F1>`, `<C-@>`, `<M-a>`,
+/// `<C-Space>`, `<S-Tab>`, ...) take that path here too, and stay text.
+fn special_key(rest: &[u8]) -> Option<(Vec<u8>, usize)> {
+    // A key name is short; a bound keeps a long run of `\<` without `>` linear.
+    let gt = rest.iter().take(32).position(|&c| c == b'>')?;
+    let mut body = &rest[..gt];
+    let (mut ctrl, mut shift) = (false, false);
+    while body.len() > 2 && body[1] == b'-' {
+        match body[0].to_ascii_lowercase() {
+            b'c' => ctrl = true,
+            b's' => shift = true,
+            _ => return None,
+        }
+        body = &body[2..];
+    }
+    let key: Vec<u8> = match (ctrl, shift, body) {
+        (true, false, &[c]) => match c {
+            b'a'..=b'z' | b'A'..=b'Z' | b'[' | b'\\' | b']' | b'^' | b'_' => vec![c & 0x1f],
+            b'?' => vec![0x7f],
+            _ => return None,
+        },
+        (false, true, &[c]) if c.is_ascii_alphabetic() => vec![c.to_ascii_uppercase()],
+        (false, false, name) => named_key(name)?,
+        _ => return None,
+    };
+    Some((key, gt + 1))
+}
+
+/// The bytes of an unmodified key name in [`special_key`]'s set, case-blind.
+fn named_key(name: &[u8]) -> Option<Vec<u8>> {
+    let lower = name.to_ascii_lowercase();
+    let c = match lower.as_slice() {
+        b"esc" => 0x1b,
+        b"cr" | b"return" | b"enter" => b'\r',
+        b"nl" | b"lf" | b"linefeed" => b'\n',
+        b"tab" => b'\t',
+        b"space" => b' ',
+        b"lt" => b'<',
+        b"bslash" => b'\\',
+        b"bar" => b'|',
+        _ => {
+            let digits = lower.strip_prefix(b"char-")?;
+            if !digits.first().is_some_and(u8::is_ascii_digit) {
+                return None;
+            }
+            let (n, end) = str2nr(digits, 0);
+            if end != digits.len() {
+                return None;
+            }
+            let mut out = Vec::new();
+            push_utf8(i32::try_from(n).ok()?, &mut out);
+            return Some(out);
+        }
+    };
+    Some(vec![c])
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -414,7 +600,7 @@ impl Parser<'_> {
             self.bump();
             let right = self.parse_additive()?;
             let mut s = left.coerce_str();
-            s.push_str(&right.coerce_str());
+            s.extend_from_slice(&right.coerce_str());
             left = Value::Str(s);
         }
         Ok(left)
@@ -579,7 +765,239 @@ mod tests {
 
     /// Assert `input` evaluates to `expected` (the Vim-echo formatting).
     fn ev(input: &str) -> String {
+        String::from_utf8(evb(input)).expect("a UTF-8 result")
+    }
+
+    /// The raw bytes `input` evaluates to.
+    fn evb(input: &str) -> Vec<u8> {
         eval(input).unwrap_or_else(|e| panic!("eval({input:?}) failed: {e}"))
+    }
+
+    /// #764: integer literals read as nvim's `eval_number` / `vim_str2nr(STR2NR_ALL)` (nvim v0.12.6).
+    #[test]
+    fn integer_literals_take_nvims_bases() {
+        for (input, want) in [
+            ("010", "8"),
+            ("010+1", "9"),
+            ("-010", "-8"),
+            ("0o17", "15"),
+            ("0O17", "15"),
+            ("08", "8"),
+            ("09", "9"),
+            ("018", "18"),
+            ("00", "0"),
+            ("0", "0"),
+            ("0x10", "16"),
+            ("0xAB", "171"),
+            ("0XaB", "171"),
+            ("0X1F", "31"),
+            ("0b11", "3"),
+            ("0B101", "5"),
+            ("0x0", "0"),
+            ("0b0", "0"),
+            ("0o0", "0"),
+        ] {
+            assert_eq!(ev(input), want, "{input}");
+        }
+    }
+
+    /// #764: a literal past `i64::MAX` saturates there, in every base, and a minus negates the saturated
+    /// value (nvim v0.12.6).
+    #[test]
+    fn integer_literals_saturate_like_nvim() {
+        let max = "9223372036854775807";
+        for input in [
+            "9223372036854775807",
+            "9223372036854775808",
+            "99999999999999999999",
+            "0xffffffffffffffffff",
+            "0x8000000000000000",
+            "0b11111111111111111111111111111111111111111111111111111111111111111",
+            "0777777777777777777777777",
+        ] {
+            assert_eq!(ev(input), max, "{input}");
+        }
+        assert_eq!(ev("-9223372036854775808"), "-9223372036854775807");
+        assert_eq!(ev("-99999999999999999999"), "-9223372036854775807");
+    }
+
+    /// #764: what nvim refuses (E15/E488) is an error here, so the register is empty: a prefix with no
+    /// digit of its base, a digit or letter after the number, and the Vim9-only `'` digit separator.
+    #[test]
+    fn malformed_number_literals_are_errors() {
+        for input in [
+            "0x",
+            "0b",
+            "0o",
+            "0b12",
+            "0o8",
+            "0o18",
+            "0xg",
+            "00x1",
+            "0x-1",
+            "1e3",
+            "1.e3",
+            "1.5e",
+            "1.5x",
+            "1.5e3x",
+            "1.0e+",
+            "0.5e1.0",
+            "1'000",
+            "1'000'000",
+            "0x1'0",
+            "0b1'1",
+            "010'1",
+            "1''0",
+            "1'",
+        ] {
+            assert!(eval(input).is_err(), "{input} -> {:?}", eval(input));
+        }
+    }
+
+    /// #764: float literals and their printing (nvim v0.12.6), negative zero included.
+    #[test]
+    fn float_literals_match_nvim() {
+        for (input, want) in [
+            ("1.5e3", "1500.0"),
+            ("1.5E3", "1500.0"),
+            ("1.5e+3", "1500.0"),
+            ("1.5e-3", "0.0015"),
+            ("1.0E-2", "0.01"),
+            ("-0.0", "-0.0"),
+            ("-0.0*1", "-0.0"),
+            ("0.0", "0.0"),
+            ("010.5", "10.5"),
+            ("01.5", "1.5"),
+            ("1.0e400", "inf"),
+            ("-1.0e400", "-inf"),
+            ("1.0e-400", "0.0"),
+            ("1.0e308*10", "inf"),
+        ] {
+            assert_eq!(ev(input), want, "{input}");
+        }
+    }
+
+    /// #764: a number after the `.` operator is never a float (nvim reads it with `want_string`), and a
+    /// non-decimal number ends where its digits do.
+    #[test]
+    fn concat_operand_numbers_are_not_floats() {
+        assert_eq!(ev("1.5.2"), "152");
+        assert_eq!(ev("1.5.'x'"), "15x");
+        assert_eq!(ev("0x10.5"), "165");
+        assert_eq!(ev("0x1.5"), "15");
+        assert_eq!(ev("0x1.'x'"), "1x");
+        assert_eq!(ev("010.'x'"), "8x");
+        assert_eq!(ev("'x'. -1.5"), "x-15");
+    }
+
+    /// #764: double-quoted escapes give nvim's bytes (nvim v0.12.6, `"=...<CR>p`).
+    #[test]
+    fn double_quoted_escapes_match_nvim() {
+        for (input, want) in [
+            (r#""\x41""#, &b"A"[..]),
+            (r#""\X41""#, b"A"),
+            (r#""\x4""#, b"\x04"),
+            (r#""\x4g""#, b"\x04g"),
+            (r#""\x414""#, b"A4"),
+            (r#""\x""#, b"x"),
+            (r#""\x80""#, b"\x80"),
+            (r#""\xff""#, b"\xff"),
+            (r#""é""#, "é".as_bytes()),
+            (r#""\u41""#, b"A"),
+            (r#""€""#, "€".as_bytes()),
+            (r#""\u""#, b"u"),
+            (r#""\U0001F600""#, "😀".as_bytes()),
+            (r#""\U41""#, b"A"),
+            (r#""\uD800""#, b"\xed\xa0\x80"),
+            (r#""\U110000""#, b"\xf4\x90\x80\x80"),
+            (r#""\U200000""#, b"\xf8\x88\x80\x80\x80"),
+            (r#""\U3FFFFFF""#, b"\xfb\xbf\xbf\xbf\xbf"),
+            (r#""\U4000000""#, b"\xfc\x84\x80\x80\x80\x80"),
+            (r#""\U7FFFFFFF""#, b"\xfd\xbf\xbf\xbf\xbf\xbf"),
+            (r#""\UFFFFFFFF""#, b"\xff"),
+            (r#""\U80000000""#, b""),
+            (r#""\e""#, b"\x1b"),
+            (r#""\b""#, b"\x08"),
+            (r#""\f""#, b"\x0c"),
+            (r#""\r""#, b"\r"),
+            (r#""\t""#, b"\t"),
+            (r#""\n""#, b"\n"),
+            (r#""\\""#, b"\\"),
+            (r#""\"""#, b"\""),
+            (r#""\101""#, b"A"),
+            (r#""\1012""#, b"A2"),
+            (r#""\1""#, b"\x01"),
+            (r#""\777""#, b"\xff"),
+            (r#""\8""#, b"8"),
+            (r#""\z""#, b"z"),
+            (r#""\a""#, b"a"),
+            (r#""\v""#, b"v"),
+            // A NUL ends the string.
+            (r#""\0""#, b""),
+            (r#""x\0y""#, b"x"),
+            (r#""x\x00y""#, b"x"),
+            (r#""\u0000y""#, b""),
+            (r#""\400""#, b""),
+        ] {
+            assert_eq!(evb(input), want, "{input}");
+        }
+        assert!(eval(r#""a\""#).is_err());
+    }
+
+    /// #764: `\<...>` keys that stand for a character give it; an unknown or partial name is plain text,
+    /// both as nvim v0.12.6 does.
+    #[test]
+    fn double_quoted_key_escapes_match_nvim() {
+        for (input, want) in [
+            (r#""\<Esc>""#, &b"\x1b"[..]),
+            (r#""\<esc>""#, b"\x1b"),
+            (r#""\<ESC>""#, b"\x1b"),
+            (r#""\<CR>""#, b"\r"),
+            (r#""\<Return>""#, b"\r"),
+            (r#""\<Enter>""#, b"\r"),
+            (r#""\<NL>""#, b"\n"),
+            (r#""\<LF>""#, b"\n"),
+            (r#""\<Linefeed>""#, b"\n"),
+            (r#""\<Tab>""#, b"\t"),
+            (r#""\<Space>""#, b" "),
+            (r#""\<lt>""#, b"<"),
+            (r#""\<lt>x""#, b"<x"),
+            (r#""\<Bslash>""#, b"\\"),
+            (r#""\<Bar>""#, b"|"),
+            (r#""\<C-a>""#, b"\x01"),
+            (r#""\<c-a>""#, b"\x01"),
+            (r#""\<C-A>""#, b"\x01"),
+            (r#""\<C-Z>""#, b"\x1a"),
+            (r#""\<C-x>""#, b"\x18"),
+            (r#""\<C-[>""#, b"\x1b"),
+            (r#""\<C-\>""#, b"\x1c"),
+            (r#""\<C-]>""#, b"\x1d"),
+            (r#""\<C-^>""#, b"\x1e"),
+            (r#""\<C-_>""#, b"\x1f"),
+            (r#""\<C-?>""#, b"\x7f"),
+            (r#""\<S-a>""#, b"A"),
+            (r#""\<Char-65>""#, b"A"),
+            (r#""\<Char-0101>""#, b"A"),
+            (r#""\<Char-233>""#, "é".as_bytes()),
+            (r#""\<Bogus>""#, b"<Bogus>"),
+            (r#""\<x>""#, b"<x>"),
+            (r#""\<>""#, b"<>"),
+            (r#""\<C->""#, b"<C->"),
+            (r#""\<""#, b"<"),
+            (r#""\<Esc""#, b"<Esc"),
+            (r#""\<C-A""#, b"<C-A"),
+        ] {
+            assert_eq!(evb(input), want, "{input}");
+        }
+    }
+
+    /// Single-quoted strings: `''` is a quote and a backslash is plain text (nvim v0.12.6).
+    #[test]
+    fn single_quoted_strings_match_nvim() {
+        assert_eq!(ev("'it''s'"), "it's");
+        assert_eq!(ev("''''"), "'");
+        assert_eq!(ev(r"'a\nb'"), r"a\nb");
+        assert_eq!(ev("''"), "");
     }
 
     #[test]
@@ -692,12 +1110,12 @@ mod tests {
         assert!(matches!(eval("7 / 0"), Err(ExprError::DivByZero)));
         assert!(matches!(eval("5 % 0"), Err(ExprError::DivByZero)));
         // eval_or_empty flattens every error to "".
-        assert_eq!(eval_or_empty("1 +"), "");
-        assert_eq!(eval_or_empty("7 / 0"), "");
-        assert_eq!(eval_or_empty("'a' + 1"), "");
+        assert_eq!(eval_or_empty("1 +"), b"");
+        assert_eq!(eval_or_empty("7 / 0"), b"");
+        assert_eq!(eval_or_empty("'a' + 1"), b"");
         // ...but still returns the value on success.
-        assert_eq!(eval_or_empty("1+2*3"), "7");
-        assert_eq!(eval_or_empty("'n='.5"), "n=5");
+        assert_eq!(eval_or_empty("1+2*3"), b"7");
+        assert_eq!(eval_or_empty("'n='.5"), b"n=5");
     }
 
     #[test]
