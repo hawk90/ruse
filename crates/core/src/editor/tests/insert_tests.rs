@@ -518,9 +518,126 @@ mod insert_entry_tests {
         assert_eq!(text(&st), "foo ");
         assert_eq!(st.mode(), Mode::Insert);
         assert_eq!(st.cursor().0, 4);
-        // At column 0 it is a no-op.
+        // At the buffer's first column there is nothing to join: a no-op.
         let st = run("hi", &[Command::EnterInsert, Command::InsertDeleteWordBack]);
         assert_eq!(text(&st), "hi");
+    }
+
+    /// `j` then `I`, then `cmds`: an Insert at the second line's column 0.
+    fn at_second_line_start(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut all = vec![Command::Move(1, Motion::Down), Command::InsertLineStart];
+        all.extend_from_slice(cmds);
+        run(initial, &all)
+    }
+
+    #[test]
+    fn insert_ctrl_w_at_line_start_joins_the_line_above() {
+        // nvim v0.12.6 (default 'backspace' "indent,eol,start"), #726: `jI<C-w><Esc>` on ["ab","cd"] →
+        // ["abcd"], the caret at the join; a second `<C-w>` then deletes the word "ab" → ["cd"].
+        let st = at_second_line_start("ab\ncd\n", &[Command::InsertDeleteWordBack]);
+        assert_eq!(text(&st), "abcd\n");
+        assert_eq!(st.cursor().0, 2);
+        assert_eq!(st.mode(), Mode::Insert);
+        let st = at_second_line_start(
+            "ab\ncd\n",
+            &[Command::InsertDeleteWordBack, Command::InsertDeleteWordBack],
+        );
+        assert_eq!(text(&st), "cd\n");
+        // ["ab  ","cd"]: the join keeps the trailing blanks; the next `<C-w>` takes them and "ab" → ["cd"].
+        let st = at_second_line_start("ab  \ncd\n", &[Command::InsertDeleteWordBack]);
+        assert_eq!(text(&st), "ab  cd\n");
+        let st = at_second_line_start(
+            "ab  \ncd\n",
+            &[Command::InsertDeleteWordBack, Command::InsertDeleteWordBack],
+        );
+        assert_eq!(text(&st), "cd\n");
+        // `o<C-w>x<Esc>` on ["ab"] → ["abx"]: the opened empty line joins back up.
+        let st = run(
+            "ab\n",
+            &[
+                Command::OpenBelow,
+                Command::InsertDeleteWordBack,
+                Command::InsertChar('x'),
+            ],
+        );
+        assert_eq!(text(&st), "abx\n");
+    }
+
+    #[test]
+    fn insert_ctrl_w_stops_once_at_the_insert_start() {
+        // nvim v0.12.6: `Axy<C-w><Esc>` on ["ab cd"] deletes only the typed "xy" → ["ab cd"]; a second
+        // `<C-w>` goes on past the start → ["ab "].
+        let typed = [
+            Command::AppendLineEnd,
+            Command::InsertChar('x'),
+            Command::InsertChar('y'),
+            Command::InsertDeleteWordBack,
+        ];
+        let st = run("ab cd\n", &typed);
+        assert_eq!(text(&st), "ab cd\n");
+        let mut twice = typed.to_vec();
+        twice.push(Command::InsertDeleteWordBack);
+        assert_eq!(text(&run("ab cd\n", &twice)), "ab \n");
+        // From the start itself it is no stop: `wi<C-w>X<Esc>` → ["Xcd"].
+        let st = run(
+            "ab cd\n",
+            &[
+                Command::Move(1, Motion::WordFwd),
+                Command::EnterInsert,
+                Command::InsertDeleteWordBack,
+                Command::InsertChar('X'),
+            ],
+        );
+        assert_eq!(text(&st), "Xcd\n");
+        // Across a typed line break: `Acd<CR>ef` then three `<C-w>` → ["ab"] (the third stops at the start).
+        let st = run(
+            "ab\n",
+            &[
+                Command::AppendLineEnd,
+                Command::InsertChar('c'),
+                Command::InsertChar('d'),
+                Command::InsertNewline,
+                Command::InsertChar('e'),
+                Command::InsertChar('f'),
+                Command::InsertDeleteWordBack,
+                Command::InsertDeleteWordBack,
+                Command::InsertDeleteWordBack,
+            ],
+        );
+        assert_eq!(text(&st), "ab\n");
+    }
+
+    #[test]
+    fn insert_ctrl_w_join_after_an_undo_break_undoes_apart() {
+        // nvim's default `<C-G>u<C-W>` (#726): `jI<C-w><C-w><Esc>u` on ["ab","cd"] → ["abcd"] — the
+        // second delete is its own undo step; the input layer sends the break, the core honors it.
+        let mut st = at_second_line_start(
+            "ab\ncd\n",
+            &[
+                Command::BreakUndo,
+                Command::InsertDeleteWordBack,
+                Command::BreakUndo,
+                Command::InsertDeleteWordBack,
+                Command::EnterNormal,
+                Command::Undo,
+            ],
+        );
+        assert_eq!(text(&st), "abcd\n");
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(text(&st), "ab\ncd\n");
+    }
+
+    #[test]
+    fn insert_ctrl_u_at_line_start_joins_the_line_above() {
+        // nvim v0.12.6: `jI<C-u><Esc>` on ["ab","cd"] → ["abcd"]; on the buffer's first line a no-op.
+        let st = at_second_line_start("ab\ncd\n", &[Command::InsertDeleteToLineStart]);
+        assert_eq!(text(&st), "abcd\n");
+        assert_eq!(st.cursor().0, 2);
+        let st = run(
+            "ab\n",
+            &[Command::InsertLineStart, Command::InsertDeleteToLineStart],
+        );
+        assert_eq!(text(&st), "ab\n");
     }
 
     #[test]

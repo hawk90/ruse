@@ -3,14 +3,36 @@ use crate::input::*;
 
 #[test]
 fn insert_ctrl_w_and_ctrl_u_emit_delete_commands() {
+    // nvim's default mappings `<C-G>u<C-W>` / `<C-G>u<C-U>` (#726): an undo break, then the delete.
     let mut e = InputEngine::new();
     assert_eq!(
         e.feed(ctrl('w'), Mode::Insert),
-        Feed::Cmd(Command::InsertDeleteWordBack)
+        Feed::Replay(vec![Command::BreakUndo, Command::InsertDeleteWordBack])
     );
     assert_eq!(
         e.feed(ctrl('u'), Mode::Insert),
-        Feed::Cmd(Command::InsertDeleteToLineStart)
+        Feed::Replay(vec![Command::BreakUndo, Command::InsertDeleteToLineStart])
+    );
+}
+
+#[test]
+fn insert_ctrl_w_and_ctrl_u_record_only_the_delete() {
+    // The undo break is no inserted text (Vim's redo buffer never holds `CTRL-G u`): the session body
+    // that `.` and `i_CTRL-A` replay carries the deletes alone, so a repeat stays one undo step (#726).
+    let mut e = InputEngine::new();
+    e.feed(k('i'), Mode::Normal);
+    e.feed(k('x'), Mode::Insert);
+    e.feed(ctrl('w'), Mode::Insert);
+    e.feed(ctrl('u'), Mode::Insert);
+    e.feed(esc(), Mode::Insert);
+    e.feed(k('i'), Mode::Normal);
+    assert_eq!(
+        e.feed(ctrl('a'), Mode::Insert),
+        Feed::Replay(vec![
+            Command::InsertChar('x'),
+            Command::InsertDeleteWordBack,
+            Command::InsertDeleteToLineStart,
+        ])
     );
 }
 

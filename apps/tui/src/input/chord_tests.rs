@@ -167,8 +167,15 @@ fn insert_chord_table() {
             'h' => Some(Feed::Cmd(Command::DeleteBack)),
             'j' | 'm' => Some(Feed::Cmd(Command::InsertNewline)),
             'i' => Some(Feed::Cmd(Command::InsertTab)),
-            'w' => Some(Feed::Cmd(Command::InsertDeleteWordBack)),
-            'u' => Some(Feed::Cmd(Command::InsertDeleteToLineStart)),
+            // nvim's default `<C-G>u<C-W>` / `<C-G>u<C-U>` (#726).
+            'w' => Some(Feed::Replay(vec![
+                Command::BreakUndo,
+                Command::InsertDeleteWordBack,
+            ])),
+            'u' => Some(Feed::Replay(vec![
+                Command::BreakUndo,
+                Command::InsertDeleteToLineStart,
+            ])),
             't' => Some(Feed::Cmd(Command::InsertIndent)),
             'd' => Some(Feed::Cmd(Command::InsertDedent)),
             // Re-indent (`!^F` in 'indentkeys'), resolved by the frontend's indenter (#1206).

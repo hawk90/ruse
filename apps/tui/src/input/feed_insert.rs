@@ -200,6 +200,17 @@ impl InputEngine {
         Feed::Replay(vec![Command::BreakUndo, cmd])
     }
 
+    /// `i_CTRL-W` / `i_CTRL-U` under nvim's default mappings `<C-G>u<C-W>` / `<C-G>u<C-U>`
+    /// (`:help i_CTRL-W-default`, nvim v0.12.6): an undo break, then the delete, so `u` restores what the
+    /// delete removed (#726). Only the delete is folded into the `.` record — the break is no inserted text
+    /// (Vim's redo buffer never holds `CTRL-G u`), so a repeat stays one undo step. The [`Feed::Replay`]
+    /// bypasses the recorder, hence the fold by hand.
+    fn undo_point_then(&mut self, cmd: Command) -> Feed {
+        self.reset();
+        self.record(&Feed::Cmd(cmd.clone()), Mode::Insert);
+        Feed::Replay(vec![Command::BreakUndo, cmd])
+    }
+
     /// End the insert change at a caret jump and start a fresh plain-`i` one (see
     /// [`insert_cursor_move`](Self::insert_cursor_move)).
     fn restart_insert_change(&mut self) {
@@ -505,8 +516,8 @@ impl InputEngine {
                 Feed::Pending
             }
             // `i_CTRL-W` / `i_CTRL-U` — delete the word before the caret / everything before it on the line.
-            KeyCode::Char('w') => self.action(Command::InsertDeleteWordBack),
-            KeyCode::Char('u') => self.action(Command::InsertDeleteToLineStart),
+            KeyCode::Char('w') => self.undo_point_then(Command::InsertDeleteWordBack),
+            KeyCode::Char('u') => self.undo_point_then(Command::InsertDeleteToLineStart),
             // `i_CTRL-T` / `i_CTRL-D` — indent / dedent the current line by one shiftwidth.
             KeyCode::Char('t') => self.action(Command::InsertIndent),
             // `i_CTRL-F` — re-indent the line (`!^F` in 'indentkeys'); the frontend resolves it from the

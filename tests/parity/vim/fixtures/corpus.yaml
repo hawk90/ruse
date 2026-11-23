@@ -56100,6 +56100,1182 @@
       }
     },
     {
+      "name": "i726_cw_col0_joins",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<C-w><Esc>",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_twice",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<C-w><C-w><Esc>",
+      "expect": {
+        "text": [
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_thrice",
+      "lines": [
+        "ab cd",
+        "ef"
+      ],
+      "keys": "jI<C-w><C-w><Esc>",
+      "expect": {
+        "text": [
+          "ab ef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_trailing_blanks",
+      "lines": [
+        "ab  ",
+        "cd"
+      ],
+      "keys": "jI<C-w><Esc>",
+      "expect": {
+        "text": [
+          "ab  cd"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_blanks_twice",
+      "lines": [
+        "ab  ",
+        "cd"
+      ],
+      "keys": "jI<C-w><C-w><Esc>",
+      "expect": {
+        "text": [
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_then_type",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<C-w>X<Esc>",
+      "expect": {
+        "text": [
+          "abXcd"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_above_empty",
+      "lines": [
+        "",
+        "cd"
+      ],
+      "keys": "jI<C-w><Esc>",
+      "expect": {
+        "text": [
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_above_indented",
+      "lines": [
+        "  ab",
+        "cd"
+      ],
+      "keys": "jI<C-w><Esc>",
+      "expect": {
+        "text": [
+          "  abcd"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_first_line_col0",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "I<C-w>X<Esc>",
+      "expect": {
+        "text": [
+          "Xab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_o_empty_line",
+      "lines": [
+        "ab"
+      ],
+      "keys": "o<C-w>x<Esc>",
+      "expect": {
+        "text": [
+          "abx"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_o_autoindent",
+      "lines": [
+        "  ab"
+      ],
+      "keys": "o<C-w>x<Esc>",
+      "expect": {
+        "text": [
+          "  ab",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_o_autoindent_twice",
+      "lines": [
+        "  ab"
+      ],
+      "keys": "o<C-w><C-w>x<Esc>",
+      "expect": {
+        "text": [
+          "  abx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_o_noai",
+      "lines": [
+        "  ab"
+      ],
+      "keys": ":set noai<CR>o<C-w>x<Esc>",
+      "expect": {
+        "text": [
+          "  abx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_typed_at_col0",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jIx<C-w><C-w><Esc>",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_typed_stops_at_insert_start",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "Axy<C-w><Esc>",
+      "expect": {
+        "text": [
+          "ab cd"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_typed_then_before_start",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "Axy<C-w><C-w><Esc>",
+      "expect": {
+        "text": [
+          "ab "
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_before_insert_start",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "wi<C-w>X<Esc>",
+      "expect": {
+        "text": [
+          "Xcd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_cr_then_back",
+      "lines": [
+        "ab"
+      ],
+      "keys": "Acd<CR>ef<C-w><C-w><Esc>",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_cr_then_back_thrice",
+      "lines": [
+        "ab"
+      ],
+      "keys": "Acd<CR>ef<C-w><C-w><C-w><Esc>",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_dot",
+      "lines": [
+        "ab",
+        "cd",
+        "ef",
+        "gh"
+      ],
+      "keys": "jI<C-w><Esc>j.",
+      "expect": {
+        "text": [
+          "abcdef",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cw_col0_undo",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<C-w><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": []
+      }
+    },
+    {
+      "name": "i726_cw_col0_twice_undo",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<C-w><C-w><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "ab",
+            "cd"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cw_typed_twice_undo",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "Axy<C-w><C-w><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab cd"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "ab cdxy"
+          ],
+          [
+            "ab cd"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cw_typed_then_text_undo",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "Axy<C-w>z<Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab cdxy"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "ab cd"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cw_first_key_then_text_undo",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "A<C-w>z<Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab cd"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": []
+      }
+    },
+    {
+      "name": "i726_cw_o_autoindent_undo",
+      "lines": [
+        "  ab"
+      ],
+      "keys": "o<C-w>x<Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "  ab",
+          "  "
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "  ab"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cw_cr_then_back_thrice_undo",
+      "lines": [
+        "ab"
+      ],
+      "keys": "Acd<CR>ef<C-w><C-w><C-w><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "abcd",
+            ""
+          ],
+          [
+            "abcd",
+            "ef"
+          ],
+          [
+            "ab"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cw_col0_twice_dot_undo",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "jI<C-w><C-w><Esc>j.u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "abcd",
+            "ef"
+          ],
+          [
+            "ab",
+            "cd",
+            "ef"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cw_after_left",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "Axy<Left><C-w><Esc>",
+      "expect": {
+        "text": [
+          "ab cdy"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_bs_col0_twice_undo",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<BS><BS><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": []
+      }
+    },
+    {
+      "name": "i726_cu_col0_joins",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<C-u><Esc>",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cu_typed_twice",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jIxy<C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cu_col0_twice",
+      "lines": [
+        "ab cd",
+        "ef"
+      ],
+      "keys": "jI<C-u><C-u><Esc>",
+      "expect": {
+        "text": [
+          "ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cu_o_autoindent_twice",
+      "lines": [
+        "  ab"
+      ],
+      "keys": "o<C-u><C-u>x<Esc>",
+      "expect": {
+        "text": [
+          "  abx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cu_col0_dot",
+      "lines": [
+        "ab",
+        "cd",
+        "ef",
+        "gh"
+      ],
+      "keys": "jI<C-u><Esc>j.",
+      "expect": {
+        "text": [
+          "abcdef",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i726_cu_col0_twice_undo",
+      "lines": [
+        "ab cd",
+        "ef"
+      ],
+      "keys": "jI<C-u><C-u><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab cdef"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "ab cd",
+            "ef"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cu_typed_then_text_undo",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "Axy<C-u>z<Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab cdxy"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "ab cd"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cu_typed_twice_undo",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jIxy<C-u><C-u><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "ab",
+            "xycd"
+          ],
+          [
+            "ab",
+            "cd"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i726_cu_col0_undo",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jI<C-u><Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": []
+      }
+    },
+    {
       "name": "z_plus",
       "lines": [
         "line 1",
