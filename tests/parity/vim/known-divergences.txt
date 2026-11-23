@@ -146,3 +146,11 @@ xl_binary_bad_digit # #764: "= reports no E15 for a failed expression; the text 
 xl_octal_bad_digit # #764: "= reports no E15 for a failed expression; the text matches
 xl_float_needs_fraction # #764: "= reports no E15 for a failed expression; the text matches
 xl_digit_separator # #764: "= reports no E488 for a failed expression; the text matches
+
+# #1346: nvim's `.` after a Visual put repeats only the Visual delete `nv_put_opt` ran (its redo buffer
+# holds that `d`), so it deletes the same size of text and puts nothing; ruse's `.` repeats the whole
+# Visual put. Not specific to the empty line (the plain-text fixture diverges on main too).
+vput_char_sel_dot_repeats_the_delete # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
+vput_empty_mid_line_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
+vput_empty_last_line_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
+vput_emptied_char_sel_undo_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put

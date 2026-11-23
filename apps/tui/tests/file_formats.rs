@@ -253,6 +253,13 @@ fn the_emptied_buffer_keeps_its_line_for_commands_that_add_lines() {
         ("ggdG<C-v>Ax<Esc>", b" x\n"),
         ("ggdG<C-v>Ix<Esc>", b"x\n"),
         ("ggdGix<Esc>ui<C-r>z<Esc><C-r>", b"x\n"),
+        // #1346: a Visual put deletes nothing there and puts on its line (nvim v0.12.6).
+        ("\"ayiwggdGv\"ap", b"a\n"),
+        ("\"ayiwggdGV\"ap", b"a\n"),
+        ("\"ayiwggdG<C-v>\"ap", b"a\n"),
+        ("ggdGvp", b"\na\nb\n"),
+        ("ggdGVp", b"a\nb\n"),
+        ("ggdG<C-v>p", b"\na\nb\n"),
     ] {
         let f = scratch("e.txt", b"a\nb\n");
         std::fs::write(f.with_file_name("OTHER"), b"r1\nr2\n").unwrap();
