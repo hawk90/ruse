@@ -10,7 +10,6 @@
 //! - `comment_dir`: `%` searches both ways (`1`, `-1`), the C indent only backward (`-1`), and only
 //!   the C indent searches for a raw string start (`raw_string`, its own phase);
 //! - `lisp`: `'lisp'` under `%`, never in the C indent;
-//! - [`Backslashes`]: how the backslashes before a char are counted, see there;
 //! - `traveled` (the C indent's `maxtravel`) and `lispcomm` (`%` under `'lisp'`) are read only by the
 //!   port's own stepping.
 
@@ -19,32 +18,57 @@ fn at(s: &[u8], i: usize) -> u8 {
     s.get(i).copied().unwrap_or(0)
 }
 
-/// `check_prevcol` as `%` runs it: whether the character before `line[col]` is `ch`, `prevcol` taking
-/// its column. It steps back over every continuation byte, where nvim's `utf_head_off` stops at three
-/// and at one no valid char owns: the two only part on bytes that are not UTF-8.
+/// `utf_head_off` (`mbyte.c`): how far byte `i` of `s` is past the start of the char cluster it is in.
+/// An ASCII byte is 0 at once; a byte no valid char owns (a lone continuation byte, a cut or invalid
+/// lead) is a cell of its own, 0; a byte of a valid char goes back to the start of its cluster, so a
+/// combining mark after a `\` is part of the `\` (#1548).
+pub(crate) fn utf_head_off(s: &[u8], i: usize) -> usize {
+    if at(s, i) < 0x80 {
+        return 0;
+    }
+    // The cluster boundary before the end of the char holding `i` starts that char's cluster; a byte
+    // that is not UTF-8 is a cell of its own there, as in nvim.
+    let end = crate::motion::next_boundary(s, i);
+    i - crate::motion::prev_grapheme(s, end).min(i)
+}
+
+/// `check_prevcol` (`search.c`): whether the character before `line[col]` is `ch`, `prevcol` taking
+/// its column. nvim steps back one byte, then by [`utf_head_off`], which stops on a byte no valid char
+/// owns: in `\` `0x80` `)` no backslash is right before the `)` (#1548).
 pub(crate) fn check_prevcol(line: &[u8], col: usize, ch: u8, prevcol: &mut usize) -> bool {
     if col == 0 {
         return false;
     }
     let mut c = col - 1;
-    while c > 0 && line[c] & 0xC0 == 0x80 {
-        c -= 1;
+    if c > 0 {
+        c -= utf_head_off(line, c);
     }
     *prevcol = c;
-    line[c] == ch
+    at(line, c) == ch
 }
 
-/// How a port counts the backslashes right before `linep[col]`. nvim counts raw bytes before a `"`
-/// and steps back with `check_prevcol` (`utf_head_off`) before a bracket; the C indent port does
-/// exactly that, `%` uses its own [`check_prevcol`] for both. On UTF-8 text the three counts agree
-/// (a backslash is never a continuation byte); they can part only on bytes that are not UTF-8, so
-/// each port keeps its own.
-#[derive(Clone, Copy)]
-pub(crate) struct Backslashes {
-    /// Before a `"` (whether it flips `inquote`).
-    pub(crate) quote: fn(&[u8], usize) -> usize,
-    /// Before `initc` / `findc` and the starting bracket (`match_escaped`).
-    pub(crate) escape: fn(&[u8], usize) -> usize,
+/// The number of backslashes right before `linep[col]`, nvim's `check_prevcol` loop (`for (int col =
+/// pos.col; check_prevcol(linep, col, '\\', &col);) bslcnt++;`): before the starting bracket
+/// (`match_escaped`) and before `initc` / `findc`.
+pub(crate) fn backslashes_before(linep: &[u8], col: usize) -> usize {
+    let mut n = 0;
+    let mut c = col;
+    let mut p = 0;
+    while check_prevcol(linep, c, b'\\', &mut p) {
+        n += 1;
+        c = p;
+    }
+    n
+}
+
+/// The number of backslash bytes right before `linep[col]`, nvim's raw byte loop before a `"` (`for
+/// (col = pos.col - 1; col >= 0; col--) { if (linep[col] != '\\') break; }`).
+pub(crate) fn backslash_bytes_before(linep: &[u8], col: usize) -> usize {
+    linep[..col.min(linep.len())]
+        .iter()
+        .rev()
+        .take_while(|&&b| b == b'\\')
+        .count()
 }
 
 /// The state the `findmatchlimit` scan loop carries from one position to the next.
@@ -82,7 +106,6 @@ pub(crate) struct MatchScan<'a> {
     pub(crate) lisp: bool,
     /// Inside a `'lisp'` comment: the match is searched in it only.
     pub(crate) lispcomm: bool,
-    pub(crate) bslcnt: Backslashes,
 }
 
 /// What a phase of one scan-loop iteration decides.
@@ -99,7 +122,7 @@ pub(crate) enum MatchStep {
 
 impl<'a> MatchScan<'a> {
     /// The scan state at `pos` on `linep`, before the target is set: nothing counted, no quotes.
-    pub(crate) fn new(pos: (usize, usize), linep: &'a [u8], bslcnt: Backslashes) -> Self {
+    pub(crate) fn new(pos: (usize, usize), linep: &'a [u8]) -> Self {
         MatchScan {
             pos,
             linep,
@@ -118,7 +141,6 @@ impl<'a> MatchScan<'a> {
             traveled: 0,
             lisp: false,
             lispcomm: false,
-            bslcnt,
         }
     }
 
@@ -244,7 +266,7 @@ impl<'a> MatchScan<'a> {
                 }
             }
             b'"' => {
-                if self.do_quotes != 0 && (self.bslcnt.quote)(linep, pos.1).is_multiple_of(2) {
+                if self.do_quotes != 0 && backslash_bytes_before(linep, pos.1).is_multiple_of(2) {
                     self.inquote = !self.inquote;
                     self.start_in_quotes = Some(false);
                 }
@@ -310,7 +332,7 @@ impl<'a> MatchScan<'a> {
     fn count_match(&mut self, c: u8) -> MatchStep {
         if (!self.inquote || self.start_in_quotes == Some(true))
             && (c == self.initc || c == self.findc)
-            && (self.bslcnt.escape)(self.linep, self.pos.1) & 1 == self.match_escaped
+            && backslashes_before(self.linep, self.pos.1) & 1 == self.match_escaped
         {
             if c == self.initc {
                 self.count += 1;
@@ -322,5 +344,31 @@ impl<'a> MatchScan<'a> {
             }
         }
         MatchStep::Next
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// nvim v0.12.6's `utf_head_off` and `check_prevcol` on bytes that are not UTF-8 (#1548).
+    #[test]
+    fn head_off_and_prevcol_as_nvim() {
+        // A lone continuation byte, a cut lead and a lone lead are cells of their own.
+        assert_eq!(utf_head_off(b"\\\x80", 1), 0);
+        assert_eq!(utf_head_off(b"\\\xe4\x80)", 2), 0);
+        assert_eq!(utf_head_off(b"\\\xe4)", 1), 0);
+        // A valid char's bytes go back to its start; a combining mark to its cluster's base.
+        assert_eq!(utf_head_off("\\\u{e9}".as_bytes(), 2), 1);
+        assert_eq!(utf_head_off("\\\u{301}".as_bytes(), 2), 2);
+        assert_eq!(utf_head_off("\\\u{301}\u{301}".as_bytes(), 4), 4);
+        let mut p = 0;
+        assert!(!check_prevcol(b"\\\x80)", 2, b'\\', &mut p));
+        assert_eq!(p, 1);
+        assert!(check_prevcol("\\\u{301})".as_bytes(), 3, b'\\', &mut p));
+        assert_eq!(p, 0);
+        assert_eq!(backslashes_before(b"\\\x80\\)", 3), 1);
+        assert_eq!(backslash_bytes_before(b"\\\\\"", 2), 2);
+        assert_eq!(backslash_bytes_before("\\\u{301}\"".as_bytes(), 3), 0);
     }
 }

@@ -178856,6 +178856,894 @@
       }
     },
     {
+      "name": "pct_inv_bs1_cont",
+      "lines": [
+        "( \\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\) )"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs2_cont",
+      "lines": [
+        "( \\\\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\\\) )"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs3_cont",
+      "lines": [
+        "( \\\\\\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\\\\\) )"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs_cont_bs",
+      "lines": [
+        "( \\\\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\\\) )"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs2_cont_bs",
+      "lines": [
+        "( \\\\\\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\\\\\) )"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_cont_bs",
+      "lines": [
+        "( \\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\) )"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_cont_bs_back",
+      "lines": [
+        "( \\) )"
+      ],
+      "keys": "$%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\) )"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs1_cont_back",
+      "lines": [
+        "( \\) )"
+      ],
+      "keys": "$%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\) )"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs1_cont_open_back",
+      "lines": [
+        "( \\( )"
+      ],
+      "keys": "$%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\( )"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs_cont2",
+      "lines": [
+        "( \\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\) )"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs_cont3",
+      "lines": [
+        "( \\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\) )"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs_cont4",
+      "lines": [
+        "( \\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\) )"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs_cut_lead",
+      "lines": [
+        "( \\ä) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\ä) )"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_bs_lone_lead",
+      "lines": [
+        "( \\ä) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( \\ä) )"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_lead_bs",
+      "lines": [
+        "( ä\\) )"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "( ä\\) )"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_quote_cont",
+      "lines": [
+        "(a \")\" b)"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "(a \")\" b)"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_quote_lead_bs",
+      "lines": [
+        "(a \"Ã\\\"\" b)"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "(a \"Ã\\\"\" b)"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_quote_lead_bs_back",
+      "lines": [
+        "(a \"Ã\\\"\" b)"
+      ],
+      "keys": "$%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "(a \"Ã\\\"\" b)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_quote_bs_cont",
+      "lines": [
+        "(a \"\\\" ) b)"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "(a \"\\\" ) b)"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_quote_bs_lead",
+      "lines": [
+        "(a \"\\Ã\" ) b)"
+      ],
+      "keys": "%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "(a \"\\Ã\" ) b)"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_op_d_bs1_cont",
+      "lines": [
+        "( \\) ) x"
+      ],
+      "keys": "d%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          " ) x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "( \\)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_op_d_bs_cont_bs",
+      "lines": [
+        "( \\\\) ) x"
+      ],
+      "keys": "d%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          " x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "( \\\\) )",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_escaped_start",
+      "lines": [
+        "\\\\( ) \\)"
+      ],
+      "keys": "lll%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "\\\\( ) \\)"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_inv_start_after_bs_cont",
+      "lines": [
+        "\\( ( ) )"
+      ],
+      "keys": "ll%",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "\\( ( ) )"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_comb_bs",
+      "lines": [
+        "( \\́) )"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "( \\́) )"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_comb_bs2",
+      "lines": [
+        "( \\́́) )"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "( \\́́) )"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_comb_bs_back",
+      "lines": [
+        "( \\́) )"
+      ],
+      "keys": "$%",
+      "expect": {
+        "text": [
+          "( \\́) )"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_comb_bs_open_back",
+      "lines": [
+        "( \\́( )"
+      ],
+      "keys": "$%",
+      "expect": {
+        "text": [
+          "( \\́( )"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_comb_quote_bs",
+      "lines": [
+        "(a \"\\́\" ) b)"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "(a \"\\́\" ) b)"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_comb_bs_valid_char",
+      "lines": [
+        "( \\é) )"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "( \\é) )"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_prepend_paren",
+      "lines": [
+        "( ؀) )"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "( ؀) )"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "pct_prepend_bs_paren",
+      "lines": [
+        "( \\؀) )"
+      ],
+      "keys": "%",
+      "expect": {
+        "text": [
+          "( \\؀) )"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
       "name": "obs_visual_charwise",
       "lines": [
         "abc def",
