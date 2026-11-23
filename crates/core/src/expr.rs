@@ -13,8 +13,8 @@
 //!   (`\n \t \r \b \e \f \\ \"`, octal `\101`, `\x41`, `€`, `\U0001F600`, and the `\<Esc>`-style keys
 //!   that stand for a character, see [`lex_double_quote`]). A result is bytes, not always UTF-8
 //!   (`"\xff"`), and a NUL ends a string literal as it does in nvim;
-//! - the `.` string-concatenation operator with number->string coercion (`'n='.5` -> `n=5`, `'v'.(1+2)`
-//!   -> `v3`).
+//! - the `.` (or `..`) string-concatenation operator with number->string coercion (`'n='.5` -> `n=5`,
+//!   `'v'.(1+2)` -> `v3`).
 //!
 //! Explicitly OUT OF SCOPE (each yields [`ExprError`] -> the register is EMPTY, never a crash): variables,
 //! `@r`/`&opt`/`$ENV`/`v:` refs, function/method calls, comparisons and logical/ternary/bitwise operators,
@@ -240,9 +240,14 @@ fn lex(input: &str) -> Result<Vec<Token>, ExprError> {
                 tokens.push(Token::Percent);
                 i += 1;
             }
+            // `..` is the same concatenation as `.` (`:help expr-..`, #1342).
             b'.' => {
                 tokens.push(Token::Dot);
-                i += 1;
+                i += if bytes.get(i + 1) == Some(&b'.') {
+                    2
+                } else {
+                    1
+                };
             }
             b'(' => {
                 tokens.push(Token::LParen);
@@ -1069,6 +1074,8 @@ mod tests {
     fn string_literals_and_concatenation() {
         assert_eq!(ev("'foo'.'bar'"), "foobar");
         assert_eq!(ev("'a' . 'b' . 'c'"), "abc");
+        assert_eq!(ev("'x'..'y'"), "xy"); // `..` is `.` (#1342)
+        assert_eq!(ev("1..2"), "12");
         assert_eq!(ev("\"foo\".\"bar\""), "foobar");
         assert_eq!(ev("'It''s'"), "It's"); // '' escapes a single quote
         assert_eq!(ev("\"a\\tb\""), "a\tb"); // backslash escape in double quotes

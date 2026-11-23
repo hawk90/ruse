@@ -166,8 +166,8 @@ pub enum ExCmd {
     /// `:set (no)modified` on the focused buffer (#619): marks it unsaved / saved.
     Modified(bool),
     /// A register value the session wrote that no recorded command produced (R6): the read-only
-    /// `"/ ": ". "% "#` synced from frontend state, a clipboard read, a macro's raw keys, and the registers
-    /// filled when the trace began. Sets exactly that slot ([`RegisterStore::set_slot`]); `None` is the
+    /// `"/ ": ". "% "#` synced from frontend state, a clipboard read, a macro's raw keys, the registers
+    /// filled when the trace began, and a `:put ={expr}` result in `"=` (#1342). Sets exactly that slot ([`RegisterStore::set_slot`]); `None` is the
     /// unnamed register.
     Register { name: Option<char>, value: Register },
     /// The start of a group of child commands that undo as one step.

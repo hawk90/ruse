@@ -99,6 +99,13 @@ const SESSIONS: &[(&str, &str, &str)] = &[
     ("one\n  two\nthree\n", ":.,+1j<CR>", "ex_join"),
     ("one\ntwo\n", ":set sw=2<CR>>>:2>><CR>", "ex_shift"),
     ("one\ntwo\n", "yy:put<CR>:0put<CR>", "ex_put"),
+    // `:put ={expr}` records the result in `"=` before the put, so replay needs no evaluator state (#1342).
+    (
+        "one\ntwo\n",
+        ":put ='z'<CR>:0put =<CR>",
+        "ex_register 61 c 7a",
+    ),
+    ("one\n", r#":put =\"a\nb\"<CR>:put =''<CR>"#, "ex_put"),
     ("one\ntwo\nthree\n", ":3mark a<CR>gg'ax", "ex_mark"),
     // `:mark` puts the mark on the first non-blank, and sets the non-letter marks too (#1241).
     ("one\n  two\nthree\n", ":2ka<CR>gg`ax", "ex_mark 2 97 ^"),

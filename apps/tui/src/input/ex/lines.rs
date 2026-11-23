@@ -132,12 +132,14 @@ pub(super) fn parse_shift(line: &str) -> Option<(SubRange, bool, u32)> {
     Some((range, first == '<', verb.len() as u32))
 }
 
-/// Parse `:[line]put[!] [reg]` into `(addr, reg, above)`. After the optional `[0-9.$]` address prefix the verb is
-/// `put`/`pu` (longest first). A register argument, when present, is a SINGLE non-whitespace char that must
-/// be separated from the verb by whitespace (`:put a` — not `:puta`, which Vim rejects as E492). No address
+/// Parse `:[line]put[!] [reg]` ([`Ex::Put`]) and `:[line]put[!] ={expr}` ([`Ex::PutExpr`]). After the
+/// optional `[0-9.$]` address prefix the verb is `put`/`pu` (longest first). A register argument, when
+/// present, is a SINGLE non-whitespace char that must be separated from the verb by whitespace (`:put a` —
+/// not `:puta`, which Vim rejects as E492). The `=` register may follow the verb directly (`:put='z'`: the
+/// command name ends at the `=`) and takes the rest of the line as its expression (#1342). No address
 /// prefix means the bare `:put` default (after the current line → `LineAddr::Current`). Returns `None`
 /// (→ falls through) unless the line is a `:put`.
-pub(super) fn parse_put(line: &str) -> Option<(LineAddr, Option<char>, bool)> {
+pub(super) fn parse_put(line: &str) -> Option<Ex> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
         .unwrap_or(line.len());
@@ -150,6 +152,21 @@ pub(super) fn parse_put(line: &str) -> Option<(LineAddr, Option<char>, bool)> {
         Some(r) => (true, r),
         None => (false, rest),
     };
+    // Empty address prefix → the bare `:put` default: after the current line.
+    let addr = || {
+        if addr_str.is_empty() {
+            Some(LineAddr::Current)
+        } else {
+            parse_line_addr(addr_str.trim())
+        }
+    };
+    if let Some(expr) = rest.trim_start().strip_prefix('=') {
+        return Some(Ex::PutExpr {
+            addr: addr()?,
+            expr: expr_argument(expr),
+            above,
+        });
+    }
     // The register arg: nothing (unnamed), or a whitespace-separated single register char. A char directly
     // after the verb (`:puta`) is NOT the put verb — Vim errors E492, so fall through to `Unknown`.
     let reg = if rest.is_empty() {
@@ -163,13 +180,30 @@ pub(super) fn parse_put(line: &str) -> Option<(LineAddr, Option<char>, bool)> {
             Some(single_char(arg)?)
         }
     };
-    // Empty address prefix → the bare `:put` default: after the current line.
-    let addr = if addr_str.is_empty() {
-        LineAddr::Current
-    } else {
-        parse_line_addr(addr_str.trim())?
-    };
-    Some((addr, reg, above))
+    Some(Ex::Put {
+        addr: addr()?,
+        reg,
+        above,
+    })
+}
+
+/// The expression of a `:put ={expr}` argument as nvim's `separate_nextcmd` leaves it: an unescaped `"`
+/// starts a comment that ends it, and the backslash before a `"` or a `|` is dropped (`\"` is a quote in
+/// the expression, `\|` a bar). Whitespace before the comment goes too (#1342).
+fn expr_argument(arg: &str) -> String {
+    let mut out = String::with_capacity(arg.len());
+    for c in arg.chars() {
+        match c {
+            '"' | '|' if out.ends_with('\\') => {
+                out.pop();
+                out.push(c);
+            }
+            '"' => break,
+            _ => out.push(c),
+        }
+    }
+    out.truncate(out.trim_end().len());
+    out
 }
 
 /// Parse `:[range]ma[rk] {x}` and `:[range]k[ ]{x}` (nvim's `ex_mark`, #1088, #1241). `{x}` is a mark

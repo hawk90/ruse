@@ -277,6 +277,10 @@ pub struct InputEngine {
     /// The `/`+`?` search-pattern history ring (`:help cmdline-history`): `/` and `?` SHARE one ring in
     /// Vim, kept apart from the ex ring above.
     search_history: CmdHistory,
+    /// The last expression typed for the `"=` register (nvim's `expr_line`): at a `"=` or `<C-r>=` prompt
+    /// or in `:put ={expr}` (#1342). An empty expression reuses it, as nvim re-reads the register's
+    /// expression. Session-scoped frontend text like the history rings; the core only sees results.
+    expr_line: String,
     /// The active Lang-Arg language map (`lmap`, F-027): a char→char rewrite applied by the pre-dispatch
     /// translation stage. Populated by `:lmap` at runtime (the persistent form is `keymap.lang`; no
     /// config-file loader exists for any `keymap.*` key yet). MVP restricts both sides to a single char.
@@ -358,6 +362,7 @@ impl InputEngine {
             cmdwin: None,
             ex_history: CmdHistory::new(history::DEFAULT_CAP),
             search_history: CmdHistory::new(history::DEFAULT_CAP),
+            expr_line: String::new(),
             lang_map: HashMap::new(),
             lang_active: false,
             tildeop: false,
@@ -508,6 +513,18 @@ impl InputEngine {
     pub fn set_history_len(&mut self, len: usize) {
         self.ex_history.set_cap(len);
         self.search_history.set_cap(len);
+    }
+
+    /// The expression an empty `"=` expression stands for: `expr` itself when it is not empty, else the
+    /// last one ([`InputEngine::expr_line`] field, nvim's `expr_line`). A non-empty `expr` becomes the
+    /// last one (#1342).
+    pub fn take_expr_line(&mut self, expr: String) -> String {
+        if expr.is_empty() {
+            self.expr_line.clone()
+        } else {
+            self.expr_line.clone_from(&expr);
+            expr
+        }
     }
 
     /// `'history'`.

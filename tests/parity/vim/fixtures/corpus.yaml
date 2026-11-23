@@ -179238,6 +179238,1163 @@
         "failed": false,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1342_put_expr",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_0put_expr",
+      "lines": [
+        "a"
+      ],
+      "keys": ":0put ='z'<CR>",
+      "expect": {
+        "text": [
+          "z",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_empty_buf",
+      "lines": [
+        ""
+      ],
+      "keys": ":put ='z'<CR>",
+      "expect": {
+        "text": [
+          "",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_putbang_expr_j",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "j:put! ='z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_dotdot",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='x'..'y'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "xy"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_dot",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='a'.'b'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_reg_b",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"byy:put b<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_reuse",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'<CR>:put =<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z",
+          "z"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_empty_first",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =<CR>",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_3put_expr_empty_first",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":3put =<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_set_empty_reg",
+      "lines": [
+        "a"
+      ],
+      "keys": "qaq:put a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_hex",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =0x10<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "16"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_float",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =1.5<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "1.5"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_newline",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =\\\"a\\nb\\\"<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_trailing_nl",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =\\\"x\\n\\\"<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_quote_comment",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =\"a\"<CR>",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_trailing_comment",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='a' \" c<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_escaped_quote",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =\\\"a\\\"<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_empty_str",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =''<CR>",
+      "expect": {
+        "text": [
+          "a",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_lead_space",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put = 'z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_indent",
+      "lines": [
+        "  a"
+      ],
+      "keys": ":put ='  z'<CR>",
+      "expect": {
+        "text": [
+          "  a",
+          "  z"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_3put_expr",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":3put ='z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "z",
+          "d"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_dollar_put_expr",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":$put ='z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "z"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_range_put_expr",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":1,2put ='z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "z",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_putbang_expr_top",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":put! ='z'<CR>",
+      "expect": {
+        "text": [
+          "z",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_nospace",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put='z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_putbang_expr_nospace",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put!='z'<CR>",
+      "expect": {
+        "text": [
+          "z",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_pu_expr",
+      "lines": [
+        "a"
+      ],
+      "keys": ":pu ='z'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_bar",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'|put ='w'<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z",
+          "w"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_then_put",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'<CR>:put<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E353",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_then_dot_reg",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'<CR>\".p",
+      "expect": {
+        "text": [
+          "a",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E29",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_then_eq_p",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'<CR>\"=<CR>p",
+      "expect": {
+        "text": [
+          "a",
+          "zz"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_eq_p_then_put_expr",
+      "lines": [
+        "a"
+      ],
+      "keys": "\"='q'<CR>p:put =<CR>",
+      "expect": {
+        "text": [
+          "aq",
+          "q"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_ctrl_r_eq_then_put_expr",
+      "lines": [
+        "a"
+      ],
+      "keys": "i<C-r>='q'<CR><Esc>:put =<CR>",
+      "expect": {
+        "text": [
+          "qa",
+          "q"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_undo",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'<CR>u",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_undo_walk",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='y'<CR>:put ='z'<CR>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "y",
+          "z"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "a",
+            "y"
+          ],
+          [
+            "a"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1342_put_expr_error",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =1+<CR>",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_error_cursor",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":3put =1+<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_error_reuse",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put =1+<CR>:put =<CR>",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1342_put_expr_error_after",
+      "lines": [
+        "a"
+      ],
+      "keys": ":put ='z'<CR>:put =1+<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
     }
   ]
 }

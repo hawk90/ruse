@@ -65,6 +65,17 @@ impl Register {
         }
     }
 
+    /// The `"=` register holding an evaluated expression's bytes: linewise when they end in a newline, as
+    /// nvim puts `"="x\n"` on a line of its own (#1022), else charwise.
+    #[must_use]
+    pub fn expr_result(bytes: Vec<u8>) -> Register {
+        if bytes.last() == Some(&b'\n') {
+            Register::linewise(bytes)
+        } else {
+            Register::charwise(bytes)
+        }
+    }
+
     /// A blockwise register (`CTRL-V` yank/delete): the per-row slices already joined by `\n`. Stored
     /// verbatim (ragged rows, no trailing newline); the paste path pads short target lines. Its width is
     /// the widest row in screen cells, a `<Tab>` counting to Vim's default tabstop of 8; the editor's own
@@ -283,7 +294,8 @@ impl RegisterStore {
     /// Set exactly one slot to `reg`, with none of the mirroring, appending or ring shifting a yank, delete
     /// or macro store does: the trace's `ex_register` record (RFC-0020 R6), which carries a value the
     /// session wrote. `None`/`"` is the unnamed slot, then `"0`–`"9`, `"a`–`"z`, `"-`, `"+`/`"*`, and the
-    /// read-only `"/ ": ". "% "#`. Returns `false` (nothing changed) for any other name.
+    /// read-only `"/ ": ". "% "#`, and the expression register `"=` (a `:put ={expr}` result, #1342).
+    /// Returns `false` (nothing changed) for any other name.
     pub fn set_slot(&mut self, name: Option<char>, reg: Register) -> bool {
         let slot = match name {
             None | Some('"') => &mut self.unnamed,
@@ -297,6 +309,7 @@ impl RegisterStore {
             Some('.') => &mut self.special.inserted,
             Some('%') => &mut self.special.file,
             Some('#') => &mut self.special.alternate,
+            Some('=') => &mut self.expr,
             Some(_) => return false,
         };
         *slot = reg;
@@ -309,7 +322,7 @@ impl RegisterStore {
         name.is_none_or(|c| {
             c.is_ascii_digit()
                 || c.is_ascii_lowercase()
-                || matches!(c, '"' | '-' | '+' | '*' | '/' | ':' | '.' | '%' | '#')
+                || matches!(c, '"' | '-' | '+' | '*' | '/' | ':' | '.' | '%' | '#' | '=')
         })
     }
 
@@ -345,11 +358,7 @@ impl RegisterStore {
     /// output of [`crate::expr::eval`] — an EMPTY string when evaluation failed, so a following paste/insert
     /// does nothing (Vim's degrade). This never touches any other slot.
     pub fn set_expr(&mut self, bytes: Vec<u8>) {
-        self.expr = if bytes.last() == Some(&b'\n') {
-            Register::linewise(bytes)
-        } else {
-            Register::charwise(bytes)
-        };
+        self.expr = Register::expr_result(bytes);
     }
 
     /// Sync the four read-only special registers (`:help quote_/`, `quote_:`, `quote_.`, `quote%`) from the

@@ -719,6 +719,29 @@ mod put_lines_tests {
         );
     }
 
+    /// A register written with nothing puts one empty line; one never written puts nothing (#1342). nvim
+    /// v0.12.6: `qaq:put a` and `:put =''` give `line1` and an empty line; `:put b` of an unset `b` is E353.
+    #[test]
+    fn a_written_empty_register_puts_one_empty_line() {
+        let mut st = EditorState::new(b"line1\n".to_vec());
+        assert_eq!(
+            st.put_lines(LineAddr::Line(1), Some('b')),
+            0,
+            "never written"
+        );
+        assert_eq!(text(&st), "line1\n");
+        st.view
+            .registers
+            .set_slot(Some('a'), Register::charwise(Vec::new()));
+        assert_eq!(st.put_lines(LineAddr::Line(1), Some('a')), 1);
+        assert_eq!(text(&st), "line1\n\n");
+        st.view
+            .registers
+            .set_slot(Some('='), Register::expr_result(b"z".to_vec()));
+        assert_eq!(st.put_lines(LineAddr::Line(0), Some('=')), 1);
+        assert_eq!(text(&st), "z\nline1\n\n");
+    }
+
     /// `:0put` inserts at the very top, before line 1. nvim: yank line1, `:0put` → `line1/line1/line2/line3`,
     /// cursor (1,1).
     #[test]
