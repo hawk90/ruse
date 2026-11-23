@@ -177,7 +177,7 @@ concepts:
       kmacro-menu-mode-map 44, ...) — bindings for which Vim's model has no seat at all, because
       Vim has no "the keymap depends on what this buffer is" tier. A router built on eight disjoint
       namespaces cannot express them; a `Mode` enum with a flag per special case is exactly how the
-      original mode defect was produced (crates/core/src/editor.rs:22 still has three variants).
+      original mode defect was produced (the `Mode` enum then in crates/core/src/editor.rs had three variants).
     helix: >
       Three modes, and at DISPATCH time each is one flat map — so Helix looks like Vim's depth-1 case.
       What differs is CONSTRUCTION: Select is `normal.clone()` + `merge_nodes(overrides)`, i.e. 301

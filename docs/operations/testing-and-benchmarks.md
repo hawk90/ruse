@@ -553,12 +553,12 @@ Two layers now drive the whole vertical, not just in-library units:
   malformed trace, and a base-hash mismatch that must be *rejected*, not misapplied). This is the only
   test that exercises the finished binary as a process.
 - **`apps/tui/tests/lang_arg_e2e.rs`** drives the **real input engine + core together** exactly as
-  `app/session.rs::run` composes them (keystroke → Lang-Arg translate → `Feed` → `Command` → edit), covering the
+  `app/session/event_loop.rs::run` composes them (keystroke → Lang-Arg translate → `Feed` → `Command` → edit), covering the
   F-027 vertical the inline `feed` unit tests cannot reach (translated edits on a real document,
   dot-repeat replaying the translated char, and the adversarial "and to nothing else" boundary at the
   document level).
 - **`ruse_tui::headless::Headless`** (#895) is a terminal-free session over the binary's real key path: it
-  owns the same `Session` `app/session.rs::run` drives and feeds keys through `Session::on_key` (macro layer,
+  owns the same `Session` `app/session/event_loop.rs::run` drives and feeds keys through `Session::on_key` (macro layer,
   session prefixes and chords, pickers, `H`/`M`/`L`, the input engine, the Ex dispatch), running the per-frame
   work (`pre_frame`, `post_render`) before every key, macro-replayed keys included. Keys are Vim notation,
   decoded as crossterm decodes a legacy terminal (`<C-\>` is `CTRL-4`, uppercase carries `SHIFT`). Tests read
@@ -572,7 +572,7 @@ Two layers now drive the whole vertical, not just in-library units:
   first test to fuzz the COMPOSED stack over long sessions — where mode × operator × register × dot ×
   undo-grouping interactions live. (It already surfaced one finding — see below.)
 - **`apps/tui/tests/scenarios.rs`** is a curated set of realistic multi-step sessions, typed through the
-  headless session (no hand mirror of `session.rs`), with exact end-states — dot-repeat × count, named-register yank/paste, visual + operator, search → change → `n` →
+  headless session (no hand mirror of the `Session` key path), with exact end-states — dot-repeat × count, named-register yank/paste, visual + operator, search → change → `n` →
   `.`, substitute + undo grouping, blockwise-insert replication + undo, and multi-window buffer sharing —
   each a readable regression guard for a known-tricky cross-feature interaction. All pass, i.e. the
   compound behaviours match Vim, not just the single ops the oracle corpus covers.

@@ -1,7 +1,7 @@
 //! `:s`: the substitute/global (`:s` / `:g`) data types, the two pure text helpers behind them
 //! (`line_spans`, `expand_replacement`), and the `EditorState::{substitute, substitute_preview,
 //! substitute_count, apply_substitutions}` methods (#1352). A child module, so the methods read the
-//! private `View`/`Document` state as they did in `mod.rs`; `:g` is in `line_cmds.rs`.
+//! private `View`/`Document` state as they did in `mod.rs`; `:g` is in `line_cmds/global.rs`.
 //! The public types stay `pub` and remain reachable at the crate root via `crate::lib`'s re-export.
 
 use crate::pattern::{Match, Regex};

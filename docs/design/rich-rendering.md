@@ -291,7 +291,7 @@ Per the F-010 ledger pattern (`caps/ledger.rs`, `probe.rs`), add:
   **first protocol implemented** (§10 slice 3b); Sixel second for legacy breadth.
 
 Thread the resolved graphics tier off `TermGuard` into paint exactly as `sync_output` is pinned once
-(`apps/tui/src/app/session.rs`) and passed to `flush_diff` — no live re-probe on frame noise.
+(`apps/tui/src/app/session/event_loop.rs`) and passed to `flush_diff` — no live re-probe on frame noise.
 
 ### 8.2 The degradation ladder (INV-CAP-DEGRADE)
 

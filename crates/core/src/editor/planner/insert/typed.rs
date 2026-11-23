@@ -232,15 +232,6 @@ fn plan_end_comment(
     ))
 }
 
-/// Plan a linewise shift (`>>` / `<<`) over `count` lines from the cursor's line down. `right` adds one
-/// indent level to each line; `!right` removes up to one. Empty lines are never indented (Vim); the cursor
-/// lands on the first non-blank of the cursor's (first) line, exactly as Vim leaves it. The register is
-/// untouched. Edits are one-per-line at distinct line starts, so the [`EditList`] is disjoint by construction.
-/// `=` reindent (bracket-depth model): set each line in `[first_line, last_line]` (0-based, inclusive) to
-/// `depth × shiftwidth` of indent, where `depth` is the net unclosed `([{` before the line; a line whose first
-/// non-blank is a closer dedents one level, and blank lines are left empty. Structural / language-agnostic:
-/// brackets inside strings or comments are NOT excluded (documented). One transaction (edits are disjoint,
-/// ascending line starts). Cursor → the first reindented line's new first-non-blank.
 /// The leading whitespace of the line holding the opener that matches the closer at `cur` (F-015 Phase 3a).
 /// Scans backwards from `cur` counting the `(open, close)` pair; when the nesting depth returns to zero the
 /// matching opener is found and its line's leading whitespace is returned as the closer's target indent.
