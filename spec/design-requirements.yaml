@@ -542,7 +542,7 @@ items:
     acceptance:
       - Input and redraw are never blocked by background work
     evidence:
-      - apps/tui/src/app/session.rs::run
+      - apps/tui/src/app/session/event_loop.rs::run
       - docs/design/scheduler.md
     legacy_ids:
       - DR-SCHED-2
@@ -1374,7 +1374,7 @@ items:
       - CTRL-\ CTRL-N leaves a terminal buffer
       - Ambiguity timeout configurable per profile
     evidence:
-      - apps/tui/src/app/session.rs
+      - apps/tui/src/app/session/keys.rs
     legacy_ids:
       - DR-TUX-2
     source:
