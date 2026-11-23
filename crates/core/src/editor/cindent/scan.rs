@@ -6,37 +6,7 @@ use super::lex::{
     skip_string, skipwhite, starts, strend, MARK_COMMENT, MARK_RAW,
 };
 use super::{Ci, Pos};
-use crate::findmatch::scan::{Backslashes, MatchScan, MatchStep};
-
-/// The number of backslashes right before `linep[col]` (nvim's `check_prevcol` loop, stepping back
-/// with `utf_head_off`).
-fn backslashes_before(linep: &[u8], col: usize) -> usize {
-    let mut bslcnt = 0;
-    let mut col = col;
-    while col > 0 && {
-        col -= 1;
-        col -= head_off(linep, col);
-        linep[col] == b'\\'
-    } {
-        bslcnt += 1;
-    }
-    bslcnt
-}
-
-/// The number of backslash bytes right before `linep[col]` (nvim's loop before a `"`).
-fn backslash_bytes_before(linep: &[u8], col: usize) -> usize {
-    linep[..col]
-        .iter()
-        .rev()
-        .take_while(|&&b| b == b'\\')
-        .count()
-}
-
-/// The C indent counts as nvim does: raw bytes before a `"`, `utf_head_off` steps before a bracket.
-const CINDENT_BACKSLASHES: Backslashes = Backslashes {
-    quote: backslash_bytes_before,
-    escape: backslashes_before,
-};
+use crate::findmatch::scan::{backslashes_before, MatchScan, MatchStep};
 
 /// The scan position as the C indent's [`Pos`] (1-based line).
 fn to_pos((lnum, col): (usize, usize)) -> Pos {
@@ -127,7 +97,7 @@ impl<'a, L: AsRef<[u8]>> Ci<'a, L> {
                 }
             }
         }
-        let mut s = MatchScan::new((pos.lnum, pos.col), linep, CINDENT_BACKSLASHES);
+        let mut s = MatchScan::new((pos.lnum, pos.col), linep);
         s.initc = initc;
         s.findc = findc;
         s.backwards = backwards;
