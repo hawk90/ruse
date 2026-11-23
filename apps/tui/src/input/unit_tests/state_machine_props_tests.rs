@@ -69,7 +69,12 @@ proptest! {
         for (i, (key, mode)) in steps.into_iter().enumerate() {
             let mut feed = e.feed(key, mode);
             if let Feed::ScreenMotion { count, .. } = feed {
-                prop_assert_eq!(count, e.mcount(), "handoff count differs from the armed count");
+                // `.` of a change over a screen motion hands it out with the recorded count and no
+                // operator armed, though it resolves as one (#1539).
+                let redo = e.has_op() && e.normal.op.is_none();
+                if !redo {
+                    prop_assert_eq!(count, e.mcount(), "handoff count differs from the armed count");
+                }
                 prop_assert!(e.normal.awaiting == Awaiting::Nothing, "key-expectation armed across a handoff");
                 feed = finish_screen_motion(&mut e, i);
             }
@@ -104,6 +109,7 @@ proptest! {
                 prop_assert!(!e.insert.ctrl_g, "ctrl-g prefix leaked after {:?}", feed);
                 prop_assert!(!e.insert.ctrl_r, "ctrl-r prefix leaked after {:?}", feed);
                 prop_assert!(!e.insert.ctrl_x, "ctrl-x submode leaked after {:?}", feed);
+                prop_assert!(e.screen_handoff.is_none(), "screen-motion handoff leaked after {:?}", feed);
             }
         }
     }

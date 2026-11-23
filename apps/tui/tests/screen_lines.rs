@@ -276,3 +276,37 @@ fn a_far_jump_centres_the_cursor_line() {
         assert_eq!(top(&h), want, "after {keys}");
     }
 }
+
+/// #1539: `.` after an operator over a screen-line motion resolves the motion again from the new
+/// cursor, as nvim's redo buffer holds the keys and not the span (nvim v0.12.6, 80 columns, 120-char
+/// lines that wrap over two rows).
+#[test]
+fn dot_repeats_the_screen_motion_not_the_span() {
+    let l = "0123456789".repeat(12);
+    let run = |lines: usize, keys: &str| {
+        let text: String = (0..lines).map(|_| format!("{l}\n")).collect();
+        let mut h = Headless::with_size(Profile::Vim, &text, 80, 24);
+        h.keys(keys);
+        let text = h.text();
+        (text, h.register('"'))
+    };
+    let lines = |v: &[&str]| v.iter().map(|l| format!("{l}\n")).collect::<String>();
+    let forty = "0123456789".repeat(4);
+    // `dgj` deletes 80 chars; on the 40 left, `gj` reaches the next line's start, so `.` is linewise.
+    assert_eq!(
+        run(3, "dgj."),
+        (lines(&[&l, &l]), (format!("{forty}\n"), "linewise"))
+    );
+    // `dg$` then `.` deletes the rest of the row the cursor is on now.
+    assert_eq!(
+        run(2, "dg$."),
+        (lines(&["", &l]), (forty.clone(), "charwise"))
+    );
+    // `cgj` replays its text over the new span: the line `X…` changed linewise.
+    assert_eq!(run(3, "cgjX<Esc>.").0, lines(&["X", &l, &l]));
+    // `3dgk` joins two lines into one of three rows; `.` goes up three rows of that one again.
+    assert_eq!(
+        run(4, "G40l3dgk.").0,
+        lines(&[&format!("{}{}", &l[..39], &l[40..])])
+    );
+}

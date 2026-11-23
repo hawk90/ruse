@@ -246,6 +246,10 @@ pub struct InputEngine {
     /// bare `EnterNormal`, so the repeats apply as ONE undo group (consecutive edits coalesce). `None`
     /// for a count-less insert and for every non-insert command.
     pending_insert_replay: Option<Repeat>,
+    /// A screen-line motion handed to the frontend ([`Feed::ScreenMotion`]) and not finished yet: what
+    /// the finisher needs to record the change for `.`, or the change `.` is repeating over it (#1539).
+    /// Set only between the handoff and its finisher; [`feed`](Self::feed) drops a stale one.
+    screen_handoff: Option<screen_motion::ScreenHandoff>,
     /// The operator+count armed when `/` opened the search line, held across the minibuffer's pattern entry
     /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
     /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
@@ -354,6 +358,7 @@ impl InputEngine {
             pending_record_expr: None,
             pending_insert_count: 0,
             pending_insert_replay: None,
+            screen_handoff: None,
             pending_search: None,
             insert: InsertState::default(),
             activations: Vec::new(),
@@ -547,6 +552,8 @@ impl InputEngine {
         // before ANY dispatch, in the three Lang-Arg contexts only. One substitution, then literal —
         // the translated key flows through normal dispatch and never re-enters this stage.
         let key = self.translate_lang(key, mode);
+        // A handoff the frontend never finished (a test feeding past one) must not finish a later one.
+        self.screen_handoff = None;
         // Emacs is NON-MODAL: no Normal/Insert grammar, no operator-pending, no dot-repeat recorder — a
         // key is either a `C-`/`M-` command or literal text. So it takes its own dispatch, never the Vim
         // modal path below (F-012 / RFC-0014). Native is NOT here on purpose: its text layer IS the Vim
@@ -574,6 +581,10 @@ impl InputEngine {
         // `v_CTRL-O`: the Select one-shot lives only while the borrowed Visual command is being typed.
         let select_shot = std::mem::take(&mut self.select_shot);
         let out = self.feed_impl(key, mode);
+        // A screen-line motion is finished by the frontend; its finisher records the change (#1539).
+        if let Feed::ScreenMotion { motion, count } = out {
+            self.arm_screen_handoff(motion, count, if one_shot { None } else { Some(mode) });
+        }
         // A command that kept the selection (a motion, `o`, a shape switch) returns to Select. A change
         // ended it and runs as a plain command so `.` records it; `EnterSelect` is inert in the core once
         // the selection is gone (after `y`, `<Esc>`, `:`), so only "is this a change" needs deciding here.

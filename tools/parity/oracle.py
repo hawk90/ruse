@@ -384,6 +384,8 @@ SHIFT_SETUP = "set shiftwidth=4 expandtab"
 # three rows of the oracle's 80-column window.
 SCREEN_LINES = ["ab cd ef ghijklmnop qrstuvwxyz " * 2, "gh ij", "ab cd ef ghijklmnop qrstuvwxyz " * 2]
 WRAP_LINES = ["first", " ".join("word%02d" % i for i in range(30)), "last line"]
+# #1539: a line that wraps over two rows of the 80-column window, for `.` after `dgj` and friends.
+SDOT_LINE = "0123456789" * 12
 
 FIXTURES: list[dict] = [
     {"name": "x_delete_char", "lines": ["hello"], "keys": "x"},
@@ -4675,6 +4677,37 @@ FIXTURES: list[dict] = [
     # the `2x` a `12x`).
     {"name": "vis_count_gj_over_wrapped_line", "lines": WRAP_LINES, "keys": "j3lv1gj"},
     {"name": "vis_count_gj_leaves_no_count", "lines": WRAP_LINES, "keys": "j3lv1gj<Esc>2x"},
+    # #1539: `.` after an operator over a screen-line motion re-resolves the motion where the cursor is now
+    #     (nvim's redo buffer holds the keys `dgj`, not the span), so the repeat can turn linewise or move
+    #     another screen row. 120-char lines wrap over two rows of the 80-column window.
+    {"name": "sdot_dgj_dot", "lines": [SDOT_LINE] * 3, "keys": "dgj."},
+    {"name": "sdot_dgk_dot", "lines": [SDOT_LINE] * 3, "keys": "Gdgk."},
+    {"name": "sdot_3dgk_dot", "lines": [SDOT_LINE] * 4, "keys": "G$3dgk."},
+    {"name": "sdot_3dgk_dot_mid_row", "lines": [SDOT_LINE] * 4, "keys": "G40l3dgk."},
+    {"name": "sdot_3dgk_dot_second_row", "lines": [SDOT_LINE] * 5, "keys": "G90l3dgk."},
+    # After `$` the wanted column is the line's end (MAXCOL), which makes `dgk` inclusive; the `.` runs
+    # from the clamped cursor with an ordinary wanted column, so the repeat is exclusive.
+    {"name": "sdot_dollar_3dgk", "lines": [SDOT_LINE] * 4, "keys": "G$3dgk"},
+    {"name": "sdot_dollar_dgk", "lines": [SDOT_LINE] * 4, "keys": "G$dgk"},
+    {"name": "sdot_dollar_dgk_dot", "lines": [SDOT_LINE] * 4, "keys": "G$dgk."},
+    {"name": "sdot_dollar_dgj_dot", "lines": [SDOT_LINE] * 4, "keys": "$dgj."},
+    {"name": "sdot_2dgj_dot", "lines": [SDOT_LINE] * 5, "keys": "2dgj."},
+    {"name": "sdot_dgj_count_dot", "lines": [SDOT_LINE] * 5, "keys": "dgj2."},
+    {"name": "sdot_dgj_dot_dot", "lines": [SDOT_LINE] * 4, "keys": "dgj.."},
+    {"name": "sdot_dg_dollar_dot", "lines": [SDOT_LINE] * 2, "keys": "dg$."},
+    {"name": "sdot_dg0_dot", "lines": [SDOT_LINE] * 2, "keys": "$dg0."},
+    {"name": "sdot_dg_caret_dot", "lines": ["   " + SDOT_LINE] * 2, "keys": "$dg^."},
+    {"name": "sdot_dgm_dot", "lines": [SDOT_LINE] * 2, "keys": "dgm."},
+    {"name": "sdot_dgM_dot", "lines": [SDOT_LINE] * 2, "keys": "dgM."},
+    {"name": "sdot_cgj_dot", "lines": [SDOT_LINE] * 3, "keys": "cgjX<Esc>."},
+    {"name": "sdot_cgj_dot_moved", "lines": [SDOT_LINE] * 3, "keys": "cgjX<Esc>j0."},
+    {"name": "sdot_ygj_dot_repeats_x", "lines": [SDOT_LINE] * 2, "keys": "xygj."},
+    {"name": "sdot_gUgj_dot", "lines": ["abcdefghij" * 12] * 3, "keys": "gUgjj0."},
+    {"name": "sdot_dgj_dot_wrapped_words", "lines": WRAP_LINES, "keys": "j3ldgj."},
+    {"name": "sdot_dgj_fail_keeps_x", "lines": ["abc"], "keys": "xdgj."},
+    {"name": "sdot_nowrap_dgj_dot", "lines": [SDOT_LINE] * 5, "keys": ":set nowrap<CR>dgj."},
+    {"name": "sdot_ctrl_o_gj_dot", "lines": [SDOT_LINE] * 2, "keys": "ix<C-o>gjy<Esc>gg0."},
+    {"name": "sdot_ctrl_o_dgj_dot", "lines": [SDOT_LINE] * 3, "keys": "ix<C-o>dgjy<Esc>gg0."},
     # --- #1180 Visual-block `>`/`<` (`:help v_b_>`): shift from the block's left column. `|` rows: a row
     #     the left edge cuts a `<Tab>` or a wide character on (neither corner sits on it). ---------------
     {"name": "vb_shift_right", "lines": ["abc def", "ghi jkl", "mno"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>"},

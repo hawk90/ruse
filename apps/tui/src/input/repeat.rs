@@ -2,7 +2,7 @@
 //! engine captures and replays. Split out of `input/mod.rs` as a self-contained data definition; the
 //! `InputEngine::record` builder that constructs it stays in the engine core.
 
-use ruse_core::{Command, MarkOp, OpKind, SearchOp, VisualOp};
+use ruse_core::{Command, MarkOp, Motion, OpKind, SearchOp, VisualOp};
 
 /// A counted repetition the frontend applies lazily (#683): `head`, then `unit` `times` times, then `tail`.
 /// A count-prefixed insert (`999999999ix<Esc>`), `N.` of one, or an Emacs `C-u N` prefix expands to this
@@ -71,6 +71,11 @@ pub(crate) struct ChangeIntent {
     /// (`c`/`s`/`ciw`, whose count applies to the MOTION, not to text repetition). Carried so `.` replays
     /// with the SAME count (Vim), while a leading `N.` overrides it.
     pub(crate) entry_count: u32,
+    /// The screen-line motion (and its effective count) the lead's operator ran over (`dgj`, `3dgk`,
+    /// `cg$`; #1539). The lead then holds only the span the frontend resolved at the time, so `.`
+    /// hands the motion back to the frontend to resolve again where the cursor is now, as nvim's redo
+    /// buffer holds the keys `dgj` and not the span. `None` for every other change.
+    pub(crate) screen: Option<(super::ScreenMotion, u32)>,
 }
 
 impl ChangeIntent {
@@ -533,6 +538,48 @@ fn motion_op_with_count(cmd: &Command, n: u32) -> Command {
             wise: *wise,
         },
         _ => unreachable!("with_count routes only motions and d/c/y operators here"),
+    }
+}
+
+/// The operator of `cmd` over motion `m` with count `n` instead of its own: the lead of a screen-line
+/// change ([`ChangeIntent::screen`]) with the span the frontend resolved for `.` (#1539). Only the
+/// operators [`InputEngine::op_over_motion`](super::InputEngine) builds a change from carry a motion
+/// here; anything else is returned unchanged.
+pub(crate) fn with_motion(cmd: &Command, m: Motion, n: u32) -> Command {
+    use Command as C;
+    match cmd {
+        C::Delete(..) => C::Delete(n, m),
+        C::Change(..) => C::Change(n, m),
+        C::OpForced { op, wise, .. } => C::OpForced {
+            op: *op,
+            count: n,
+            motion: m,
+            wise: *wise,
+        },
+        C::CaseMotion { case, .. } => C::CaseMotion {
+            count: n,
+            motion: m,
+            case: *case,
+        },
+        C::ShiftMotion { left, .. } => C::ShiftMotion {
+            left: *left,
+            count: n,
+            motion: m,
+        },
+        C::Reindent { .. } => C::Reindent {
+            count: n,
+            motion: m,
+        },
+        C::Comment { .. } => C::Comment {
+            count: n,
+            motion: m,
+        },
+        C::Format { keep_cursor, .. } => C::Format {
+            count: n,
+            motion: m,
+            keep_cursor: *keep_cursor,
+        },
+        other => other.clone(),
     }
 }
 

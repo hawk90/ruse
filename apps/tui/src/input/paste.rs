@@ -97,6 +97,7 @@ impl InputEngine {
                     register: None,
                     expr: None,
                     entry_count: 1,
+                    screen: None,
                 };
                 self.last_inserted = change.insert_body().to_vec();
                 self.last_change = Some(change);

@@ -121,6 +121,101 @@ fn g_prefixed_screen_line_motions_go_to_the_frontend() {
 }
 
 #[test]
+fn dot_after_an_operator_over_a_screen_motion_resolves_it_again() {
+    // #1539: nvim's redo buffer holds `dgj`, not the span `dgj` deleted, so `.` hands the screen motion
+    // back to the frontend (with the operator resolving as armed) and deletes over the NEW span.
+    use crate::input::ScreenMotion::*;
+    let mut e = InputEngine::new();
+    for c in "3dgk".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    assert_eq!(
+        e.screen_motion_to(9),
+        Feed::Cmd(Command::Delete(10, Motion::GotoByte))
+    );
+    assert!(!e.has_op());
+    assert_eq!(
+        e.feed(k('.'), Mode::Normal),
+        Feed::ScreenMotion {
+            motion: Up,
+            count: 3
+        }
+    );
+    assert!(e.has_op(), "`.` resolves the motion as an operator's");
+    assert_eq!(
+        e.screen_motion_to(4),
+        Feed::Replay(vec![Command::Delete(5, Motion::GotoByte)])
+    );
+    assert!(!e.has_op());
+    // `2.` takes the count; `j` / `k` without 'wrap' replay as the linewise motion with it.
+    assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending,);
+    assert_eq!(
+        e.feed(k('.'), Mode::Normal),
+        Feed::ScreenMotion {
+            motion: Up,
+            count: 2
+        }
+    );
+    assert_eq!(
+        e.screen_motion_lines(false),
+        Feed::Replay(vec![Command::Delete(2, Motion::Up)])
+    );
+    // A `.` whose motion cannot move beeps and keeps the change.
+    e.feed(k('.'), Mode::Normal);
+    assert!(matches!(e.screen_motion_fail(), Feed::Beep { .. }));
+    assert_eq!(
+        e.feed(k('.'), Mode::Normal),
+        Feed::ScreenMotion {
+            motion: Up,
+            count: 3
+        }
+    );
+    assert_eq!(
+        e.screen_motion_to(0),
+        Feed::Replay(vec![Command::Delete(1, Motion::GotoByte)])
+    );
+
+    // A change over one replays its typed text too; a yank over one is no change.
+    let mut e = InputEngine::new();
+    for c in "xcgjX".chars() {
+        let mode = if c == 'X' { Mode::Insert } else { Mode::Normal };
+        if c == 'X' {
+            assert_eq!(
+                e.screen_motion_to(7),
+                Feed::Cmd(Command::Change(8, Motion::GotoByte))
+            );
+        }
+        e.feed(k(c), mode);
+    }
+    e.feed(
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+        Mode::Insert,
+    );
+    for c in "ygj".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    assert_eq!(
+        e.screen_motion_to(3),
+        Feed::Cmd(Command::Yank(4, Motion::GotoByte))
+    );
+    assert_eq!(
+        e.feed(k('.'), Mode::Normal),
+        Feed::ScreenMotion {
+            motion: Down,
+            count: 1
+        }
+    );
+    assert_eq!(
+        e.screen_motion_to(2),
+        Feed::Replay(vec![
+            Command::Change(3, Motion::GotoByte),
+            Command::InsertChar('X'),
+            Command::EnterNormal,
+        ])
+    );
+}
+
+#[test]
 fn plus_minus_underscore_line_motions() {
     // `+` / `-` / `_` — first-non-blank line motions, operator-aware and linewise.
     assert_eq!(
