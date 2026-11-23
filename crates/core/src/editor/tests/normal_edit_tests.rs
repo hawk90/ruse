@@ -257,10 +257,9 @@ mod single_key_edit_tests {
 
     #[test]
     fn increment_hex_literal_stays_hex() {
-        // 0x1f + 1 → 0x20 (prefix preserved, lowercase output).
+        // 0x1f + 1 → 0x20 (prefix preserved); a carry widens: 0xff + 1 → 0x100.
         let st = run("0x1f", &[Command::IncrementNumber(1)]);
         assert_eq!(text(&st), "0x20");
-        // Carry widens: 0xff + 1 → 0x100.
         let st = run("0xff", &[Command::IncrementNumber(1)]);
         assert_eq!(text(&st), "0x100");
         // Cursor INSIDE the hex digits (on the '1') still adjusts the whole literal.
@@ -269,36 +268,146 @@ mod single_key_edit_tests {
             &[Command::Move(2, Motion::Right), Command::IncrementNumber(1)],
         );
         assert_eq!(text(&st), "0x20");
-        // Hex clamps at 0 (no negative hex).
-        let st = run("0x0", &[Command::IncrementNumber(-5)]);
-        assert_eq!(text(&st), "0x0");
         // A plain decimal next to no 0x is unaffected by the hex path.
         let st = run("value 10 end", &[Command::IncrementNumber(1)]);
         assert_eq!(text(&st), "value 11 end");
     }
 
+    /// #717: the bytes nvim v0.12.6 writes (`addsub_*` parity fixtures; nvim `do_addsub`).
+    fn incremented(line: &str, right: u32, delta: i64) -> (String, usize) {
+        let mut cmds = Vec::new();
+        if right > 0 {
+            cmds.push(Command::Move(right, Motion::Right));
+        }
+        cmds.push(Command::IncrementNumber(delta));
+        let st = run(line, &cmds);
+        (text(&st), st.cursor().0)
+    }
+
     #[test]
-    fn increment_binary_and_octal_stay_in_base() {
-        // Binary: 0b101 (5) + 1 → 0b110, carry widens 0b111 + 1 → 0b1000.
-        let st = run("0b101", &[Command::IncrementNumber(1)]);
-        assert_eq!(text(&st), "0b110");
-        let st = run("0b111", &[Command::IncrementNumber(1)]);
-        assert_eq!(text(&st), "0b1000");
-        // Octal: 0o17 (15) + 1 → 0o20; prefix + lowercase preserved.
-        let st = run("0o17", &[Command::IncrementNumber(1)]);
-        assert_eq!(text(&st), "0o20");
-        // Cursor INSIDE the digits still adjusts the whole literal (on the '0' of 0o17's body).
-        let st = run(
-            "0o17",
-            &[Command::Move(3, Motion::Right), Command::IncrementNumber(1)],
+    fn increment_decimal_saturates_and_wraps_as_a_u64_magnitude() {
+        let d45 = "123456789012345678901234567890123456789012345";
+        // Too many digits: read as u64::MAX and left at it (not `1`).
+        assert_eq!(incremented(d45, 0, 1), ("18446744073709551615".into(), 19));
+        assert_eq!(incremented(d45, 0, -1).0, "18446744073709551615");
+        assert_eq!(
+            incremented(&format!("-{d45}"), 0, 1).0,
+            "-18446744073709551615"
         );
-        assert_eq!(text(&st), "0o20");
-        // Both clamp at 0 (no negative based literals).
-        let st = run("0b0", &[Command::IncrementNumber(-5)]);
-        assert_eq!(text(&st), "0b0");
-        // A capital prefix keeps its letter but lowercases the digits.
-        let st = run("0B10", &[Command::IncrementNumber(1)]);
-        assert_eq!(text(&st), "0B11");
+        // Wrapping flips the sign, as nvim's unsigned arithmetic does.
+        assert_eq!(
+            incremented("18446744073709551615", 0, 1).0,
+            "-18446744073709551615"
+        );
+        assert_eq!(
+            incremented("-18446744073709551615", 0, -1).0,
+            "18446744073709551615"
+        );
+        assert_eq!(
+            incremented("9223372036854775807", 0, 1).0,
+            "9223372036854775808"
+        );
+        assert_eq!(incremented("-3", 0, 5), ("2".into(), 0));
+        assert_eq!(incremented("-01", 0, 1), ("00".into(), 1));
+        assert_eq!(incremented("000", 0, -1), ("-001".into(), 3));
+    }
+
+    #[test]
+    fn increment_hex_keeps_case_and_width_and_wraps() {
+        // Hex digits take the case of the number's last letter, `x`/`X` included.
+        assert_eq!(incremented("0xAB", 0, 1), ("0xAC".into(), 3));
+        assert_eq!(incremented("0X19", 0, 1).0, "0X1A");
+        assert_eq!(incremented("0x9F", 0, 1).0, "0xA0");
+        assert_eq!(incremented("0xaB", 0, 1).0, "0xAC");
+        assert_eq!(incremented("0xAb", 0, 1).0, "0xac");
+        assert_eq!(incremented("0Xab", 0, 1).0, "0Xac");
+        // Leading zeros keep the width.
+        assert_eq!(incremented("0x00ff", 0, 1), ("0x0100".into(), 5));
+        assert_eq!(incremented("0x0100", 0, -1).0, "0x00ff");
+        // Unsigned, modulo 2^64; a too-long literal saturates and keeps its width.
+        assert_eq!(incremented("0x0", 0, -1), ("0xffffffffffffffff".into(), 17));
+        assert_eq!(
+            incremented("0xffffffffffffffff", 0, 1).0,
+            "0x0000000000000000"
+        );
+        assert_eq!(
+            incremented("0xffffffffffffffffffff", 0, 1).0,
+            "0x0000ffffffffffffffff"
+        );
+        // The cursor on the digits (`$`) or the `x` finds the literal.
+        assert_eq!(incremented("0xff", 3, 1), ("0x100".into(), 4));
+        assert_eq!(incremented("a 0x1f", 3, 1).0, "a 0x20");
+        // A `-` before a based literal is not a sign.
+        assert_eq!(incremented("-0x10", 0, 1), ("-0x11".into(), 4));
+        assert_eq!(incremented("-0x10", 0, -1).0, "-0x0f");
+        // `0x` with no hex digit after it is the decimal `0`.
+        assert_eq!(incremented("0xg", 0, 1), ("1xg".into(), 0));
+    }
+
+    #[test]
+    fn increment_binary_keeps_width_and_octal_is_not_a_default_format() {
+        assert_eq!(incremented("0b101", 0, 1).0, "0b110");
+        assert_eq!(incremented("0b111", 0, 1).0, "0b1000");
+        assert_eq!(incremented("0b0011", 0, 1), ("0b0100".into(), 5));
+        assert_eq!(incremented("0b10", 0, -2).0, "0b00");
+        assert_eq!(incremented("0B1", 0, 1).0, "0B10");
+        assert_eq!(incremented("0b101", 4, 1).0, "0b110");
+        assert_eq!(incremented("-0b11", 0, 1).0, "-0b100");
+        let (wrapped, cursor) = incremented("0b0", 0, -1);
+        assert_eq!((wrapped, cursor), (format!("0b{}", "1".repeat(64)), 65));
+        // Default `nrformats=bin,hex`: `0o17` and `017` are decimals.
+        assert_eq!(incremented("0o17", 0, 1), ("1o17".into(), 0));
+        assert_eq!(incremented("0o17", 3, 1).0, "0o18");
+        assert_eq!(incremented("017", 0, 1), ("018".into(), 2));
+    }
+
+    /// Visual increment over `line`: `right` moves before `v`, `extend` moves after it.
+    fn visual_incremented(line: &str, right: u32, extend: Option<Motion>, delta: i64) -> String {
+        let mut cmds = Vec::new();
+        if right > 0 {
+            cmds.push(Command::Move(right, Motion::Right));
+        }
+        cmds.push(Command::EnterVisual {
+            kind: SelectKind::Charwise,
+        });
+        if let Some(m) = extend {
+            cmds.push(Command::Move(1, m));
+        }
+        cmds.push(Command::IncrementSelection {
+            delta,
+            sequential: false,
+        });
+        text(&run(line, &cmds))
+    }
+
+    #[test]
+    fn visual_increment_reads_only_the_selection() {
+        // No walk back to the digit run's start or to a `0x`, and no read past the selection.
+        assert_eq!(
+            visual_incremented("0x19", 1, Some(Motion::LineEnd), 1),
+            "0x20"
+        );
+        assert_eq!(
+            visual_incremented("199", 1, Some(Motion::LineEnd), 1),
+            "1100"
+        );
+        assert_eq!(
+            visual_incremented("12345", 1, Some(Motion::Right), 1),
+            "12445"
+        );
+        // A `-` is a sign only when it is selected.
+        assert_eq!(visual_incremented("-5", 1, None, 1), "-6");
+        assert_eq!(visual_incremented("-5", 0, Some(Motion::LineEnd), 1), "-4");
+        assert_eq!(visual_incremented("-1", 0, Some(Motion::LineEnd), 1), "0");
+        assert_eq!(visual_incremented("0", 0, None, -1), "-1");
+        assert_eq!(
+            visual_incremented("-0x10", 0, Some(Motion::LineEnd), 1),
+            "-0x11"
+        );
+        assert_eq!(
+            visual_incremented("0xAB", 0, Some(Motion::LineEnd), 1),
+            "0xAC"
+        );
     }
 
     #[test]
@@ -498,7 +607,8 @@ mod single_key_edit_tests {
         );
         assert_eq!(text(&st), "foo 1 bar 6\nfoo 2 bar 7");
         assert_eq!(st.mode(), Mode::Normal);
-        // A block on the middle digit still increments the WHOLE number it belongs to.
+        // A block on the middle digit reads only the selected digits, as nvim does (#717,
+        // `addsub_block_clip`): `5`→`6`, `9`→`10`.
         let st = run(
             "15\n29",
             &[
@@ -513,7 +623,7 @@ mod single_key_edit_tests {
                 },
             ],
         );
-        assert_eq!(text(&st), "16\n30");
+        assert_eq!(text(&st), "16\n210");
     }
 
     #[test]

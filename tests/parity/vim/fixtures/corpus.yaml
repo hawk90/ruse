@@ -6674,6 +6674,1584 @@
       }
     },
     {
+      "name": "addsub_dec_huge_saturates",
+      "lines": [
+        "123456789012345678901234567890123456789012345"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "18446744073709551615"
+        ],
+        "cursor": [
+          1,
+          19
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_huge_neg_saturates",
+      "lines": [
+        "-123456789012345678901234567890123456789012345"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "-18446744073709551615"
+        ],
+        "cursor": [
+          1,
+          20
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_huge_decrement",
+      "lines": [
+        "123456789012345678901234567890123456789012345"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "18446744073709551615"
+        ],
+        "cursor": [
+          1,
+          19
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_u64_max_wraps",
+      "lines": [
+        "18446744073709551615"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "-18446744073709551615"
+        ],
+        "cursor": [
+          1,
+          20
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_neg_u64_max_decrement",
+      "lines": [
+        "-18446744073709551615"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "18446744073709551615"
+        ],
+        "cursor": [
+          1,
+          19
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_i64_max_plus_one",
+      "lines": [
+        "9223372036854775807"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "9223372036854775808"
+        ],
+        "cursor": [
+          1,
+          18
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_zero_decrement",
+      "lines": [
+        "0"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "-1"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_neg_count",
+      "lines": [
+        "-3"
+      ],
+      "keys": "5<C-a>",
+      "expect": {
+        "text": [
+          "2"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_neg_decrement",
+      "lines": [
+        "-3"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "-4"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_leading_zero",
+      "lines": [
+        "007"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "008"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_leading_zero_carry",
+      "lines": [
+        "099"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "100"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_neg_leading_zero_to_zero",
+      "lines": [
+        "-01"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "00"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_leading_zero_neg",
+      "lines": [
+        "000"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "-001"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_cursor_mid_run",
+      "lines": [
+        "x 12345 y"
+      ],
+      "keys": "4l<C-a>",
+      "expect": {
+        "text": [
+          "x 12346 y"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_dec_dot_repeat",
+      "lines": [
+        "5 9"
+      ],
+      "keys": "3<C-a>w.",
+      "expect": {
+        "text": [
+          "8 12"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_upper",
+      "lines": [
+        "0xAB"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0xAC"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_upper_prefix",
+      "lines": [
+        "0X0B"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0X0C"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_upper_prefix_digits",
+      "lines": [
+        "0X19"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0X1A"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_lower_prefix_upper_digit",
+      "lines": [
+        "0x9F"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0xA0"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_mixed_last_upper",
+      "lines": [
+        "0xaB"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0xAC"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_mixed_last_lower",
+      "lines": [
+        "0xAb"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0xac"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_lower_x_upper_ab",
+      "lines": [
+        "0Xab"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0Xac"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_width",
+      "lines": [
+        "0x00ff"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0x0100"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_width_decrement",
+      "lines": [
+        "0x0100"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "0x00ff"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_wrap_down",
+      "lines": [
+        "0x0"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "0xffffffffffffffff"
+        ],
+        "cursor": [
+          1,
+          17
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_wrap_up",
+      "lines": [
+        "0xffffffffffffffff"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0x0000000000000000"
+        ],
+        "cursor": [
+          1,
+          17
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_overflow_saturates",
+      "lines": [
+        "0xffffffffffffffffffff"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0x0000ffffffffffffffff"
+        ],
+        "cursor": [
+          1,
+          21
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_cursor_on_digits",
+      "lines": [
+        "0xff"
+      ],
+      "keys": "$<C-a>",
+      "expect": {
+        "text": [
+          "0x100"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_cursor_on_x",
+      "lines": [
+        "a 0x1f"
+      ],
+      "keys": "3l<C-a>",
+      "expect": {
+        "text": [
+          "a 0x20"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_minus_not_sign",
+      "lines": [
+        "-0x10"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "-0x11"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_minus_not_sign_dec",
+      "lines": [
+        "-0x10"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "-0x0f"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_count",
+      "lines": [
+        "0xfe"
+      ],
+      "keys": "3<C-a>",
+      "expect": {
+        "text": [
+          "0x101"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_dot_repeat",
+      "lines": [
+        "0xAF"
+      ],
+      "keys": "<C-a>.",
+      "expect": {
+        "text": [
+          "0xB1"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_hex_no_digit_after_x",
+      "lines": [
+        "0xg"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "1xg"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_bin_width",
+      "lines": [
+        "0b0011"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0b0100"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_bin_to_zero",
+      "lines": [
+        "0b10"
+      ],
+      "keys": "2<C-x>",
+      "expect": {
+        "text": [
+          "0b00"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_bin_wrap_down",
+      "lines": [
+        "0b0"
+      ],
+      "keys": "<C-x>",
+      "expect": {
+        "text": [
+          "0b1111111111111111111111111111111111111111111111111111111111111111"
+        ],
+        "cursor": [
+          1,
+          65
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_bin_upper",
+      "lines": [
+        "0B1"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0B10"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_bin_cursor_on_digits",
+      "lines": [
+        "0b101"
+      ],
+      "keys": "$<C-a>",
+      "expect": {
+        "text": [
+          "0b110"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_bin_minus_not_sign",
+      "lines": [
+        "-0b11"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "-0b100"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_octal_o_is_decimal",
+      "lines": [
+        "0o17"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "1o17"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_octal_o_cursor_on_digits",
+      "lines": [
+        "0o17"
+      ],
+      "keys": "$<C-a>",
+      "expect": {
+        "text": [
+          "0o18"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_octal_leading_zero_is_decimal",
+      "lines": [
+        "017"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "018"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_hex_upper",
+      "lines": [
+        "0xAB",
+        "0x0f"
+      ],
+      "keys": "Vj<C-a>",
+      "expect": {
+        "text": [
+          "0xAC",
+          "0x10"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_seq_hex_width",
+      "lines": [
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "keys": "VGg<C-a>",
+      "expect": {
+        "text": [
+          "0x01",
+          "0x02",
+          "0x03"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_from_x_is_decimal",
+      "lines": [
+        "0x19"
+      ],
+      "keys": "lv$<C-a>",
+      "expect": {
+        "text": [
+          "0x20"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_mid_run",
+      "lines": [
+        "199"
+      ],
+      "keys": "lv$<C-a>",
+      "expect": {
+        "text": [
+          "1100"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_clip",
+      "lines": [
+        "12345"
+      ],
+      "keys": "lvl<C-a>",
+      "expect": {
+        "text": [
+          "12445"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_minus_outside",
+      "lines": [
+        "-5"
+      ],
+      "keys": "lv<C-a>",
+      "expect": {
+        "text": [
+          "-6"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_minus_inside",
+      "lines": [
+        "-5"
+      ],
+      "keys": "v$<C-a>",
+      "expect": {
+        "text": [
+          "-4"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_minus_to_zero",
+      "lines": [
+        "-1"
+      ],
+      "keys": "v$<C-a>",
+      "expect": {
+        "text": [
+          "0"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_zero_to_minus",
+      "lines": [
+        "0"
+      ],
+      "keys": "v<C-x>",
+      "expect": {
+        "text": [
+          "-1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_neg_hex",
+      "lines": [
+        "-0x10"
+      ],
+      "keys": "v$<C-a>",
+      "expect": {
+        "text": [
+          "-0x11"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_huge",
+      "lines": [
+        "123456789012345678901234567890123456789012345"
+      ],
+      "keys": "V<C-a>",
+      "expect": {
+        "text": [
+          "18446744073709551615"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_octal_o",
+      "lines": [
+        "0o17"
+      ],
+      "keys": "V<C-a>",
+      "expect": {
+        "text": [
+          "1o17"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_block_hex_upper",
+      "lines": [
+        "0xAB",
+        "0xCD"
+      ],
+      "keys": "<C-v>j$<C-a>",
+      "expect": {
+        "text": [
+          "0xAC",
+          "0xCE"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_block_clip",
+      "lines": [
+        "123",
+        "456"
+      ],
+      "keys": "l<C-v>j<C-a>",
+      "expect": {
+        "text": [
+          "133",
+          "466"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "addsub_vis_dot_repeat",
+      "lines": [
+        "0x0f",
+        "0x0f"
+      ],
+      "keys": "V<C-a>j.",
+      "expect": {
+        "text": [
+          "0x10",
+          "0x10"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
       "name": "replace_char_unicode",
       "lines": [
         "αβγ"
