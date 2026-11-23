@@ -325,6 +325,8 @@ pub(super) fn plan_comment(
     )
 }
 
+/// `=` over lines `[first_line, last_line]` (0-based, inclusive): the Lisp rules under `'lisp'`, else the C
+/// rules (nvim's `=` runs `get_c_indent` whenever no 'indentexpr' is set), applied by `plan_set_indents`.
 pub(super) fn plan_reindent(
     st: &EditorState,
     first_line: usize,
@@ -439,6 +441,9 @@ pub(in crate::editor) fn refused_linewise_cursor(
     Some(ls + line_col_cursor(&b[ls..line_end(b, ls)], st.view.curswant.get(), ts))
 }
 
+/// Plan a linewise shift (`>>` / `<<`) over `count` lines from the cursor's line down: `right` adds one
+/// indent level to each line, `!right` removes up to one, and a truly empty line is never indented (Vim).
+/// The register is untouched; the cursor rule is in `plan_shift_times`.
 pub(super) fn plan_shift(
     st: &EditorState,
     cur: usize,

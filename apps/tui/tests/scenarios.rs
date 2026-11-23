@@ -678,7 +678,7 @@ fn count_change_family_does_not_repeat_text() {
 
 /// Bare `&` repeats the last `:s` on the CURRENT LINE and KEEPS the previous flags: ruse's `&` is `:&&`, a
 /// deliberate break from Vim (whose `&` drops them, so `:s/a/X/g` then `&` replaces only the first `a`); see
-/// the `&` intercept in `app/session.rs`. The scenario used to assert Vim's flag drop through a hand mirror
+/// the `&` intercept in `app/session/normal_keys/normal_chord.rs`. The scenario used to assert Vim's flag drop through a hand mirror
 /// of the session that no longer matched it; the real key path keeps the `g`.
 #[test]
 fn ampersand_repeats_last_substitute_on_current_line_keeping_flags() {

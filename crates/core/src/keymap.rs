@@ -19,8 +19,8 @@
 //!
 //! # The defect this replaces
 //!
-//! `apps/tui/src/input.rs` special-cases Insert ahead of a single `Feed::Ignored` fallthrough. That
-//! is one `closed/ignore` policy standing in for the five *open* policies the Vim contract
+//! `apps/tui/src/input.rs` (now `input/mod.rs`) special-cased Insert ahead of a single `Feed::Ignored`
+//! fallthrough. That is one `closed/ignore` policy standing in for the five *open* policies the Vim contract
 //! enumerates — the same shape as the original catalog defect, where modes were recorded as
 //! transitions and the unmatched-key axis had nowhere to live. Here the policy is a required field
 //! of every layer ([`UnmatchedKey`]), so a layer cannot exist without declaring one.

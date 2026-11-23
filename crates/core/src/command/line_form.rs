@@ -346,7 +346,7 @@ impl Command {
             }
         }
         Ok(match verb {
-            // Resolved Ex edits (RFC-0020); their verbs are parsed in `editor/ex_cmd.rs`.
+            // Resolved Ex edits (RFC-0020); their verbs are parsed in `editor/ex_cmd/codec.rs`.
             other if other.starts_with("ex_") => {
                 Command::Ex(crate::editor::ExCmd::from_parts(other, raw, line)?)
             }

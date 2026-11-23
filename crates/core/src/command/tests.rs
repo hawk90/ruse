@@ -16,7 +16,7 @@ fn pre_1071_search_word_under_traces_parse_as_the_bare_move() {
     assert!(Command::from_line("search_word_under fwd whole bogus 1").is_err());
 }
 
-/// One of each trace verb, plus every resolved Ex edit (RFC-0020; `editor/ex_cmd.rs` lists one of each).
+/// One of each trace verb, plus every resolved Ex edit (RFC-0020; `editor/ex_cmd/samples.rs` lists one of each).
 fn samples() -> Vec<Command> {
     let cases = [
         Command::MoveLeft,
@@ -746,7 +746,7 @@ fn samples() -> Vec<Command> {
         },
         Command::EmacsDeleteIndentation,
     ];
-    // Every resolved Ex edit (RFC-0020); `editor/ex_cmd.rs` lists one of each.
+    // Every resolved Ex edit (RFC-0020); `editor/ex_cmd/samples.rs` lists one of each.
     cases
         .into_iter()
         .chain(crate::editor::ex_cmd_samples().into_iter().map(Command::Ex))

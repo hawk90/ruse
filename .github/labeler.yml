@@ -28,6 +28,7 @@
           - 'crates/core/src/command/**'
           - 'crates/core/src/motion/**'
           - 'crates/core/src/textobj.rs'
+          - 'crates/core/src/textobj/**'
           - 'crates/core/src/register.rs'
 'area/render':
   - changed-files:
@@ -37,6 +38,7 @@
           - 'apps/tui/src/viewport.rs'
           - 'apps/tui/src/scroll.rs'
           - 'apps/tui/src/folds.rs'
+          - 'apps/tui/src/folds/**'
           - 'apps/tui/src/graphics.rs'
           - 'apps/tui/src/org.rs'
 'area/terminal':

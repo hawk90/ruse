@@ -27,7 +27,7 @@ related:
 > entries as `(DocumentId, Anchor)`, `Disposition`/`BufferKind`, the retirement Effect, editable `q:`, and
 > other-buffers completion. The Problem section below describes the code before these slices.
 
-<!-- code-blocks: illustrative — concrete types live in crates/core/src/{workspace,editor,register}.rs
+<!-- code-blocks: illustrative — concrete types live in crates/core/src/{workspace/mod.rs,editor/mod.rs,register.rs}
      and are the source of truth (D-038). Blocks here specify the CONTRACT, not the definition. -->
 
 ## Problem
