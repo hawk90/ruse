@@ -1,7 +1,10 @@
 //! Sibling temp files: unique naming, creation and the sweep of stale ones. Split from `atomic.rs`
 //! (#1395).
 
-use super::*;
+use super::{
+    containing_dir, fs, io, File, OpenOptions, Path, PathBuf, NAME_MAX, TEMP_ATTEMPTS,
+    TEMP_PID_LEN, TEMP_RAND_LEN, TEMP_TAG,
+};
 
 /// A random-enough 32-bit value without a crate: std's per-process random hash keys, salted with a
 /// counter and the clock. Uniqueness is enforced by `O_EXCL`, not by this.

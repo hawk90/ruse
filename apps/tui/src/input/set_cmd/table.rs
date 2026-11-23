@@ -1,6 +1,6 @@
 //! The options ruse honours: their kinds, scopes, defaults and validation sets (`OPTIONS`). Split from `set_cmd.rs` (#1388).
 
-use super::*;
+use super::Cow;
 
 /// An option ruse honours.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]

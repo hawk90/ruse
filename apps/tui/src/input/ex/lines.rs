@@ -1,6 +1,6 @@
 //! Range, address and register-verb parsing for the line commands. Split from `ex.rs` (#1385).
 
-use super::*;
+use super::{single_char, Ex, LineAddr, SubRange, ARGUMENT_REQUIRED};
 
 /// Parse a `:s` line-range prefix. MVP: empty → current line, `%` → whole file, `N` → that line,
 /// `N,M` → the inclusive span. Unsupported forms (`.`, `$`, marks) yield `None`.

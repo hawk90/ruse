@@ -4,7 +4,11 @@
 //! [`Session::post_render`], the poll timeout, the status-line flags and the fold invariant check.
 
 use super::normal_keys::focused_folds;
-use super::*;
+use super::{
+    action_picker, confirm_prompt, journal_outcome, line_index, persist, recover, ref_picker,
+    run_ex, scrolloff_for, viewport, window_rects, DocumentId, Editing, FrameCtx, Mode, Overlay,
+    PaneLines, PaneText, Rect, ScrollValid, Session, WinView,
+};
 
 impl Session {
     /// Fold reconcile (per frame): (a) carry manual folds through the edits since the last frame by their

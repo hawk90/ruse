@@ -1,6 +1,10 @@
 //! The open-time recovery offer and its adoption. Split from `journal.rs` (#1389).
 
-use super::*;
+use super::{
+    alive, canonical, claim, fs, io, is_live_other, is_stale, owner, path_bytes, read_journal,
+    read_owner, rescue, rj01, rjs0, unreadable_note, Available, FileFormat, Journals, Path,
+    PathBuf, Recovery, SystemTime, UNIX_EPOCH,
+};
 
 impl Journals {
     /// The newest unnamed-buffer journal left by a ruse that is no longer running, for a pathless start.

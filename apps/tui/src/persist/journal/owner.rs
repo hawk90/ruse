@@ -1,6 +1,11 @@
 //! Who owns a journal, and whether that process is alive. Split from `journal.rs` (#1389).
 
-use super::*;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use super::fs;
+use super::{
+    host_name, io, open_regular, rj01, OnceLock, OpenOptions, Owner, Path, Read, SystemTime,
+    UNIX_EPOCH,
+};
 
 /// Unix milliseconds now.
 pub fn now_ms() -> u64 {

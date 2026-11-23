@@ -3,7 +3,13 @@
 //! engine. Each borrows the `Session` fields it uses, as `route_key` did.
 
 use super::normal_keys::focused_folds;
-use super::*;
+use super::{
+    confirm_key, is_ctrl, no_previous_pattern, note_word_search, open_file_into_buffer,
+    place_cursor, pty, record_register_writes, resolve_screen_motion, run_ex, run_repeat,
+    search_misses, sync_journals, sync_special_registers, Accepted, BytePos, Command, Editing,
+    ExCmd, ExCompletion, Feed, FrameCtx, KeyCode, KeyEvent, KeyModifiers, Mode, Pending,
+    PickOutcome, Prefix, Session, E35,
+};
 
 impl Session {
     /// The macro layer's turn at a key: under the Vim profile an Alt key is first split into `<Esc>` and
