@@ -445,14 +445,24 @@ fn insert_ctrl_n_completes_a_keyword() {
     );
 }
 
-/// Known divergence #602: the LSP coordinator swallows `CTRL-X`, so the submode never arms and the lone
-/// `CTRL-L` is unbound, inserting nothing (it typed `l` before #599). Neovim completes the whole line `line3`.
+/// #602: `CTRL-X` reaches the insert engine past the LSP coordinator (no server here), so `CTRL-X CTRL-L`
+/// completes the nearest whole line above, as Neovim does.
 #[test]
-fn insert_ctrl_x_ctrl_l_does_not_complete() {
+fn insert_ctrl_x_ctrl_l_completes_the_line() {
     assert_eq!(
         edit(&numbered(3), "Goli<C-x><C-l>"),
-        "line1\nline2\nline3\nli\n"
+        "line1\nline2\nline3\nline3\n"
     );
+}
+
+/// #602: with no language server, `CTRL-X CTRL-O` is not claimed by the coordinator: it reports nvim's
+/// `E764`, the engine ends the submode inserting nothing, and Insert goes on.
+#[test]
+fn insert_ctrl_x_ctrl_o_without_a_server_inserts_nothing() {
+    let mut h = Headless::vim("ab\n");
+    h.keys("A<C-x><C-o>z<Esc>");
+    assert_eq!(h.text(), "abz\n");
+    assert_eq!(h.emsg(), "E764");
 }
 
 // ---- Macros and the Ex line through the session ------------------------------------------------------

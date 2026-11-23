@@ -170,6 +170,7 @@ impl Session {
                     ..
                 },
             emacs_profile,
+            engine,
             lsp,
             ..
         } = self;
@@ -180,7 +181,19 @@ impl Session {
         if lsp.on_completion_key(key, ws, status, &mut |ws, ex| run_ex(ex, ws, recorded)) {
             return true;
         }
-        if lsp.on_omni_key(key, ws, files, snapshot, revision, *emacs_profile, status) {
+        // The engine owns `CTRL-X`; the coordinator claims only the `<C-o>` after it, with a server (#602).
+        let armed = engine.insert_ctrl_x_pending();
+        if lsp.on_omni_key(
+            key,
+            armed,
+            ws,
+            files,
+            snapshot,
+            revision,
+            *emacs_profile,
+            status,
+        ) {
+            engine.end_insert_ctrl_x();
             return true;
         }
         false

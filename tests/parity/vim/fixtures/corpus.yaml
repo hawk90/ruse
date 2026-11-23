@@ -115913,6 +115913,376 @@
       }
     },
     {
+      "name": "ctrlx_ctrl_l_whole_line",
+      "lines": [
+        "foo bar",
+        "f"
+      ],
+      "keys": "jA<C-x><C-l><Esc>",
+      "expect": {
+        "text": [
+          "foo bar",
+          "foo bar"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_l_then_char",
+      "lines": [
+        "foo bar",
+        "f"
+      ],
+      "keys": "jA<C-x><C-l>!<Esc>",
+      "expect": {
+        "text": [
+          "foo bar",
+          "foo bar!"
+        ],
+        "cursor": [
+          2,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_l_no_match",
+      "lines": [
+        "abc",
+        "z"
+      ],
+      "keys": "jA<C-x><C-l>q<Esc>",
+      "expect": {
+        "text": [
+          "abc",
+          "zq"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_l_dot_repeat",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "ohel<C-x><C-l><Esc>.",
+      "expect": {
+        "text": [
+          "hello world",
+          "hello world",
+          "hello world"
+        ],
+        "cursor": [
+          3,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_n_keyword",
+      "lines": [
+        "foobar fooqux",
+        "fo"
+      ],
+      "keys": "jA<C-x><C-n><Esc>",
+      "expect": {
+        "text": [
+          "foobar fooqux",
+          "foobar"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_n_twice",
+      "lines": [
+        "foobar fooqux",
+        "fo"
+      ],
+      "keys": "jA<C-x><C-n><C-n><Esc>",
+      "expect": {
+        "text": [
+          "foobar fooqux",
+          "fooqux"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_p_keyword",
+      "lines": [
+        "foobar fooqux",
+        "fo"
+      ],
+      "keys": "jA<C-x><C-p><Esc>",
+      "expect": {
+        "text": [
+          "foobar fooqux",
+          "fooqux"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_e_inserts_nothing",
+      "lines": [
+        "abc",
+        "d"
+      ],
+      "keys": "jA<C-x><C-e>z<Esc>",
+      "expect": {
+        "text": [
+          "abc",
+          "dz"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_y_inserts_nothing",
+      "lines": [
+        "abc",
+        "d"
+      ],
+      "keys": "jA<C-x><C-y>z<Esc>",
+      "expect": {
+        "text": [
+          "abc",
+          "dz"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_plain_char_inserts",
+      "lines": [
+        "ab"
+      ],
+      "keys": "A<C-x>y<Esc>",
+      "expect": {
+        "text": [
+          "aby"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_cr_splits_line",
+      "lines": [
+        "ab"
+      ],
+      "keys": "A<C-x><CR>z<Esc>",
+      "expect": {
+        "text": [
+          "ab",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_esc_leaves_insert",
+      "lines": [
+        "ab"
+      ],
+      "keys": "A<C-x><Esc>x",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "ctrlx_ctrl_o_no_omnifunc",
+      "lines": [
+        "ab"
+      ],
+      "keys": "A<C-x><C-o>z<Esc>",
+      "expect": {
+        "text": [
+          "abz"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E764",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
       "name": "mk_charwise_delete_adds_head",
       "lines": [
         "abcdef",

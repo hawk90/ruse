@@ -4190,6 +4190,22 @@ FIXTURES: list[dict] = [
     {"name": "cmpl_ctrl_y_accepts_with_menu", "lines": ["foobar", "foobaz", "fo", "qqqqqqq"], "keys": "jjA<C-n><C-y><C-n><Esc>"},
     {"name": "cmpl_ctrl_y_single_inserts_above", "lines": ["foobarZ yy", "fo"], "keys": "jA<C-n><C-y><Esc>"},
     {"name": "cmpl_ctrl_e_single_restores", "lines": ["foobarZ yy", "fo", "abcdefghij"], "keys": "jA<C-n><C-e><Esc>"},
+    # The `i_CTRL-X` submode reaches the Vim insert engine through the session's LSP coordinator (#602):
+    # `CTRL-L` whole-line, `CTRL-N`/`CTRL-P` keyword, `CTRL-E`/`CTRL-Y` scroll (no text), a plain char or
+    # `<CR>` ends the submode and is typed, `<Esc>` leaves Insert.
+    {"name": "ctrlx_ctrl_l_whole_line", "lines": ["foo bar", "f"], "keys": "jA<C-x><C-l><Esc>"},
+    {"name": "ctrlx_ctrl_l_then_char", "lines": ["foo bar", "f"], "keys": "jA<C-x><C-l>!<Esc>"},
+    {"name": "ctrlx_ctrl_l_no_match", "lines": ["abc", "z"], "keys": "jA<C-x><C-l>q<Esc>"},
+    {"name": "ctrlx_ctrl_l_dot_repeat", "lines": ["hello world"], "keys": "ohel<C-x><C-l><Esc>."},
+    {"name": "ctrlx_ctrl_n_keyword", "lines": ["foobar fooqux", "fo"], "keys": "jA<C-x><C-n><Esc>"},
+    {"name": "ctrlx_ctrl_n_twice", "lines": ["foobar fooqux", "fo"], "keys": "jA<C-x><C-n><C-n><Esc>"},
+    {"name": "ctrlx_ctrl_p_keyword", "lines": ["foobar fooqux", "fo"], "keys": "jA<C-x><C-p><Esc>"},
+    {"name": "ctrlx_ctrl_e_inserts_nothing", "lines": ["abc", "d"], "keys": "jA<C-x><C-e>z<Esc>"},
+    {"name": "ctrlx_ctrl_y_inserts_nothing", "lines": ["abc", "d"], "keys": "jA<C-x><C-y>z<Esc>"},
+    {"name": "ctrlx_plain_char_inserts", "lines": ["ab"], "keys": "A<C-x>y<Esc>"},
+    {"name": "ctrlx_cr_splits_line", "lines": ["ab"], "keys": "A<C-x><CR>z<Esc>"},
+    {"name": "ctrlx_esc_leaves_insert", "lines": ["ab"], "keys": "A<C-x><Esc>x"},
+    {"name": "ctrlx_ctrl_o_no_omnifunc", "lines": ["ab"], "keys": "A<C-x><C-o>z<Esc>"},
     # Marks through a charwise delete across lines, `J` onto an empty line, `:m` and `o`/`O` on an empty
     # line (nvim `mark_adjust`, `mark_col_adjust`, #1125).
     {"name": "mk_charwise_delete_adds_head", "lines": ["abcdef", "ghijklmnop"], "keys": "j5lmagg2ld/i<CR>`ax"},

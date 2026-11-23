@@ -38,8 +38,7 @@ fn an_invalid_byte_shows_as_hex_and_the_cursor_counts_its_four_cells() {
 
 /// #1252: keyword completion keeps a byte that is not UTF-8 (nvim 0.12.6 offers `ab<ff>cd` for `a`
 /// `CTRL-N`), and `CTRL-Y` copies such a byte as the Latin-1 char of its value, which nvim inserts as
-/// UTF-8 (`ÿ`), at each virtual column its `<ff>` covers. (`CTRL-X CTRL-L` is swallowed in the binary,
-/// #602; its candidates are unit-tested.)
+/// UTF-8 (`ÿ`), at each virtual column its `<ff>` covers. (`CTRL-X CTRL-L` candidates are unit-tested.)
 #[test]
 fn insert_completion_and_ctrl_y_keep_an_invalid_byte() {
     let dir = Scratch::new();

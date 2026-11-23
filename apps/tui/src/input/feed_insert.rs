@@ -31,6 +31,12 @@ impl InputEngine {
         self.insert.ctrl_x
     }
 
+    /// End the `i_CTRL-X` submode after the frontend resolved its selector key itself (`CTRL-X CTRL-O`
+    /// handed to the LSP coordinator, `CTRL-X CTRL-N`/`CTRL-P` resolved against the buffer).
+    pub fn end_insert_ctrl_x(&mut self) {
+        self.insert.ctrl_x = false;
+    }
+
     /// `i_CTRL-E` / `i_CTRL-Y`: insert the frontend-resolved character directly below / above the caret.
     /// The engine has no buffer, so the frontend resolves the adjacent-line char (see
     /// [`Workspace::adjacent_line_char`](ruse_core::Workspace::adjacent_line_char)) and passes it here;

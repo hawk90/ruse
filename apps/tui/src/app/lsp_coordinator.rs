@@ -104,8 +104,6 @@ pub(crate) struct LspCoordinator {
     hover_panel: Option<Vec<String>>,
     /// The open completion pum (persists across frames until dismissed).
     completion: Option<CompletionMenu>,
-    /// The `<C-x>` awaiting `<C-o>` omni-trigger prefix (Vim/Native insert only).
-    pending_omni: bool,
     /// The id of the LATEST completion request — the ONLY id whose response is applied. Any other (stale,
     /// out-of-order) completion response is discarded. Cleared to `None` whenever the pum closes, so a
     /// response arriving after a close is dropped too (F-014 live-filter, request-id invalidation).
@@ -142,7 +140,6 @@ impl LspCoordinator {
             pending: HashMap::new(),
             hover_panel: None,
             completion: None,
-            pending_omni: false,
             completion_req: None,
             refilter: false,
             resolve_req: None,
@@ -512,12 +509,17 @@ impl LspCoordinator {
         false
     }
 
-    /// `<C-x><C-o>` in Vim/Native Insert opens the omni-completion pum (a frontend two-key prefix). Gated
-    /// to non-Emacs insert. Returns whether the key was consumed.
+    /// `<C-x><C-o>` in Vim/Native Insert opens the omni-completion pum (F-014). The Vim insert engine owns
+    /// the `i_CTRL-X` submode: `ctrl_x_pending` is its armed flag, and this claims only the `<C-o>` that
+    /// follows it, and only when the focused buffer has a live server. Every other submode key goes on to
+    /// the engine with the submode intact (#602). `<C-o>` with no server reports nvim's `E764` (no
+    /// `'omnifunc'`) and also goes on, so the engine ends the submode inserting nothing. Returns whether
+    /// the key was consumed; the caller then ends the engine's submode.
     #[allow(clippy::too_many_arguments)] // the omni trigger needs the full key + workspace + LSP context
     pub(crate) fn on_omni_key(
         &mut self,
         key: KeyEvent,
+        ctrl_x_pending: bool,
         ws: &Workspace,
         files: &Files,
         snapshot: &[u8],
@@ -525,26 +527,19 @@ impl LspCoordinator {
         emacs_profile: bool,
         status: &mut Status,
     ) -> bool {
-        if !(matches!(ws.focused().view.mode(), Mode::Insert) && !emacs_profile) {
+        let vim_insert = matches!(ws.focused().view.mode(), Mode::Insert) && !emacs_profile;
+        if !(vim_insert && ctrl_x_pending && is_ctrl(key, 'o')) {
             return false;
         }
-        if self.pending_omni {
-            self.pending_omni = false;
-            if is_ctrl(key, 'o') {
-                self.request_completion(ws, files, snapshot, revision);
-                if self.completion_req.is_some() {
-                    status.echo("completing…");
-                }
-                return true;
-            }
-            // Not `<C-o>`: the swallowed `<C-x>` is dropped; fall through to type this key.
+        if self.focused_server(ws, files).is_none() {
+            status.error("E764: Option 'omnifunc' is not set");
             return false;
         }
-        if is_ctrl(key, 'x') {
-            self.pending_omni = true;
-            return true;
+        self.request_completion(ws, files, snapshot, revision);
+        if self.completion_req.is_some() {
+            status.echo("completing…");
         }
-        false
+        true
     }
 
     /// `K` = hover, `<C-]>` = goto-definition (Normal, when the focused buffer has a live server). Returns
@@ -867,6 +862,90 @@ mod tests {
         c.ingest_resolve(1, rev, 0, &resolved, rev); // fresh + valid → merged
         assert_eq!(detail0(&c).as_deref(), Some("struct HashMap"));
         assert!(c.completion.as_ref().unwrap().items[0].resolved);
+    }
+
+    /// #602: the coordinator claims only the `<C-o>` of `CTRL-X CTRL-O`, only while the engine's `CTRL-X`
+    /// submode is armed, and only when the focused buffer has a live server; every other key (`CTRL-X`
+    /// itself, `CTRL-X CTRL-L`, `<C-o>` with no server) goes on to the engine. With the fake server (a
+    /// process that reads and ignores) the claimed `<C-o>` sends `textDocument/completion`.
+    #[cfg(unix)]
+    #[test]
+    fn omni_claims_only_ctrl_o_after_ctrl_x_with_a_server() {
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), crossterm::event::KeyModifiers::CONTROL);
+        let mut ws = Workspace::new(&b"fn main() {}\n"[..]);
+        ws.apply(&ruse_core::Command::EnterInsert);
+        assert!(matches!(ws.focused().view.mode(), Mode::Insert));
+        let mut files = Files::new();
+        files.insert(
+            ws.focused_buffer(),
+            crate::app::dispatch::BufferFile {
+                path: PathBuf::from("/nonexistent-ruse-omni/src/main.rs"),
+                fmt: Default::default(),
+                read_only: false,
+                reloads: 0,
+                large: false,
+                swapfile: true,
+            },
+        );
+        let bytes = ws.focused().doc.bytes().to_vec();
+        let rev = ws.focused().doc.revision();
+        let mut c = LspCoordinator::new(PathBuf::from("/nonexistent-ruse-omni"), true);
+        let mut status = Status::default();
+        let mut omni = |c: &mut LspCoordinator, key, armed, emacs| {
+            c.on_omni_key(key, armed, &ws, &files, &bytes, rev, emacs, &mut status)
+        };
+
+        // No server: nothing is claimed, so the engine sees `CTRL-X` and its selector.
+        assert!(
+            !omni(&mut c, ctrl('x'), false, false),
+            "CTRL-X is the engine's"
+        );
+        assert!(
+            !omni(&mut c, ctrl('o'), true, false),
+            "no server → <C-o> to the engine"
+        );
+        assert!(status.contains("E764"), "{status}");
+        let mut status = Status::default();
+        let mut omni = |c: &mut LspCoordinator, key, armed, emacs| {
+            c.on_omni_key(key, armed, &ws, &files, &bytes, rev, emacs, &mut status)
+        };
+
+        // A live (fake) server for the focused `.rs` buffer.
+        let mut fake = std::process::Command::new("sh");
+        fake.args(["-c", "cat >/dev/null"]);
+        let client = LspClient::spawn(fake, "file:///").expect("sh starts");
+        c.lsp.insert("rust-analyzer".to_string(), client);
+        c.lsp_docs.insert(
+            ws.focused_buffer(),
+            (
+                "file:///nonexistent-ruse-omni/src/main.rs".to_string(),
+                1,
+                rev,
+            ),
+        );
+        assert!(
+            !omni(&mut c, ctrl('x'), false, false),
+            "CTRL-X still the engine's"
+        );
+        assert!(
+            !omni(&mut c, ctrl('l'), true, false),
+            "CTRL-X CTRL-L to the engine"
+        );
+        assert!(
+            !omni(&mut c, ctrl('o'), false, false),
+            "<C-o> without CTRL-X is i_CTRL-O"
+        );
+        assert!(
+            !omni(&mut c, ctrl('o'), true, true),
+            "the Emacs profile never omni-completes"
+        );
+        assert!(c.completion_req.is_none());
+        assert!(
+            omni(&mut c, ctrl('o'), true, false),
+            "CTRL-X CTRL-O goes to the server"
+        );
+        assert!(c.completion_req.is_some(), "textDocument/completion sent");
+        assert_eq!(status, "completing…");
     }
 
     /// Regression (INV-TRUST-1 / D-058): in an UNTRUSTED workspace, focusing a file with a known language
