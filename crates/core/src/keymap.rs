@@ -197,14 +197,16 @@ impl<K: PartialEq, V> Layer<K, V> {
     }
 }
 
-impl<K, V: PartialEq> Layer<K, V> {
+impl<K: PartialEq, V: PartialEq> Layer<K, V> {
     /// The key bound to `value` in this layer, if any — the REVERSE of resolution, for showing a
-    /// command's current binding in the palette (F-004 #2). First match wins.
+    /// command's current binding in the palette (F-004 #2). First match wins, and only a key this
+    /// layer resolves to `value`: a later duplicate binding of a key is dead (`get` takes the first),
+    /// so it is never offered (#759).
     #[must_use]
     pub fn key_for(&self, value: &V) -> Option<&K> {
         self.bindings
             .iter()
-            .find(|(_, v)| v == value)
+            .find(|(k, v)| v == value && self.get(k) == Some(value))
             .map(|(k, _)| k)
     }
 }
@@ -347,12 +349,26 @@ impl<K: PartialEq, V> LayerStack<K, V> {
     }
 }
 
-impl<K, V: PartialEq> LayerStack<K, V> {
-    /// The key bound to `value` anywhere in the stack (highest rank first), if any — the reverse of
-    /// resolution, for the palette's binding column (F-004 #2).
+impl<K: PartialEq, V: PartialEq> LayerStack<K, V> {
+    /// A key whose resolution through the whole stack is `value`, if any — the reverse of
+    /// [`resolve`](Self::resolve), for the palette's binding column (F-004 #2). Candidates are taken
+    /// in resolution order (highest rank first, binding order within a layer, nothing below the first
+    /// sealed layer), and each is checked against `resolve` itself, so a key a higher layer rebinds or
+    /// a sealed layer hides is never offered as a dead binding (#759).
     #[must_use]
     pub fn key_for(&self, value: &V) -> Option<&K> {
-        self.layers.iter().find_map(|l| l.key_for(value))
+        let reachable = match self.layers.iter().position(|l| l.sealed) {
+            Some(i) => &self.layers[..=i],
+            None => &self.layers[..],
+        };
+        reachable
+            .iter()
+            .flat_map(|l| l.bindings.iter())
+            .find(|(k, v)| {
+                v == value
+                    && matches!(self.resolve(k), Resolved::Bound { value: w, .. } if w == value)
+            })
+            .map(|(k, _)| k)
     }
 }
 
@@ -624,5 +640,69 @@ mod tests {
         assert_eq!(s.key_for(&"delete"), Some(&'d'));
         assert_eq!(s.key_for(&"hi-x"), Some(&'x'), "highest rank wins");
         assert_eq!(s.key_for(&"unbound"), None);
+    }
+
+    /// #759: a key a higher layer rebinds no longer runs the lower command, so the reverse lookup must
+    /// not offer it — the palette would show a dead binding.
+    #[test]
+    fn key_for_skips_a_shadowed_key() {
+        let s = stack(vec![
+            Layer::new("hi", 20, false, UnmatchedKey::Ignore).bind('x', "hi-x"),
+            Layer::new("lo", 10, false, UnmatchedKey::Ignore).bind('x', "lo-x"),
+        ]);
+        assert_eq!(s.key_for(&"lo-x"), None);
+        assert_eq!(s.key_for(&"hi-x"), Some(&'x'));
+    }
+
+    /// #759: a sealed layer stops resolution, so a binding beneath it is unreachable whether or not the
+    /// sealed layer binds that key.
+    #[test]
+    fn key_for_skips_a_key_below_a_sealed_layer() {
+        let s = stack(vec![
+            Layer::new("insert", 20, true, UnmatchedKey::Insert).bind('a', "ins-a"),
+            Layer::new("global", 10, false, UnmatchedKey::Ignore).bind('y', "lo-y"),
+        ]);
+        assert_eq!(
+            s.resolve(&'y'),
+            Resolved::Unmatched {
+                layer: "insert",
+                policy: UnmatchedKey::Insert
+            }
+        );
+        assert_eq!(s.key_for(&"lo-y"), None);
+        assert_eq!(s.key_for(&"ins-a"), Some(&'a'));
+    }
+
+    /// #759: a command whose first key is shadowed is still reported through another key that does
+    /// resolve to it — in the same layer or a lower unsealed one.
+    #[test]
+    fn key_for_finds_a_command_still_reachable_via_another_key() {
+        let s = stack(vec![
+            Layer::new("minor", 30, false, UnmatchedKey::Ignore).bind('x', "minor-x"),
+            Layer::new("major", 20, false, UnmatchedKey::Ignore)
+                .bind('x', "cut")
+                .bind('k', "cut"),
+            Layer::new("global", 10, false, UnmatchedKey::Ignore)
+                .bind('k', "kill")
+                .bind('x', "kill")
+                .bind('K', "kill"),
+        ]);
+        assert_eq!(s.key_for(&"cut"), Some(&'k'), "x is shadowed by minor");
+        assert_eq!(s.key_for(&"kill"), Some(&'K'), "k and x are shadowed above");
+        for v in ["minor-x", "cut", "kill"] {
+            let k = s.key_for(&v).expect("bound");
+            assert!(matches!(s.resolve(k), Resolved::Bound { value, .. } if *value == v));
+        }
+    }
+
+    /// #759: within one layer only the first binding of a key resolves (`get` takes the first), so a
+    /// later duplicate binding of the same key to another command is dead too.
+    #[test]
+    fn key_for_skips_a_dead_duplicate_in_one_layer() {
+        let s = stack(vec![Layer::new("global", 10, false, UnmatchedKey::Ignore)
+            .bind('a', "one")
+            .bind('a', "two")]);
+        assert_eq!(s.key_for(&"one"), Some(&'a'));
+        assert_eq!(s.key_for(&"two"), None);
     }
 }
