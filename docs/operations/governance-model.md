@@ -66,7 +66,7 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 | Repository Constitution (agent-invariant principles) | **live** | [spec/constitution.yaml](../../spec/constitution.yaml) + `ruse gov constitution` (CON-* articles, each marked `check` or `review` there); references POLICY.yaml/architecture.yaml, never duplicates |
 | Decision Records + revisit triggers | partial | spec/DECISIONS.md (Re-evaluate lines) → fitness-linked auto-revisit planned |
 | Contract-Driven Development | **live** | [spec/contracts/](../../spec/contracts/) + `ruse gov contracts` (plugin/remote/persistence declared contract-first, D-004/011/005); consumer-driven tests planned |
-| Documentation SSOT (design-doc code non-normative) | **live** | [D-038](../../spec/DECISIONS.md) + `ruse gov design_code` (illustrative-banner + doc↔code diff both implemented: extracts struct/enum illustrations and diffs member names against the real crates/apps types; direction-neutral, owner-acknowledged via `design-code-ack`; warn-only in `gov check`, `--strict` blocks unacknowledged drift) |
+| Documentation SSOT (design-doc code non-normative) | **live** | [D-038](../../spec/DECISIONS.md) + `ruse gov design_code` (illustrative-banner + doc↔code diff both implemented: extracts struct/enum illustrations and diffs member names against the real crate and app types; direction-neutral, owner-acknowledged via `design-code-ack`; warn-only in `gov check`, `--strict` blocks unacknowledged drift) |
 
 ### 2. Structural layer — *the shape must hold*
 | Methodology | Status | Where |
