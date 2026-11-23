@@ -557,7 +557,7 @@ they stand for (`CTRL-W q` / `CTRL-W CTRL-Q` = `:quit`, `CTRL-W c` = `:close`; `
 `:q!`), so the gate covers them. `:set (no)ma` and `:set (no)mod` are recorded in the replay trace
 (`ex_modifiable`, `ex_modified`, RFC-0020), so a session with an `E21` refusal saves a trace that replays.
 
-**The Emacs profile (v0.1.9, #619; `app/session/emacs_files.rs`).** Emacs 31.1's questions, in the echo
+**The Emacs profile (v0.1.9, #619; `app/session/emacs_files.rs` and its `emacs_files/` children).** Emacs 31.1's questions, in the echo
 area, from the `emacs.*` config keys:
 
 - `C-x C-c` is `save-buffers-kill-terminal`: `save-some-buffers` over every modified buffer (PRED `t`, so a

@@ -34,7 +34,7 @@ related:
 The trace (`crates/core/src/trace.rs`, RFC-0012) promises that the same initial document and the same trace give
 the same final document. Today only commands that pass through `run_cmd` (`apps/tui/src/app/dispatch.rs`) are
 recorded; Ex edits call `Workspace` methods straight from `Session::execute_ex_one`
-(`apps/tui/src/app/session.rs`), so they are missing from the trace, and `&`/`g&` return before `run_cmd`. This RFC
+(`apps/tui/src/app/session.rs` then; now `session/ex_line.rs`), so they are missing from the trace, and `&`/`g&` return before `run_cmd`. This RFC
 decides, following [command-engine.md §7.3](../../design/command-engine.md), that every Ex edit is recorded as
 **resolved semantic commands**: what ran, with every cursor-relative or history-relative input already resolved,
 so replay needs no Ex parser, no cursor context and no IO.
@@ -219,7 +219,7 @@ over N lines records N children; that is what it does live. Not on any per-keyst
 
 - Old traces replay unchanged (R5).
 - `Command` gains one variant; the `to_line`/`from_line` round-trip test (`round_trips_every_variant` in
-  `crates/core/src/command.rs`) covers it.
+  `crates/core/src/command/tests.rs`) covers it.
 - `Session::execute_ex_one` changes from "call the `Workspace` op" to "build the resolved `ExCmd`, run it through
   `run_cmd`". `run_cmd` records it and applies it, so recording cannot be forgotten per verb.
 - `&`/`g&` stop returning before `run_cmd`; they resolve to `ExCmd::Substitute` and go through it.
@@ -289,7 +289,7 @@ cursor and undo grouping, with no IO and no re-resolution):
   `shiftwidth`, `expandtab` and `textwidth`, captured when the session starts.
 - **Format.** The verbs are `ex_substitute`, `ex_global`, `ex_delete`, `ex_yank`, `ex_join`, `ex_shift`,
   `ex_move`, `ex_copy`, `ex_put`, `ex_sort`, `ex_retab`, `ex_read`, `ex_filter`, `ex_mark`, `ex_set`,
-  `ex_place`, `ex_want`, `ex_undo_sync`, `ex_begin`, `ex_end` (codec: `crates/core/src/editor/ex_cmd.rs`). An unbalanced
+  `ex_place`, `ex_want`, `ex_undo_sync`, `ex_begin`, `ex_end` (codec: `crates/core/src/editor/ex_cmd/codec.rs`). An unbalanced
   group is `TraceError::UnbalancedGroup`. `:>` records at most `MAX_SHIFT_LEVELS` (1000) levels so a hostile
   trace line stays bounded.
 - **Session cursor moves and the caret gravity (#1134).** A cursor the session places outside the core

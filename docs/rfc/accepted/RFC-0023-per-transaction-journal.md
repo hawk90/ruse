@@ -322,7 +322,7 @@ in the session, comes back with its own. A legacy RJS0 offer has none and keeps 
 `'endoffile'`, no `'binary'`, LF or CRLF, and the 1.0 origin. A 1.0 reader reads a 1.1 record as a newer minor:
 it skips the appended bytes using `payload_len`, so it recovers the text, with the 1.0 format and origin. No
 migration is needed and no record is rewritten. The trace format gains the origin token `reload`
-(`editor/ex_cmd.rs`); an older build rejects a trace line that carries it, which is acceptable because traces
+(`editor/ex_cmd/codec.rs`); an older build rejects a trace line that carries it, which is acceptable because traces
 are test and debugging artifacts, not user data. Tests: `rj01::tests::schema_1_1_keeps_endoffile_binary_mac_and_a_reload_origin`,
 `a_1_0_record_reads_with_the_1_0_defaults`, `a_1_1_record_is_the_1_0_record_plus_appended_bytes`,
 `a_1_0_reader_still_replays_a_1_1_record`, `journal::tests::the_offer_carries_the_format_the_journal_recorded`,

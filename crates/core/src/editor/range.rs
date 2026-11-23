@@ -2,8 +2,8 @@
 //! `(motion, count)` (or a Visual selection's two ends) into the `[start, end)` range an operator
 //! covers, plus the char-boundary walkers. Every function here is pure over `&[u8]` + primitives —
 //! it touches no `View`/`EditorState` state — so it lives beside `mod.rs`'s hub and is re-exported
-//! `pub(crate)` (`planner.rs`'s `use super::*` and `View::{selection_span,block_spans}` resolve
-//! these names through that re-export).
+//! `pub(crate)` (the `planner/` modules' `use super::{..}` imports and `View::{selection_span,block_spans}`
+//! resolve these names through that re-export).
 
 use crate::cells::Tabs;
 use crate::command::ForcedWise;

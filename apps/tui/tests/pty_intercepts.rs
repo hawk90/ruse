@@ -1,6 +1,7 @@
-//! Characterization of the session-level key intercepts in `app/session.rs` `run()` (#878): the `C-w` window
-//! prefix, the `z` scroll/fold prefix and `zf{motion}`, the `[`/`]` fold-nav prefix, `H`/`M`/`L` (bare and
-//! under an operator), the Normal and Insert chords the session resolves itself, and the terminal escape.
+//! Characterization of the session-level key intercepts `Session::route_key` offers a key to (#878;
+//! `app/session/route.rs`, `keys.rs` and `normal_keys/`): the `C-w` window prefix, the `z` scroll/fold
+//! prefix and `zf{motion}`, the `[`/`]` fold-nav prefix, `H`/`M`/`L` (bare and under an operator),
+//! the Normal and Insert chords the session resolves itself, and the terminal escape.
 //! No other test reaches this routing: the parity corpora call `InputEngine::feed` directly.
 //!
 //! Each case runs the real binary on an 80x24 PTY, writes the buffer, and checks the file. Expected results
