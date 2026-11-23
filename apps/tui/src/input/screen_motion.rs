@@ -2,9 +2,9 @@
 //! viewport motions `H`/`M`/`L`. The engine hands them out with their folded count and the frontend
 //! finishes them through the methods here. Moved out of `input/mod.rs` (#1493).
 
-use ruse_core::Motion;
+use ruse_core::{Mode, Motion};
 
-use super::{Feed, InputEngine};
+use super::{repeat, ChangeIntent, Feed, InputEngine};
 
 /// A screen-line motion (`:help gj`): it moves over screen rows, not buffer lines (#615).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +21,17 @@ pub enum ScreenMotion {
     Middle,
     /// `g$` / `g<End>`.
     End,
+}
+
+/// A [`Feed::ScreenMotion`] waiting for its finisher (#1539): the motion and its effective count, and
+/// either how [`InputEngine::feed`] would have recorded the finished command or the change `.` repeats.
+pub(super) struct ScreenHandoff {
+    motion: ScreenMotion,
+    count: u32,
+    /// The mode the finished command is recorded in (`None`: it completes an `i_CTRL-O` one-shot).
+    mode: Option<Mode>,
+    /// The change `.` is repeating over this motion; its lead takes the span the frontend resolves.
+    redo: Option<ChangeIntent>,
 }
 
 impl InputEngine {
@@ -43,7 +54,12 @@ impl InputEngine {
     /// operate through the TRUE top/bottom visible line (verified against nvim). So the intercept resolves the
     /// line with `scrolloff = 0` when this is true, and the normal margin otherwise.
     pub fn has_op(&self) -> bool {
+        // `.` repeating an operator over a screen-line motion has no operator armed, but resolves as one.
         self.normal.op.is_some()
+            || self
+                .screen_handoff
+                .as_ref()
+                .is_some_and(|h| h.redo.is_some())
     }
 
     /// The OPERATOR form of the viewport-resolved screen motions `H`/`M`/`L` (`dH`/`yL`/`c2M`/`>H`/`gUL`…):
@@ -70,25 +86,104 @@ impl InputEngine {
     /// linewise). An inclusive one (`g$`) reaches here as the byte after its char.
     pub fn screen_motion_to(&mut self, byte: usize) -> Feed {
         let target = u32::try_from(byte.saturating_add(1)).unwrap_or(u32::MAX);
-        self.op_over_motion(Motion::GotoByte, target)
+        self.finish_screen_motion(Motion::GotoByte, target)
     }
 
     /// Finish a [`Feed::ScreenMotion`] that kept the end-of-line wanted column (`gj` after `$`) and landed
     /// on the end of a line `lines - 1` below as `{lines}$`: the same place, inclusive, and the column
     /// stays at the end as nvim keeps it.
     pub fn screen_motion_line_end(&mut self, lines: u32) -> Feed {
-        self.op_over_motion(Motion::LineEnd, lines.max(1))
+        self.finish_screen_motion(Motion::LineEnd, lines.max(1))
     }
 
     /// Finish a [`Feed::ScreenMotion`] as `j` / `k` with its count: `gj` / `gk` without 'wrap'.
     pub fn screen_motion_lines(&mut self, down: bool) -> Feed {
-        let total = self.mcount();
-        self.op_over_motion(if down { Motion::Down } else { Motion::Up }, total)
+        let total = self
+            .screen_handoff
+            .as_ref()
+            .map_or_else(|| self.mcount(), |h| h.count);
+        self.finish_screen_motion(if down { Motion::Down } else { Motion::Up }, total)
+    }
+
+    /// Remember a [`Feed::ScreenMotion`] [`feed`](Self::feed) handed out, so its finisher records the
+    /// change for `.` as `feed` records any other command; `mode` is `None` when it completes an
+    /// `i_CTRL-O` one-shot. A handoff `.` itself made (it carries the change to repeat) is kept.
+    pub(super) fn arm_screen_handoff(
+        &mut self,
+        motion: ScreenMotion,
+        count: u32,
+        mode: Option<Mode>,
+    ) {
+        if self.screen_handoff.is_none() {
+            self.screen_handoff = Some(ScreenHandoff {
+                motion,
+                count,
+                mode,
+                redo: None,
+            });
+        }
+    }
+
+    /// `.` of a change over a screen-line motion (#1539): hand the motion back to the frontend with the
+    /// recorded count, or the `.`'s own, so it resolves again from where the cursor is now. The
+    /// finisher then replays `intent` over the new span.
+    pub(super) fn redo_screen_motion(
+        &mut self,
+        intent: ChangeIntent,
+        motion: ScreenMotion,
+        count: u32,
+    ) -> Feed {
+        self.screen_handoff = Some(ScreenHandoff {
+            motion,
+            count,
+            mode: None,
+            redo: Some(intent),
+        });
+        Feed::ScreenMotion { motion, count }
+    }
+
+    /// The finished screen-line motion as `m` with count `total`. Under `.`, the repeated change over
+    /// it. Otherwise the bare move or the armed operator over it, recorded for `.` with the screen
+    /// motion, so a later `.` resolves the motion again instead of reusing this span.
+    fn finish_screen_motion(&mut self, m: Motion, total: u32) -> Feed {
+        let handoff = self.screen_handoff.take();
+        if let Some(ScreenHandoff {
+            redo: Some(mut intent),
+            ..
+        }) = handoff
+        {
+            self.reset();
+            intent.lead = repeat::with_motion(&intent.lead, m, total);
+            return intent.replay(None).into_feed();
+        }
+        let out = self.op_over_motion(m, total);
+        if let Some(h) = handoff {
+            match h.mode {
+                Some(mode) => self.record(&out, mode),
+                // As `feed` records the command that completes an `i_CTRL-O` one-shot.
+                None => {
+                    self.record(&out, Mode::Normal);
+                    if self.recording.is_some() {
+                        self.insert.resumed = false;
+                    }
+                }
+            }
+            // `record` replaced the change (it keeps the old one to restore): tag the new one, the open
+            // recording of a `cgj` or the finished change of a `dgj`.
+            if self.replaced_change.is_some() {
+                if let Some(rec) = self.recording.as_mut().or(self.last_change.as_mut()) {
+                    rec.screen = Some((h.motion, h.count));
+                }
+            }
+        }
+        out
     }
 
     /// Abandon a [`Feed::ScreenMotion`] that cannot move (`gj` on the last screen row): nvim beeps and
     /// drops the operator.
     pub fn screen_motion_fail(&mut self) -> Feed {
+        // Under `.` the change stays the one to repeat, as nvim keeps its redo buffer.
+        self.screen_handoff = None;
         let had_register = self.normal.register;
         self.reset();
         self.drop_aborted_register(

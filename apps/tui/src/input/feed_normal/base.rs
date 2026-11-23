@@ -195,6 +195,10 @@ impl InputEngine {
             let intent = intent.clone();
             let count = (self.normal.typed() > 0).then_some(self.normal.typed());
             self.reset();
+            // A change over a screen-line motion resolves the motion again where the cursor is (#1539).
+            if let Some((motion, n)) = intent.screen {
+                return self.redo_screen_motion(intent, motion, count.unwrap_or(n));
+            }
             intent.replay(count).into_feed()
         } else {
             self.unmatched(Ns::Normal, key)

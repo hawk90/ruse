@@ -228,6 +228,7 @@ impl InputEngine {
                 register: None,
                 expr: None,
                 entry_count: 1,
+                screen: None,
             });
         }
     }

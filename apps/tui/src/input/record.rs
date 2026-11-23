@@ -74,6 +74,7 @@ impl InputEngine {
                     register: None,
                     expr: None,
                     entry_count: 1,
+                    screen: None,
                 });
             }
             if let Some(rec) = self.recording.as_mut() {
@@ -146,6 +147,7 @@ impl InputEngine {
                     // The count a pure insert-entry captured (`3i`); `0` (→ 1) for a count-less or
                     // change-family entry, so only `i`/`a`/`I`/`A`/`o`/`O` ever repeat their text.
                     entry_count: std::mem::take(&mut self.pending_insert_count).max(1),
+                    screen: None,
                 });
             }
             ChangeKind::Immediate => {
@@ -156,6 +158,7 @@ impl InputEngine {
                     register: self.pending_record_register.take(),
                     expr: self.pending_record_expr.take(),
                     entry_count: 1,
+                    screen: None,
                 });
             }
             // A non-change (motion, mode switch, yank) forgets a dangling register selection.
