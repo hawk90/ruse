@@ -72,7 +72,7 @@ One dated report per release milestone, written when the milestone closes (#989)
 - **Lifecycle:** a report records one point in time and is never edited after it lands. The next
   milestone writes a new one.
 
-Reports so far: [2026-11-08 v0.1.9](../reviews/2026-11-08-v0.1.9.md), the first; [2026-11-16 v0.2.0](../reviews/2026-11-16-v0.2.0.md); [2026-11-16 v0.2.1](../reviews/2026-11-16-v0.2.1.md). The undated
+Reports so far: [2026-11-08 v0.1.9](../reviews/2026-11-08-v0.1.9.md), the first; [2026-11-16 v0.2.0](../reviews/2026-11-16-v0.2.0.md); [2026-11-16 v0.2.1](../reviews/2026-11-16-v0.2.1.md); [2026-11-23 v0.2.2](../reviews/2026-11-23-v0.2.2.md). The undated
 [verification.md](../reviews/verification.md) is the design-verification report from before code was
 written; it stays as is.
 
