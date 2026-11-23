@@ -8,6 +8,8 @@ the delta, biased (like spec-validate) toward ZERO false positives:
   * docs/ prose files missing YAML frontmatter           -> WARN
   * normative words (MUST/SHALL/REQUIRED/...) added to plain docs prose -> WARN
     (a real contract belongs in spec/, not in an explanation — ENG-DOC-001)
+  * an `apps/…` / `crates/…` source path that names no file or directory -> WARN
+    (a split moved the code; dated reviews under docs/reviews/ are history and are skipped)
 
 Only same-file broken anchors fail the command; the rest is advisory.
 """
@@ -27,6 +29,10 @@ LINK_RE = re.compile(r"\]\(([^)]+)\)")
 HEADING_RE = re.compile(r"^#{1,6}\s+(.*\S)\s*$")
 # Explicit heading id: `### Title {#custom-id}` (pandoc/mkdocs style, used across docs/).
 EXPLICIT_ID_RE = re.compile(r"\{#([\w-]+)\}\s*$")
+# A source path in prose: `apps/…` or `crates/…`. It stops at `:` (a `:line` or `::item` suffix).
+SRC_PATH_RE = re.compile(r"(?<![\w/.-])((?:apps|crates)/[\w./-]*\w)")
+# Dated records quote the tree as it was; a path there is history, not a pointer.
+SRC_PATH_SKIP = ("docs/reviews/",)
 
 
 def slugify(text: str) -> str:
@@ -61,6 +67,19 @@ def headings_slugs(text: str) -> set[str]:
             slugs.add(base if n == 0 else f"{base}-{n}")
             counts[base] = n + 1
     return slugs
+
+
+def stale_source_paths(text: str, exists) -> list[tuple[int, str]]:
+    """(lineno, path) for each `apps/…`/`crates/…` path in `text` that `exists` rejects. A path
+    followed by `*`, `{` or `<` is a glob, a set or a placeholder, not a path, and is skipped."""
+    out: list[tuple[int, str]] = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for m in SRC_PATH_RE.finditer(line):
+            if line[m.end():].lstrip("/")[:1] in ("*", "{", "<"):
+                continue
+            if not exists(m.group(1)):
+                out.append((lineno, m.group(1)))
+    return out
 
 
 def _prose_lines(text: str):
@@ -132,6 +151,11 @@ def main(argv: list[str]) -> int:
                 tslugs = slugs_of(target)
                 if tslugs and slugify(anchor) not in tslugs:
                     warns.append(f"{rel}: anchor '{filepart}#{anchor}' not found in target")
+
+        # source paths (advisory)
+        if not rel.startswith(SRC_PATH_SKIP):
+            for lineno, sp in stale_source_paths(text, lambda q: os.path.exists(repo.path(q))):
+                warns.append(f"{rel}:{lineno}: source path '{sp}' does not exist")
 
         # normative leak (advisory)
         if leak_re and rel.startswith("docs/") and not rel.startswith(LEAK_SKIP):
