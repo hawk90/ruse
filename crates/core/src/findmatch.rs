@@ -17,7 +17,7 @@ use crate::pos::raw::line_end;
 
 pub(crate) mod scan;
 
-use scan::{check_prevcol, Backslashes, MatchScan, MatchStep};
+use scan::{backslashes_before, utf_head_off, MatchScan, MatchStep};
 
 thread_local! {
     static LISP: Cell<bool> = const { Cell::new(false) };
@@ -92,18 +92,6 @@ fn check_linecomment(line: &[u8], lisp: bool) -> Option<usize> {
     } else {
         crate::editor::c_line_comment(line)
     }
-}
-
-/// The number of backslashes right before `line[col]`.
-fn backslashes(line: &[u8], col: usize) -> usize {
-    let mut n = 0;
-    let mut c = col;
-    let mut p = 0;
-    while check_prevcol(line, c, b'\\', &mut p) {
-        n += 1;
-        c = p;
-    }
-    n
 }
 
 const PAIRS: [(u8, u8); 3] = [(b'(', b')'), (b'{', b'}'), (b'[', b']')];
@@ -236,7 +224,7 @@ fn brace_target(linep: &[u8], mut t: Target) -> Option<Start> {
         // No bracket on the line: maybe a `#if` line then.
         return (at(linep, skipwhite(linep, 0)) == b'#').then_some(Start::Directive);
     }
-    t.match_escaped = backslashes(linep, t.col) & 1;
+    t.match_escaped = backslashes_before(linep, t.col) & 1;
     Some(Start::Match(t))
 }
 
@@ -298,17 +286,11 @@ fn find_directive(lines: &Lines<'_>, lnum: usize) -> Option<(usize, usize)> {
     }
 }
 
-/// `%` counts the backslashes before a `"` and before a bracket alike, with its [`check_prevcol`].
-const PERCENT_BACKSLASHES: Backslashes = Backslashes {
-    quote: backslashes,
-    escape: backslashes,
-};
-
 /// `findmatchlimit`, "backward search: Check if this line contains a single-line comment": the scan
 /// state at the target, with the first line's comment column (and, under `'lisp'`, whether the
 /// cursor is in that comment).
 fn scan_start(lnum: usize, linep: &[u8], t: Target, lisp: bool) -> MatchScan<'_> {
-    let mut s = MatchScan::new((lnum, t.col), linep, PERCENT_BACKSLASHES);
+    let mut s = MatchScan::new((lnum, t.col), linep);
     s.initc = t.initc;
     s.findc = t.findc;
     s.backwards = t.backwards;
@@ -365,10 +347,9 @@ fn next_pos<'a>(lines: &Lines<'a>, s: &mut MatchScan<'a>) -> MatchStep {
                 }
             }
         } else {
+            // `pos.col--; pos.col -= utf_head_off(linep, linep + pos.col);`
             s.pos.1 -= 1;
-            while s.pos.1 > 0 && s.linep[s.pos.1] & 0xC0 == 0x80 {
-                s.pos.1 -= 1;
-            }
+            s.pos.1 -= utf_head_off(s.linep, s.pos.1);
         }
     } else if at(s.linep, s.pos.1) == 0 || (lisp && s.comment_col == Some(s.pos.1)) {
         if s.pos.0 + 1 >= lines.count() || s.lispcomm {
@@ -424,5 +405,43 @@ mod tests {
         }
         // Without 'lisp' the `\)` is an escaped bracket, skipped all the same.
         assert_eq!(pct("(a #\\) b)", 0), Some(8));
+    }
+
+    /// #1548, nvim v0.12.6's answers (the `pct_inv_*` / `pct_comb_*` oracle fixtures): before a
+    /// bracket `check_prevcol` steps back by `utf_head_off`, which stops on a byte no valid char owns
+    /// and goes back over a cluster; before a `"` the backslashes are raw bytes.
+    #[test]
+    fn percent_counts_backslashes_as_nvim_on_invalid_utf8() {
+        let p = |b: &[u8], cur: usize| percent(b, cur);
+        // A backslash before a lone continuation byte does not escape the bracket after it.
+        assert_eq!(p(b"( \\\x80) )", 0), Some(4));
+        assert_eq!(p(b"( \\\\\x80) )", 0), Some(5));
+        assert_eq!(p(b"( \\\\\\\x80) )", 0), Some(6));
+        assert_eq!(p(b"( \\\x80\x80\x80\x80) )", 0), Some(7));
+        // Nor does it add to the backslash right before the bracket: one backslash, escaped.
+        assert_eq!(p(b"( \\\x80\\) )", 0), Some(7));
+        assert_eq!(p(b"( \\\\\x80\\) )", 0), Some(8));
+        assert_eq!(p(b"( \x80\\) )", 0), Some(6));
+        assert_eq!(p(b"( \x80\\) )", 6), Some(0));
+        assert_eq!(p(b"( \\\x80) )", 6), None);
+        assert_eq!(p(b"( \\\x80( )", 6), Some(4));
+        // A cut or lone lead byte is a cell of its own too.
+        assert_eq!(p(b"( \\\xe4\x80) )", 0), Some(5));
+        assert_eq!(p(b"( \\\xe4) )", 0), Some(4));
+        assert_eq!(p(b"( \xe4\\) )", 0), Some(6));
+        // Quotes: the backslashes before a `"` are raw bytes, whatever stands around them.
+        assert_eq!(p(b"(a \"\x80)\" b)", 0), Some(9));
+        assert_eq!(p(b"(a \"\xc3\\\"\" b)", 0), Some(10));
+        assert_eq!(p(b"(a \"\xc3\\\"\" b)", 10), Some(0));
+        assert_eq!(p(b"(a \"\\\x80\" ) b)", 0), Some(8));
+        // The starting bracket's escape is counted the same way.
+        assert_eq!(p(b"\\\x80\\( ) \\)", 3), Some(8));
+        assert_eq!(p(b"\\\x80( ( ) )", 2), Some(8));
+        // A combining mark after a backslash is part of it (one cluster): it escapes the bracket.
+        assert_eq!(p("( \\\u{301}) )".as_bytes(), 0), Some(7));
+        assert_eq!(p("( \\\u{301}\u{301}) )".as_bytes(), 0), Some(9));
+        assert_eq!(p("( \\\u{301}) )".as_bytes(), 7), Some(0));
+        assert_eq!(p("(a \"\\\u{301}\" ) b)".as_bytes(), 0), Some(9));
+        assert_eq!(p("( \\\u{e9}) )".as_bytes(), 0), Some(5));
     }
 }
