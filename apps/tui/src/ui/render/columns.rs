@@ -1,6 +1,6 @@
 //! Display-column math: the column of a byte in a line and its inverse. Split from `render.rs` (#1386).
 
-use super::*;
+use super::screen;
 
 /// Advance a display column past one grapheme cluster `g` — the ONE column rule shared by painting
 /// ([`paint_pane`]), the caret ([`cursor_cell`] via [`line_display_col`]), and the inverse

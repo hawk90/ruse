@@ -22,7 +22,7 @@
 //! and View mode), `visit` (find-file, the large-file question, find-sibling-file) and `memory`
 //! (sizes and the out-of-memory warning).
 
-use super::*;
+use super::{is_ctrl, DocumentId, Editing, FrameCtx, KeyCode, KeyEvent, KeyModifiers, Session};
 use crate::app::write_opts::EmacsFiles;
 use crate::input::EmacsAction;
 

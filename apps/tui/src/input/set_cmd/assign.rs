@@ -1,6 +1,9 @@
 //! Applying a `:set` value: type checks, `+=`/`-=`/`^=`, and validation. Split from `set_cmd.rs` (#1388).
 
-use super::*;
+use super::{
+    backupcopy_valid, foldopen_valid, messagesopt_history, AssignOp, Cow, ListKind, Opt, OptDef,
+    OptKind, OptVal, RawVal, TextCheck, E474, FILE_FORMATS, INT_MAX, INT_MIN,
+};
 
 /// Why a value cannot be assigned to an option (the message prefix; the argument text follows it).
 #[derive(Clone, PartialEq, Eq, Debug)]

@@ -3,7 +3,11 @@
 //! repeat it). Moved out of `input/mod.rs` as an `impl InputEngine` block; the line editor itself lives
 //! on [`CmdLine`].
 
-use super::*;
+use super::{
+    cmdline, complete, emacs, emacs_command_by_name, history, is_chord, plain, CmdLine, CmdWin,
+    Command, ExprTarget, Feed, InputEngine, KeyCode, KeyEvent, KeyModifiers, SearchOffset,
+    SearchOp, SuspendedCmdline, WildKey,
+};
 
 impl InputEngine {
     /// The active command-line as `(prefix, text, cursor)` for the frontend to render — `None` when

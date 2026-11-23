@@ -1,6 +1,6 @@
 //! Reusing the last search for an empty pattern. Split from `ex.rs` (#1385).
 
-use super::*;
+use super::{Ex, GlobalCmd, GlobalPayload};
 
 /// An empty pattern with no last search to borrow ([`reuse_last_search`]). `Display` is the status message
 /// Vim shows: `E476` for `:s` and `:g` (`do_sub` and `ex_global` report it after `E35`), `E35` for `:sort`.

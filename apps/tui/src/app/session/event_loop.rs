@@ -2,7 +2,11 @@
 //! session), one frame per pass (pre-frame, paint, post-render) and the key read.
 
 use super::normal_keys::focused_folds;
-use super::*;
+use super::{
+    ct_terminal, event, graphics, highlight, io, line_index, persist, render, screen, term_buffer,
+    DocumentId, Event, FrameCtx, HashMap, HashSet, KeyEvent, KeyEventKind, PathBuf, Rect, Session,
+    SessionInit, TermGuard, TermInfo, Workspace,
+};
 
 /// `read_only_mode` is `ruse -R` (#1211).
 pub(crate) fn run(

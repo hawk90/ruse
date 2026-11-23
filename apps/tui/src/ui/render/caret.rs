@@ -1,6 +1,8 @@
 //! Where the cursor lands on screen. Split from `render.rs` (#1386).
 
-use super::*;
+use crossterm::cursor;
+
+use super::{focus_rect, highlight, io, queue, PaneText, Rect, TermViews, WinView, Workspace};
 
 /// The cursor's place in its window, relative to the window's top-left (gutter included): the rows of
 /// the lines from `top` down to the cursor line (closed folds one row, virtual blocks theirs), then the

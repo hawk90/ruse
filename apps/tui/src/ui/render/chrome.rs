@@ -1,6 +1,6 @@
 //! The window separators and the command-line popup menu. Split from `render.rs` (#1386).
 
-use super::*;
+use super::{screen, Rect, SplitDir, WinView};
 
 /// Draw the one-cell dividers between adjacent panes (F-007): a `─` band for a horizontal split, a
 /// `│` column for a vertical split. Only interior gaps are drawn (never past the text area).

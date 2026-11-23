@@ -1,6 +1,13 @@
 //! The change log written as rj01 records: sync, compaction and health. Split from `journal.rs` (#1389).
 
-use super::*;
+use std::io::Write;
+
+use super::{
+    canonical, claim, discard_file, fs, header, io, make_private_dir, now_ms, open_regular,
+    path_bytes, rj01, whole, write_private, Arc, Base, ChangeDrain, Document, Duration, FileFormat,
+    Instant, Journals, OpenOptions, Path, PathBuf, COMPACT_AFTER, HASH_POLL, IDLE, PENDING_CAP,
+    SYNC_EVERY,
+};
 
 /// The SHA-256 of a large document's base text (RFC-0023 §5), computed off the input path (#1203): about
 /// 100 ms for 33 MiB, which the first keystroke would otherwise wait for.

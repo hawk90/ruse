@@ -1,7 +1,11 @@
 //! Running a finished command the way a typed key runs (#689): the display-only commands, the search
 //! resolution and the dispatch, and the free helpers they use. Split from `session.rs` (#1423).
 
-use super::*;
+use super::{
+    highlight, indent, line_index, regex_error_msg, run_ex, search_pattern, sub_outcome,
+    substitute_cmd, sync_special_registers, Command, DocumentId, Editing, Files, FrameCtx, HashMap,
+    InputEngine, Msg, OpenKind, Overlay, Session, Status, Workspace, E35,
+};
 
 impl Session {
     /// Run a finished engine `Command` the way a typed key's is run (#689): the frontend-resolved ones

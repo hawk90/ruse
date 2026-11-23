@@ -1,7 +1,13 @@
 //! Keys run inside a command: `:normal`, `:g` with a Normal or Ex payload, and the frames they paint
 //! without scrolling. Split from `session.rs` (#1423).
 
-use super::*;
+use super::{
+    line_index, note_ex, place_cursor, report, window_rects, Command, ExCmd, FrameCtx, GroupKind,
+    KeyCode, KeyEvent, KeyModifiers, Mode, PaneText, Rect, Session, Silence, TransactionOrigin,
+    WinView,
+};
+#[cfg(test)]
+use super::{persist, PathBuf, SessionInit, TermInfo, Workspace};
 
 impl Session {
     /// Each window's display as its options and its scroll position are now (#615), for a frame that does

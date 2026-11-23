@@ -2,7 +2,11 @@
 //! `z`, `zf` and `C-w` prefixes, the chords at a command boundary, the Insert keys the engine cannot
 //! resolve without the buffer, and `H`/`M`/`L`. Each borrows the `Session` fields it uses.
 
-use super::*;
+use super::{
+    insert_page_key, is_ctrl, place_cursor, run_scroll, viewport, Command, DocumentId, Editing,
+    Feed, FrameCtx, HScroll, HashMap, KeyCode, KeyEvent, KeyModifiers, Mode, PaneLines, PaneText,
+    Pending, Prefix, ScrollKey, Session, SplitDir, Workspace,
+};
 
 mod normal_chord;
 mod z_fold;

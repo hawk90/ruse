@@ -1,4 +1,6 @@
-use super::*;
+use super::{GlobalCmd, LineAddr, SubRange};
+// The children name these in code as `super::PrintFlags`, `super::ex_cmd::…` and `super::ex_extra::…`.
+use super::{ex_cmd, ex_extra, PrintFlags};
 
 mod expand;
 mod file;

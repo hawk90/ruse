@@ -1,3 +1,5 @@
+use ruse_core::SubFlags;
+
 use super::k;
 use crate::input::*;
 

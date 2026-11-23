@@ -1,6 +1,11 @@
 //! `:s`, `:&`/`:&&` and `:g`/`:v` parsing. Split from `ex.rs` (#1385).
 
-use super::*;
+use ruse_core::SubFlags;
+
+use super::{
+    parse_sub_range, skip_unescaped, split_bar, Ex, GlobalCmd, GlobalPayload, GlobalSpec, SubRange,
+    SubSpec,
+};
 
 /// Why the flags and count of a `:s` line are wrong. `Display` is nvim's message.
 #[derive(Clone, Debug, PartialEq, Eq)]
