@@ -311,6 +311,26 @@ fn dot_repeats_the_screen_motion_not_the_span() {
     );
 }
 
+/// #1576: after `$`, `dgk` is inclusive and goes back, so it also deletes the char under the cursor
+/// (nvim v0.12.6, 80 columns): 41 chars from column 79 through the line's last char, leaving 79.
+/// Without `$` (`G90ldgk`) and with `dvgk` it stays exclusive.
+#[test]
+fn backward_dgk_after_dollar_takes_the_cursor_char() {
+    let l = "0123456789".repeat(12);
+    let run = |keys: &str| {
+        let text: String = (0..4).map(|_| format!("{l}\n")).collect();
+        let mut h = Headless::with_size(Profile::Vim, &text, 80, 24);
+        h.keys(keys);
+        let t = h.text();
+        let last = t.lines().last().unwrap_or_default().len();
+        (last, h.register('"').0.len(), h.cursor_row_col())
+    };
+    assert_eq!(run("G$dgk"), (79, 41, (4, 78)));
+    assert_eq!(run("G$ygk"), (120, 41, (4, 79)));
+    assert_eq!(run("G$dvgk"), (80, 40, (4, 79)));
+    assert_eq!(run("G90ldgk"), (40, 80, (4, 10)));
+}
+
 /// #1577: `.` after an operator over `H` / `M` / `L` resolves the viewport line again, as nvim's redo
 /// buffer holds the keys and not the lines (nvim v0.12.6, 23 text rows, 'scrolloff' 3).
 #[test]
