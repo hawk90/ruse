@@ -2,7 +2,7 @@
 //! engine captures and replays. Split out of `input/mod.rs` as a self-contained data definition; the
 //! `InputEngine::record` builder that constructs it stays in the engine core.
 
-use ruse_core::{Command, MarkOp, Motion, OpKind, SearchOp, VisualOp};
+use ruse_core::{Command, MarkOp, Mode, Motion, OpKind, SearchOp, SelectKind, VisualOp};
 
 /// A counted repetition the frontend applies lazily (#683): `head`, then `unit` `times` times, then `tail`.
 /// A count-prefixed insert (`999999999ix<Esc>`), `N.` of one, or an Emacs `C-u N` prefix expands to this
@@ -389,6 +389,36 @@ fn mark_op_change_kind(op: MarkOp) -> ChangeKind {
         | MarkOp::Comment => ChangeKind::Immediate,
         MarkOp::Yank => ChangeKind::NotAChange,
     }
+}
+
+/// What `.` repeats after a Visual put (`v_p`/`v_P`, #1573), as the recorded lead and its register: only
+/// the Visual delete that ran inside the put. nvim's `nv_put_opt` saves the put for redo, then deletes the
+/// selection through `do_pending_operator`, which overwrites the redo buffer with that Visual `d` (and the
+/// selection's size, `:help visual-repeat`); `do_put` saves nothing. The delete goes to the unnamed register
+/// for `p` and to the black hole for `P` (`keep_registers`), whatever register the put read, and the
+/// put's count is dropped. A charwise or blockwise put of the `.` register runs no delete (its put is a
+/// Visual `c` that replays as one), so it records as itself, as does any other command: `None`. `mode` is
+/// the mode the command was typed in.
+pub(crate) fn visual_put_redo(
+    cmd: &Command,
+    register: Option<char>,
+    mode: Mode,
+) -> Option<(Command, Option<char>)> {
+    let Command::PasteSelection { swap, .. } = cmd else {
+        return None;
+    };
+    let linewise = matches!(
+        mode,
+        Mode::Visual {
+            kind: SelectKind::Linewise
+        } | Mode::Select {
+            kind: SelectKind::Linewise
+        }
+    );
+    if register == Some('.') && !linewise {
+        return None;
+    }
+    Some((Command::DeleteSelection, (!swap).then_some('_')))
 }
 
 /// Whether a failure of `cmd` (the core beeped) cancels it before nvim saves the redo buffer, so the

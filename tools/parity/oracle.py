@@ -5727,6 +5727,27 @@ FIXTURES: list[dict] = [
     {"name": "i1561_vat_selfclose_inside", "lines": ["<a>x<br/>y</a>"], "keys": "fyvatd"},
     {"name": "i1561_vit_nested_same_name", "lines": ["<a><a>x</a>y</a>"], "keys": "fxvititd"},
     {"name": "i1561_vit_no_tag", "lines": ["plain"], "keys": "lvitd"},
+    # --- #1573 ---
+    #     `.` after a Visual put repeats only the Visual delete inside it (nvim `nv_put_opt`: the delete's
+    #     `do_pending_operator` overwrites the redo buffer with `v` + `d`, `"_` for `P`); the put is not redone.
+    {"name": "i1573_vp_dot", "lines": ["ab", "xy", "zw"], "keys": "yiwjvpj."},
+    {"name": "i1573_viwp_w_dot", "lines": ["abc def uvw"], "keys": "yiwwviwpw."},
+    {"name": "i1573_vP_dot", "lines": ["abc def uvw"], "keys": "yiwwviwPw."},
+    {"name": "i1573_vlp_dot", "lines": ["abc defgh"], "keys": "yiwwvlp0."},
+    {"name": "i1573_Vp_dot", "lines": ["a", "b", "c", "d", "e"], "keys": "yyjVp."},
+    {"name": "i1573_Vjp_dot", "lines": ["a", "b", "c", "d", "e", "f"], "keys": "yyjVjpj."},
+    {"name": "i1573_VP_dot", "lines": ["a", "b", "c", "d", "e"], "keys": "yyjVPj."},
+    {"name": "i1573_ctrlv_p_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "yl<C-v>jlpjj0."},
+    {"name": "i1573_ctrlv_P_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "yl<C-v>jlPjj0."},
+    {"name": "i1573_v3p_dot", "lines": ["ab cd ef gh"], "keys": "yiwwviw3pw."},
+    {"name": "i1573_v3p_count_dot", "lines": ["ab cd ef gh ij"], "keys": "yiwwviwp2w3."},
+    {"name": "i1573_named_reg_dot", "lines": ["ab cd ef gh"], "keys": "\"ayiwwviw\"apw."},
+    {"name": "i1573_named_reg_P_dot", "lines": ["ab cd ef gh"], "keys": "\"ayiwwviw\"aPw."},
+    {"name": "i1573_dot_undo", "lines": ["ab cd ef gh"], "keys": "yiwwviwpw.u"},
+    {"name": "i1573_dot_dot", "lines": ["ab cd ef gh ij"], "keys": "yiwwviwpw.w."},
+    {"name": "i1573_line_reg_char_sel_dot", "lines": ["ab", "cd ef", "gh ij"], "keys": "yyjviwpj0."},
+    {"name": "i1573_char_reg_line_sel_dot", "lines": ["ab", "cd", "ef", "gh"], "keys": "yiwjVpj."},
+    {"name": "i1573_dotreg_dot", "lines": ["ab cd ef gh"], "keys": "iX<Esc>wviw\".pw."},
 ]
 
 
