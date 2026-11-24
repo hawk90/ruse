@@ -114,13 +114,13 @@ vb_dollar_gv # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a li
 vb_dollar_p # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '< '> after a Visual put are the put's '[ '] in nvim
 obs_marks_set_and_moved # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 
-sdot_dollar_gUgk # #1595: the case operators take no forced wise, so the inclusive backward `gUgk` after `$` misses the cursor char
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
 # is unchanged by #1307.
 i1307_normal_ixy # '. after Insert: nvim at col 0 of the insert, ruse on its end
 i1307_normal_ghl # '. '[ after a Select-mode replace: nvim at col 0, ruse after the typed char
 i1307_normal_R # '^ after an empty Replace: nvim sets it where Replace ended, ruse leaves it unset
+i1259_chain_undo_inside # #639: ruse has no :undo Ex command yet (E492); the chained undo grouping itself verifies
 
 # #1304/#1306: '< '> 'a '^ keep their raw columns through edits; these verify except for the change marks.
 i1304_a_split_before # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)

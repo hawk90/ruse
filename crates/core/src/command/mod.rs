@@ -402,12 +402,15 @@ pub enum Command {
     ReplaceSelectionChar(char),
     /// `{count}~` — toggle the case of `count` chars, clamped at EOL, then move past the last (Vim).
     ToggleCase(u32),
-    /// `gu`/`gU`/`g~` {motion} — recase the operator span with `case` (lower / upper / toggle), leaving
-    /// the cursor at the start of the range. Operator-over-motion, like `d`/`c`/`y`.
+    /// `gu`/`gU`/`g~`/`g?` {motion} — recase the operator span with `case` (lower / upper / toggle /
+    /// rot13), leaving the cursor at the start of the range. Operator-over-motion, like `d`/`c`/`y`.
+    /// `wise` is the forced wise of `gUvj`/`gUVe`/`gU<C-v>j` (Vim `o_v`/`o_V`/`o_CTRL-V`, #1595), as
+    /// [`Command::OpForced`] carries it for `d`/`c`/`y`; `None` is the motion's own wise.
     CaseMotion {
         count: u32,
         motion: Motion,
         case: WordCase,
+        wise: Option<ForcedWise>,
     },
     /// Visual `u`/`U`/`~` — recase the whole selection (lower / upper / toggle), leaving the cursor at the
     /// selection start and returning to Normal. A no-op outside a selection.
@@ -677,6 +680,16 @@ pub enum Command {
         forward: bool,
         whole_word: bool,
         op: SearchOp,
+        count: u32,
+    },
+    /// Visual `*`/`#` — search forward (`*`) or backward (`#`) for the SELECTED text, nvim's default
+    /// `v_star-default` mapping (`:help v_star-default`). The input engine has no buffer, so the FRONTEND
+    /// resolves it: it reads the pattern from the live selection
+    /// ([`crate::Workspace::selection_search`]), records it as the last search and in the search history,
+    /// leaves Visual and runs the `count`-th search as a [`Command::Search`] (what the mapping's
+    /// `<Esc>{count}n` does). The planner treats it as a no-op, so it is never recorded itself.
+    SearchSelection {
+        forward: bool,
         count: u32,
     },
     /// `g&` — repeat the last `:s` over the WHOLE FILE with its flags (Vim). The core has no substitute

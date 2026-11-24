@@ -847,4 +847,51 @@ impl View {
             _ => None,
         }
     }
+
+    /// The search Visual `*`/`#` runs for the live Visual selection over `bytes` (nvim's `_visual_search`,
+    /// `:help v_star-default`): the selected text as nvim's `getregion()` gives it — no break after the
+    /// last line, a block as its rows — made a `\V` pattern by
+    /// [`planner::selection_search_pattern`], and whether a BACKWARD search counts the selection once more
+    /// because the cursor rests past its start, where `#` would find the selection itself first. The
+    /// pattern is empty when nothing is selected (an empty line, E348). `None` outside Visual and Select.
+    #[must_use]
+    pub fn selection_search(&self, bytes: &[u8]) -> Option<(String, bool)> {
+        let kind = self.mode.selection()?;
+        let anchor = self.anchor?;
+        let cur = self.cursor;
+        let text = match kind {
+            SelectKind::Blockwise => block_geom(
+                bytes,
+                anchor,
+                cur,
+                self.indent.tabs(),
+                self.curswant == MAXCOL,
+            )
+            .yank_text(bytes),
+            // `getregion()` keeps no break after the last line: not a linewise area's, and not the one a
+            // charwise end resting past its line's last char (`v$`, an empty line) takes in.
+            kind => {
+                let (s, e) = selection_range(bytes, anchor, cur, kind == SelectKind::Linewise);
+                let text = &bytes[s..e];
+                text.strip_suffix(b"\n").unwrap_or(text).to_vec()
+            }
+        };
+        // nvim compares `getpos('.')` with `getpos('v')`: a later line, or on the same line a later column
+        // (charwise), any column but the first (linewise), a later column on any line (blockwise).
+        let (cl, al) = (
+            crate::pos::raw::line_of(bytes, cur),
+            crate::pos::raw::line_of(bytes, anchor),
+        );
+        let (cc, ac) = (
+            cur - line_start(bytes, cur),
+            anchor - line_start(bytes, anchor),
+        );
+        let past_start = cl > al
+            || match kind {
+                SelectKind::Charwise => cl == al && cc > ac,
+                SelectKind::Linewise => cc != 0,
+                SelectKind::Blockwise => cc > ac,
+            };
+        Some((planner::selection_search_pattern(&text), past_start))
+    }
 }

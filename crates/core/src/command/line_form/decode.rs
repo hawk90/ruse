@@ -8,8 +8,8 @@ use super::args::{
     set_indent_cols_arg, set_indents_arg,
 };
 use super::{
-    mark_op_from_token, motion_from_token, search_op_from_token, visual_op_from_token,
-    CommandParseError, LineParts,
+    forced_wise_from_token, mark_op_from_token, motion_from_token, search_op_from_token,
+    visual_op_from_token, CommandParseError, LineParts,
 };
 
 /// The [`Command::from_line`] decoder for the cursor steps, mode entries and Insert/Replace-mode typing;
@@ -309,7 +309,7 @@ pub(super) fn decode_operator_extra(
         "insert_reindent" => Command::InsertReindent,
         "set_indents" => set_indents_arg(arg, line)?,
         "case_motion" => {
-            // `case_motion {count} {motion} {case}`
+            // `case_motion {count} {motion} {case} [{wise}]` — no wise token is an unforced motion.
             let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
             let mut it = a.split_whitespace();
             let count = it
@@ -321,10 +321,18 @@ pub(super) fn decode_operator_extra(
                 .and_then(motion_from_token)
                 .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
             let case = arg_word_case(it.next(), line)?;
+            let wise = match it.next() {
+                None => None,
+                Some(t) => Some(
+                    forced_wise_from_token(t)
+                        .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?,
+                ),
+            };
             return Ok(Some(Command::CaseMotion {
                 count,
                 motion,
                 case,
+                wise,
             }));
         }
         "case_selection" => {
@@ -495,6 +503,19 @@ pub(super) fn decode_search(parts: LineParts<'_>) -> Result<Option<Command>, Com
                 op,
                 count,
             }
+        }
+        "search_selection" => {
+            let mut it = raw.split_whitespace();
+            let forward = match it.next() {
+                Some("fwd") => true,
+                Some("bwd") => false,
+                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            };
+            let count = it
+                .next()
+                .and_then(|c| c.parse().ok())
+                .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+            Command::SearchSelection { forward, count }
         }
         "repeat_substitute_global" => Command::RepeatSubstituteGlobal,
         "repeat_substitute_line" => Command::RepeatSubstituteLine,

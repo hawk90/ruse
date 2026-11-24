@@ -2,10 +2,28 @@
 //!
 //! Split out of `planner/mod.rs` (#1392); the items are as they were there.
 
-use super::{edit_yank, nop};
+use super::{edit, edit_yank, nop, recase, recase_span};
 use crate::editor::{cluster_cells, Action, Block, BlockInsert, RegWrite};
 use crate::motion::line_end;
-use crate::{BytePos, Edit, EditList, GroupHint, Mode, OpKind, Plan, Register, Tabs};
+use crate::{BytePos, Edit, EditList, GroupHint, Mode, OpKind, Plan, Register, Tabs, WordCase};
+
+/// Blockwise recase (Vim `op_tilde` over `block_prep`): each row's characters wholly inside the block take
+/// `case`, the cursor goes to the block's top-left, back to Normal. Shared by a Visual-block `u`/`U`/`~`/
+/// `g?` and the forced-blockwise case operator (`gU<C-v>j`, #1595).
+pub(super) fn block_recase(b: &[u8], block: &Block, case: WordCase, hint: GroupHint) -> Plan {
+    let edits: Vec<Edit> = block
+        .rows
+        .iter()
+        .filter_map(|r| recase_span(b, r.s, r.e, case, recase).map(|new| (r, new)))
+        .filter(|(r, new)| new[..] != b[r.s..r.e])
+        .map(|(r, new)| Edit::replace(BytePos(r.s), r.e - r.s, new))
+        .collect();
+    let at = block.rows[0].ds;
+    match EditList::new(edits) {
+        Ok(list) if !list.is_empty() => edit(list, at, Mode::Normal, hint),
+        _ => nop(at, Mode::Normal),
+    }
+}
 
 /// Blockwise (`CTRL-V`) yank/delete/change over the rectangle whose corners are the byte offsets `c1` and
 /// `c2` (a Visual-block selection's anchor+cursor, or an operator's cursor+motion-target — e.g.

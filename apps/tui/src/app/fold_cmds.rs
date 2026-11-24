@@ -246,7 +246,13 @@ fn open_or_put(c: &Over, cmd: Command) -> FoldStep {
 fn operand(cmd: &Command) -> Option<(u32, Motion)> {
     Some(match cmd {
         Command::Delete(n, m) | Command::Change(n, m) | Command::Yank(n, m) => (*n, *m),
-        Command::CaseMotion { count, motion, .. }
+        // A forced-wise case operator (`gUvj`) runs as typed, like the forced `d`/`c`/`y` (`OpForced`).
+        Command::CaseMotion {
+            count,
+            motion,
+            wise: None,
+            ..
+        }
         | Command::ShiftMotion { count, motion, .. }
         | Command::Reindent { count, motion }
         | Command::Comment { count, motion }
@@ -339,6 +345,7 @@ fn rebuild(cmd: Command, motion: Motion, first: usize, end: usize) -> (usize, Co
             count: n,
             motion: m,
             case,
+            wise: None,
         },
         Command::ShiftMotion { left, .. } => Command::ShiftMotion {
             left,

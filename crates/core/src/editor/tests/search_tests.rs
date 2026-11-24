@@ -1156,3 +1156,59 @@ fn nowrapscan_gn_does_not_wrap() {
     let st = run("a\nb\na\nb", &[g, gn(SearchOp::Delete, 1, "a", false)]);
     assert_eq!(st.as_str().unwrap(), "\nb\na\nb");
 }
+
+/// #1557: Visual `*`/`#` search for the selected text as nvim's `getregion()` gives it, made a `\V` pattern
+/// (`\` doubled, a line break `\n`), and whether `#` counts the selection once more (cursor past its start).
+#[test]
+fn selection_search_reads_the_selected_text() {
+    let visual = |kind| Command::EnterVisual { kind };
+    let cw = SelectKind::Charwise;
+    let found = |initial: &str, cmds: &[Command]| {
+        let st = run(initial, cmds);
+        st.view.selection_search(st.bytes())
+    };
+    let right = |n| Command::Move(n, Motion::Right);
+    let down = Command::Move(1, Motion::Down);
+    // A backslash doubles; `.` and `/` stay as they are under `\V`.
+    assert_eq!(
+        found("a\\b.c/d", &[visual(cw), right(6)]),
+        Some(("\\Va\\\\b.c/d".to_string(), true))
+    );
+    // The anchor past the cursor: `#` needs no extra step.
+    assert_eq!(
+        found(
+            "ab",
+            &[right(1), visual(cw), Command::Move(1, Motion::Left)]
+        ),
+        Some(("\\Vab".to_string(), false))
+    );
+    // Across lines the break is `\n`; `v$` keeps no break after the last line, an empty line selects nothing.
+    assert_eq!(
+        found("ab\ncd", &[right(1), visual(cw), down.clone()]),
+        Some(("\\Vb\\ncd".to_string(), true))
+    );
+    assert_eq!(
+        found("ab\nx", &[visual(cw), Command::Move(1, Motion::LineEnd)]),
+        Some(("\\Vab".to_string(), true))
+    );
+    assert_eq!(found("\na", &[visual(cw)]), Some((String::new(), false)));
+    // Linewise: whole lines without the last break; any column but the first is past the start.
+    assert_eq!(
+        found("ab\ncd\n", &[right(1), visual(SelectKind::Linewise)]),
+        Some(("\\Vab".to_string(), true))
+    );
+    assert_eq!(
+        found("ab\ncd\n", &[visual(SelectKind::Linewise), down.clone()]),
+        Some(("\\Vab\\ncd".to_string(), true))
+    );
+    // Blockwise: the block's rows.
+    assert_eq!(
+        found(
+            "xab\nxcd",
+            &[right(1), visual(SelectKind::Blockwise), down, right(1)]
+        ),
+        Some(("\\Vab\\ncd".to_string(), true))
+    );
+    // Outside Visual there is nothing to search for.
+    assert_eq!(found("ab", &[]), None);
+}

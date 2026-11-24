@@ -1650,6 +1650,7 @@ mod format_tests {
                 count: 1,
                 motion: Motion::LineEnd,
                 case: WordCase::Rot13,
+                wise: None,
             }],
         );
         assert_eq!(text(&st), "Uryyb\n");
@@ -1662,12 +1663,14 @@ mod format_tests {
                     count: 1,
                     motion: Motion::LineEnd,
                     case: WordCase::Rot13,
+                    wise: None,
                 },
                 Command::Move(1, Motion::LineStart),
                 Command::CaseMotion {
                     count: 1,
                     motion: Motion::LineEnd,
                     case: WordCase::Rot13,
+                    wise: None,
                 },
             ],
         );
@@ -1746,6 +1749,7 @@ mod operator_span_tests {
                 count: 1,
                 motion: Motion::Line,
                 case: WordCase::Upcase,
+                wise: None,
             }],
         );
         assert_eq!(st.bytes(), b"A\xffB\n");

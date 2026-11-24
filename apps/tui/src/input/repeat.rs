@@ -299,7 +299,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         C::SetNamedMark(_) | C::GotoNamedMark(_) | C::GotoNamedMarkLine(_) => K::NotAChange,
         C::SetRegister(_) | C::SetExprRegister(_) => K::NotAChange,
         // Not a change — searches, `&`/`g&`, Ex, keyword lookups.
-        C::SearchNext(_) | C::SearchPrev(_) => K::NotAChange,
+        C::SearchNext(_) | C::SearchPrev(_) | C::SearchSelection { .. } => K::NotAChange,
         C::RepeatSubstituteGlobal | C::RepeatSubstituteLine | C::Ex(_) => K::NotAChange,
         C::GotoDeclaration { .. } | C::GotoFirstMatch(_) | C::ShowKeywordLines { .. } => {
             K::NotAChange
@@ -535,6 +535,8 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         C::SearchNext(..) | C::SearchPrev(..) => cmd.clone(),
         C::RepeatSubstituteGlobal | C::RepeatSubstituteLine | C::Ex(_) => cmd.clone(),
         C::GotoDeclaration { .. } | C::GotoFirstMatch(..) => cmd.clone(),
+        // Visual `*`/`#` are never recorded: the frontend runs the `Search` they resolve to.
+        C::SearchSelection { .. } => cmd.clone(),
         C::ShowKeywordLines { .. } => cmd.clone(),
         // Count-free — undo/redo, file and session.
         C::Undo | C::Redo | C::UndoOlder | C::UndoNewer | C::LineUndo => cmd.clone(),
@@ -586,10 +588,11 @@ pub(crate) fn with_motion(cmd: &Command, m: Motion, n: u32) -> Command {
             motion: m,
             wise: *wise,
         },
-        C::CaseMotion { case, .. } => C::CaseMotion {
+        C::CaseMotion { case, wise, .. } => C::CaseMotion {
             count: n,
             motion: m,
             case: *case,
+            wise: *wise,
         },
         C::ShiftMotion { left, .. } => C::ShiftMotion {
             left: *left,
@@ -613,9 +616,9 @@ pub(crate) fn with_motion(cmd: &Command, m: Motion, n: u32) -> Command {
     }
 }
 
-/// `cmd` over its exclusive charwise motion made inclusive (#1576), as Vim's `o_v` toggles it: `d`, `c`
-/// and `y` gain a forced charwise wise, and a forced charwise one loses it (`dvgk` after `$` is
-/// exclusive in nvim). The backward `gk` after `$` is inclusive, so it also takes the cursor's char,
+/// `cmd` over its exclusive charwise motion made inclusive (#1576), as Vim's `o_v` toggles it: `d`, `c`,
+/// `y` and the case operators (#1595) gain a forced charwise wise, and a forced charwise one loses it
+/// (`dvgk` after `$` is exclusive in nvim). The backward `gk` after `$` is inclusive, so it also takes the cursor's char,
 /// which no single exclusive target can name. Other commands are returned unchanged.
 pub(crate) fn toggle_inclusive(cmd: &Command) -> Command {
     use ruse_core::ForcedWise;
@@ -639,6 +642,28 @@ pub(crate) fn toggle_inclusive(cmd: &Command) -> Command {
             OpKind::Delete => C::Delete(*count, *motion),
             OpKind::Change => C::Change(*count, *motion),
             OpKind::Yank => C::Yank(*count, *motion),
+        },
+        C::CaseMotion {
+            count,
+            motion,
+            case,
+            wise: None,
+        } => C::CaseMotion {
+            count: *count,
+            motion: *motion,
+            case: *case,
+            wise: Some(ForcedWise::Charwise),
+        },
+        C::CaseMotion {
+            count,
+            motion,
+            case,
+            wise: Some(ForcedWise::Charwise),
+        } => C::CaseMotion {
+            count: *count,
+            motion: *motion,
+            case: *case,
+            wise: None,
         },
         other => other.clone(),
     }
@@ -670,10 +695,13 @@ fn counted_edit_with_count(cmd: &Command, n: u32) -> Command {
 fn line_op_with_count(cmd: &Command, n: u32) -> Command {
     use Command as C;
     match cmd {
-        C::CaseMotion { motion, case, .. } => C::CaseMotion {
+        C::CaseMotion {
+            motion, case, wise, ..
+        } => C::CaseMotion {
             count: n,
             motion: *motion,
             case: *case,
+            wise: *wise,
         },
         C::ShiftMotion { left, motion, .. } => C::ShiftMotion {
             left: *left,

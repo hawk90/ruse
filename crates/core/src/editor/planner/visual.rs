@@ -3,9 +3,9 @@
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
 use super::{
-    block_insert_point, block_op, captured, edit, edit_yank, nop, one, plan_comment,
+    block_insert_point, block_op, block_recase, captured, edit, edit_yank, nop, one, plan_comment,
     plan_format_lines, plan_join, plan_linewise_change, plan_paste_selection, plan_reindent,
-    plan_shift_times, recase, recase_bytes, recase_span, replace_selection_with,
+    plan_shift_times, recase_bytes, replace_selection_with,
 };
 use crate::editor::{
     at_vcol, block_at, block_geom, cluster_cells, range, selection_range, vcols_at, want_col,
@@ -95,18 +95,7 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         // block recases each row's characters wholly inside it (Vim `op_tilde` over `block_prep`).
         Command::CaseSelection(case) => {
             if let Some(block) = selection_block(st, b, cur) {
-                let edits: Vec<Edit> = block
-                    .rows
-                    .iter()
-                    .filter_map(|r| recase_span(b, r.s, r.e, *case, recase).map(|new| (r, new)))
-                    .filter(|(r, new)| new[..] != b[r.s..r.e])
-                    .map(|(r, new)| Edit::replace(BytePos(r.s), r.e - r.s, new))
-                    .collect();
-                let at = block.rows[0].ds;
-                return match EditList::new(edits) {
-                    Ok(list) if !list.is_empty() => edit(list, at, Mode::Normal, hint),
-                    _ => nop(at, Mode::Normal),
-                };
+                return block_recase(b, &block, *case, hint);
             }
             let (s, e, _line) = match visual_span(st, b, cur) {
                 Ok(v) => v,

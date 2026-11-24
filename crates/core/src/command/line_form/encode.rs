@@ -234,6 +234,7 @@ impl Command {
             Command::SearchNext(..)
             | Command::SearchPrev(..)
             | Command::SearchWordUnder { .. }
+            | Command::SearchSelection { .. }
             | Command::RepeatSubstituteGlobal
             | Command::RepeatSubstituteLine
             | Command::GotoDeclaration { .. }
@@ -463,15 +464,25 @@ impl Command {
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
+            // A forced wise is a trailing token, absent when unforced, so older traces still decode.
             Command::CaseMotion {
                 count,
                 motion,
                 case,
-            } => format!(
-                "case_motion {count} {} {}",
-                motion_token(*motion),
-                word_case_token(*case)
-            ),
+                wise,
+            } => match wise {
+                None => format!(
+                    "case_motion {count} {} {}",
+                    motion_token(*motion),
+                    word_case_token(*case)
+                ),
+                Some(w) => format!(
+                    "case_motion {count} {} {} {}",
+                    motion_token(*motion),
+                    word_case_token(*case),
+                    forced_wise_token(*w)
+                ),
+            },
             Command::CaseSelection(case) => format!("case_selection {}", word_case_token(*case)),
             Command::OpForced {
                 op,
@@ -585,6 +596,10 @@ impl Command {
                 if *forward { "fwd" } else { "bwd" },
                 if *whole_word { "whole" } else { "any" },
                 search_op_token(*op),
+            ),
+            Command::SearchSelection { forward, count } => format!(
+                "search_selection {} {count}",
+                if *forward { "fwd" } else { "bwd" }
             ),
             Command::RepeatSubstituteGlobal => "repeat_substitute_global".into(),
             Command::RepeatSubstituteLine => "repeat_substitute_line".into(),

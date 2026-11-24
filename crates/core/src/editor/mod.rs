@@ -385,17 +385,18 @@ impl EditorState {
         r
     }
 
-    /// Apply `list` as an Ex command's own undo step (`BreakBefore`) carrying `origin`, the undo cursor at
-    /// `cursor` when given. The Ex line commands and `:s` (in child modules) build their transaction here,
-    /// in the transaction path CON-TXN-ONLY-MUTATION allows.
+    /// Apply `list` as an Ex edit carrying `origin`, the undo cursor at `cursor` when given. The Ex line
+    /// commands and `:s` (in child modules) build their transaction here, in the transaction path
+    /// CON-TXN-ONLY-MUTATION allows. The edit takes the default [`GroupHint::Continue`]: the undo step ends
+    /// where the frontend syncs, before each typed command (Vim's `u_sync`), so every edit of one typed Ex
+    /// line, `|`-chained commands included, is one undo step, and two typed lines are two (#1259).
     pub(crate) fn apply_ex_edit(
         &mut self,
         list: EditList,
         origin: TransactionOrigin,
         cursor: Option<usize>,
     ) -> Result<crate::pos::Revision, TxnError> {
-        let mut txn =
-            Transaction::new(self.doc.revision(), list, origin).with_hint(GroupHint::BreakBefore);
+        let mut txn = Transaction::new(self.doc.revision(), list, origin);
         if let Some(c) = cursor {
             txn = txn.with_cursor(BytePos(c));
         }
