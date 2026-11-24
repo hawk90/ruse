@@ -216,6 +216,57 @@ fn dot_after_an_operator_over_a_screen_motion_resolves_it_again() {
 }
 
 #[test]
+fn a_backward_inclusive_screen_motion_takes_the_cursor_char() {
+    // #1576: `dgk` after `$` is inclusive and goes back, so nvim's inclusive end is the cursor: the
+    // delete is forced charwise (`o_v`), which takes the cursor's char. `dvgk` toggles it back.
+    use ruse_core::{ForcedWise, OpKind};
+    let mut e = InputEngine::new();
+    for c in "dgk".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    assert_eq!(
+        e.screen_motion_back_inclusive(79),
+        Feed::Cmd(Command::OpForced {
+            op: OpKind::Delete,
+            count: 80,
+            motion: Motion::GotoByte,
+            wise: ForcedWise::Charwise,
+        })
+    );
+    // The change is recorded without the force: `.` resolving an exclusive `gk` is a plain delete.
+    e.feed(k('.'), Mode::Normal);
+    assert_eq!(
+        e.screen_motion_to(9),
+        Feed::Replay(vec![Command::Delete(10, Motion::GotoByte)])
+    );
+    e.feed(k('.'), Mode::Normal);
+    assert_eq!(
+        e.screen_motion_back_inclusive(4),
+        Feed::Replay(vec![Command::OpForced {
+            op: OpKind::Delete,
+            count: 5,
+            motion: Motion::GotoByte,
+            wise: ForcedWise::Charwise,
+        }])
+    );
+    for c in "dvgk".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    assert_eq!(
+        e.screen_motion_back_inclusive(79),
+        Feed::Cmd(Command::Delete(80, Motion::GotoByte))
+    );
+    // A bare `gk` is the plain move.
+    for c in "gk".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    assert_eq!(
+        e.screen_motion_back_inclusive(3),
+        Feed::Cmd(Command::Move(4, Motion::GotoByte))
+    );
+}
+
+#[test]
 fn plus_minus_underscore_line_motions() {
     // `+` / `-` / `_` — first-non-blank line motions, operator-aware and linewise.
     assert_eq!(

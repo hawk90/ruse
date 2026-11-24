@@ -86,14 +86,23 @@ impl InputEngine {
     /// linewise). An inclusive one (`g$`) reaches here as the byte after its char.
     pub fn screen_motion_to(&mut self, byte: usize) -> Feed {
         let target = u32::try_from(byte.saturating_add(1)).unwrap_or(u32::MAX);
-        self.finish_screen_motion(Motion::GotoByte, target)
+        self.finish_screen_motion(Motion::GotoByte, target, false)
+    }
+
+    /// Finish a [`Feed::ScreenMotion`] that went BACK to buffer byte `byte` as an inclusive motion (`gk`
+    /// after `$`, whose wanted column is the line's end; #1576): the armed operator spans from `byte`
+    /// through the cursor's char, as nvim's inclusive end is the cursor, not the landing. The bare move
+    /// is [`screen_motion_to`](Self::screen_motion_to)'s.
+    pub fn screen_motion_back_inclusive(&mut self, byte: usize) -> Feed {
+        let target = u32::try_from(byte.saturating_add(1)).unwrap_or(u32::MAX);
+        self.finish_screen_motion(Motion::GotoByte, target, true)
     }
 
     /// Finish a [`Feed::ScreenMotion`] that kept the end-of-line wanted column (`gj` after `$`) and landed
     /// on the end of a line `lines - 1` below as `{lines}$`: the same place, inclusive, and the column
     /// stays at the end as nvim keeps it.
     pub fn screen_motion_line_end(&mut self, lines: u32) -> Feed {
-        self.finish_screen_motion(Motion::LineEnd, lines.max(1))
+        self.finish_screen_motion(Motion::LineEnd, lines.max(1), false)
     }
 
     /// Finish a [`Feed::ScreenMotion`] as `j` / `k` with its count: `gj` / `gk` without 'wrap'.
@@ -102,7 +111,7 @@ impl InputEngine {
             .screen_handoff
             .as_ref()
             .map_or_else(|| self.mcount(), |h| h.count);
-        self.finish_screen_motion(if down { Motion::Down } else { Motion::Up }, total)
+        self.finish_screen_motion(if down { Motion::Down } else { Motion::Up }, total, false)
     }
 
     /// Remember a [`Feed::ScreenMotion`] [`feed`](Self::feed) handed out, so its finisher records the
@@ -144,8 +153,14 @@ impl InputEngine {
 
     /// The finished screen-line motion as `m` with count `total`. Under `.`, the repeated change over
     /// it. Otherwise the bare move or the armed operator over it, recorded for `.` with the screen
-    /// motion, so a later `.` resolves the motion again instead of reusing this span.
-    fn finish_screen_motion(&mut self, m: Motion, total: u32) -> Feed {
+    /// motion, so a later `.` resolves the motion again instead of reusing this span. `inclusive` makes
+    /// the operator's exclusive motion inclusive ([`repeat::toggle_inclusive`]); the change is recorded
+    /// without it, so a `.` takes it only when the motion it resolves again is inclusive too.
+    fn finish_screen_motion(&mut self, m: Motion, total: u32, inclusive: bool) -> Feed {
+        let incl = |out: Feed| match out {
+            Feed::Cmd(cmd) if inclusive => Feed::Cmd(repeat::toggle_inclusive(&cmd)),
+            out => out,
+        };
         let handoff = self.screen_handoff.take();
         if let Some(ScreenHandoff {
             redo: Some(mut intent),
@@ -154,6 +169,9 @@ impl InputEngine {
         {
             self.reset();
             intent.lead = repeat::with_motion(&intent.lead, m, total);
+            if inclusive {
+                intent.lead = repeat::toggle_inclusive(&intent.lead);
+            }
             return intent.replay(None).into_feed();
         }
         let out = self.op_over_motion(m, total);
@@ -176,7 +194,7 @@ impl InputEngine {
                 }
             }
         }
-        out
+        incl(out)
     }
 
     /// Abandon a [`Feed::ScreenMotion`] that cannot move (`gj` on the last screen row): nvim beeps and

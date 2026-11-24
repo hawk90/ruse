@@ -249,6 +249,12 @@ pub(super) fn resolve_screen_motion(
         Resolved::At { landing, .. } => {
             let start = text.start(landing.line);
             let mut byte = start + landing.byte;
+            // Backward and inclusive (`dgk` after `$`), the inclusive end is the cursor, so the operator
+            // takes the cursor's char and not the one after the landing (#1576).
+            if op && landing.inclusive && byte < cursor {
+                *want = None;
+                return engine.screen_motion_back_inclusive(byte);
+            }
             if op && landing.inclusive {
                 // An inclusive motion under an operator reaches the byte after its char.
                 let line_text = text.line(landing.line);

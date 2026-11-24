@@ -4713,6 +4713,22 @@ FIXTURES: list[dict] = [
     {"name": "sdot_nowrap_dgj_dot", "lines": [SDOT_LINE] * 5, "keys": ":set nowrap<CR>dgj."},
     {"name": "sdot_ctrl_o_gj_dot", "lines": [SDOT_LINE] * 2, "keys": "ix<C-o>gjy<Esc>gg0."},
     {"name": "sdot_ctrl_o_dgj_dot", "lines": [SDOT_LINE] * 3, "keys": "ix<C-o>dgjy<Esc>gg0."},
+    # #1576: after `$` the wanted column is MAXCOL, which makes `gk` inclusive under an operator; going
+    #     back, the inclusive end is the cursor, so `dgk` also takes the cursor's char. `dvgk` toggles it
+    #     back to exclusive; `g0` / `g^` and `gk` without `$` stay exclusive.
+    {"name": "sdot_dollar_2dgk", "lines": [SDOT_LINE] * 4, "keys": "G$2dgk"},
+    {"name": "sdot_dollar_ygk", "lines": [SDOT_LINE] * 4, "keys": "G$ygk"},
+    {"name": "sdot_dollar_cgk", "lines": [SDOT_LINE] * 4, "keys": "G$cgkX<Esc>"},
+    {"name": "sdot_dollar_gUgk", "lines": ["abcdefghij" * 12] * 4, "keys": "G$gUgk"},
+    {"name": "sdot_dollar_dvgk", "lines": [SDOT_LINE] * 4, "keys": "G$dvgk"},
+    {"name": "sdot_dollar_dgk_count_dot", "lines": [SDOT_LINE] * 6, "keys": "G$dgk2."},
+    {"name": "sdot_dollar_dgk_short_line_above", "lines": ["abcdef", "xyz"], "keys": "j$dgk"},
+    {"name": "sdot_dollar_h_dgk", "lines": [SDOT_LINE] * 4, "keys": "G$hdgk"},
+    {"name": "sdot_mid_dgk", "lines": [SDOT_LINE] * 4, "keys": "G40ldgk"},
+    {"name": "sdot_second_row_dgk", "lines": [SDOT_LINE] * 4, "keys": "G90ldgk"},
+    {"name": "sdot_dollar_dg0", "lines": [SDOT_LINE] * 2, "keys": "G$dg0"},
+    {"name": "sdot_dollar_dg_caret", "lines": ["   " + SDOT_LINE] * 2, "keys": "G$dg^"},
+    {"name": "sdot_second_row_dg0", "lines": [SDOT_LINE] * 2, "keys": "G90ldg0"},
     # --- #1180 Visual-block `>`/`<` (`:help v_b_>`): shift from the block's left column. `|` rows: a row
     #     the left edge cuts a `<Tab>` or a wide character on (neither corner sits on it). ---------------
     {"name": "vb_shift_right", "lines": ["abc def", "ghi jkl", "mno"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>"},
