@@ -5684,6 +5684,15 @@ FIXTURES: list[dict] = [
     {"name": "i1342_put_expr_error_cursor", "lines": ["a", "b", "c", "d"], "keys": ":3put =1+<CR>"},
     {"name": "i1342_put_expr_error_reuse", "lines": ["a"], "keys": ":put =1+<CR>:put =<CR>"},
     {"name": "i1342_put_expr_error_after", "lines": ["a"], "keys": ":put ='z'<CR>:put =1+<CR>"},
+    # --- #1305 Visual D/X/Y/C/S/R: visualmode() is linewise, but gv and '< '> keep the area's kind. ---
+    {"name": "i1305_v_Y_gv_charwise", "lines": ["abcd", "efgh", "ijkl"], "keys": "lvjYgvy",
+     "observe": ["marks"]},
+    {"name": "i1305_v_Y_gv_esc", "lines": ["abcd", "efgh", "ijkl"], "keys": "lvjYgv<Esc>",
+     "observe": ["marks"]},
+    {"name": "i1305_v_Y_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "lvjYjj.",
+     "observe": ["marks"]},
+    {"name": "i1305_V_Y_vmode", "lines": ["abcd", "efgh", "ijkl"], "keys": "lVjY",
+     "observe": ["marks"]},
 ]
 
 

@@ -13,7 +13,7 @@ use super::{
 use crate::motion::{self, col_of, line_end, line_start, prev_grapheme, snap};
 use crate::{
     plan, BlockInsertKind, CaretGravity, Command, Document, EditList, EditorState, Effect,
-    GroupHint, Mode, Plan, RegisterStore, Tracked,
+    GroupHint, Mode, Plan, RegisterStore, SelectKind, Tracked, VisualOp,
 };
 
 mod classify;
@@ -70,6 +70,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     if plan.mode.selection().is_none() {
         if let (Some(kind), Some(a)) = (entry_selection, entry.anchor) {
             st.view.last_visual = Some((a, entry.cursor, kind));
+            st.view.visual_mode_eval = Some(kind);
             st.view.visual_one_end = None;
         }
     }
@@ -528,6 +529,11 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         p = refused;
     }
     let mut effects = commit(st, p);
+    // The uppercase line forms over a charwise or blockwise selection run linewise, so `visualmode()` says
+    // linewise; `gv` and `'<`/`'>` keep the selection's kind (nvim's `v_visop` / `restore_visual_mode`, #1305).
+    if forces_linewise(cmd, entry_mode) {
+        st.view.visual_mode_eval = Some(SelectKind::Linewise);
+    }
     effects.extend(lisp_reindent(
         st,
         cmd,
@@ -560,6 +566,20 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     set_insert_state(st, cmd, &opened, linewise_change, &entry_text, entry_cursor);
     update_curswant(st, cmd, entry_mode, kept_col);
     effects
+}
+
+/// Whether `cmd`, issued in `mode`, is a Visual operator nvim makes linewise before it runs (`v_visop`):
+/// `D`/`X`/`Y`/`C`/`S`/`R` over a charwise selection, and `S`/`R` over a block (the block `D`/`C`/`X`/`Y`
+/// stay blockwise, #1305).
+fn forces_linewise(cmd: &Command, mode: Mode) -> bool {
+    let Some(kind) = mode.selection() else {
+        return false;
+    };
+    match cmd {
+        Command::VisualOp(VisualOp::Lines(_)) => true,
+        Command::VisualOp(VisualOp::BlockToEol(_)) => kind != SelectKind::Blockwise,
+        _ => false,
+    }
 }
 
 /// `'lisp'` under `'autoindent'`: the line an open or a linewise change leaves takes the Lisp indent

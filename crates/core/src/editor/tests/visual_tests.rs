@@ -2042,6 +2042,38 @@ mod visual_op_tests {
     }
 
     #[test]
+    fn lines_yank_reports_linewise_but_keeps_the_area_kind() {
+        // `lvjY` (#1305): `visualmode()` is `V`, while `gv` and `'<`/`'>` keep the charwise area.
+        let st = run(
+            "abcd\nefgh\nijkl",
+            &[
+                Command::MoveRight,
+                visual(CHAR),
+                Command::MoveDown,
+                Command::VisualOp(VisualOp::Lines(OpKind::Yank)),
+            ],
+        );
+        assert_eq!(st.view.visual_mode(), Some(SelectKind::Linewise));
+        let (s, e, kind) = st.view.last_visual_bounds().expect("a last Visual area");
+        assert_eq!((s.0, e.0, kind), (1, 6, CHAR));
+    }
+
+    #[test]
+    fn block_to_eol_keeps_reporting_blockwise() {
+        // `l<C-v>jD` stays blockwise in nvim (#1305).
+        let st = run(
+            "abcd\nefgh\nijkl",
+            &[
+                Command::MoveRight,
+                visual(BLOCK),
+                Command::MoveDown,
+                Command::VisualOp(VisualOp::BlockToEol(OpKind::Delete)),
+            ],
+        );
+        assert_eq!(st.view.visual_mode(), Some(BLOCK));
+    }
+
+    #[test]
     fn lines_delete_through_the_end_takes_the_newline_before() {
         // `jvj$D`: no blank line is left; the cursor rides `$` onto the new last line's end.
         let st = run(
