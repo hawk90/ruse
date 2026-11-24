@@ -91,7 +91,7 @@ impl InputEngine {
     pub fn screen_op(&mut self, motion: ScreenMotion, count: u32, line: u32) -> Feed {
         // The frontend took the key before `feed`, so this arms what `feed` arms for a screen-line motion.
         self.arm_screen_handoff(motion, count, Some(Mode::Normal));
-        self.finish_screen_motion(Motion::GotoLine, line)
+        self.finish_screen_motion(Motion::GotoLine, line, false)
     }
 
     /// Hand a screen-line motion to the frontend ([`Feed::ScreenMotion`]), keeping the operator armed.
