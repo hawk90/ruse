@@ -402,12 +402,15 @@ pub enum Command {
     ReplaceSelectionChar(char),
     /// `{count}~` — toggle the case of `count` chars, clamped at EOL, then move past the last (Vim).
     ToggleCase(u32),
-    /// `gu`/`gU`/`g~` {motion} — recase the operator span with `case` (lower / upper / toggle), leaving
-    /// the cursor at the start of the range. Operator-over-motion, like `d`/`c`/`y`.
+    /// `gu`/`gU`/`g~`/`g?` {motion} — recase the operator span with `case` (lower / upper / toggle /
+    /// rot13), leaving the cursor at the start of the range. Operator-over-motion, like `d`/`c`/`y`.
+    /// `wise` is the forced wise of `gUvj`/`gUVe`/`gU<C-v>j` (Vim `o_v`/`o_V`/`o_CTRL-V`, #1595), as
+    /// [`Command::OpForced`] carries it for `d`/`c`/`y`; `None` is the motion's own wise.
     CaseMotion {
         count: u32,
         motion: Motion,
         case: WordCase,
+        wise: Option<ForcedWise>,
     },
     /// Visual `u`/`U`/`~` — recase the whole selection (lower / upper / toggle), leaving the cursor at the
     /// selection start and returning to Normal. A no-op outside a selection.

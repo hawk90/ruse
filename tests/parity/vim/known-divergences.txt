@@ -16,9 +16,6 @@ v_caret_all_blank_line_d # #900: '< '> differ: nvim keeps the area's columns thr
 visual_o_swap_then_extend # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 visual_unmatched_paren_fwd_delete # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 v_l_stops_at_last_char # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-v_colon_range_sub # #900: an Ex edit (:d, :s, :!, :v) sets no '[ '] '. marks
-v_colon_range_delete # #900: an Ex edit (:d, :s, :!, :v) sets no '[ '] '. marks
-v_colon_block_range # #900: an Ex edit (:d, :s, :!, :v) sets no '[ '] '. marks
 v_shift_right # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_shift_right_count # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_shift_left # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
@@ -38,7 +35,6 @@ vb_R_linewise # #900: '< '> differ: nvim keeps the area's columns through the ed
 v_O_charwise_swaps # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 vb_O_moves_horizontally # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char; the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_gq_reflows # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-v_filter_sort # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 vb_I_inserts # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 vb_A_appends # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_D_keeps_wanted_column # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
@@ -58,12 +54,9 @@ visual_line_up_shift_eol # #900: the change marks '[ '] '. differ (nvim: '. at c
 visual_line_shift_column # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 visual_char_shift_eol # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 sc_mark_y_quote_back # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-sc_mark_ex_range # #900: an Ex edit (:d, :s, :!, :v) sets no '[ '] '. marks
 sc_mark_last_insert # #900: '^ sits one char left of where Insert stopped
-sc_mark_visual_line_marks # #900: an Ex edit (:d, :s, :!, :v) sets no '[ '] '. marks
 sc_mark_d_to_visual_end # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 sc_mark_c_quote # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-v_pat_nl_marks # #900: an Ex edit (:d, :s, :!, :v) sets no '[ '] '. marks
 mk_visual_delete_adds_head # #900: a named mark lands elsewhere after a Visual delete or :m
 mk_visual_delete_clamps # #900: '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char; a named mark lands elsewhere after a Visual delete or :m
 mk_o_text_on_empty_line # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
@@ -137,7 +130,6 @@ vb_dollar_gv # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a li
 vb_dollar_p # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 obs_marks_set_and_moved # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 
-sdot_dollar_gUgk # #1595: the case operators take no forced wise, so the inclusive backward `gUgk` after `$` misses the cursor char
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
 # is unchanged by #1307.

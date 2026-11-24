@@ -5,8 +5,8 @@
 //! (#1479), and the arms are as they were there.
 
 use super::{
-    apply_op, beep, block_op, delete_quirk, nop, plan_comment, plan_format_lines, plan_reindent,
-    plan_set_indents, plan_shift,
+    apply_op, beep, block_op, block_recase, delete_quirk, nop, plan_comment, plan_format_lines,
+    plan_reindent, plan_set_indents, plan_shift,
 };
 use crate::editor::{
     block_geom, change_span, exclusive_end_adjusted, forced_span, is_text_object, op_landing,
@@ -72,8 +72,27 @@ fn plan_span_op(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &C
             count,
             motion,
             case,
+            wise,
         } => {
-            let sp = op_span_full(b, cur, *motion, *count);
+            let sp = match wise {
+                None => op_span_full(b, cur, *motion, *count),
+                // Forced blockwise (`gU<C-v>j`): the cursor and the motion target are the block's corners.
+                Some(ForcedWise::Blockwise) => {
+                    let target = motion::target(b, cur, *motion, *count);
+                    let block = block_geom(b, cur, target, st.view.indent.tabs(), false);
+                    return block_recase(b, &block, *case, hint);
+                }
+                // Forced charwise / linewise (`gUvj`, `gUVe`): reshaped like `dvj` / `dVe`.
+                Some(w) => forced_span(
+                    b,
+                    cur,
+                    *motion,
+                    *count,
+                    *w,
+                    &st.view.curswant,
+                    st.view.indent.tabs(),
+                ),
+            };
             let landing = view_landing(st, b, cur, *motion, *count, false);
             apply_op(st, b, cur, MarkOp::Case(*case), sp, landing, hint)
         }

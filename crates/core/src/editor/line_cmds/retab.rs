@@ -49,11 +49,13 @@ impl EditorState {
         let last = last.min(spans.len() - 1);
         let first = first.min(last);
         let mut out = bytes[..spans[first].0].to_vec();
-        let mut changed = false;
+        let mut first_changed = None;
         for li in first..=last {
             let (ls, le) = spans[li];
             let new_line = retab_line(&bytes[ls..le], bang, expand, old, new);
-            changed |= new_line != bytes[ls..le];
+            if new_line != bytes[ls..le] {
+                first_changed.get_or_insert(li);
+            }
             out.extend_from_slice(&new_line);
             if li < last {
                 out.extend_from_slice(&bytes[le..spans[li + 1].0]);
@@ -61,14 +63,17 @@ impl EditorState {
         }
         out.extend_from_slice(&bytes[spans[last].1..]);
         set_new(self);
-        if !changed {
+        let Some(first_changed) = first_changed else {
             return false;
-        }
+        };
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), out)])
             .expect("a single edit is well-formed");
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, None)
             .expect("retab applies cleanly");
         self.view.last_was_edit = true;
+        // `'.` at the first line it changed; `'[`/`']` stay (nvim's `ex_retab`, #1303). Retab keeps lines.
+        self.set_ex_dot(self.line_pos(first_changed), Some(group));
         let nb = self.doc.bytes();
         let ls = line_start_of(nb, cursor_line).min(nb.len());
         self.view.cursor = self.relocated_cursor(nb, ls);

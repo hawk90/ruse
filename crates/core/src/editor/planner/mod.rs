@@ -22,7 +22,7 @@ mod recase;
 mod search;
 mod visual;
 
-use block::{block_insert_point, block_op};
+use block::{block_insert_point, block_op, block_recase};
 use lines::{
     fmt_opts, plan_comment, plan_format_lines, plan_join, plan_reindent, plan_shift,
     plan_shift_times,

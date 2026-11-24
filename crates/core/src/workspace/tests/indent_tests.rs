@@ -120,6 +120,7 @@ fn case_motion_recases_the_span() {
         count: 1,
         motion: Motion::WordFwd,
         case: WordCase::Upcase,
+        wise: None,
     });
     assert_eq!(w.focused().doc.bytes(), b"HELLO world\n");
 
@@ -129,6 +130,7 @@ fn case_motion_recases_the_span() {
         count: 1,
         motion: Motion::LineEnd,
         case: WordCase::Toggle,
+        wise: None,
     });
     assert_eq!(w.focused().doc.bytes(), b"hELLO\n");
 
@@ -138,6 +140,7 @@ fn case_motion_recases_the_span() {
         count: 1,
         motion: Motion::Line,
         case: WordCase::Downcase,
+        wise: None,
     });
     assert_eq!(w.focused().doc.bytes(), b"mixedcase line\n");
 }
