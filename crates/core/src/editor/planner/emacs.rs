@@ -14,6 +14,7 @@ use crate::{
 fn nop_mark(cursor: usize, mode: Mode, mark: usize) -> Plan {
     Plan {
         set_mark: Some(MarkWrite::Set(mark)),
+        op_marks: None,
         ..nop(cursor, mode)
     }
 }

@@ -9,7 +9,7 @@ use super::{
 };
 use crate::editor::{
     at_vcol, block_at, block_geom, cluster_cells, range, selection_range, vcols_at, want_col,
-    Action, Block, BlockInsert, RegWrite, MAXCOL,
+    Action, Block, BlockInsert, MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
 };
 use crate::motion::{self, at_col, col_of, line_end, line_start, prev_grapheme};
 use crate::{
@@ -630,9 +630,31 @@ fn plan_block_shift(
         .sum();
     let new_len = (top.le - top.ls).saturating_add_signed(delta);
     let cursor = top.ls + col.min(new_len.saturating_sub(1));
+    let op_marks = Some(block_shift_marks(b, block, col));
     if edits.is_empty() {
-        return nop(cursor, st.mode());
+        return Plan {
+            op_marks,
+            ..nop(cursor, st.mode())
+        };
     }
     let edits = EditList::new(edits).expect("one edit per block row, top to bottom: disjoint");
-    edit(edits, cursor, st.mode(), hint)
+    Plan {
+        op_marks,
+        ..edit(edits, cursor, st.mode(), hint)
+    }
+}
+
+/// The change marks of a block shift, as nvim's `op_shift` sets them (#1302): `'[` is the block's top-left
+/// (`oap->start`, the byte column `col` the left edge had on the top line before the shift), `']` the last
+/// byte of the bottom line after it, and `'.` column 0 of the top line (`changed_lines(start, 0, ..)`).
+/// Rows the shift skips (short, empty) and rows it leaves as they were count the same.
+fn block_shift_marks(b: &[u8], block: &Block, col: usize) -> OpMarks {
+    let line = |ls: usize| crate::pos::raw::line_of(b, ls);
+    let top = line(block.rows[0].ls);
+    let bottom = line(block.rows[block.rows.len() - 1].ls);
+    OpMarks {
+        start: MarkAt::new(top, MarkCol::Byte(col)),
+        end: MarkAt::new(bottom, MarkCol::LastByte),
+        dot: MarkAt::new(top, MarkCol::Byte(0)),
+    }
 }

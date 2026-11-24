@@ -200629,6 +200629,667 @@
         },
         "vmode": "blockwise"
       }
+    },
+    {
+      "name": "vb_shift_right_empty_top",
+      "lines": [
+        "",
+        "abcd",
+        "abcd"
+      ],
+      "keys": ":set sw=4 et<CR><C-v>jjl>",
+      "expect": {
+        "text": [
+          "",
+          "    abcd",
+          "    abcd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            7
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_right_all_empty",
+      "lines": [
+        "",
+        "",
+        "x"
+      ],
+      "keys": ":set sw=4 et<CR><C-v>j>",
+      "expect": {
+        "text": [
+          "",
+          "",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            0
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_right_wide_last_char",
+      "lines": [
+        "abc",
+        "ab中"
+      ],
+      "keys": ":set sw=4 et<CR>l<C-v>j>",
+      "expect": {
+        "text": [
+          "a    bc",
+          "a    b中"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            2,
+            8
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_left_tabs_noet",
+      "lines": [
+        "ab\t\tcd",
+        "ef\t\tgh"
+      ],
+      "keys": ":set ts=8 sw=4 noet<CR>2l<C-v>j<",
+      "expect": {
+        "text": [
+          "ab\t    cd",
+          "ef\t    gh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            2,
+            2
+          ],
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            2,
+            8
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_left_noop_dot",
+      "lines": [
+        "ab    cd",
+        "ef    gh",
+        "ij"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>l<C-v>j<j.",
+      "expect": {
+        "text": [
+          "ab    cd",
+          "ef    gh",
+          "ij"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            2,
+            1
+          ],
+          "]": [
+            3,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_right_dot_count",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>3.",
+      "expect": {
+        "text": [
+          "abc         def",
+          "ghi         jkl",
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            4
+          ],
+          ">": [
+            2,
+            4
+          ],
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            2,
+            14
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_right_redo",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>u<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc     def",
+          "ghi     jkl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            4
+          ],
+          ">": [
+            2,
+            4
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abc def",
+            "ghi jkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_shift_left_undo",
+      "lines": [
+        "ab      cd",
+        "ef      gh",
+        "ij      kl"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>3l<C-v>jj<u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab      cd",
+          "ef      gh",
+          "ij      kl"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            3,
+            3
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_shift_right_from_bottom_right",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>jjwl<C-v>kkh>",
+      "expect": {
+        "text": [
+          "abc     def",
+          "ghi     jkl",
+          "mno     pqr"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            4
+          ],
+          ">": [
+            3,
+            5
+          ],
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            3,
+            10
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_right_ragged_middle",
+      "lines": [
+        "abcdefgh",
+        "",
+        "ab",
+        "abcdefgh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>4l<C-v>3j>",
+      "expect": {
+        "text": [
+          "abcd    efgh",
+          "",
+          "ab",
+          "abcd    efgh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "i",
+        "marks": {
+          "<": [
+            1,
+            4
+          ],
+          ">": [
+            4,
+            4
+          ],
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            4,
+            11
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_left_last_line_blank",
+      "lines": [
+        "ab    cd",
+        "ab    "
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<",
+      "expect": {
+        "text": [
+          "abcd",
+          "ab"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            2,
+            2
+          ],
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            2,
+            1
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "vb_shift_right_gv",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>gvy",
+      "expect": {
+        "text": [
+          "abc     def",
+          "ghi     jkl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": " \n ",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": " \n ",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            4
+          ],
+          ">": [
+            2,
+            4
+          ],
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            2,
+            4
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
     }
   ]
 }

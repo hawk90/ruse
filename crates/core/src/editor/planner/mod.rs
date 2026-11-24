@@ -411,6 +411,7 @@ fn nop(cursor: usize, mode: Mode) -> Plan {
         set_register: None,
         set_anchor: None,
         set_mark: None,
+        op_marks: None,
     }
 }
 
@@ -424,6 +425,7 @@ fn edit(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint) -> Plan {
         set_register: None,
         set_anchor: None,
         set_mark: None,
+        op_marks: None,
     }
 }
 
@@ -438,6 +440,7 @@ fn edit_yank(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: R
         set_register: Some(RegWrite::Edit(reg)),
         set_anchor: None,
         set_mark: None,
+        op_marks: None,
     }
 }
 

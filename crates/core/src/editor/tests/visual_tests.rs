@@ -2200,6 +2200,51 @@ mod visual_op_tests {
         assert_eq!(st.cursor().0, 8);
     }
 
+    /// The change marks `'[` `']` `'.` after a block shift as `(line, byte col)`, 0-based.
+    fn shift_marks(st: &EditorState) -> [(usize, usize); 3] {
+        let b = st.doc.bytes();
+        let lc = |p: Option<BytePos>| {
+            let p = p.expect("mark set").0;
+            let ls = crate::motion::line_start(b, p);
+            (crate::pos::raw::line_of(b, p), p - ls)
+        };
+        [
+            lc(st.view.change_mark_start()),
+            lc(st.view.change_mark_end()),
+            lc(st.view.last_change()),
+        ]
+    }
+
+    /// #1302: nvim v0.12.6's `op_shift` puts `'[` on the block's top-left as it was before the shift, `']`
+    /// on the bottom line's last byte, and `'.` at column 0 of the top line (the `vb_shift_*` fixtures).
+    #[test]
+    fn block_shift_sets_the_change_marks_as_nvim() {
+        // `w<C-v>j>`: '[ where the block began, '] on the last line's last char.
+        let st = block_shift("abc def\nghi jkl\nmno", 4, 1, false, 1, true);
+        assert_eq!(shift_marks(&st), [(0, 4), (1, 10), (0, 0)]);
+        // `<`: '[ stays at the edge's old column although the text moved left onto it.
+        let st = block_shift("ab      cd\nef      gh", 3, 1, true, 1, true);
+        assert_eq!(shift_marks(&st), [(0, 3), (1, 5), (0, 0)]);
+        // The edge in a tab: '[ on the tab's byte on the top row; '] on the bottom row, whichever rows the
+        // shift changed (here not the last one).
+        let st = block_shift(
+            "abcdefghijklmnop\na\t\tx\nabcdefghijklmnop",
+            10,
+            2,
+            true,
+            1,
+            true,
+        );
+        assert_eq!(shift_marks(&st), [(0, 10), (2, 15), (0, 0)]);
+        // Short and empty rows count the same: '] is on the bottom line.
+        let st = block_shift("abcd\n\nabcd", 1, 2, false, 1, true);
+        assert_eq!(shift_marks(&st), [(0, 1), (2, 7), (0, 0)]);
+        // A `<` that moves nothing still marks the block, as nvim does.
+        let st = block_shift("ab    cd\nef    gh", 1, 1, true, 1, true);
+        assert_eq!(text(&st), "ab    cd\nef    gh");
+        assert_eq!(shift_marks(&st), [(0, 1), (1, 7), (0, 0)]);
+    }
+
     /// #1142: a block change broken by `<CR>` copies what the top row grew by into the lines below it by
     /// number (the new line first), as nvim's `op_change`; `I` that leaves the top row copies nothing.
     #[test]

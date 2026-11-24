@@ -449,6 +449,7 @@ fn replacement_plan(b: &[u8], b3: &[u8], cursor: usize, set_register: Option<Reg
         set_register,
         set_anchor: None,
         set_mark: None,
+        op_marks: None,
     }
 }
 
