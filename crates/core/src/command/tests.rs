@@ -16,6 +16,20 @@ fn pre_1071_search_word_under_traces_parse_as_the_bare_move() {
     assert!(Command::from_line("search_word_under fwd whole bogus 1").is_err());
 }
 
+#[test]
+fn pre_1595_case_motion_traces_parse_unforced() {
+    assert_eq!(
+        Command::from_line("case_motion 1 down upcase"),
+        Ok(Command::CaseMotion {
+            count: 1,
+            motion: Motion::Down,
+            case: WordCase::Upcase,
+            wise: None,
+        })
+    );
+    assert!(Command::from_line("case_motion 1 down upcase bogus").is_err());
+}
+
 /// One of each trace verb, plus every resolved Ex edit (RFC-0020; `editor/ex_cmd/samples.rs` lists one of each).
 fn samples() -> Vec<Command> {
     let cases = [
@@ -61,6 +75,25 @@ fn samples() -> Vec<Command> {
             count: 1,
             motion: Motion::AParagraph,
             case: WordCase::Rot13,
+            wise: None,
+        },
+        Command::CaseMotion {
+            count: 2,
+            motion: Motion::Down,
+            case: WordCase::Upcase,
+            wise: Some(ForcedWise::Charwise),
+        },
+        Command::CaseMotion {
+            count: 1,
+            motion: Motion::WordEnd,
+            case: WordCase::Toggle,
+            wise: Some(ForcedWise::Linewise),
+        },
+        Command::CaseMotion {
+            count: 1,
+            motion: Motion::Down,
+            case: WordCase::Downcase,
+            wise: Some(ForcedWise::Blockwise),
         },
         Command::JoinLines(1),
         Command::JoinLines(3),

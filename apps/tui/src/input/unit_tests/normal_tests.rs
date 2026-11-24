@@ -267,6 +267,63 @@ fn a_backward_inclusive_screen_motion_takes_the_cursor_char() {
 }
 
 #[test]
+fn a_backward_inclusive_screen_motion_takes_the_cursor_char_under_a_case_operator() {
+    // #1595: `gUgk` after `$` is forced charwise like `dgk`; `gUvgk` toggles it back.
+    use ruse_core::{ForcedWise, WordCase};
+    let case = |wise| {
+        Feed::Cmd(Command::CaseMotion {
+            count: 80,
+            motion: Motion::GotoByte,
+            case: WordCase::Upcase,
+            wise,
+        })
+    };
+    let mut e = InputEngine::new();
+    for c in "gUgk".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    assert_eq!(
+        e.screen_motion_back_inclusive(79),
+        case(Some(ForcedWise::Charwise))
+    );
+    for c in "gUvgk".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    assert_eq!(e.screen_motion_back_inclusive(79), case(None));
+}
+
+#[test]
+fn case_operators_take_a_forced_wise() {
+    // #1595: `gUvj` / `guVe` / `g~<C-v>j` carry the forced wise like `dvj`.
+    use ruse_core::{ForcedWise, WordCase};
+    let case = |motion, case, wise| {
+        Feed::Cmd(Command::CaseMotion {
+            count: 1,
+            motion,
+            case,
+            wise: Some(wise),
+        })
+    };
+    assert_eq!(
+        feed("gUvj"),
+        case(Motion::Down, WordCase::Upcase, ForcedWise::Charwise)
+    );
+    assert_eq!(
+        feed("guVe"),
+        case(Motion::WordEnd, WordCase::Downcase, ForcedWise::Linewise)
+    );
+    let mut e = InputEngine::new();
+    for c in "g~".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    e.feed(ctrl('v'), Mode::Normal);
+    assert_eq!(
+        e.feed(k('j'), Mode::Normal),
+        case(Motion::Down, WordCase::Toggle, ForcedWise::Blockwise)
+    );
+}
+
+#[test]
 fn dot_after_an_operator_over_h_m_l_resolves_the_line_again() {
     // #1577: the frontend finishes `H` / `M` / `L` through `screen_op`, outside `feed`; the change it
     // finishes is recorded with the viewport motion, so `.` hands the motion back to resolve the line in
@@ -507,7 +564,8 @@ fn case_operators_g_prefix() {
         Feed::Cmd(Command::CaseMotion {
             count: 1,
             motion: Motion::WordFwd,
-            case: WordCase::Downcase
+            case: WordCase::Downcase,
+            wise: None,
         })
     );
     assert_eq!(
@@ -515,7 +573,8 @@ fn case_operators_g_prefix() {
         Feed::Cmd(Command::CaseMotion {
             count: 1,
             motion: Motion::LineEnd,
-            case: WordCase::Upcase
+            case: WordCase::Upcase,
+            wise: None,
         })
     );
     assert_eq!(
@@ -523,7 +582,8 @@ fn case_operators_g_prefix() {
         Feed::Cmd(Command::CaseMotion {
             count: 1,
             motion: Motion::WordFwd,
-            case: WordCase::Toggle
+            case: WordCase::Toggle,
+            wise: None,
         })
     );
     // Doubled → linewise.
@@ -532,7 +592,8 @@ fn case_operators_g_prefix() {
         Feed::Cmd(Command::CaseMotion {
             count: 1,
             motion: Motion::Line,
-            case: WordCase::Downcase
+            case: WordCase::Downcase,
+            wise: None,
         })
     );
     assert_eq!(
@@ -540,7 +601,8 @@ fn case_operators_g_prefix() {
         Feed::Cmd(Command::CaseMotion {
             count: 1,
             motion: Motion::Line,
-            case: WordCase::Upcase
+            case: WordCase::Upcase,
+            wise: None,
         })
     );
     assert_eq!(
@@ -548,7 +610,8 @@ fn case_operators_g_prefix() {
         Feed::Cmd(Command::CaseMotion {
             count: 1,
             motion: Motion::Line,
-            case: WordCase::Toggle
+            case: WordCase::Toggle,
+            wise: None,
         })
     );
     // Count folds through: 2gUw.
@@ -557,7 +620,8 @@ fn case_operators_g_prefix() {
         Feed::Cmd(Command::CaseMotion {
             count: 2,
             motion: Motion::WordFwd,
-            case: WordCase::Upcase
+            case: WordCase::Upcase,
+            wise: None,
         })
     );
 }
@@ -955,6 +1019,7 @@ fn g_question_is_the_rot13_operator() {
             count: 1,
             motion: Motion::LineEnd,
             case: WordCase::Rot13,
+            wise: None,
         })
     );
     // `g?ap` → ROT13 a paragraph; `g??` → the doubled linewise form.
@@ -964,6 +1029,7 @@ fn g_question_is_the_rot13_operator() {
             count: 1,
             motion: Motion::AParagraph,
             case: WordCase::Rot13,
+            wise: None,
         })
     );
     assert_eq!(
@@ -972,6 +1038,7 @@ fn g_question_is_the_rot13_operator() {
             count: 1,
             motion: Motion::Line,
             case: WordCase::Rot13,
+            wise: None,
         })
     );
     // Visual `g?` recases the selection.

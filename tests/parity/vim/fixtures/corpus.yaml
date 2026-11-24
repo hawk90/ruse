@@ -191120,6 +191120,1326 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1595_gUvj",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUvj",
+      "expect": {
+        "text": [
+          "aBC DEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_guvj",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lguvj",
+      "expect": {
+        "text": [
+          "abc def ghi",
+          "jKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_tildevj",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lg~vj",
+      "expect": {
+        "text": [
+          "aBC dEF GHI",
+          "jKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_rot13vj",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lg?vj",
+      "expect": {
+        "text": [
+          "aop Qrs tuv",
+          "WKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUVe",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUVe",
+      "expect": {
+        "text": [
+          "ABC DEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_guVe",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lguVe",
+      "expect": {
+        "text": [
+          "abc def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_tildeVw",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lg~Vw",
+      "expect": {
+        "text": [
+          "ABC dEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_rot13Vw",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lg?Vw",
+      "expect": {
+        "text": [
+          "nop Qrs tuv",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUvw",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "gUvw",
+      "expect": {
+        "text": [
+          "ABC Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUve",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "gUve",
+      "expect": {
+        "text": [
+          "ABc Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_tildevl",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "g~vl",
+      "expect": {
+        "text": [
+          "ABc Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUvh",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "$gUvh",
+      "expect": {
+        "text": [
+          "abc Def gHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUVl",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "gUVl",
+      "expect": {
+        "text": [
+          "ABC DEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gU_ctrlv_j",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgU<C-v>j",
+      "expect": {
+        "text": [
+          "aBc Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gu_ctrlv_jl",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgu<C-v>jl",
+      "expect": {
+        "text": [
+          "abc Def ghi",
+          "JkL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_tilde_ctrlv_jl",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lg~<C-v>jl",
+      "expect": {
+        "text": [
+          "aBc Def ghi",
+          "JkL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_rot13_ctrlv_e",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lg?<C-v>e",
+      "expect": {
+        "text": [
+          "aop Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gU_ctrlv_k",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "jlgU<C-v>kl",
+      "expect": {
+        "text": [
+          "aBc Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_2gUvj",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "l2gUvj",
+      "expect": {
+        "text": [
+          "aBC DEF GHI",
+          "JKL MNO PQR",
+          "Stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUv2j",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUv2j",
+      "expect": {
+        "text": [
+          "aBC DEF GHI",
+          "JKL MNO PQR",
+          "Stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUv2e",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "gUv2e",
+      "expect": {
+        "text": [
+          "ABC DEf ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_2gUVe",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "2gUVe",
+      "expect": {
+        "text": [
+          "ABC DEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUvj_dot",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUvjj.",
+      "expect": {
+        "text": [
+          "aBC DEF GHI",
+          "JKL MNO PQR",
+          "Stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUvj_count_dot",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUvj2.",
+      "expect": {
+        "text": [
+          "aBC DEF GHI",
+          "JKL MNO PQR",
+          "Stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_tildevl_dot",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "g~vlw.",
+      "expect": {
+        "text": [
+          "ABc dEf ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUVe_dot",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "gUVejj.",
+      "expect": {
+        "text": [
+          "ABC DEF GHI",
+          "JKL mno PQR",
+          "STU VWX YZ",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gU_ctrlv_jl_dot",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgU<C-v>jljj.",
+      "expect": {
+        "text": [
+          "aBc Def ghi",
+          "JKL mno PQR",
+          "stU VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUvj_undo",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUvju",
+      "expect": {
+        "text": [
+          "abc Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gU_ctrlv_jl_undo",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgU<C-v>jlu",
+      "expect": {
+        "text": [
+          "abc Def ghi",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUvv_j",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUvvj",
+      "expect": {
+        "text": [
+          "aBC DEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUvV_e",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUvVe",
+      "expect": {
+        "text": [
+          "ABC DEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_gUVv_j",
+      "lines": [
+        "abc Def ghi",
+        "JKL mno PQR",
+        "stu VWX yz",
+        "Aa bB cC dD"
+      ],
+      "keys": "lgUVvj",
+      "expect": {
+        "text": [
+          "aBC DEF GHI",
+          "JKL mno PQR",
+          "stu VWX yz",
+          "Aa bB cC dD"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_gugk",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "G$gugk",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+        ],
+        "cursor": [
+          4,
+          79
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_tildegk",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "G$g~gk",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghiJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+        ],
+        "cursor": [
+          4,
+          79
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_rot13gk",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "G$g?gk",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghiwnopqrstuvwnopqrstuvwnopqrstuvwnopqrstuvw"
+        ],
+        "cursor": [
+          4,
+          79
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_2gUgk",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "G$2gUgk",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghiJ",
+          "ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+        ],
+        "cursor": [
+          3,
+          119
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_gUvgk",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "G$gUvgk",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghiJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIj"
+        ],
+        "cursor": [
+          4,
+          79
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_gUgk_dot",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "G$gUgkk.",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghiJ",
+          "ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIjabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghiJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+        ],
+        "cursor": [
+          2,
+          119
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_gUgk_undo",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "G$gUgku",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+        ],
+        "cursor": [
+          4,
+          79
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1595_dollar_gUgj",
+      "lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "keys": "$gUgj",
+      "expect": {
+        "text": [
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghiJ",
+          "ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+          "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+        ],
+        "cursor": [
+          1,
+          119
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }
