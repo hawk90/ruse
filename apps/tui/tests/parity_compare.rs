@@ -132,20 +132,27 @@ fn line_col(bytes: &[u8], p: usize) -> Value {
 
 /// ruse's marks as the oracle records them (#900): the set ones of a-z, `<`, `>`, `[`, `]`, `.`, `^`, and
 /// the last Visual mode. A linewise area's `'<` is its first line's start and its `'>` its last line at
-/// column -1 (nvim's MAXCOL).
+/// column -1 (nvim's MAXCOL). A mark's column is its raw one (#1304), as `getpos()` reports it.
 fn ruse_marks(h: &Headless) -> (Value, String) {
     let ws = h.workspace();
     let (bytes, view) = (ws.focused().doc.bytes(), &ws.focused().view);
+    let raw = |c: char| {
+        view.mark_raw(c).map(|(p, past)| {
+            let mut lc = line_col(bytes, p.0);
+            lc[1] = json!(lc[1].as_u64().expect("col") as usize + past);
+            lc
+        })
+    };
     let mut marks = serde_json::Map::new();
     for c in 'a'..='z' {
-        if let Some(p) = view.named_mark(c) {
-            marks.insert(c.to_string(), line_col(bytes, p.0));
+        if let Some(lc) = raw(c) {
+            marks.insert(c.to_string(), lc);
         }
     }
     let vmode = view.visual_mode().map_or("", kind_name).to_string();
-    if let Some((s, e, kind)) = view.last_visual_bounds() {
-        let (s, mut e) = (line_col(bytes, s.0), line_col(bytes, e.0));
-        let mut s = s;
+    if let (Some((_, _, kind)), Some(mut s), Some(mut e)) =
+        (view.last_visual_bounds(), raw('<'), raw('>'))
+    {
         if kind == SelectKind::Linewise {
             s[1] = json!(0);
             e[1] = json!(-1);
@@ -153,11 +160,13 @@ fn ruse_marks(h: &Headless) -> (Value, String) {
         marks.insert("<".into(), s);
         marks.insert(">".into(), e);
     }
+    if let Some(lc) = raw('^') {
+        marks.insert("^".into(), lc);
+    }
     let rest = [
         ('[', view.change_mark_start()),
         (']', view.change_mark_end()),
         ('.', view.last_change()),
-        ('^', view.named_mark('^')),
     ];
     for (c, p) in rest {
         if let Some(p) = p {

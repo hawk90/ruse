@@ -8,7 +8,8 @@
 //! and [`curswant`] (the sticky wanted column).
 
 use super::{
-    lisp, planner, prepare_selection_op, Action, BlockGeom, MarkWrite, RegWrite, UndoStep,
+    lisp, planner, prepare_selection_op, Action, BlockGeom, Mark, MarkWrite, RegWrite, UndoStep,
+    MAXCOL,
 };
 use crate::motion::{self, col_of, line_end, line_start, prev_grapheme, snap};
 use crate::{
@@ -31,6 +32,22 @@ use placement::{change_start, edit_bracket, undo_step, undo_target};
 /// one-shot Normal edit (bounded directly by its [`EditList`]).
 fn is_text_entry(mode: Mode) -> bool {
     matches!(mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace)
+}
+
+/// The `'>`-side end of a Visual area left with the cursor at `cursor`: where the cursor is, except that a
+/// charwise or blockwise area whose cursor last moved with `curswant` at MAXCOL (`v$`, `$vj`;
+/// [`View::visual_eol`]) ends one past its line's last char, where nvim's Visual cursor rests
+/// (`coladvance(MAXCOL)` stops on the NUL with `'selection'` inclusive), so its raw column is the line's
+/// length (#1304). The offset stays on the cursor, which every reader of the area
+/// already handles.
+fn visual_end(st: &EditorState, cursor: usize, kind: SelectKind) -> Mark {
+    if kind == SelectKind::Linewise || !st.view.visual_eol || st.view.curswant != MAXCOL {
+        return Mark::at(cursor);
+    }
+    Mark {
+        at: cursor,
+        past: line_end(st.doc.bytes(), cursor).saturating_sub(cursor),
+    }
 }
 
 /// Apply a plan to the state, returning the effects the frontend must perform.
@@ -67,14 +84,27 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // Leaving a selection remembers it (anchor, active end, kind) for `gv` and `'<`/`'>` — the depth-1
     // slice of D-027's selection history — BEFORE the operator's edit, so the edit carries it as nvim's
     // `mark_adjust` carries `b_visual` (#686).
+    // A dot-repeat's rebuilt area (nvim's `redo_VIsual`) is not remembered (#1304).
     if plan.mode.selection().is_none() {
         if let (Some(kind), Some(a)) = (entry_selection, entry.anchor) {
-            st.view.last_visual = Some((a, entry.cursor, kind));
-            st.view.visual_mode_eval = Some(kind);
-            st.view.visual_one_end = None;
+            if !std::mem::take(&mut st.view.redo_visual) {
+                st.view.last_visual = Some((Mark::at(a), visual_end(st, entry.cursor, kind), kind));
+                st.view.visual_mode_eval = Some(kind);
+                st.view.visual_one_end = None;
+            }
         }
     }
     let replace_run = matches!(plan.action, Action::ReplaceTxn { .. });
+    // Vim `` `^ ``: leaving Insert for Normal records where the caret was (the pre-clamp insert position),
+    // so `gi` resumes Insert exactly there. A block insert's `<Esc>` replicates the typed text down the
+    // block after nvim's `ins_esc` set the mark, so that edit carries it (#1306); the autoindent cleanup
+    // runs before (`stop_insert`), so the mark is where the caret rests after it.
+    let leaving_insert = matches!(st.view.mode, Mode::Insert) && matches!(plan.mode, Mode::Normal);
+    let block_insert_esc = leaving_insert && st.view.block_insert.is_some();
+    if block_insert_esc {
+        st.view.last_insert = Some(Mark::at(entry.cursor));
+    }
+    let entry_rev = st.doc.revision();
     let applied = apply_action(st, plan.action, plan.mode, &entry);
     // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
     // text unpredictably — clamp and snap to a char boundary either way.
@@ -82,10 +112,13 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // (or `None` at an end), which overrides the plan's placeholder cursor for this frame only.
     let resolved_cursor = applied.nav_target.unwrap_or(plan.cursor);
     st.view.cursor = snap(st.doc.bytes(), resolved_cursor);
-    // Vim `` `^ ``: leaving Insert for Normal records where the caret was (the pre-clamp insert position),
-    // so `gi` resumes Insert exactly there. Checked before the mode is overwritten below.
-    if matches!(st.view.mode, Mode::Insert) && matches!(plan.mode, Mode::Normal) {
-        st.view.last_insert = Some(entry.cursor);
+    if leaving_insert && !block_insert_esc {
+        let at = if st.doc.revision() == entry_rev {
+            entry.cursor
+        } else {
+            st.view.cursor
+        };
+        st.view.last_insert = Some(Mark::at(at));
     }
     st.view.mode = plan.mode;
     st.view.last_was_edit = plan.is_edit;
@@ -480,6 +513,8 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     }
     // A jump records the position it LEAVES onto the jumplist (Vim), so `CTRL-O` can return there.
     let jump_from = is_jump(cmd).then_some(st.view.cursor);
+    // A rebuilt area that never reached the commit leaving it (a refused operator) is not kept.
+    st.view.redo_visual = false;
     prepare_selection_op(st, cmd);
     let (entry_mode, entry_cursor, entry_rev) = (st.view.mode, st.view.cursor, st.doc.revision());
     let entry_was_edit = st.view.last_was_edit;
@@ -565,6 +600,15 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     }
     set_insert_state(st, cmd, &opened, linewise_change, &entry_text, entry_cursor);
     update_curswant(st, cmd, entry_mode, kept_col);
+    // Where nvim's Visual cursor rests for the area's `'>` (#1304): a move with `curswant` at MAXCOL puts it
+    // on the NUL; entering the selection does not move it.
+    if st.view.mode.selection().is_some() {
+        if entry_mode.selection().is_none() {
+            st.view.visual_eol = false;
+        } else if st.view.cursor != entry_cursor {
+            st.view.visual_eol = st.view.curswant == MAXCOL;
+        }
+    }
     effects
 }
 

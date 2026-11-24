@@ -195679,6 +195679,1963 @@
         },
         "vmode": ""
       }
+    },
+    {
+      "name": "i1304_a_shortened",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "4lma$xx",
+      "expect": {
+        "text": [
+          "abcd",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_shortened_grown",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "4lma$xx0P`ax",
+      "expect": {
+        "text": [
+          "eabc",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_shortened_jump",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "4lma$xx`ax",
+      "expect": {
+        "text": [
+          "abc",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            3
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_split_before",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "4lma0lli<CR><Esc>",
+      "expect": {
+        "text": [
+          "ab",
+          "cdef",
+          "gh"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            2
+          ],
+          "^": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_split_after",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "lma04li<CR><Esc>",
+      "expect": {
+        "text": [
+          "abcd",
+          "ef",
+          "gh"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            4
+          ],
+          "^": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_join_onto",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "5lma$xxxJ",
+      "expect": {
+        "text": [
+          "abc gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            5
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            6
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_join_from_below",
+      "lines": [
+        "ab",
+        "cdef"
+      ],
+      "keys": "j3lma$xxkJ",
+      "expect": {
+        "text": [
+          "ab cd"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            6
+          ],
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            1,
+            5
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_line_deleted",
+      "lines": [
+        "abcdef",
+        "gh",
+        "ij"
+      ],
+      "keys": "5lmaddj",
+      "expect": {
+        "text": [
+          "gh",
+          "ij"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            5
+          ],
+          "]": [
+            1,
+            5
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_line_above_deleted",
+      "lines": [
+        "ab",
+        "cdefgh",
+        "ij"
+      ],
+      "keys": "j5lma$xxxkdd",
+      "expect": {
+        "text": [
+          "cde",
+          "ij"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            5
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1304_a_undo",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "4lma$xxu",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcde",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "a": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "",
+        "undo": [
+          [
+            "abcdef",
+            "gh"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1304_vis_shortened",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "2lvll<Esc>$xxx",
+      "expect": {
+        "text": [
+          "abc",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            3
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_vis_shortened_gv",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "2lvll<Esc>$xxxgvd",
+      "expect": {
+        "text": [
+          "abgh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            3
+          ],
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            1,
+            2
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_vis_shortened_grown_gv",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "2lvll<Esc>$xxx0Pgvd",
+      "expect": {
+        "text": [
+          "dagh"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "bc\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            1,
+            2
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_vis_line_deleted",
+      "lines": [
+        "abcdef",
+        "gh",
+        "ij"
+      ],
+      "keys": "lvjl<Esc>jdd",
+      "expect": {
+        "text": [
+          "abcdef",
+          "gh"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "ij\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            2
+          ],
+          "[": [
+            3,
+            1
+          ],
+          "]": [
+            3,
+            1
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_vis_joined",
+      "lines": [
+        "abc",
+        "defgh",
+        "ij"
+      ],
+      "keys": "jlvll<Esc>kJ",
+      "expect": {
+        "text": [
+          "abc defgh",
+          "ij"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            5
+          ],
+          ">": [
+            1,
+            7
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            9
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_vis_split",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "3lvll<Esc>0li<CR><Esc>",
+      "expect": {
+        "text": [
+          "a",
+          "bcdef",
+          "gh"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            5
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            1
+          ],
+          "^": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_vis_undo",
+      "lines": [
+        "abcdef",
+        "gh"
+      ],
+      "keys": "2lvll<Esc>$xxxu",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            2
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "undo": [
+          [
+            "abcde",
+            "gh"
+          ],
+          [
+            "abcdef",
+            "gh"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1304_dollar_esc",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "v$<Esc>",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            6
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_j_esc",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "vj$<Esc>",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            3
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_v_esc",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "$v<Esc>",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            5
+          ],
+          ">": [
+            1,
+            5
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_vj_esc",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "$vj<Esc>",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            5
+          ],
+          ">": [
+            2,
+            3
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_vjk_esc",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "$vjk<Esc>",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            5
+          ],
+          ">": [
+            1,
+            6
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_h_esc",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "v$h<Esc>",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            5
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_block_esc",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "<C-v>j$<Esc>",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            3
+          ]
+        },
+        "vmode": "blockwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_y",
+      "lines": [
+        "abcdef",
+        "abc"
+      ],
+      "keys": "v$y",
+      "expect": {
+        "text": [
+          "abcdef",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abcdef\n",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            6
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            5
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_empty_line",
+      "lines": [
+        "",
+        "abc"
+      ],
+      "keys": "v$<Esc>",
+      "expect": {
+        "text": [
+          "",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_multibyte",
+      "lines": [
+        "abé",
+        "abc"
+      ],
+      "keys": "v$<Esc>",
+      "expect": {
+        "text": [
+          "abé",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            4
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dollar_line_deleted_undo",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "v$<Esc>ddu",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            3
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "undo": []
+      }
+    },
+    {
+      "name": "i1304_dollar_gv_d",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "v$<Esc>gvd",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            3
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dot_d_keeps_marks",
+      "lines": [
+        "abcdefgh",
+        "ij"
+      ],
+      "keys": "lvld.",
+      "expect": {
+        "text": [
+          "afgh",
+          "ij"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "de",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            2
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            1,
+            1
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dot_x_lines",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "vjxj.",
+      "expect": {
+        "text": [
+          "",
+          "",
+          "e"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c\nd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            0
+          ],
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dot_gv",
+      "lines": [
+        "abcdefgh",
+        "ij"
+      ],
+      "keys": "lvlUw.gvy",
+      "expect": {
+        "text": [
+          "aBCdefgh",
+          "IJ"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "BC",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "BC",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            2
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            2
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1304_dot_block",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop"
+      ],
+      "keys": "<C-v>jlUjj.",
+      "expect": {
+        "text": [
+          "ABcd",
+          "EFgh",
+          "IJkl",
+          "MNop"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            4,
+            1
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "blockwise"
+      }
+    },
+    {
+      "name": "i1306_caret_shortened",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "jAxy<Esc>xx",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            3
+          ],
+          "]": [
+            2,
+            3
+          ],
+          ".": [
+            2,
+            3
+          ],
+          "^": [
+            2,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1306_caret_shortened_grown",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "jAxy<Esc>xx0yiwP`^x",
+      "expect": {
+        "text": [
+          "abc",
+          "defde"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "def",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            5
+          ],
+          "]": [
+            2,
+            5
+          ],
+          ".": [
+            2,
+            5
+          ],
+          "^": [
+            2,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1306_caret_gi",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "jAxy<Esc>xxggguuGgiZ<Esc>",
+      "expect": {
+        "text": [
+          "abc",
+          "defZ"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            3
+          ],
+          "]": [
+            2,
+            4
+          ],
+          ".": [
+            2,
+            3
+          ],
+          "^": [
+            2,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1306_caret_line_deleted",
+      "lines": [
+        "abc",
+        "def",
+        "gh"
+      ],
+      "keys": "jAxy<Esc>dd",
+      "expect": {
+        "text": [
+          "abc",
+          "gh"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "defxy\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            4
+          ],
+          "]": [
+            2,
+            4
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1306_caret_autoindent",
+      "lines": [
+        "  abc",
+        "def"
+      ],
+      "keys": "o<Esc>",
+      "setup": "set ai",
+      "expect": {
+        "text": [
+          "  abc",
+          "",
+          "def"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ],
+          "^": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1306_caret_block_insert",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "l<C-v>jjIxy<Esc>",
+      "expect": {
+        "text": [
+          "axyb",
+          "cxyd",
+          "exyf"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            3,
+            3
+          ],
+          ".": [
+            2,
+            0
+          ],
+          "^": [
+            1,
+            3
+          ]
+        },
+        "vmode": "blockwise"
+      }
+    },
+    {
+      "name": "i1306_caret_block_append",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "<C-v>jj$Axy<Esc>",
+      "expect": {
+        "text": [
+          "abxy",
+          "cdxy",
+          "efxy"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            3,
+            2
+          ],
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            3,
+            4
+          ],
+          ".": [
+            2,
+            0
+          ],
+          "^": [
+            1,
+            4
+          ]
+        },
+        "vmode": "blockwise"
+      }
     }
   ]
 }

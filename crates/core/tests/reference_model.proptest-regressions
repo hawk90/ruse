@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 2fd35612ba115699d6b624a6c2477d07ea1334ed08bb056f62ba01e72a318322 # shrinks to init = [], ops = [Edit([(0, 0, [195])])]
+cc 597cc403800a777e9315f7e734d5d72c56f16484d8d6c16174cecc98587e4ee1 # shrinks to init = [[97]], ops = [OpenBelow(0, [97, 97, 97]), Mark(13607139155416938343, 958584327873705914, Keep, 1), OpenBelow(8328920577818234077, [97]), OpenBelow(0, [97]), DeleteAfterNewline(1115217199458147681), Insert(0, [[97]]), Undo, Delete(143289475977917131, 1), Insert(6163522452438773216, [[97, 97]]), Delete(5520827095543869898, 1)]

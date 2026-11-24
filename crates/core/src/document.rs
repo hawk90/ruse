@@ -65,7 +65,7 @@ pub struct Document {
     /// Per undo group, the restorable [`Tracked`] positions as they were when the group began (Vim's
     /// `uh_namedm`/`uh_visual`): undoing the group puts them back, and keeps the ones it replaced for the
     /// redo (#686).
-    mark_undo: HashMap<u64, Vec<Option<usize>>>,
+    mark_undo: HashMap<u64, Vec<Option<(usize, usize)>>>,
     /// Positions carried for Views at rest ([`Document::pin_tracked`]).
     pinned: Vec<Tracked>,
     /// The applied changes a recovery journal drains ([`Document::drain_changes`], RFC-0023 §1).
@@ -370,10 +370,10 @@ impl Document {
             let fresh = txn.group_hint == GroupHint::BreakBefore;
             self.line_undo.on_edit(&self.text, &txn.edits, fresh);
         }
-        let saved: Vec<Option<usize>> = tracked
+        let saved: Vec<Option<(usize, usize)>> = tracked
             .iter()
             .filter(|t| t.restore)
-            .map(|t| t.pos.map(|p| p.0))
+            .map(|t| t.pos.map(|p| (p.0, t.past)))
             .collect();
         let old = std::mem::replace(&mut self.text, Arc::new(new_text));
         self.carry_line_starts(&txn.edits);
@@ -583,14 +583,14 @@ impl Document {
         let mut entries = Vec::new();
         let mut uh = (0, 0);
         let mut lines_before = undo_cursor::line_count(&self.text);
-        let mut before: Vec<Option<usize>> = Vec::new();
+        let mut before: Vec<Option<(usize, usize)>> = Vec::new();
         for (i, edits) in step.edits.iter().enumerate() {
             let group = step.groups.get(i).copied();
             if i == 0 || step.groups.get(i - 1).copied() != group {
                 before = tracked
                     .iter()
                     .filter(|t| t.restore)
-                    .map(|t| t.pos.map(|p| p.0))
+                    .map(|t| t.pos.map(|p| (p.0, t.past)))
                     .collect();
             }
             if i == step.tail {
@@ -624,14 +624,20 @@ impl Document {
     /// Put the restorable `tracked` positions back as undo group `group` saved them, keeping `before` (the
     /// values they had before this undo/redo) for the way back. A position the group saw unset is left
     /// as it is, and one that is unset now is saved unset (Vim's `u_undoredo`).
-    fn restore_marks(&mut self, group: u64, before: Vec<Option<usize>>, tracked: &mut [Tracked]) {
+    fn restore_marks(
+        &mut self,
+        group: u64,
+        before: Vec<Option<(usize, usize)>>,
+        tracked: &mut [Tracked],
+    ) {
         let Some(saved) = self.mark_undo.get_mut(&group) else {
             return;
         };
         let len = self.text.len();
         for (t, s) in tracked.iter_mut().filter(|t| t.restore).zip(saved.iter()) {
-            if let Some(p) = *s {
+            if let Some((p, past)) = *s {
                 t.pos = Some(BytePos(crate::motion::snap(&self.text, p.min(len))));
+                t.past = past;
             }
         }
         *saved = before;

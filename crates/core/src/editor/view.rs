@@ -3,8 +3,8 @@
 //! the private `View` fields as before.
 
 use super::{
-    block_geom, cindent, indent, mark_slot, planner, selection_range, ViewOptions, Want, MAXCOL,
-    MAX_CHANGES, TRACKED_FIXED,
+    block_geom, cindent, indent, mark_slot, planner, selection_range, Mark, ViewOptions, Want,
+    MAXCOL, MAX_CHANGES, TRACKED_FIXED,
 };
 use crate::motion::{line_start, snap};
 use crate::{
@@ -24,17 +24,18 @@ impl View {
         // Named marks (`m{a-z}`) snap into range too, so an edit that shrank the buffer under a mark can never
         // make a later `` `{a-z} `` jump out of bounds.
         for m in self.named_marks.iter_mut().flatten() {
-            *m = snap(bytes, (*m).min(len));
+            m.at = snap(bytes, m.at.min(len));
         }
         // The last-insert position (`gi`) snaps the same way.
-        if let Some(li) = self.last_insert {
-            self.last_insert = Some(snap(bytes, li.min(len)));
+        if let Some(li) = self.last_insert.as_mut() {
+            li.at = snap(bytes, li.at.min(len));
         }
         // The last-visual store (behind `gv` and the `<`/`>` marks) snaps both ends into range so an edit that
         // shrank the buffer under a remembered selection can never make a later `gv`/`` `< ``/`` `> `` slice out
         // of bounds. (Vim keeps the raw columns; snapping only clamps out-of-buffer offsets, never in-range ones.)
-        if let Some((a, e, kind)) = self.last_visual {
-            self.last_visual = Some((snap(bytes, a.min(len)), snap(bytes, e.min(len)), kind));
+        if let Some((a, e, _)) = self.last_visual.as_mut() {
+            a.at = snap(bytes, a.at.min(len));
+            e.at = snap(bytes, e.at.min(len));
         }
         // The `[`/`]` change marks, an in-flight Insert-session start, the Visual anchor and the Emacs mark
         // snap into range too.
@@ -64,30 +65,26 @@ impl View {
     /// here; the Emacs mark stays a snapped offset (a byte anchor moved it off Emacs's in-place casing).
     pub(crate) fn tracked(&self) -> Vec<Tracked> {
         use crate::anchor::{LineGravity::Drop, LineGravity::Keep};
+        // A mark carries its raw column (#1304).
+        let mark = |m: Option<Mark>, g| {
+            Tracked::line(m.map(|m| BytePos(m.at)), g).past(m.map_or(0, |m| m.past))
+        };
         let mut t = Vec::with_capacity(TRACKED_FIXED + self.changes.len() + self.jumps.len());
         t.extend(
             self.named_marks[..26]
                 .iter()
-                .map(|&m| Tracked::line(m.map(BytePos), Drop).restored()),
+                .map(|&m| mark(m, Drop).restored()),
         );
         let (va, ve) = self
             .last_visual
             .map_or((None, None), |(a, e, _)| (Some(a), Some(e)));
-        t.push(Tracked::line(va.map(BytePos), Keep).restored());
-        t.push(Tracked::line(ve.map(BytePos), Keep).restored());
-        t.extend(
-            self.named_marks[26..52]
-                .iter()
-                .map(|&m| Tracked::line(m.map(BytePos), Keep)),
-        );
-        t.push(Tracked::line(self.last_insert.map(BytePos), Drop));
+        t.push(mark(va, Keep).restored());
+        t.push(mark(ve, Keep).restored());
+        t.extend(self.named_marks[26..52].iter().map(|&m| mark(m, Keep)));
+        t.push(mark(self.last_insert, Drop));
         t.push(Tracked::line(self.change_start.map(BytePos), Keep));
         t.push(Tracked::line(self.change_end.map(BytePos), Keep));
-        t.extend(
-            self.named_marks[52..]
-                .iter()
-                .map(|&m| Tracked::line(m.map(BytePos), Keep)),
-        );
+        t.extend(self.named_marks[52..].iter().map(|&m| mark(m, Keep)));
         debug_assert_eq!(t.len(), TRACKED_FIXED);
         t.extend(
             self.changes
@@ -105,20 +102,28 @@ impl View {
     /// Take back the positions [`View::tracked`] gave out, as the Document left them.
     pub(crate) fn untrack(&mut self, t: &[Tracked]) {
         let pos = |i: usize| t.get(i).and_then(|t| t.pos).map(|p| p.0);
+        let mark = |i: usize| {
+            t.get(i).and_then(|t| {
+                t.pos.map(|p| Mark {
+                    at: p.0,
+                    past: t.past,
+                })
+            })
+        };
         for (i, m) in self.named_marks[..26].iter_mut().enumerate() {
-            *m = pos(i);
+            *m = mark(i);
         }
-        if let (Some((_, _, kind)), Some(a), Some(e)) = (self.last_visual, pos(26), pos(27)) {
+        if let (Some((_, _, kind)), Some(a), Some(e)) = (self.last_visual, mark(26), mark(27)) {
             self.last_visual = Some((a, e, kind));
         }
         for (i, m) in self.named_marks[26..52].iter_mut().enumerate() {
-            *m = pos(26 + i + 2);
+            *m = mark(26 + i + 2);
         }
-        self.last_insert = pos(54);
+        self.last_insert = mark(54);
         self.change_start = pos(55);
         self.change_end = pos(56);
         for (i, m) in self.named_marks[52..62].iter_mut().enumerate() {
-            *m = pos(52 + i + 5);
+            *m = mark(52 + i + 5);
         }
         let n = self.changes.len();
         for (i, c) in self.changes.iter_mut().enumerate() {
@@ -192,6 +197,8 @@ impl View {
             mark: None,
             last_visual: None,
             visual_mode_eval: None,
+            visual_eol: false,
+            redo_visual: false,
             replace_stack: Vec::new(),
             block_insert: None,
             last_block_geom: None,
@@ -229,7 +236,7 @@ impl View {
 
     /// The last-insert position (Vim `` `^ ``), or `None` before any Insert session has ended.
     pub(super) fn last_insert(&self) -> Option<usize> {
-        self.last_insert
+        self.last_insert.map(|m| m.at)
     }
 
     /// The fixed end of the Visual area being made (nvim's `getpos('v')`; the cursor is the other end), or
@@ -245,22 +252,30 @@ impl View {
     /// (`` `^ ``, `` d`> ``, #1088).
     #[must_use]
     pub fn named_mark(&self, c: char) -> Option<BytePos> {
-        match c {
+        self.mark_raw(c).map(|(p, _)| p)
+    }
+
+    /// Mark `c` as [`View::named_mark`] reads it, with how many bytes its raw column lies past that offset
+    /// (#1304): the column nvim's `getpos()` reports, which an edit that shortened the mark's line did not
+    /// clamp, and which is one past the last char for the end of a `$` area.
+    #[must_use]
+    pub fn mark_raw(&self, c: char) -> Option<(BytePos, usize)> {
+        let m = match c {
             '^' => self.last_insert,
             '<' | '>' => {
-                let (s, e, _) = self.last_visual_bounds()?;
-                return Some(if c == '<' { s } else { e });
+                let (s, e, _) = self.last_visual_marks()?;
+                Some(if c == '<' { s } else { e })
             }
             _ => self.named_marks[mark_slot(c)?],
-        }
-        .map(BytePos)
+        }?;
+        Some((BytePos(m.at), m.past))
     }
 
     /// Set named mark `c` (`a`–`z`, `A`–`Z`) to `pos`. Any other `c` is ignored (the input layer only sends
     /// letters, so this is a defensive guard).
     pub(crate) fn set_named_mark(&mut self, c: char, pos: usize) {
         if let Some(i) = mark_slot(c) {
-            self.named_marks[i] = Some(pos);
+            self.named_marks[i] = Some(Mark::at(pos));
         }
     }
 
@@ -275,6 +290,7 @@ impl View {
             ']' => self.change_end = Some(pos),
             '<' | '>' => {
                 let start = c == '<';
+                let pos = Mark::at(pos);
                 self.last_visual = Some(match (self.last_visual, self.visual_one_end) {
                     // The other end is still unset: this one is the only end again.
                     (Some((_, _, kind)), Some(only)) if only == c => (pos, pos, kind),
@@ -327,8 +343,20 @@ impl View {
     /// `'<`/`'>`) and `gv`, all reading the one depth-1 `last_visual` (set on every Visual/Select exit). `None`
     /// before any visual selection has ended. The planner turns `(start, end, kind)` into the per-mark target.
     pub fn last_visual_bounds(&self) -> Option<(BytePos, BytePos, SelectKind)> {
+        let (s, e, kind) = self.last_visual_marks()?;
+        Some((BytePos(s.at), BytePos(e.at), kind))
+    }
+
+    /// [`View::last_visual_bounds`] with each end's raw column (#1304): the start and end ordered by
+    /// offset, then by raw column.
+    fn last_visual_marks(&self) -> Option<(Mark, Mark, SelectKind)> {
         let (a, e, kind) = self.last_visual?;
-        Some((BytePos(a.min(e)), BytePos(a.max(e)), kind))
+        let key = |m: Mark| (m.at, m.past);
+        Some(if key(a) <= key(e) {
+            (a, e, kind)
+        } else {
+            (e, a, kind)
+        })
     }
 
     /// The kind Vim's `visualmode()` reports for the last Visual area (see [`View::visual_mode_eval`]), or

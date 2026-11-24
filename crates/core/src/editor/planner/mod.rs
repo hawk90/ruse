@@ -79,13 +79,27 @@ fn plan_linewise_change(
             ..nop(indent_end, Mode::Insert)
         }
     } else {
-        edit_yank(
-            one(Edit::delete(BytePos(indent_end), content_end - indent_end)),
-            indent_end,
-            Mode::Insert,
-            hint,
-            reg,
+        // nvim's `op_change` deletes the lines after the first whole, then empties the first: the marks
+        // on a deleted line move to the line that takes its place, keeping their columns, and the first
+        // line's keep theirs (#1304).
+        let first_end = line_end(b, ls).min(content_end);
+        let rest = if first_end == content_end {
+            None
+        } else if reg_end > content_end {
+            Some(Edit::delete(
+                BytePos(first_end + 1),
+                reg_end - first_end - 1,
+            ))
+        } else {
+            Some(Edit::delete(BytePos(first_end), content_end - first_end))
+        };
+        let edits = EditList::new(
+            std::iter::once(Edit::delete(BytePos(indent_end), first_end - indent_end))
+                .chain(rest)
+                .collect(),
         )
+        .expect("the first line's tail and the lines after it are disjoint");
+        edit_yank(edits, indent_end, Mode::Insert, hint, reg)
     }
 }
 
