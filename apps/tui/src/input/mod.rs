@@ -473,6 +473,26 @@ impl InputEngine {
         }
     }
 
+    /// Whether the next key starts a new command with nothing of one typed before it: [`Pending::Base`]
+    /// with no count and no `"x` register prefix either. A `:normal` that ends here has finished its last
+    /// command, so it gets no closing `<Esc>` (#1307).
+    #[must_use]
+    pub fn at_clean_boundary(&self) -> bool {
+        self.pending() == Pending::Base && self.normal.is_clean()
+    }
+
+    /// Drop a `"x` register prefix with nothing typed after it (a count before it is kept by nvim but
+    /// spent with it here), and say whether there was one. nvim's `"x` is a command of its own
+    /// (`nv_regname`), so a `:normal` that ends on it has finished its last command; the register it
+    /// named goes with the `:normal`'s own operator state (#1307). The caller clears the core's register.
+    pub fn drop_bare_register(&mut self) -> bool {
+        if self.pending() != Pending::Base || !self.normal.register || self.normal.count != 0 {
+            return false;
+        }
+        self.normal = NormalState::default();
+        true
+    }
+
     fn action(&mut self, cmd: Command) -> Feed {
         self.reset();
         Feed::Cmd(cmd)

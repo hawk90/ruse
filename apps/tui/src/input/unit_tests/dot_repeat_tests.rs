@@ -234,3 +234,47 @@ fn motions_between_changes_do_not_clobber_the_record() {
     let (_, last) = feed_modes(&[k('x'), k('w'), k('.')]);
     assert_eq!(last, Feed::Replay(vec![Command::DeleteUnder(1)]));
 }
+
+#[test]
+fn dot_after_a_visual_put_repeats_only_its_delete() {
+    // #1573 (nvim `nv_put_opt`): `.` redoes the Visual delete inside the put, to the unnamed register for
+    // `p` and the black hole for `P`, whatever register the put read; a charwise `".p` records as itself.
+    let char_sel = Mode::Visual {
+        kind: SelectKind::Charwise,
+    };
+    let line_sel = Mode::Visual {
+        kind: SelectKind::Linewise,
+    };
+    let dot_after = |keys: &[KeyEvent], mode: Mode| {
+        let mut e = InputEngine::new();
+        for key in keys {
+            e.feed(*key, mode);
+        }
+        e.feed(k('.'), Mode::Normal)
+    };
+    assert_eq!(
+        dot_after(&[k('3'), k('p')], char_sel),
+        Feed::Replay(vec![Command::DeleteSelection])
+    );
+    assert_eq!(
+        dot_after(&[k('"'), k('a'), k('P')], char_sel),
+        Feed::Replay(vec![
+            Command::SetRegister(Some('_')),
+            Command::DeleteSelection
+        ])
+    );
+    assert_eq!(
+        dot_after(&[k('"'), k('.'), k('p')], char_sel),
+        Feed::Replay(vec![
+            Command::SetRegister(Some('.')),
+            Command::PasteSelection {
+                swap: true,
+                count: 1
+            }
+        ])
+    );
+    assert_eq!(
+        dot_after(&[k('"'), k('.'), k('p')], line_sel),
+        Feed::Replay(vec![Command::DeleteSelection])
+    );
+}
