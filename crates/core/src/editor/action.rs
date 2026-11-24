@@ -171,4 +171,48 @@ pub struct Plan {
     /// How this command updates the Emacs mark (D-027). `None` leaves it untouched — the common case, so
     /// only the mark commands (`SetMark`/`KillRegion`/`ExchangePointMark`) set it.
     pub(super) set_mark: Option<MarkWrite>,
+    /// Where the command leaves the change marks `'[` `']` `'.` when nvim's operator puts them somewhere
+    /// other than the default (the edit span's ends and the cursor, see `set_change_marks`). `None` keeps
+    /// the default. Set even on a no-op when nvim's operator still marks it (a block `<` that moves no
+    /// text: nvim's `op_shift` sets the marks and calls `changed_lines` whatever it changed).
+    pub(super) op_marks: Option<OpMarks>,
+}
+
+/// The change marks an operator leaves, as nvim's `b_op_start` / `b_op_end` / `b_last_change` (#1302). Each
+/// is a 0-based line of the text AFTER the command and a column on it, so a planner can name them before
+/// the edit is applied: nvim's operators set these marks from line numbers and raw columns, not from the
+/// edited bytes. Resolved onto the text in `commit`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) struct OpMarks {
+    /// `'[`.
+    pub(super) start: MarkAt,
+    /// `']`.
+    pub(super) end: MarkAt,
+    /// `'.`, the newest change-list entry (nvim's `changed_common` puts it where `changed_lines` /
+    /// `changed_bytes` was last called).
+    pub(super) dot: MarkAt,
+}
+
+/// One change mark of [`OpMarks`]: a 0-based line of the text after the command and a column on it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) struct MarkAt {
+    pub(super) line: usize,
+    pub(super) col: MarkCol,
+}
+
+/// The column of a [`MarkAt`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum MarkCol {
+    /// A byte column, clamped to the line's length (its newline) where it lies past it.
+    Byte(usize),
+    /// The line's last byte, or column 0 on an empty line: nvim's `ml_get_len(lnum) - 1` (`op_shift`'s
+    /// `']`). On a line ending in a multibyte char nvim's mark is that char's last byte; ruse's marks stay
+    /// on char boundaries, so commit's offset snap moves it to the char's first byte.
+    LastByte,
+}
+
+impl MarkAt {
+    pub(super) fn new(line: usize, col: MarkCol) -> Self {
+        Self { line, col }
+    }
 }

@@ -8,8 +8,8 @@
 //! and [`curswant`] (the sticky wanted column).
 
 use super::{
-    lisp, planner, prepare_selection_op, Action, BlockGeom, Mark, MarkWrite, RegWrite, UndoStep,
-    MAXCOL,
+    lisp, planner, prepare_selection_op, Action, BlockGeom, Mark, MarkAt, MarkCol, MarkWrite,
+    OpMarks, RegWrite, UndoStep, MAXCOL,
 };
 use crate::motion::{self, col_of, line_end, line_start, prev_grapheme, snap};
 use crate::{
@@ -124,12 +124,19 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.view.last_was_edit = plan.is_edit;
     // Vim change list: an edit records where it happened (the cursor it left behind) as the newest entry,
     // which is also the `` `. `` mark. Motions/undo/g;/g, don't push. Snapped below with the other offsets.
-    if plan.is_edit {
-        let new_step = st.doc.history().current_group() != entry_group;
-        st.view
-            .push_change(st.doc.bytes(), st.view.cursor, new_step);
+    // An operator with its own marks (`OpMarks`) records its `'.` instead, and a no-op one still makes a
+    // change there: nvim's operator began an undo step (`u_save`) and called `changed_lines` (#1302).
+    let op_marks = plan.op_marks.map(|m| resolve_op_marks(st.doc.bytes(), m));
+    if plan.is_edit || op_marks.is_some() {
+        let new_step = !plan.is_edit || st.doc.history().current_group() != entry_group;
+        let dot = op_marks.map_or(st.view.cursor, |(_, _, dot)| dot);
+        st.view.push_change(st.doc.bytes(), dot, new_step);
     }
     let leaving_entry = set_change_marks(st, &entry, &plan.set_register, &applied);
+    if let Some((start, end, _)) = op_marks {
+        st.view.change_start = Some(start);
+        st.view.change_end = Some(end);
+    }
     st.view.snap_offsets(st.doc.bytes());
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit, and
     // on a caret jump inside one (`<Left>`, `<End>`): nvim's `stop_arrow` starts a fresh run there, so a
@@ -368,6 +375,19 @@ fn set_change_marks(
         }
     }
     leaving_entry
+}
+
+/// An operator's [`OpMarks`] as byte offsets of the text after it: `('[, '], '.)`.
+fn resolve_op_marks(b: &[u8], m: OpMarks) -> (usize, usize, usize) {
+    let at = |m: MarkAt| {
+        let ls = crate::pos::raw::nth_line_start(b, m.line);
+        let len = line_end(b, ls) - ls;
+        ls + match m.col {
+            MarkCol::Byte(c) => c.min(len),
+            MarkCol::LastByte => len.saturating_sub(1),
+        }
+    };
+    (at(m.start), at(m.end), at(m.dot))
 }
 
 /// Where an edit leaves the on-char cursor: never on the newline, never inside a cluster, never on the
@@ -722,5 +742,6 @@ fn refuse_unwritable_register(st: &EditorState, cmd: &Command, p: &Plan) -> Opti
         set_register: None,
         set_anchor: None,
         set_mark: None,
+        op_marks: None,
     })
 }

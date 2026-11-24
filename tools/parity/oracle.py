@@ -6186,6 +6186,29 @@ FIXTURES: list[dict] = [
      "observe": ["marks"]},
     {"name": "i1306_caret_block_append", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jj$Axy<Esc>",
      "observe": ["marks"]},
+    # --- #1302 --- a Visual-block shift's change marks: '[ at the block's top-left as it was, '] on the
+    #     last line's last byte, '. at column 0 of the top line (nvim's op_shift + changed_lines)
+    {"name": "vb_shift_right_empty_top", "lines": ["", "abcd", "abcd"], "keys": ":set sw=4 et<CR><C-v>jjl>"},
+    {"name": "vb_shift_right_all_empty", "lines": ["", "", "x"], "keys": ":set sw=4 et<CR><C-v>j>"},
+    {"name": "vb_shift_right_wide_last_char", "lines": ["abc", "ab中"], "keys": ":set sw=4 et<CR>l<C-v>j>"},
+    {"name": "vb_shift_left_tabs_noet", "lines": ["ab\t\tcd", "ef\t\tgh"],
+     "keys": ":set ts=8 sw=4 noet<CR>2l<C-v>j<"},
+    {"name": "vb_shift_left_noop_dot", "lines": ["ab    cd", "ef    gh", "ij"],
+     "keys": ":set ts=8 sw=4 et<CR>l<C-v>j<j."},
+    {"name": "vb_shift_right_dot_count", "lines": ["abc def", "ghi jkl", "mno pqr"],
+     "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>3."},
+    {"name": "vb_shift_right_redo", "lines": ["abc def", "ghi jkl"],
+     "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>u<C-r>", "setup": UNDO_SETUP},
+    {"name": "vb_shift_left_undo", "lines": ["ab      cd", "ef      gh", "ij      kl"],
+     "keys": ":set ts=8 sw=4 et<CR>3l<C-v>jj<u", "setup": UNDO_SETUP},
+    {"name": "vb_shift_right_from_bottom_right", "lines": ["abc def", "ghi jkl", "mno pqr"],
+     "keys": ":set ts=8 sw=4 et<CR>jjwl<C-v>kkh>"},
+    {"name": "vb_shift_right_ragged_middle", "lines": ["abcdefgh", "", "ab", "abcdefgh"],
+     "keys": ":set ts=8 sw=4 et<CR>4l<C-v>3j>"},
+    {"name": "vb_shift_left_last_line_blank", "lines": ["ab    cd", "ab    "],
+     "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<"},
+    {"name": "vb_shift_right_gv", "lines": ["abc def", "ghi jkl"],
+     "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>gvy"},
 ]
 
 

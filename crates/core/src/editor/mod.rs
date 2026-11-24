@@ -512,7 +512,7 @@ use want::WantKind;
 
 mod action;
 pub use action::Plan;
-use action::{Action, BlockGeom, BlockInsert, MarkWrite, RegWrite};
+use action::{Action, BlockGeom, BlockInsert, MarkAt, MarkCol, MarkWrite, OpMarks, RegWrite};
 
 mod visual_repeat;
 use visual_repeat::{prepare_selection_op, VisualOpGeom};
