@@ -165,7 +165,12 @@ impl Session {
             return None;
         }
         if search_misses(&cmd, &mut ed.ws, &mut ed.status) {
-            if matches!(cmd, Command::Search { .. }) {
+            // A `*`/`#` that fails under 'nowrapscan' (#1558) still runs: the cursor moves to the keyword's
+            // start, as nvim's `nv_ident` puts it there before it searches.
+            if matches!(
+                cmd,
+                Command::Search { .. } | Command::SearchWordUnder { .. }
+            ) {
                 let err = ed.status.take();
                 ed.run(cmd);
                 ed.status.restore(err);
@@ -495,7 +500,12 @@ pub(super) fn no_previous_pattern(cmd: &Command) -> bool {
 /// Whether `cmd` is a search whose pattern matches nowhere in the focused buffer; if so the status gets
 /// Vim's `E486` (`:help E486`). The buffer-wide test is the `:g` marking rule, so it agrees with `:g` on
 /// what matches; a pattern that can span a line break (`\n`, `\_x`) is left to the search itself.
+/// Under 'nowrapscan' a search fails whenever it finds no target before the edge of the buffer, `*`/`#`
+/// too, with `E385` (forward) or `E384` (backward) in place of `E486`, as nvim (#1558).
 pub(super) fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut Status) -> bool {
+    if !ws.focused().view.wrapscan() {
+        return search_hits_edge(cmd, ws, status);
+    }
     let pattern = match cmd {
         Command::Search { pattern, .. }
         | Command::SearchNext(pattern)
@@ -517,6 +527,43 @@ pub(super) fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut Stat
         }
         _ => false,
     }
+}
+
+/// [`search_misses`] under 'nowrapscan' (#1558): a search (`/`, `?`, `n`, `N`, `*`, `#`, `g*`, `g#`, under an
+/// operator or `!` too) with no target before the edge fails with `E385` / `E384`, also when the pattern
+/// matches nowhere. The planner's own span is the test, so the message agrees with what the search does.
+fn search_hits_edge(cmd: &Command, ws: &mut Workspace, status: &mut Status) -> bool {
+    let (pattern, backward) = match cmd {
+        Command::Search {
+            pattern, backward, ..
+        } => (pattern.clone(), *backward),
+        Command::SearchNext(pattern) => (pattern.clone(), false),
+        Command::SearchPrev(pattern) => (pattern.clone(), true),
+        Command::SearchWordUnder {
+            forward,
+            whole_word,
+            ..
+        } => match ws.word_search_pattern(*whole_word) {
+            Some(pattern) => (pattern, !*forward),
+            None => return false,
+        },
+        _ => return false,
+    };
+    if pattern.is_empty() {
+        return false;
+    }
+    // A malformed pattern fails with the pattern reader's error first (#1087).
+    if let Err(e @ ruse_core::RegexError::Syntax(_)) =
+        ws.global_marks(ruse_core::SubRange::WholeFile, &pattern, false)
+    {
+        status.error(regex_error_msg(&e));
+        return true;
+    }
+    if ws.span_lines(cmd).is_some() {
+        return false;
+    }
+    status.error(crate::app::ex_range::search_hit_edge(&pattern, backward));
+    true
 }
 
 /// `final_newline` is whether a write of the focused buffer ends it with a newline (`g CTRL-G` counts the

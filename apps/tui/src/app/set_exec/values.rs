@@ -83,6 +83,7 @@ pub(super) fn core_option(opt: Opt, val: &OptVal) -> Option<EditorOption> {
         Opt::CinKeys => EditorOption::CinKeys(s(val)),
         Opt::CinScopeDecls => EditorOption::CinScopeDecls(s(val)),
         Opt::JoinSpaces => EditorOption::JoinSpaces(b(val)),
+        Opt::WrapScan => EditorOption::WrapScan(b(val)),
         Opt::WrapMargin => EditorOption::WrapMargin(match val {
             OptVal::Num(n) => *n,
             _ => 0,
@@ -124,6 +125,7 @@ pub(super) fn core_value(opts: &[EditorOption], opt: Opt) -> Option<OptVal> {
         | (Opt::CinScopeDecls, EditorOption::CinScopeDecls(s)) => Some(OptVal::Text(s.into())),
         (Opt::WrapMargin, EditorOption::WrapMargin(n)) => Some(OptVal::Num(n)),
         (Opt::JoinSpaces, EditorOption::JoinSpaces(v))
+        | (Opt::WrapScan, EditorOption::WrapScan(v))
         | (Opt::Lisp, EditorOption::Lisp(v))
         | (Opt::CIndent, EditorOption::CIndent(v))
         | (Opt::IgnoreCase, EditorOption::IgnoreCase(v))

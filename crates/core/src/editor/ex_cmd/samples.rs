@@ -144,6 +144,7 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         },
         ExCmd::Set(EditorOption::IgnoreCase(true)),
         ExCmd::Set(EditorOption::SmartCase(false)),
+        ExCmd::Set(EditorOption::WrapScan(false)),
         ExCmd::Set(EditorOption::TabStop(8)),
         ExCmd::Set(EditorOption::ShiftWidth(0)),
         ExCmd::Set(EditorOption::ExpandTab(false)),

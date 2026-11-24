@@ -46,6 +46,9 @@ pub(crate) enum ExRangeError {
     NoPreviousSubstitute,
     /// A pattern address that matches no line (`E486`).
     PatternNotFound(String),
+    /// Under 'nowrapscan', a pattern address with no match before the end of the buffer (`E385`) or, for
+    /// `?pat?`, its start (`E384`, #1558).
+    HitEdge { pattern: String, backward: bool },
     /// A pattern address that does not compile (the regex error's own message).
     BadPattern(String),
     /// A zero count after the command (`:d 0`, `E939`).
@@ -64,6 +67,9 @@ impl std::fmt::Display for ExRangeError {
                 f.write_str("E33: No previous substitute regular expression")
             }
             ExRangeError::PatternNotFound(p) => write!(f, "E486: Pattern not found: {p}"),
+            ExRangeError::HitEdge { pattern, backward } => {
+                f.write_str(&search_hit_edge(pattern, *backward))
+            }
             ExRangeError::BadPattern(m) => f.write_str(m),
             ExRangeError::PositiveCount => f.write_str("E939: Positive count required"),
             ExRangeError::Trailing(t) => write!(f, "E488: Trailing characters: {t}"),
@@ -562,8 +568,19 @@ fn scan_pattern(s: &str, from: usize, delim: char) -> (&str, usize) {
     (&s[from..], s.len())
 }
 
+/// nvim's error for a search that hit the edge of the buffer under 'nowrapscan' (#1558): `E384` at the top
+/// (`backward`), `E385` at the bottom.
+pub(crate) fn search_hit_edge(pattern: &str, backward: bool) -> String {
+    if backward {
+        format!("E384: Search hit TOP without match for: {pattern}")
+    } else {
+        format!("E385: Search hit BOTTOM without match for: {pattern}")
+    }
+}
+
 /// The line a pattern address lands on: the first line after `from` that matches (`forward`) or the last
-/// one before it, wrapping around the end of the buffer ('wrapscan'), so `from` itself matches last.
+/// one before it, wrapping around the end of the buffer under 'wrapscan', so `from` itself matches last.
+/// Under 'nowrapscan' there is no wrap: no match before the edge is `E385` / `E384` (#1558).
 fn search_line(
     ws: &mut Workspace,
     pat: &str,
@@ -574,6 +591,17 @@ fn search_line(
         .global_marks(SubRange::WholeFile, pat, false)
         .map_err(|e| ExRangeError::BadPattern(crate::app::dispatch::regex_error_msg(&e)))?;
     let hits: Vec<i64> = hits.into_iter().map(|l| l as i64).collect();
+    if !ws.focused().view.wrapscan() {
+        let hit = if forward {
+            hits.iter().find(|&&l| l > from)
+        } else {
+            hits.iter().rev().find(|&&l| l < from)
+        };
+        return hit.copied().ok_or_else(|| ExRangeError::HitEdge {
+            pattern: pat.to_string(),
+            backward: !forward,
+        });
+    }
     let hit = if forward {
         hits.iter().find(|&&l| l > from).or(hits.first())
     } else {
@@ -746,6 +774,33 @@ mod tests {
     }
 
     /// #608: marks, patterns and the last-pattern addresses, checked against nvim v0.12.6.
+    /// #1558: under 'nowrapscan' a pattern address does not wrap: no match before the end is E385, none
+    /// before the start E384, also for a pattern that matches nowhere (nvim v0.12.6).
+    #[test]
+    fn nowrapscan_pattern_addresses_stop_at_the_edge() {
+        let line = |s: &str| Ok(ExRange::Line(s.to_string()));
+        let mut ws = Workspace::new(b"a1\nb2\na3\nb4\na5\n".to_vec());
+        ws.set_option(ruse_core::EditorOption::WrapScan(false));
+        let edge = |p: &str, backward| {
+            Err(ExRangeError::HitEdge {
+                pattern: p.into(),
+                backward,
+            })
+        };
+        assert_eq!(resolve_in(&mut ws, "/b/d"), line("2d"));
+        assert_eq!(resolve_in(&mut ws, "?b?d"), edge("b", true));
+        assert_eq!(resolve_in(&mut ws, "/a1/d"), edge("a1", false));
+        assert_eq!(resolve_in(&mut ws, "/zz/d"), edge("zz", false));
+        assert_eq!(
+            edge("b", true).unwrap_err().to_string(),
+            "E384: Search hit TOP without match for: b"
+        );
+        assert_eq!(
+            edge("zz", false).unwrap_err().to_string(),
+            "E385: Search hit BOTTOM without match for: zz"
+        );
+    }
+
     #[test]
     fn mark_and_pattern_addresses_resolve() {
         let text = b"a1\nb2\na3\nb4\na5\n".to_vec();

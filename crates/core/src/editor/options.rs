@@ -29,6 +29,9 @@ pub enum EditorOption {
     IgnoreCase(bool),
     /// `'smartcase'` (`scs`).
     SmartCase(bool),
+    /// `'wrapscan'` (`ws`, Vim-global) — a search wraps around the end (or, backward, the start) of the
+    /// buffer. Off, a search that finds nothing before the edge fails (E385 / E384, #1558).
+    WrapScan(bool),
     /// `'shiftwidth'` (`sw`) — one indent level's width (`editor.shift_width`). `0` follows `'tabstop'`
     /// (Vim's `sw=0`).
     ShiftWidth(usize),
@@ -116,6 +119,7 @@ impl EditorOption {
             self,
             EditorOption::IgnoreCase(_)
                 | EditorOption::SmartCase(_)
+                | EditorOption::WrapScan(_)
                 | EditorOption::SmartTab(_)
                 | EditorOption::ShiftRound(_)
                 | EditorOption::CaretGravity(_)
@@ -182,12 +186,13 @@ pub(super) struct IndentConfig {
     pub(super) shiftround: bool,
 }
 
-/// The search-case config: `'ignorecase'` and `'smartcase'` (F-009). Default off — the factory Vim
-/// default the differential oracle runs against.
+/// The search config: `'ignorecase'` and `'smartcase'` (F-009), default off — the factory Vim default the
+/// differential oracle runs against — and `'wrapscan'`, default on as in Vim (#1558).
 #[derive(Clone, Copy)]
 pub(super) struct SearchCase {
     pub(super) ignore: bool,
     pub(super) smart: bool,
+    pub(super) wrap: bool,
 }
 
 /// The text-formatting options (#618): `'formatoptions'`, `'comments'`, `'commentstring'`,
@@ -271,6 +276,7 @@ impl ViewOptions {
         search_case: SearchCase {
             ignore: false,
             smart: false,
+            wrap: true,
         },
         caret: CaretGravity::OnChar,
     };
@@ -280,6 +286,7 @@ impl ViewOptions {
         match opt {
             EditorOption::IgnoreCase(v) => self.search_case.ignore = v,
             EditorOption::SmartCase(v) => self.search_case.smart = v,
+            EditorOption::WrapScan(v) => self.search_case.wrap = v,
             // Clamped to nvim's bounds (a C `int`; `'tabstop'` 1..=9999), so an API caller cannot make
             // `>>` or a `<Tab>` allocate without limit (#684); `:set` rejects a value past them first.
             EditorOption::ShiftWidth(n) => self.indent.shift_width = n.min(MAX_OPTION_INT),
@@ -338,6 +345,7 @@ impl ViewOptions {
         vec![
             EditorOption::IgnoreCase(self.search_case.ignore),
             EditorOption::SmartCase(self.search_case.smart),
+            EditorOption::WrapScan(self.search_case.wrap),
             EditorOption::TabStop(self.indent.tab_width),
             EditorOption::ShiftWidth(self.indent.shift_width),
             EditorOption::ExpandTab(self.indent.style == IndentStyle::Space),
@@ -381,9 +389,13 @@ impl ViewOptions {
         };
     }
 
-    /// Set `'ignorecase'` and `'smartcase'`.
+    /// Set `'ignorecase'` and `'smartcase'` (`'wrapscan'` is kept).
     pub(crate) fn set_search_case(&mut self, ignore: bool, smart: bool) {
-        self.search_case = SearchCase { ignore, smart };
+        self.search_case = SearchCase {
+            ignore,
+            smart,
+            ..self.search_case
+        };
     }
 
     /// Set the caret gravity (D-050).

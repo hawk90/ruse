@@ -605,6 +605,35 @@ fn a_search_that_matches_nowhere_is_e486_and_nothing_runs() {
     assert_eq!(run("abc\n", "l/zzz<CR>x").text(), "ac\n");
 }
 
+/// #1558: under 'nowrapscan' a search that finds nothing before the edge says nvim's E385 / E384 (also
+/// for a pattern that matches nowhere), the cursor stays, and an operator over it does nothing.
+#[test]
+fn nowrapscan_searches_say_hit_bottom_or_top() {
+    let h = run("a\nb\na\nb\n", ":set nows<CR>G/a<CR>");
+    assert_eq!(h.status(), "E385: Search hit BOTTOM without match for: a");
+    assert_eq!(h.cursor_row_col(), (4, 0));
+    let h = run("a\nb\na\n", ":set nows<CR>?b<CR>");
+    assert_eq!(h.status(), "E384: Search hit TOP without match for: b");
+    assert_eq!(h.cursor_row_col(), (1, 0));
+    let h = run("a\nb\n", ":set nows<CR>/zzz<CR>");
+    assert_eq!(h.status(), "E385: Search hit BOTTOM without match for: zzz");
+    let h = run("a\nb\na\n", ":set nows<CR>jd/b<CR>");
+    assert_eq!(h.status(), "E385: Search hit BOTTOM without match for: b");
+    assert_eq!(h.text(), "a\nb\na\n");
+    let h = run("abc def\n", ":set nows<CR>l*");
+    assert_eq!(
+        h.status(),
+        "E385: Search hit BOTTOM without match for: \\<abc\\>"
+    );
+    assert_eq!(h.cursor_row_col(), (1, 0));
+    let h = run("a\nb\na\nb\n", ":set nows<CR>G:/a/d<CR>");
+    assert_eq!(h.status(), "E385: Search hit BOTTOM without match for: a");
+    assert_eq!(h.text(), "a\nb\na\nb\n");
+    // 'wrapscan' (the default) wraps.
+    let h = run("a\nb\na\nb\n", ":set nows<CR>:set ws<CR>G/a<CR>");
+    assert_eq!(h.cursor_row_col(), (1, 0));
+}
+
 #[test]
 fn quiet_substitute_and_global_misses_are_not_errors() {
     assert_eq!(run("abc\n", ":s/zzz/y/e<CR>").status(), "");

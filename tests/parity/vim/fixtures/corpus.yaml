@@ -187704,6 +187704,1746 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1558_nows_slash_bottom",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>G/a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_ws_slash_wraps",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": "G/a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_slash_nowhere",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/zzz<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_query_top",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>?b<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_ws_query_wraps",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": "?b<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_query_nowhere",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>G?zzz<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_n_bottom",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>n",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_N_finds",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>N",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_N_top",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>NN",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_n_then_x",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>nx",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "",
+          "b"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_slash",
+      "lines": [
+        "x",
+        "a",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>3/a<CR>",
+      "expect": {
+        "text": [
+          "x",
+          "a",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_n",
+      "lines": [
+        "x",
+        "a",
+        "a",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>3n",
+      "expect": {
+        "text": [
+          "x",
+          "a",
+          "a",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_n_fits",
+      "lines": [
+        "x",
+        "a",
+        "a",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>2n",
+      "expect": {
+        "text": [
+          "x",
+          "a",
+          "a",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_query",
+      "lines": [
+        "a",
+        "a",
+        "x"
+      ],
+      "keys": ":set nows<CR>G3?a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "x"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_end_offset",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>G/a/e<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_line_offset",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>G/a/+1<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_same_line",
+      "lines": [
+        "a b a",
+        "b"
+      ],
+      "keys": ":set nows<CR>$/a<CR>",
+      "expect": {
+        "text": [
+          "a b a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_multiline",
+      "lines": [
+        "ax",
+        "bx",
+        "cx"
+      ],
+      "keys": ":set nows<CR>/x\\nb<CR>n",
+      "expect": {
+        "text": [
+          "ax",
+          "bx",
+          "cx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_d_search",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>jd/b<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_ws_d_search_wraps",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": "jd/b<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_dn",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>Gdn",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_dn_dot",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>x/a<CR>Gdn.",
+      "expect": {
+        "text": [
+          "",
+          "b",
+          "a",
+          ""
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_star_bottom",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>j*",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_star_last",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>G*",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_star_finds",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>*",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_hash_top",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>#",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_hash_finds",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>G#",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_gstar",
+      "lines": [
+        "ab",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>jg*",
+      "expect": {
+        "text": [
+          "ab",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_ghash",
+      "lines": [
+        "abc def"
+      ],
+      "keys": ":set nows<CR>wlg#",
+      "expect": {
+        "text": [
+          "abc def"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_star_keyword_start",
+      "lines": [
+        "abc def"
+      ],
+      "keys": ":set nows<CR>l*",
+      "expect": {
+        "text": [
+          "abc def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_star_curswant",
+      "lines": [
+        "x",
+        "abc def"
+      ],
+      "keys": ":set nows<CR>jl*k",
+      "expect": {
+        "text": [
+          "x",
+          "abc def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_star",
+      "lines": [
+        "abc abc"
+      ],
+      "keys": ":set nows<CR>l2*",
+      "expect": {
+        "text": [
+          "abc abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_d_star",
+      "lines": [
+        "abc def"
+      ],
+      "keys": ":set nows<CR>ld*",
+      "expect": {
+        "text": [
+          "abc def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_star_then_n",
+      "lines": [
+        "abc def abc"
+      ],
+      "keys": ":set nows<CR>l*n",
+      "expect": {
+        "text": [
+          "abc def abc"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_visual_n",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>Gvn",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "i1558_nows_gn_bottom",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>Gdgn",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_gN_top",
+      "lines": [
+        "b",
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>/a<CR>ggdgN",
+      "expect": {
+        "text": [
+          "b",
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_gN_under_cursor",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>/a<CR>GdgN",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_gN",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>/a<CR>G2dgN",
+      "expect": {
+        "text": [
+          "",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_gN_off",
+      "lines": [
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>/a<CR>G3dgN",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_gn",
+      "lines": [
+        "b",
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>/a<CR>gg2dgn",
+      "expect": {
+        "text": [
+          "b",
+          "a",
+          "b",
+          ""
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_count_gn_off",
+      "lines": [
+        "b",
+        "a",
+        "b",
+        "a"
+      ],
+      "keys": ":set nows<CR>/a<CR>gg3dgn",
+      "expect": {
+        "text": [
+          "b",
+          "a",
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_visual_gn_stops",
+      "lines": [
+        "xab ab"
+      ],
+      "keys": ":set nows<CR>/ab<CR>0vgngngnd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "xab ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_ws_gn_wraps",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": "/a<CR>Gdgn",
+      "expect": {
+        "text": [
+          "",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_ex_address_bottom",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>G:/a/d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_ex_address_top",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>:?b?d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_ex_address_finds",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>:2,/a/d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\na\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_ex_address_chain",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>:/a//a/d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_ex_address_last",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>/a<CR>G:\\/d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_ws_ex_address_wraps",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": "G:/a/d<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_substitute_unaffected",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>G:%s/a/X/<CR>",
+      "expect": {
+        "text": [
+          "X",
+          "b",
+          "X",
+          "b"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_gd_unaffected",
+      "lines": [
+        "foo",
+        "b",
+        "foo",
+        "b"
+      ],
+      "keys": ":set nows<CR>Ggd",
+      "expect": {
+        "text": [
+          "foo",
+          "b",
+          "foo",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_macro_aborts",
+      "lines": [
+        "a",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>qq/a<CR>xq@q",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_set_ws_back_on",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nows<CR>:set ws<CR>G/a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1558_nows_short_name",
+      "lines": [
+        "a",
+        "b",
+        "a",
+        "b"
+      ],
+      "keys": ":set nowrapscan<CR>G/a<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "a",
+          "b"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
     }
   ]
 }
