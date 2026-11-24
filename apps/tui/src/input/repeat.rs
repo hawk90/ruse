@@ -583,6 +583,37 @@ pub(crate) fn with_motion(cmd: &Command, m: Motion, n: u32) -> Command {
     }
 }
 
+/// `cmd` over its exclusive charwise motion made inclusive (#1576), as Vim's `o_v` toggles it: `d`, `c`
+/// and `y` gain a forced charwise wise, and a forced charwise one loses it (`dvgk` after `$` is
+/// exclusive in nvim). The backward `gk` after `$` is inclusive, so it also takes the cursor's char,
+/// which no single exclusive target can name. Other commands are returned unchanged.
+pub(crate) fn toggle_inclusive(cmd: &Command) -> Command {
+    use ruse_core::ForcedWise;
+    use Command as C;
+    let forced = |op, count: &u32, motion: &Motion| C::OpForced {
+        op,
+        count: *count,
+        motion: *motion,
+        wise: ForcedWise::Charwise,
+    };
+    match cmd {
+        C::Delete(n, m) => forced(OpKind::Delete, n, m),
+        C::Change(n, m) => forced(OpKind::Change, n, m),
+        C::Yank(n, m) => forced(OpKind::Yank, n, m),
+        C::OpForced {
+            op,
+            count,
+            motion,
+            wise: ForcedWise::Charwise,
+        } => match op {
+            OpKind::Delete => C::Delete(*count, *motion),
+            OpKind::Change => C::Change(*count, *motion),
+            OpKind::Yank => C::Yank(*count, *motion),
+        },
+        other => other.clone(),
+    }
+}
+
 /// [`with_count`] of a counted edit with no motion (`x`, `X`, `r`, `gr`, `~`, `>>`, `<<`, `J`, `gJ`,
 /// `CTRL-A`/`CTRL-X`).
 fn counted_edit_with_count(cmd: &Command, n: u32) -> Command {
