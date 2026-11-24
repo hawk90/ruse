@@ -458,7 +458,8 @@ fn enter_normal(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) -> Plan
     // the block (see `block_replicate`); the session is cleared in `commit` as Insert is left.
     if st.view.mode == Mode::Insert {
         if let Some(session) = st.view.block_insert {
-            return block_replicate(b, cur, session, hint, st.view.indent.tabs());
+            let entry_start = st.view.insert_start;
+            return block_replicate(b, cur, session, entry_start, hint, st.view.indent.tabs());
         }
         // Autoindent cleanup (Vim): if this Insert session opened a line with auto-indent and
         // nothing non-blank was typed on it, leaving Insert removes the indent so no trailing

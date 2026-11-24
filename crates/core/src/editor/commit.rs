@@ -127,8 +127,12 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // An operator with its own marks (`OpMarks`) records its `'.` instead, and a no-op one still makes a
     // change there: nvim's operator began an undo step (`u_save`) and called `changed_lines` (#1302).
     let op_marks = plan.op_marks.map(|m| resolve_op_marks(st.doc.bytes(), m));
-    if plan.is_edit || op_marks.is_some() {
-        let new_step = !plan.is_edit || st.doc.history().current_group() != entry_group;
+    // A yank's marks are only `'[` `']`: it changes nothing. A no-op `<Esc>` ending a block insert stays in
+    // the insert's undo step, as nvim's `block_insert` saves into it.
+    let yank = matches!(plan.set_register, Some(RegWrite::Yank(..)));
+    if plan.is_edit || (op_marks.is_some() && !yank) {
+        let new_step = (!plan.is_edit && !is_text_entry(entry.mode))
+            || st.doc.history().current_group() != entry_group;
         let dot = op_marks.map_or(st.view.cursor, |(_, _, dot)| dot);
         st.view.push_change(st.doc.bytes(), dot, new_step);
     }

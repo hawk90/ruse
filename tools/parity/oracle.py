@@ -6209,6 +6209,34 @@ FIXTURES: list[dict] = [
      "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<"},
     {"name": "vb_shift_right_gv", "lines": ["abc def", "ghi jkl"],
      "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>gvy"},
+    # --- #1302 (part 2) --- the change marks of the other Visual-block operators: '[ '] on the block's
+    #     corners (a delete's '] at the top-left's column), '. where op_delete leaves the cursor, at the
+    #     top-left for r and column 0 for ~; a block I/A/c that copies its text down puts '. at column 0 of
+    #     the second line and (I/A) '] past the bottom row's copy
+    {"name": "vb_mk_d_top_short", "lines": ["ab", "abcdefgh", "abcdefgh"], "keys": "jjlll<C-v>kkld"},
+    {"name": "vb_mk_d_past_bottom", "lines": ["abcd", "ef"], "keys": "lll<C-v>jd"},
+    {"name": "vb_mk_d_tab_straddle", "lines": ["abcdefghijk", "a\tbc"], "keys": ":set ts=8<CR>4l<C-v>jd"},
+    {"name": "vb_mk_d_wide_top", "lines": ["a中b", "abcd"], "keys": "l<C-v>jd"},
+    {"name": "vb_mk_d_wide_bottom", "lines": ["abcd", "a中b"], "keys": "ll<C-v>jd"},
+    {"name": "vb_mk_y_bottom_short", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "jjl<C-v>kklllly"},
+    {"name": "vb_mk_y_middle_short", "lines": ["abcd", "ef", "ghij"], "keys": "ll<C-v>jjy"},
+    {"name": "vb_mk_tilde", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "l<C-v>jjlll~"},
+    {"name": "vb_mk_U_bottom_short", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "jjl<C-v>kkllllU"},
+    {"name": "vb_mk_r_bottom_short", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "jjl<C-v>kkllllrx"},
+    {"name": "vb_mk_I_short_rows", "lines": ["abcd", "a", "b"], "keys": "ll<C-v>jjIx<Esc>"},
+    {"name": "vb_mk_A_pads", "lines": ["abcd", "a", "abcd"], "keys": "l<C-v>jjlAxy<Esc>"},
+    {"name": "vb_mk_I_tab_split", "lines": ["abcdefghijkl", "ab\tx"], "keys": ":set ts=8<CR>4l<C-v>jIZ<Esc>"},
+    {"name": "vb_mk_A_tab_split", "lines": ["abcdefghijkl", "ab\tx"], "keys": ":set ts=8<CR>4l<C-v>jAZ<Esc>"},
+    {"name": "vb_mk_I_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jIZ<Esc>jj."},
+    {"name": "vb_mk_I_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjIZ<Esc>u",
+     "setup": UNDO_SETUP},
+    {"name": "vb_mk_c_two_chars", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjlcXY<Esc>"},
+    {"name": "vb_mk_c_nothing_typed", "lines": ["ab", "cd", "ef"], "keys": "l<C-v>jjc<Esc>"},
+    {"name": "vb_mk_lc_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjlc<Esc>"},
+    {"name": "vb_mk_C_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjC<Esc>"},
+    {"name": "vb_mk_I_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjI<Esc>"},
+    {"name": "vb_mk_A_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjA<Esc>"},
+    {"name": "vb_mk_c_dot", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjlcXY<Esc>j."},
 ]
 
 

@@ -2,6 +2,7 @@
 //!
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
+use super::block::{block_corners, block_delete_marks};
 use super::{
     block_insert_point, block_op, block_recase, captured, edit, edit_yank, nop, one, plan_comment,
     plan_format_lines, plan_join, plan_linewise_change, plan_paste_selection, plan_reindent,
@@ -115,7 +116,7 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         // each row's cells with `c` (Vim `op_replace`), so a `<Tab>` or wide char inside becomes several.
         Command::ReplaceSelectionChar(c) => {
             if let Some(block) = selection_block(st, b, cur) {
-                return block_replace(&block, *c, hint);
+                return block_replace(b, &block, *c, hint);
             }
             let (s, e, _line) = match visual_span(st, b, cur) {
                 Ok(v) => v,
@@ -243,6 +244,8 @@ fn plan_block_insert(
         },
         is_edit,
         set_register: reg.map(RegWrite::Edit),
+        // A change's delete marks the block as nvim's `op_delete` (#1302); a seeded one has typed already.
+        op_marks: (change && seed.is_empty()).then(|| block_delete_marks(b, &block)),
         ..nop(insert_start + seed.len(), Mode::Insert)
     }
 }
@@ -494,7 +497,10 @@ fn selection_block(st: &EditorState, b: &[u8], cur: usize) -> Option<Block> {
 /// wide character inside turns into one `c` per cell, a straddler's outside cells stay as spaces, and a
 /// double-width `c` fills two cells each (an odd cell left over becomes a space). Rows the block does not
 /// reach are left alone. The cursor goes to the block's top-left.
-fn block_replace(block: &Block, c: char, hint: GroupHint) -> Plan {
+///
+/// The change marks are nvim's (#1302): `'[` `']` the block's corners, `'.` its top-left
+/// (`changed_lines(start.lnum, start.col, ..)`).
+fn block_replace(b: &[u8], block: &Block, c: char, hint: GroupHint) -> Plan {
     use unicode_width::UnicodeWidthChar;
     let cw = c.width().unwrap_or(1).max(1);
     let mut buf = [0u8; 4];
@@ -523,8 +529,19 @@ fn block_replace(block: &Block, c: char, hint: GroupHint) -> Plan {
         })
         .collect();
     let at = block.rows[0].ds;
+    let op_marks = (c != '\r' && c != '\n').then(|| {
+        let (start, end) = block_corners(b, block);
+        OpMarks {
+            start,
+            end,
+            dot: start,
+        }
+    });
     match EditList::new(edits) {
-        Ok(list) if !list.is_empty() => edit(list, at, Mode::Normal, hint),
+        Ok(list) if !list.is_empty() => Plan {
+            op_marks,
+            ..edit(list, at, Mode::Normal, hint)
+        },
         _ => nop(at, Mode::Normal),
     }
 }
