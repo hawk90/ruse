@@ -240,6 +240,9 @@ fn plan_move(
     if st.view.mode.selection().is_some() && crate::textobj::owns(*m) {
         return plan_visual_owned_object(st, b, cur, *count, m);
     }
+    if let (Some(_), Motion::Tag { around }) = (st.view.mode.selection(), m) {
+        return plan_visual_tag(st, b, cur, *count, *around);
+    }
     if st.view.mode.selection().is_some() && is_text_object(*m) {
         return plan_visual_span_object(st, b, cur, *count, m);
     }
@@ -344,6 +347,27 @@ fn plan_visual_owned_object(
             kind: SelectKind::Charwise,
         },
         mode => mode,
+    };
+    Plan {
+        set_anchor: Some(a),
+        ..nop(c, mode)
+    }
+}
+
+/// `it`/`at` issued in a selection mode (`vit`, `vatat`): nvim's `current_tagblock` reads the current
+/// area, so a repeat widens to the enclosing block, and the selection turns charwise (`VIsual_mode = 'v'`).
+fn plan_visual_tag(st: &EditorState, b: &[u8], cur: usize, count: u32, around: bool) -> Plan {
+    let anchor = st.view.anchor.unwrap_or(cur);
+    let Some((a, c)) = motion::tag_visual(b, anchor, cur, around, count) else {
+        return nop(cur, st.view.mode);
+    };
+    let mode = match st.view.mode {
+        Mode::Select { .. } => Mode::Select {
+            kind: SelectKind::Charwise,
+        },
+        _ => Mode::Visual {
+            kind: SelectKind::Charwise,
+        },
     };
     Plan {
         set_anchor: Some(a),
