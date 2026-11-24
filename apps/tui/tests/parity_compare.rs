@@ -142,9 +142,8 @@ fn ruse_marks(h: &Headless) -> (Value, String) {
             marks.insert(c.to_string(), line_col(bytes, p.0));
         }
     }
-    let mut vmode = String::new();
+    let vmode = view.visual_mode().map_or("", kind_name).to_string();
     if let Some((s, e, kind)) = view.last_visual_bounds() {
-        vmode = kind_name(kind).to_string();
         let (s, mut e) = (line_col(bytes, s.0), line_col(bytes, e.0));
         let mut s = s;
         if kind == SelectKind::Linewise {

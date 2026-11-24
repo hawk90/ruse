@@ -143,6 +143,12 @@ pub struct View {
     /// degenerate of D-027's `` `< ``/`` `> `` selection history: one remembered selection, stored in the
     /// same raw-offset representation as the live `anchor` (both migrate to the anchor store together).
     last_visual: Option<(usize, usize, SelectKind)>,
+    /// The kind `visualmode()` reports (nvim's `b_visual_mode_eval`): the kind of the last Visual/Select
+    /// exit, set beside [`View::last_visual`], except that the uppercase line forms `D`/`X`/`Y`/`C`/`S`/`R`
+    /// over a charwise or blockwise selection report linewise while `gv` and `'<`/`'>` keep the selection's
+    /// own kind and columns (nvim's `v_visop` sets `VIsual_mode = 'V'` and restores the area's, #1305).
+    /// `None` until a Visual area has been left.
+    visual_mode_eval: Option<SelectKind>,
     /// Replace-mode (`R`) session history for `<BS>` restore: one entry per key typed, in order. `Some(orig)`
     /// = that key OVERWROTE a char (its original bytes, to restore on backspace); `None` = it APPENDED at
     /// end-of-line (backspace deletes it). Empty outside a Replace session; cleared on leaving Replace.

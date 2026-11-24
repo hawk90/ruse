@@ -93,6 +93,13 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         },
         // `g;`/`g,` — step the change list. The cursor here is a placeholder; `commit` steps `change_idx`
         // (a mutation the pure planner cannot make) and overrides it with the resolved change position.
+        // In Visual mode nvim's `nv_pcmark` fails at `checkclearopq`: a beep, no move, the selection kept
+        // and the change list not stepped (#1564).
+        Command::GotoOlderChange | Command::GotoNewerChange
+            if matches!(st.view.mode, Mode::Visual { .. }) =>
+        {
+            beep(cur, st.view.mode)
+        }
         Command::GotoOlderChange => moved(Action::JumpChange { older: true }, cur, st.view.mode),
         Command::GotoNewerChange => moved(Action::JumpChange { older: false }, cur, st.view.mode),
         // `CTRL-O`/`CTRL-I` — step the jumplist. `commit` mutates it (the planner is pure); the placeholder

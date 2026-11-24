@@ -5,6 +5,7 @@
 //! The terminal is 80x24 as in the PTY harness (a 23-row text area; ruse hardcodes `scrolloff=3`). Expected
 //! results match Neovim 0.12.6 unless a comment pins a known divergence by its issue.
 
+use ruse_core::{Mode, SelectKind};
 use ruse_tui::headless::Headless;
 
 /// `line1\n` … `line{n}\n`.
@@ -688,6 +689,36 @@ fn normal_takes_its_payload_literally() {
     // Escape goes in with `c_CTRL-V`.
     assert_eq!(run("x\n", ":normal iA<lt>Esc>x<CR>").text(), "A<Esc>xx\n");
     assert_eq!(run("xy\n", ":normal iA<C-v><Esc>x<CR>").text(), "xy\n");
+}
+
+#[test]
+fn normal_keeps_the_visual_its_keys_start() {
+    // nvim v0.12.6 (#1307): `:normal` ends like `<Esc>` only an unfinished command, so a Visual its keys
+    // start at a finished command stays, and the keys typed after act on it.
+    let visual = Mode::Visual {
+        kind: SelectKind::Charwise,
+    };
+    assert_eq!(run("abc\ncd\n", ":normal vl<CR>").mode(), visual);
+    assert_eq!(run("abc\ncd\n", ":normal vl<CR>d").text(), "c\ncd\n");
+    // A failed key ends the keys, not the Visual.
+    assert_eq!(run("abc\ncd\n", ":normal vfzx<CR>").mode(), visual);
+    // A command left unfinished in Visual gets the `<Esc>`: it cancels a pending `f` (Visual stays) but
+    // ends Visual after a bare count, as a typed `<Esc>` does.
+    assert_eq!(run("abc\ncd\n", ":normal vlf<CR>").mode(), visual);
+    assert_eq!(run("abc\ncd\n", ":normal v3<CR>").mode(), Mode::Normal);
+    // A trailing `"x` is a finished command: its register goes unused and Visual stays.
+    let mut h = run("abc\ncd\n", ":normal vl\"a<CR>y");
+    assert_eq!(h.mode(), Mode::Normal);
+    assert_eq!(h.register('"').0, "ab");
+    assert_eq!(h.register('a').0, "");
+    // An armed `q` takes the `<Esc>` too, so it does not swallow the next typed key.
+    let h = run("abc\ncd\n", ":normal vlq<CR>d");
+    assert_eq!(h.text(), "c\ncd\n");
+    // Over a range the Visual carries into the next line, whose `v` ends it.
+    assert_eq!(run("abc\ncd\n", ":1,2normal vl<CR>").mode(), Mode::Normal);
+    assert_eq!(run("abc\ncd\nef\n", ":%normal vl<CR>").mode(), visual);
+    // Insert still ends.
+    assert_eq!(run("abc\n", ":normal ixy<CR>").mode(), Mode::Normal);
 }
 
 #[test]
