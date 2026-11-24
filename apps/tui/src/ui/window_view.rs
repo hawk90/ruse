@@ -716,6 +716,8 @@ pub(crate) fn screen_motion(
                 })
             }
         }
+        // `H` / `M` / `L` resolve a viewport line, not a screen row: the session does (#1577).
+        ScreenMotion::ViewHigh | ScreenMotion::ViewMiddle | ScreenMotion::ViewLow => Resolved::Fail,
     }
 }
 
