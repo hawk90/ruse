@@ -186973,6 +186973,1655 @@
       }
     },
     {
+      "name": "i1307_normal_v",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal v<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_then_d",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<CR>d",
+      "expect": {
+        "text": [
+          "c",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_vl_then_o",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<CR>o",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_then_esc",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<CR><Esc>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_vl_then_normal_l",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<CR>:normal l<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_vl_then_normal_x",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<CR>:normal x<CR>",
+      "expect": {
+        "text": [
+          "bc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_line_vj",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal Vj<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "V",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "linewise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_block_j",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal <C-v><C-v>j<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "\u0016",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "blockwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vlo",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vlo<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_viw",
+      "lines": [
+        "abc def",
+        "cd"
+      ],
+      "keys": ":normal viw<CR>",
+      "expect": {
+        "text": [
+          "abc def",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vlv",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vlv<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_vld",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vld<CR>",
+      "expect": {
+        "text": [
+          "c",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_v_count",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal v3<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_vl_register",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl\"a<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_find",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vlf<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_g",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vlg<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_r",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vlr<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_i",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vli<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_colon",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl:<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_vfzx",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vfzx<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_d",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal d<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {},
+        "vmode": "",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_register",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal \"a<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {},
+        "vmode": "",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_count",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal 3<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {},
+        "vmode": "",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_f",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal f<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {},
+        "vmode": "",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_ixy",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal ixy<CR>",
+      "expect": {
+        "text": [
+          "xyabc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            2
+          ],
+          ".": [
+            1,
+            0
+          ],
+          "^": [
+            1,
+            2
+          ]
+        },
+        "vmode": "",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_R",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal R<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          "^": [
+            1,
+            0
+          ]
+        },
+        "vmode": "",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_gh",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal gh<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "s",
+        "marks": {},
+        "vmode": "",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_ghl",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal ghl<CR>",
+      "expect": {
+        "text": [
+          "lbc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            0
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            1,
+            0
+          ],
+          "^": [
+            1,
+            1
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_range1_normal_vl",
+      "lines": [
+        "abc",
+        "cd",
+        "ef"
+      ],
+      "keys": ":2normal vl<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            2,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_range2_normal_vl",
+      "lines": [
+        "abc",
+        "cd",
+        "ef"
+      ],
+      "keys": ":1,2normal vl<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_range2_normal_Vl",
+      "lines": [
+        "abc",
+        "cd",
+        "ef"
+      ],
+      "keys": ":1,2normal Vl<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ]
+        },
+        "vmode": "linewise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_all_normal_vl",
+      "lines": [
+        "abc",
+        "cd",
+        "ef"
+      ],
+      "keys": ":%normal vl<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": [
+          "charwise",
+          [
+            3,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_all_normal_vlx",
+      "lines": [
+        "abc",
+        "cd",
+        "ef"
+      ],
+      "keys": ":%normal vlx<CR>",
+      "expect": {
+        "text": [
+          "c",
+          "",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            3,
+            0
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_g_first_normal_vl",
+      "lines": [
+        "abc",
+        "cd",
+        "ef"
+      ],
+      "keys": ":g/a/normal vl<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_g_mid_normal_vl",
+      "lines": [
+        "abc",
+        "cd",
+        "ef"
+      ],
+      "keys": ":g/c/normal vl<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "i1307_normal_vl_q",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vlq<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_z",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vlz<CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_ctrl_w",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<C-v><C-w><CR>",
+      "expect": {
+        "text": [
+          "abc",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "v",
+        "marks": {},
+        "vmode": "",
+        "visual": [
+          "charwise",
+          [
+            1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1307_normal_vl_then_x",
+      "lines": [
+        "abc",
+        "cd"
+      ],
+      "keys": ":normal vl<CR>x",
+      "expect": {
+        "text": [
+          "c",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
       "name": "i1561_vit_single_char_inner",
       "lines": [
         "<a>x</a>"

@@ -3,8 +3,8 @@
 
 use super::{
     line_index, note_ex, place_cursor, report, window_rects, Command, ExCmd, FrameCtx, GroupKind,
-    KeyCode, KeyEvent, KeyModifiers, Mode, PaneText, Rect, Session, Silence, TransactionOrigin,
-    WinView,
+    KeyCode, KeyEvent, KeyModifiers, Mode, PaneText, Prefix, Rect, Session, Silence,
+    TransactionOrigin, WinView,
 };
 #[cfg(test)]
 use super::{persist, PathBuf, SessionInit, TermInfo, Workspace};
@@ -165,6 +165,11 @@ impl Session {
     /// command and ends Insert (`:help :normal`). Every key takes the typed-key path, so the session's own
     /// resolution (`*`, `gd`, `H`/`M`/`L`, `&`, `@`, a nested `:` line, …) applies, which `engine.feed`
     /// alone skipped (#689).
+    ///
+    /// The `<Esc>` is only for a command the keys left unfinished: nvim's `exec_normal` runs commands while
+    /// keys remain, and only a key read after the last one is `<Esc>` (`vgetorpeek` under
+    /// `ex_normal_busy`). A Visual or Select mode the keys started, at a finished command, stays (#1307):
+    /// `:normal vl` ends in Visual, and a range's next line extends it.
     pub(super) fn normal_pass(&mut self, events: &[KeyEvent], frame: &FrameCtx) {
         for &ev in events {
             if self.ed.quit {
@@ -177,12 +182,25 @@ impl Session {
         if self.ed.quit {
             return;
         }
-        self.nested_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), frame);
+        let selecting = |m: Mode| matches!(m, Mode::Visual { .. } | Mode::Select { .. });
+        let session_idle = matches!(self.prefix, Prefix::None)
+            && !self.macros.awaits_register()
+            && !self.overlay_open();
+        let in_visual = selecting(self.ed.ws.focused().view.mode());
+        // A trailing `"x` is a finished command whose register goes unused (`:normal vl"a` stays in
+        // Visual).
+        if in_visual && session_idle && self.engine.drop_bare_register() {
+            self.ed.run(Command::SetRegister(None));
+        }
+        if !(in_visual && session_idle && self.engine.at_clean_boundary()) {
+            self.nested_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), frame);
+        }
         // The `:normal` saved and restores the keys around it, so its failure does not flush them.
         self.ed.ws.take_beep();
-        // The next line's column-0 placement relies on Normal (an Esc leaves Visual too, but not every
-        // state a key can leave behind).
-        if self.ed.ws.focused().view.mode() != Mode::Normal {
+        // The next line's column-0 placement relies on Normal or a Visual still being made (an Esc ends
+        // the other modes, but not every state a key can leave behind).
+        let mode = self.ed.ws.focused().view.mode();
+        if mode != Mode::Normal && !selecting(mode) {
             let Session { .. } = self;
             self.ed.run(Command::EnterNormal);
         }
