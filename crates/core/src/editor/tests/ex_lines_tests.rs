@@ -325,4 +325,27 @@ mod history_list_tests {
         let effects = apply_command(&mut st, &Command::GotoOlderJump);
         assert_eq!(effects, vec![Effect::Beep]);
     }
+
+    /// #1564: in Visual mode `g;`/`g,` fail before the change list is looked at (nvim's `checkclearopq`):
+    /// a beep with no message, even on an empty list, and the selection stays.
+    #[test]
+    fn visual_change_list_steps_fail_silently() {
+        let mut st = EditorState::new(b"abc".to_vec());
+        apply_command(
+            &mut st,
+            &Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+        );
+        for cmd in [Command::GotoOlderChange, Command::GotoNewerChange] {
+            let effects = apply_command(&mut st, &cmd);
+            assert_eq!(effects, vec![Effect::Beep], "{cmd:?}");
+            assert_eq!(
+                st.view.mode,
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            );
+        }
+    }
 }

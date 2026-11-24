@@ -186558,6 +186558,624 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1564_vis_older",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggvg;",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "i1564_vis_newer",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggvg,",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "i1564_vis_older_d",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggvg;d",
+      "expect": {
+        "text": [
+          "bc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_vis_older_esc",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggvg;<Esc>",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_vline_older",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "GxggVg;",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "V"
+      }
+    },
+    {
+      "name": "i1564_vline_older_d",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "GxggVg;d",
+      "expect": {
+        "text": [
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_block_older",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxgg<C-v>g;",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "\u0016"
+      }
+    },
+    {
+      "name": "i1564_block_older_d",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxgg<C-v>lg;d",
+      "expect": {
+        "text": [
+          "c",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_vis_empty",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "vg;",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "i1564_vis_empty_newer",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "vg,",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "i1564_vis_count",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "GxkxggvG2g;",
+      "expect": {
+        "text": [
+          "abc",
+          "ef",
+          "hi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "i1564_vis_then_normal",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggvg;<Esc>g;",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_vis_move_after",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggvg;jd",
+      "expect": {
+        "text": [
+          "ef",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_op_older",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggdg;",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_op_older_then",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggdg;x",
+      "expect": {
+        "text": [
+          "bc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_op_newer",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggdg,",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_normal_older",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggg;",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_normal_newer",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggg;g,",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E663",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1564_vis_ctrl_o",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggv<C-o>",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "v"
+      }
+    },
+    {
+      "name": "i1564_vis_ctrl_o_d",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "Gxggv<C-o>d",
+      "expect": {
+        "text": [
+          "bc",
+          "def",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
     }
   ]
 }
