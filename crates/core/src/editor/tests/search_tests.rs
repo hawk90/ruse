@@ -1047,3 +1047,112 @@ fn gn_backward_from_normal_puts_the_cursor_on_the_match_start() {
     assert_eq!(st.cursor(), BytePos(2));
     assert_eq!(st.selection_span(), Some((BytePos(2), BytePos(5))));
 }
+
+/// `[count]/pat` or `[count]?pat` under `op` (#1558).
+fn search_count(count: u32, pattern: &str, backward: bool, op: SearchOp) -> Command {
+    Command::Search {
+        op,
+        count,
+        pattern: pattern.to_string(),
+        backward,
+        offset: SearchOffset::None,
+    }
+}
+
+/// [`run`] under `'nowrapscan'`.
+fn nows(initial: &str, cmds: &[Command]) -> EditorState {
+    let mut st = EditorState::new(initial.as_bytes().to_vec());
+    st.set_option(EditorOption::WrapScan(false));
+    for c in cmds {
+        apply_command(&mut st, c);
+    }
+    st
+}
+
+/// #1558 (nvim 0.12.6): under 'nowrapscan' `/` and `?` stop at the buffer's edge instead of wrapping, and
+/// a count that runs past the last match fails whole (the cursor stays). 'wrapscan' is the default.
+#[test]
+fn nowrapscan_stops_searches_at_the_edge() {
+    let g = Command::Move(1, Motion::LastLine);
+    // `G/a<CR>` on a/b/a/b: wraps to line 1 by default, stays on line 4 under 'nowrapscan'.
+    let st = run("a\nb\na\nb", &[g.clone(), search("a")]);
+    assert_eq!(st.cursor(), BytePos(0));
+    let st = nows("a\nb\na\nb", &[g.clone(), search("a")]);
+    assert_eq!(st.cursor(), BytePos(6));
+    // `?b` from line 1: no wrap to the last `b`.
+    let st = nows("a\nb\na", &[search_back(1, "b")]);
+    assert_eq!(st.cursor(), BytePos(0));
+    // `3/a` with two matches ahead fails whole; `2/a` lands.
+    let st = nows("x\na\na\nb", &[search_count(3, "a", false, SearchOp::Move)]);
+    assert_eq!(st.cursor(), BytePos(0));
+    let st = nows("x\na\na\nb", &[search_count(2, "a", false, SearchOp::Move)]);
+    assert_eq!(st.cursor(), BytePos(4));
+    // `jd/b<CR>`: the operator over a failed search does nothing.
+    let st = nows(
+        "a\nb\na",
+        &[
+            Command::Move(1, Motion::Down),
+            search_count(1, "b", false, SearchOp::Delete),
+        ],
+    );
+    assert_eq!(st.as_str().unwrap(), "a\nb\na");
+    assert_eq!(st.cursor(), BytePos(2));
+    // `:set ws` turns the wrap back on.
+    let mut st = nows("a\nb\na\nb", &[g]);
+    st.set_option(EditorOption::WrapScan(true));
+    apply_command(&mut st, &search("a"));
+    assert_eq!(st.cursor(), BytePos(0));
+}
+
+/// #1558: a `*` that fails under 'nowrapscan' leaves the cursor on the keyword's start (nvim's `nv_ident`
+/// moves there before it searches), under an operator too; `#` stops at the top.
+#[test]
+fn nowrapscan_failed_star_rests_on_the_keyword_start() {
+    let l = Command::Move(1, Motion::Right);
+    let st = nows("abc def", &[l.clone(), word_under(true, SearchOp::Move, 1)]);
+    assert_eq!(st.cursor(), BytePos(0));
+    let st = nows(
+        "abc def",
+        &[l.clone(), word_under(true, SearchOp::Delete, 1)],
+    );
+    assert_eq!(st.as_str().unwrap(), "abc def");
+    assert_eq!(st.cursor(), BytePos(0));
+    // `#` on the first of two: no wrap to the last one.
+    let st = nows("a\nb\na", &[word_under(false, SearchOp::Move, 1)]);
+    assert_eq!(st.cursor(), BytePos(0));
+    // `*` on the first of two still finds the second.
+    let st = nows("a\nb\na", &[word_under(true, SearchOp::Move, 1)]);
+    assert_eq!(st.cursor(), BytePos(4));
+    // With 'wrapscan', `l*` on a lone word lands on itself.
+    let st = run("abc def", &[l, word_under(true, SearchOp::Move, 1)]);
+    assert_eq!(st.cursor(), BytePos(0));
+}
+
+/// #1558: `gn`/`gN` under 'nowrapscan' take the match under or past the cursor without wrapping, and a
+/// count past the last one fails (nvim: `/a` + `gg3dgn` on b/a/b/a is no change, `gg2dgn` deletes the
+/// second `a`).
+#[test]
+fn nowrapscan_gn_does_not_wrap() {
+    let g = Command::Move(1, Motion::LastLine);
+    let st = nows(
+        "a\nb\na\nb",
+        &[g.clone(), gn(SearchOp::Delete, 1, "a", false)],
+    );
+    assert_eq!(st.as_str().unwrap(), "a\nb\na\nb");
+    let st = nows("b\na\nb\na", &[gn(SearchOp::Delete, 1, "a", true)]);
+    assert_eq!(st.as_str().unwrap(), "b\na\nb\na");
+    let st = nows("b\na\nb\na", &[gn(SearchOp::Delete, 2, "a", false)]);
+    assert_eq!(st.as_str().unwrap(), "b\na\nb\n");
+    let st = nows("b\na\nb\na", &[gn(SearchOp::Delete, 3, "a", false)]);
+    assert_eq!(st.as_str().unwrap(), "b\na\nb\na");
+    // `GdgN` / `G2dgN` / `G3dgN` on a/b/a: the match under the cursor, the first one, none.
+    let st = nows("a\nb\na", &[g.clone(), gn(SearchOp::Delete, 1, "a", true)]);
+    assert_eq!(st.as_str().unwrap(), "a\nb\n");
+    let st = nows("a\nb\na", &[g.clone(), gn(SearchOp::Delete, 2, "a", true)]);
+    assert_eq!(st.as_str().unwrap(), "\nb\na");
+    let st = nows("a\nb\na", &[g.clone(), gn(SearchOp::Delete, 3, "a", true)]);
+    assert_eq!(st.as_str().unwrap(), "a\nb\na");
+    // With 'wrapscan' `Gdgn` wraps to the first `a`.
+    let st = run("a\nb\na\nb", &[g, gn(SearchOp::Delete, 1, "a", false)]);
+    assert_eq!(st.as_str().unwrap(), "\nb\na\nb");
+}

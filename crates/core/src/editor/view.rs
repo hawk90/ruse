@@ -489,6 +489,12 @@ impl View {
         }
     }
 
+    /// Whether a search wraps around the buffer's end (`'wrapscan'`, #1558).
+    #[must_use]
+    pub fn wrapscan(&self) -> bool {
+        self.search_case.wrap
+    }
+
     /// The buffer this View shows.
     #[must_use]
     pub fn doc(&self) -> DocumentId {
