@@ -5,7 +5,7 @@
 use super::{buffer_lines, join_buffer_lines, line_start_of};
 use crate::edit::{Edit, EditList};
 use crate::editor::{line_spans, resolve_line_range, EditorState, LineAddr, SubRange};
-use crate::motion;
+use crate::motion::{self, line_end, line_start};
 
 impl EditorState {
     /// `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed line,
@@ -30,7 +30,22 @@ impl EditorState {
         if reg_text.is_empty() && slot.is_set() {
             reg_text.push(b'\n');
         }
-        self.read_lines(addr, &reg_text, true)
+        let count = self.read_lines(addr, &reg_text, true);
+        // A put leaves `']` on the last char of its last line (nvim's `do_put`, #1303); the cursor is on
+        // that line.
+        if count > 0 {
+            let b = self.doc.bytes();
+            let (ls, le) = (
+                line_start(b, self.view.cursor),
+                line_end(b, self.view.cursor),
+            );
+            self.view.change_end = Some(if le > ls {
+                motion::prev_grapheme(b, le)
+            } else {
+                ls
+            });
+        }
+        count
     }
 
     /// `:[addr]r[ead] {file}` / `:[addr]r[ead] !{cmd}` — insert `text` (a file's contents or a command's
@@ -84,9 +99,13 @@ impl EditorState {
         let line_start = line_start_of(&new_bytes, target_idx);
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, None)
             .expect("line read applies cleanly");
         self.view.last_was_edit = true;
+        // `'[` and `'.` at the first line read, `']` at the last (nvim's `readfile`, #1303).
+        let start = self.line_pos(ins);
+        self.set_ex_marks((start, self.line_pos(ins + count - 1)), start, Some(group));
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();
@@ -155,9 +174,17 @@ impl EditorState {
         let last_start = spans[last].0;
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, Some(last_start))
             .expect("line filter applies cleanly");
         self.view.last_was_edit = true;
+        // `'[` and `'.` at the range's first line, `']` at the last line the output put there: the line
+        // above when there was none, unset above the first line (nvim's `do_filter`, #1303).
+        let start = self.line_pos(first);
+        self.set_ex_marks((start, start), start, Some(group));
+        self.view.change_end = (first + new_lines.len())
+            .checked_sub(1)
+            .map(|end| self.line_pos(end));
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();

@@ -78,11 +78,18 @@ impl EditorState {
             new_bytes.push(b'\n');
         }
         let line_start = line_start_of(&new_bytes, first).min(new_bytes.len());
+        let changed = new_bytes != self.doc.bytes();
         let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
             .expect("a single edit is well-formed");
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, None)
             .expect("sort applies cleanly");
         self.view.last_was_edit = true;
+        // A sort that changed a line puts `'.` at the range's first line and leaves `'[`/`']` (nvim's
+        // `ex_sort`, #1303).
+        if changed {
+            self.set_ex_dot(self.line_pos(first), Some(group));
+        }
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();

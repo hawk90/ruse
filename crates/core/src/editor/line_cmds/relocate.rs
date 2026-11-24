@@ -65,9 +65,16 @@ impl EditorState {
         let list = EditList::new(edits).expect("the move's delete and insert are disjoint");
         // `u` and `CTRL-R` start from where the cursor stood: Vim's `u_save` in `ex_copy`/`do_move` runs
         // before the cursor moves, so `uh_cursor` is the cursor before the command (#1258).
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, Some(self.view.cursor.min(old.len())))
             .expect("line relocate applies cleanly");
         self.view.last_was_edit = true;
+        // `'[`/`']` on the block's first and last line where it now is; `'.` at the top of the lines the
+        // command touched: the copy, or for a move the range's first line, or the line after the
+        // destination when that is above it (nvim's `ex_copy` / `do_move`, #1303).
+        let dot = if copy || ins <= first { adj } else { first };
+        let (start, end) = (self.line_pos(adj), self.line_pos(adj + count - 1));
+        self.set_ex_marks((start, end), self.line_pos(dot), Some(group));
         // On the block's last line where it now is.
         let new = self.doc.bytes();
         let ls = self.doc.nth_line_start(adj + count - 1).0;
