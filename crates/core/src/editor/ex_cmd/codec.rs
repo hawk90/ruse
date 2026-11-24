@@ -109,6 +109,7 @@ fn option_name(opt: &EditorOption) -> (&'static str, String) {
         EditorOption::EqualPrg(v) => ("equalprg", hex(v.as_bytes())),
         EditorOption::CinWords(v) => ("cinwords", hex(v.as_bytes())),
         EditorOption::JoinSpaces(v) => ("joinspaces", flag(v)),
+        EditorOption::WrapScan(v) => ("wrapscan", flag(v)),
         EditorOption::WrapMargin(n) => ("wrapmargin", n.to_string()),
         EditorOption::Lisp(v) => ("lisp", flag(v)),
         EditorOption::LispWords(v) => ("lispwords", hex(v.as_bytes())),
@@ -544,6 +545,7 @@ fn decode_mark_option(verb: &str, a: &mut Args<'_>) -> Result<Option<ExCmd>, Com
                         })
                     }),
                     "joinspaces" => flag(value).map(EditorOption::JoinSpaces),
+                    "wrapscan" => flag(value).map(EditorOption::WrapScan),
                     "lisp" => flag(value).map(EditorOption::Lisp),
                     "cindent" => flag(value).map(EditorOption::CIndent),
                     _ => None,

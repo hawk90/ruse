@@ -16,11 +16,19 @@ use crate::{
 pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
     match cmd {
         Command::SearchNext(pat) => {
-            let m = search_fwd(b, pat, cur + 1, st.view.search_options()).unwrap_or(cur);
+            let m = search_fwd(
+                b,
+                pat,
+                cur + 1,
+                st.view.search_options(),
+                st.view.wrapscan(),
+            )
+            .unwrap_or(cur);
             nop(m, st.view.mode)
         }
         Command::SearchPrev(pat) => {
-            let m = search_bwd(b, pat, cur, st.view.search_options()).unwrap_or(cur);
+            let m = search_bwd(b, pat, cur, st.view.search_options(), st.view.wrapscan())
+                .unwrap_or(cur);
             nop(m, st.view.mode)
         }
         // `/pat` / `?pat` as a motion: step to the `count`-th match in the search direction (each step
@@ -71,7 +79,7 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         // The resolved `gd`/`gD` jump: land on the FIRST whole-word match scanning from the TOP of the file
         // (offset 0 — matching nvim v0.12.4's `gd`/`gD`), else keep the cursor. `is_jump` records the leave.
         Command::GotoFirstMatch(pat) => {
-            let m = search_fwd(b, pat, 0, st.view.search_options()).unwrap_or(cur);
+            let m = search_fwd(b, pat, 0, st.view.search_options(), true).unwrap_or(cur);
             nop(m, st.view.mode)
         }
         _ => unreachable!("planner::search plans only its own commands"),
@@ -134,7 +142,9 @@ fn plan_search_char(
     hint: GroupHint,
 ) -> Plan {
     let Some(target) = search_char_landing(st, b, origin, count, pattern, backward, offset) else {
-        return beep(cur, st.view.mode);
+        // `*`/`#` put the cursor on the keyword's start before they search, so one that fails (no other
+        // match before the edge under 'nowrapscan', #1558) leaves it there, an operator with it.
+        return beep(origin, st.view.mode);
     };
     // A `$` match is past the line's last character; outside Visual mode the cursor is put back on that
     // character, also as an operator's end (nvim: `d/$` on "ab cd" from `b` deletes "b c", #737). Visual
@@ -361,19 +371,21 @@ fn search_char_landing(
     lps.sort_unstable();
     lps.dedup();
     let (first, last) = (lps[0], lps[lps.len() - 1]);
-    // One `n` (or `N`): the nearest landing strictly past the cursor's key, wrapping around the buffer.
+    let wrap = st.view.wrapscan();
+    // One `n` (or `N`): the nearest landing strictly past the cursor's key, wrapping around the buffer
+    // under 'wrapscan'; without it a step past the edge fails, and so does the whole count (#1558).
     let step = |pos: usize| -> Option<usize> {
         let k = key(pos);
-        Some(if backward {
+        if backward {
             match lps.partition_point(|&lp| key(lp) < k) {
-                0 => last,
-                i => lps[i - 1],
+                0 => wrap.then_some(last),
+                i => Some(lps[i - 1]),
             }
         } else {
             lps.get(lps.partition_point(|&lp| key(lp) <= k))
                 .copied()
-                .unwrap_or(first)
-        })
+                .or(wrap.then_some(first))
+        }
     };
     walk_count(origin, count, step)
 }
@@ -473,18 +485,19 @@ fn search_line_target(
     starts.dedup();
     let (&first, &last) = (starts.first()?, starts.last()?);
     let key = |s: usize| landing_key(b, s);
+    let wrap = st.view.wrapscan();
     let step = |pos: usize| -> Option<usize> {
-        Some(if backward {
+        if backward {
             match starts.partition_point(|&s| key(s) < pos) {
-                0 => last,
-                i => starts[i - 1],
+                0 => wrap.then_some(last),
+                i => Some(starts[i - 1]),
             }
         } else {
             starts
                 .get(starts.partition_point(|&s| key(s) <= pos))
                 .copied()
-                .unwrap_or(first)
-        })
+                .or(wrap.then_some(first))
+        }
     };
     let pos = walk_count(cur, count, step)?;
     let last_line = crate::pos::raw::line_of(b, b.len());
@@ -503,6 +516,19 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
     match cmd {
         // No previous pattern (#1173): no target.
         Command::Search { pattern, .. } if pattern.is_empty() => None,
+        Command::SearchNext(pat) | Command::SearchPrev(pat) => {
+            let (opts, wrap) = (st.view.search_options(), st.view.wrapscan());
+            let m = if matches!(cmd, Command::SearchNext(_)) {
+                search_fwd(b, pat, cur + 1, opts, wrap)
+            } else {
+                search_bwd(b, pat, cur, opts, wrap)
+            }?;
+            let (l, c) = (
+                crate::pos::raw::line_of(b, m),
+                crate::pos::raw::line_of(b, cur),
+            );
+            Some((l.min(c), l.max(c)))
+        }
         Command::Search {
             count,
             pattern,
@@ -690,38 +716,43 @@ fn search_object_match(
     // Visual the search starts one char past the cursor (`incl`, forward) or before it (`decl`, backward),
     // so a selection that already ends on a match's last char extends to the NEXT match; and with the
     // cursor before the anchor, forward skips the backward half and takes the first match starting after
-    // that next char. Either direction wraps around the document.
-    let start_idx = if backward {
+    // that next char. Either direction wraps around the document under 'wrapscan'; without it a search
+    // that runs off the edge fails, silently as in nvim (#1558).
+    let wrap = st.view.wrapscan();
+    let start_idx: i64 = if backward {
         let from = if visual.is_some() {
             visual_decl(b, cur)
         } else {
             cur
         };
-        spans
-            .iter()
-            .position(|&(s, _)| s > from)
-            .map_or(len - 1, |i| (i + len - 1) % len)
+        match spans.iter().position(|&(s, _)| s > from) {
+            Some(i) => i as i64 - 1,
+            None => len as i64 - 1,
+        }
     } else {
-        match visual {
+        let found = match visual {
             Some(anchor) if cur < anchor => {
                 let from = visual_incl(b, cur);
-                spans.iter().position(|&(s, _)| s > from).unwrap_or(0)
+                spans.iter().position(|&(s, _)| s > from)
             }
             Some(_) => {
                 let from = visual_incl(b, cur);
                 spans
                     .iter()
                     .position(|&(_, e)| motion::prev_grapheme(b, e) >= from)
-                    .unwrap_or(0)
             }
-            None => spans.iter().position(|&(_, e)| e > cur).unwrap_or(0),
-        }
+            None => spans.iter().position(|&(_, e)| e > cur),
+        };
+        found.map_or(len as i64, |i| i as i64)
     };
     // Advance `count-1` further matches in the direction of travel, wrapping around the document.
     let steps = i64::from(count.max(1)) - 1;
     let delta = if backward { -steps } else { steps };
-    let idx = (start_idx as i64 + delta).rem_euclid(len as i64) as usize;
-    Some(spans[idx])
+    let idx = start_idx + delta;
+    if !wrap && !(0..len as i64).contains(&idx) {
+        return None;
+    }
+    Some(spans[idx.rem_euclid(len as i64) as usize])
 }
 
 /// Vim's `incl()` on a byte offset: one char forward, stepping past a line's end onto the next line's start

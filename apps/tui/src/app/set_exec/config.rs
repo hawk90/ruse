@@ -19,6 +19,7 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::FoldOpen => "editor.foldopen",
         Opt::IgnoreCase => "editor.ignorecase",
         Opt::SmartCase => "editor.smartcase",
+        Opt::WrapScan => "editor.wrapscan",
         Opt::HlSearch => "editor.hlsearch",
         Opt::IncSearch => "editor.incsearch",
         Opt::TildeOp => "editor.tildeop",
