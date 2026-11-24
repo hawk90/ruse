@@ -14296,6 +14296,87 @@
       }
     },
     {
+      "name": "r1347_zero_then_gr",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "$0grX",
+      "expect": {
+        "text": [
+          "Xbcdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "r1347_zero_then_r",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "$0rX",
+      "expect": {
+        "text": [
+          "Xbcdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "r1347_count_ten_gr",
+      "lines": [
+        "ab"
+      ],
+      "keys": "10grX",
+      "expect": {
+        "text": [
+          "XXXXXXXXXX"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
       "name": "ctrl_o_x_delete",
       "lines": [
         "hello"

@@ -70,6 +70,22 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn replace_char_with_count_zero_is_planned_as_one() {
+        // #1347: a replayed trace's `replace_char 0 {c}` plans as `1r{c}` instead of underflowing.
+        let st = run("abc", &[Command::ReplaceChar(0, 'z')]);
+        assert_eq!(text(&st), "zbc");
+        assert_eq!(st.cursor().0, 0);
+        let st = run("abc", &[Command::ReplaceChar(0, '\n')]);
+        assert_eq!(
+            text(&st),
+            "\nbc",
+            "a zero count with a line break plans as `r<CR>`"
+        );
+        let st = run("", &[Command::ReplaceChar(0, 'z')]);
+        assert_eq!(text(&st), "", "on an empty line it is the `r` no-op");
+    }
+
+    #[test]
     fn replace_char_with_newline_splits_the_line() {
         // `r<CR>` replaces the char with a line break (Vim splits the line), cursor on the new line's start.
         // Verified vs nvim v0.12.4 (fixture replace_char_with_newline).

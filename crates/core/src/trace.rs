@@ -300,6 +300,8 @@ mod tests {
         prop_oneof![
             Just(String::new()),
             Just("0".to_string()),
+            // A zero count with a char (`virtual_replace_char 0 120`, #1347).
+            Just("0 120".to_string()),
             Just("-1".to_string()),
             Just("4294967295".to_string()),
             Just("18446744073709551616".to_string()),
@@ -342,6 +344,51 @@ mod tests {
         }
         assert!(slow.is_empty(), "slow replays: {slow:#?}");
         assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    }
+
+    /// #1347: a count of 0 never comes from a key (`0` is a motion), but a hand-edited trace can carry one
+    /// (`virtual_replace_char 0 120` panicked on a subtract overflow). Every verb with a zero count, alone
+    /// or paired with a char or a motion, replays on a few small documents without a panic.
+    #[test]
+    fn zero_counts_replay_without_a_panic() {
+        let mut args: Vec<String> = ["0", "0 0", "0 120", "0 10", "0 44032"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        for m in motions() {
+            for pre in ["", "left ", "right "] {
+                args.push(format!("{pre}0 {m}"));
+                args.push(format!("{pre}{m} 0"));
+            }
+        }
+        for v in verbs() {
+            for a in &args {
+                let line = format!("{v} {a}");
+                if let Ok(c) = Command::from_line(&line) {
+                    for initial in [&b"a\n"[..], b"", b"\tX\n", b"ab\nc d"] {
+                        // A panic here fails the test; the planner's panic location names the culprit.
+                        let _ = Trace::record(initial, vec![c.clone()]).replay(initial);
+                    }
+                }
+            }
+        }
+    }
+
+    /// #1347: the issue's trace line decodes to a zero count and replays as `1grx`.
+    #[test]
+    fn a_zero_count_virtual_replace_line_replays_as_count_one() {
+        let initial = b"a\n";
+        assert_eq!(
+            Command::from_line("virtual_replace_char 0 120"),
+            Ok(Command::VirtualReplaceChar(0, 'x'))
+        );
+        let text = format!(
+            "# ruse-trace v1 doc_hash={:016x}\nvirtual_replace_char 0 120\n",
+            doc_hash(initial)
+        );
+        let st = Trace::from_text(&text).unwrap().replay(initial).unwrap();
+        assert_eq!(st.bytes(), b"x\n");
+        assert_eq!(st.cursor().0, 0);
     }
 
     /// The largest document a fuzzed replay goes on editing. A hostile count makes one put grow the buffer
