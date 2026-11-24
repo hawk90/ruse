@@ -64,7 +64,8 @@ fn op_to_line(prefix: &str, line: u32) -> Feed {
             Mode::Normal,
         );
     }
-    e.screen_op(line)
+    let count = e.screen_count();
+    e.screen_op(ScreenMotion::ViewHigh, count, line)
 }
 
 /// The OPERATOR forms of `H`/`M`/`L` (`:help H`): any pending operator composes with the viewport-resolved

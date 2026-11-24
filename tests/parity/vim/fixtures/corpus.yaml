@@ -145668,6 +145668,2812 @@
       }
     },
     {
+      "name": "hmldot_dL_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "dL.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\nline 46\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_dH_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "50GdH.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          36,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 36\nline 37\nline 38\nline 51\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 33
+      }
+    },
+    {
+      "name": "hmldot_dM_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "dM.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_cL_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "cLx<Esc>.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "x",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_3dL_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "3dL.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_dL_count_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "dL2.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_3d2H_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "50G3d2H.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          44,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 51\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 39
+      }
+    },
+    {
+      "name": "hmldot_dL_scrolled_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "dL5<C-e>.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          9,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\nline 46\nline 47\nline 48\nline 49\nline 50\nline 51\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 6
+      }
+    },
+    {
+      "name": "hmldot_gUL_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "gUL.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "LINE 1",
+          "LINE 2",
+          "LINE 3",
+          "LINE 4",
+          "LINE 5",
+          "LINE 6",
+          "LINE 7",
+          "LINE 8",
+          "LINE 9",
+          "LINE 10",
+          "LINE 11",
+          "LINE 12",
+          "LINE 13",
+          "LINE 14",
+          "LINE 15",
+          "LINE 16",
+          "LINE 17",
+          "LINE 18",
+          "LINE 19",
+          "LINE 20",
+          "LINE 21",
+          "LINE 22",
+          "LINE 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_yL_dot_repeats_x",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "xyL.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "ne 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "i",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ine 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_bare_L_dot_repeats_x",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "xL.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "ine 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "ine 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          20,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "l",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_dL_dot_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "dL..",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 47\nline 48\nline 49\nline 50\nline 51\nline 52\nline 53\nline 54\nline 55\nline 56\nline 57\nline 58\nline 59\nline 60\nline 61\nline 62\nline 63\nline 64\nline 65\nline 66\nline 67\nline 68\nline 69\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_dM_dot_moved",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "dM20G.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "line 46",
+          "line 47",
+          "line 48",
+          "line 49",
+          "line 50",
+          "line 51",
+          "line 52",
+          "line 53",
+          "line 54",
+          "line 55",
+          "line 56",
+          "line 57",
+          "line 58",
+          "line 59",
+          "line 60",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          12,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 1
+      }
+    },
+    {
+      "name": "hmldot_cH_dot",
+      "lines": [
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+        "line 11",
+        "line 12",
+        "line 13",
+        "line 14",
+        "line 15",
+        "line 16",
+        "line 17",
+        "line 18",
+        "line 19",
+        "line 20",
+        "line 21",
+        "line 22",
+        "line 23",
+        "line 24",
+        "line 25",
+        "line 26",
+        "line 27",
+        "line 28",
+        "line 29",
+        "line 30",
+        "line 31",
+        "line 32",
+        "line 33",
+        "line 34",
+        "line 35",
+        "line 36",
+        "line 37",
+        "line 38",
+        "line 39",
+        "line 40",
+        "line 41",
+        "line 42",
+        "line 43",
+        "line 44",
+        "line 45",
+        "line 46",
+        "line 47",
+        "line 48",
+        "line 49",
+        "line 50",
+        "line 51",
+        "line 52",
+        "line 53",
+        "line 54",
+        "line 55",
+        "line 56",
+        "line 57",
+        "line 58",
+        "line 59",
+        "line 60",
+        "line 61",
+        "line 62",
+        "line 63",
+        "line 64",
+        "line 65",
+        "line 66",
+        "line 67",
+        "line 68",
+        "line 69",
+        "line 70",
+        "line 71",
+        "line 72",
+        "line 73",
+        "line 74",
+        "line 75",
+        "line 76",
+        "line 77",
+        "line 78",
+        "line 79",
+        "line 80",
+        "line 81",
+        "line 82",
+        "line 83",
+        "line 84",
+        "line 85",
+        "line 86",
+        "line 87",
+        "line 88",
+        "line 89",
+        "line 90",
+        "line 91",
+        "line 92",
+        "line 93",
+        "line 94",
+        "line 95",
+        "line 96",
+        "line 97",
+        "line 98",
+        "line 99",
+        "line 100"
+      ],
+      "keys": "60GcHy<Esc>.",
+      "setup": "set laststatus=0 scrolloff=3",
+      "expect": {
+        "text": [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13",
+          "line 14",
+          "line 15",
+          "line 16",
+          "line 17",
+          "line 18",
+          "line 19",
+          "line 20",
+          "line 21",
+          "line 22",
+          "line 23",
+          "line 24",
+          "line 25",
+          "line 26",
+          "line 27",
+          "line 28",
+          "line 29",
+          "line 30",
+          "line 31",
+          "line 32",
+          "line 33",
+          "line 34",
+          "line 35",
+          "line 36",
+          "line 37",
+          "line 38",
+          "line 39",
+          "line 40",
+          "line 41",
+          "line 42",
+          "line 43",
+          "line 44",
+          "line 45",
+          "y",
+          "line 61",
+          "line 62",
+          "line 63",
+          "line 64",
+          "line 65",
+          "line 66",
+          "line 67",
+          "line 68",
+          "line 69",
+          "line 70",
+          "line 71",
+          "line 72",
+          "line 73",
+          "line 74",
+          "line 75",
+          "line 76",
+          "line 77",
+          "line 78",
+          "line 79",
+          "line 80",
+          "line 81",
+          "line 82",
+          "line 83",
+          "line 84",
+          "line 85",
+          "line 86",
+          "line 87",
+          "line 88",
+          "line 89",
+          "line 90",
+          "line 91",
+          "line 92",
+          "line 93",
+          "line 94",
+          "line 95",
+          "line 96",
+          "line 97",
+          "line 98",
+          "line 99",
+          "line 100"
+        ],
+        "cursor": [
+          46,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line 46\nline 47\nline 48\ny\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "topline": 43
+      }
+    },
+    {
       "name": "ai_o_copies_indent",
       "lines": [
         "  foo"
@@ -184162,6 +186968,1152 @@
           "type": ""
         },
         "emsg": "E15",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_single_char_inner",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a>x</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_wider_inner",
+      "lines": [
+        "<a>xy</a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "xy",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_widens",
+      "lines": [
+        "<a>xy</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a>xy</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_nested_single",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_nested",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vititit_past_top",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvitititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vat_nested",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvatd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vatat_nested",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvatatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vatatat_past_top",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvatatatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitat_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvitatd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vatit_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvatitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>xy</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_v2it_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxv2itd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit2it_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvit2itd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_v3it_too_deep",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxv3itd",
+      "expect": {
+        "text": [
+          "<a><b></b></a>"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_past_inner_end",
+      "lines": [
+        "<a><b>xy</b> z</a>"
+      ],
+      "keys": "fxvfzitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b> z",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_backward",
+      "lines": [
+        "<a><b>xy</b> z</a>"
+      ],
+      "keys": "fzvFxitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b> z",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_o_swapped",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvitoitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_o_swapped_cursor",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvloit<Esc>",
+      "expect": {
+        "text": [
+          "<a><b>xy</b></a>"
+        ],
+        "cursor": [
+          1,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_reversed_area_equals_inner",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fyvhitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_equals_inner",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvlitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_fails_unchanged",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "fxvllitd",
+      "expect": {
+        "text": [
+          "<a>a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x</",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_empty_on_open",
+      "lines": [
+        "<a></a>"
+      ],
+      "keys": "vitd",
+      "expect": {
+        "text": [
+          "<a>/a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_empty_on_close_lt",
+      "lines": [
+        "<a></a>"
+      ],
+      "keys": "f/hvitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_empty_on_close",
+      "lines": [
+        "<a></a>"
+      ],
+      "keys": "f/vitd",
+      "expect": {
+        "text": [
+          "<a>/a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_open_lt",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "vitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_open_gt",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "f>vitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_close_slash",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "f/vitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_close_lt",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "f/hvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_close_lt_wide",
+      "lines": [
+        "<a>xy</a>"
+      ],
+      "keys": "f/hvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "xy",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvitd",
+      "expect": {
+        "text": [
+          "<div></div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "\nhello\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<div>\nhello\n</div>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vat_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<div>\nhello\n</div>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_multiline_cursor",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvit<Esc>",
+      "expect": {
+        "text": [
+          "<div>",
+          "hello",
+          "</div>"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_linewise_vit_turns_charwise",
+      "lines": [
+        "<div>",
+        "x",
+        "</div>"
+      ],
+      "keys": "jVitd",
+      "expect": {
+        "text": [
+          "<div></div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "\nx\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_indent",
+      "lines": [
+        "  <a>x</a>"
+      ],
+      "keys": "vitd",
+      "expect": {
+        "text": [
+          "  <a></a>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_case_insensitive",
+      "lines": [
+        "<A>x</a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<A>x</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_attrs",
+      "lines": [
+        "<a href=\"q\">xy</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a href=\"q\">xy</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_unclosed_outer",
+      "lines": [
+        "<p><a>xy</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          "<p>"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "<a>xy</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vat_selfclose_inside",
+      "lines": [
+        "<a>x<br/>y</a>"
+      ],
+      "keys": "fyvatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a>x<br/>y</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_nested_same_name",
+      "lines": [
+        "<a><a>x</a>y</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<a>x</a>y",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_no_tag",
+      "lines": [
+        "plain"
+      ],
+      "keys": "lvitd",
+      "expect": {
+        "text": [
+          "pain"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "l",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
         "failed": true,
         "mode": "n"
       }

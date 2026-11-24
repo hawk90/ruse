@@ -267,6 +267,81 @@ fn a_backward_inclusive_screen_motion_takes_the_cursor_char() {
 }
 
 #[test]
+fn dot_after_an_operator_over_h_m_l_resolves_the_line_again() {
+    // #1577: the frontend finishes `H` / `M` / `L` through `screen_op`, outside `feed`; the change it
+    // finishes is recorded with the viewport motion, so `.` hands the motion back to resolve the line in
+    // the window as it is then (nvim's redo buffer holds `dL`, not the lines it deleted).
+    use crate::input::ScreenMotion::*;
+    let mut e = InputEngine::new();
+    for c in "3d".chars() {
+        e.feed(k(c), Mode::Normal);
+    }
+    let count = e.screen_count();
+    assert_eq!(count, 3);
+    assert_eq!(
+        e.screen_op(ViewLow, count, 21),
+        Feed::Cmd(Command::Delete(21, Motion::GotoLine))
+    );
+    assert!(!e.has_op());
+    assert_eq!(
+        e.feed(k('.'), Mode::Normal),
+        Feed::ScreenMotion {
+            motion: ViewLow,
+            count: 3
+        }
+    );
+    assert!(e.has_op(), "`.` resolves the line as an operator's");
+    assert_eq!(
+        e.screen_op(ViewLow, 3, 19),
+        Feed::Replay(vec![Command::Delete(19, Motion::GotoLine)])
+    );
+    // `2.` takes the count.
+    e.feed(k('2'), Mode::Normal);
+    assert_eq!(
+        e.feed(k('.'), Mode::Normal),
+        Feed::ScreenMotion {
+            motion: ViewLow,
+            count: 2
+        }
+    );
+    e.screen_op(ViewLow, 2, 20);
+
+    // A change over one replays its typed text; a bare `M` is no change, so `.` still repeats `x`.
+    let mut e = InputEngine::new();
+    e.feed(k('c'), Mode::Normal);
+    assert_eq!(
+        e.screen_op(ViewHigh, 1, 1),
+        Feed::Cmd(Command::Change(1, Motion::GotoLine))
+    );
+    e.feed(k('y'), Mode::Insert);
+    e.feed(
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+        Mode::Insert,
+    );
+    assert_eq!(
+        e.feed(k('.'), Mode::Normal),
+        Feed::ScreenMotion {
+            motion: ViewHigh,
+            count: 1
+        }
+    );
+    assert_eq!(
+        e.screen_op(ViewHigh, 1, 40),
+        Feed::Replay(vec![
+            Command::Change(40, Motion::GotoLine),
+            Command::InsertChar('y'),
+            Command::EnterNormal,
+        ])
+    );
+    e.feed(k('x'), Mode::Normal);
+    assert_eq!(
+        e.screen_op(ViewMiddle, 0, 12),
+        Feed::Cmd(Command::Move(12, Motion::GotoLine))
+    );
+    assert!(matches!(e.feed(k('.'), Mode::Normal), Feed::Replay(_)));
+}
+
+#[test]
 fn plus_minus_underscore_line_motions() {
     // `+` / `-` / `_` — first-non-blank line motions, operator-aware and linewise.
     assert_eq!(

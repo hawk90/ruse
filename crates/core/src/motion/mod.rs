@@ -41,6 +41,7 @@ use paragraph::{
     paragraph_fails, paragraph_landing, paragraph_span, paragraph_target, section_target,
 };
 use tag::tag_span;
+pub(crate) use tag::tag_visual;
 use word::{
     emacs_word_back, emacs_word_fwd, next_word_start, prev_word_end, prev_word_start, word_end_in,
     word_fwd,

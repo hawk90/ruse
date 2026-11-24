@@ -496,7 +496,8 @@ use ex_helpers::{
 };
 pub(crate) use scroll::ScrollValid;
 use scroll::{
-    insert_page_key, page_key, resolve_screen_motion, run_scroll, scrolloff_for, ScrollKey,
+    insert_page_key, page_key, resolve_screen_motion, run_scroll, scrolloff_for, viewport_line,
+    ScrollKey,
 };
 
 #[cfg(test)]
