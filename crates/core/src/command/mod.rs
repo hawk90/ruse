@@ -306,9 +306,9 @@ pub enum Command {
     InsertRegister(char),
     /// `i_CTRL-R=` — insert the RESULT of evaluating an expression at the caret, staying in Insert (Vim's
     /// expression register; `:help i_CTRL-R`). The frontend collects the expression string via a prompt and
-    /// passes it here; the editor evaluates it with [`crate::expr::eval_or_empty`] (a MINIMAL-HONEST
+    /// passes it here; the editor evaluates it with [`crate::expr::eval`] (a MINIMAL-HONEST
     /// arithmetic/string calculator, NOT full Vimscript) and inserts the formatted result. A malformed or
-    /// unsupported expression evaluates to an EMPTY string and inserts nothing (Vim's degrade). The dot-repeat
+    /// unsupported expression inserts nothing and shows nvim's error (`E15`, …; #1570). The dot-repeat
     /// recorder does not capture the expression string, so `.` does not replay the insert (a documented
     /// divergence).
     InsertEval(String),
@@ -629,10 +629,10 @@ pub enum Command {
     SetRegister(Option<char>),
     /// `"=<expr><CR>` — set the expression register `"=` for the FOLLOWING paste (`:help quote=`). The
     /// frontend collects the expression string via a prompt and passes it here; the editor evaluates it with
-    /// [`crate::expr::eval_or_empty`] (a MINIMAL-HONEST arithmetic/string calculator, NOT full Vimscript),
+    /// [`crate::expr::eval`] (a MINIMAL-HONEST arithmetic/string calculator, NOT full Vimscript),
     /// stores the formatted result in the `"=` slot, and arms `=` as the pending register so the next `p`/`P`
-    /// pastes it. A malformed/unsupported expression stores an EMPTY result, so that paste does nothing
-    /// (Vim's degrade). Like `SetRegister` it makes no edit and is not itself a dot-repeatable change.
+    /// pastes it. A malformed/unsupported expression stores an EMPTY result, so that paste does nothing,
+    /// and shows nvim's error (#1570). Like `SetRegister` it makes no edit and is not a dot-repeatable change.
     SetExprRegister(String),
     // visual mode: enter a selection (charwise `v` / linewise `V` / blockwise `CTRL-V`); operate on it
     EnterVisual {

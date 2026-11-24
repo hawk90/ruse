@@ -56,15 +56,15 @@ impl Session {
 
     /// `:[line]put[!] ={expr}` (#1342): evaluate `expr` (an empty one is the last expression, nvim's
     /// `expr_line`), store the result in the `"=` register and put it as [`Session::ex_put`] puts a
-    /// register. An expression that does not evaluate puts nothing: `E15` with the cursor on the
-    /// addressed line, as nvim's `ex_put` moves it there before it reads the register. With no expression
-    /// at all (an empty one, none typed before) nothing is put and nothing is said.
+    /// register. An expression that does not evaluate puts nothing: nvim's error for it (`E15`, `E121`,
+    /// `E488`, … — [`ruse_core::ExprError::message`], #1570) with the cursor on the addressed line, as
+    /// nvim's `ex_put` moves it there before it reads the register. With no expression at all (an empty
+    /// one, none typed before) nothing is put and nothing is said.
     pub(super) fn ex_put_expr(&mut self, addr: LineAddr, expr: String, above: bool) {
         let expr = self.engine.take_expr_line(expr);
         let ed = &mut self.ed;
-        // Empty here: no expression was ever typed, and nvim puts nothing without a message.
-        let failed = match (!expr.is_empty()).then(|| ruse_core::eval_expr(&expr)) {
-            Some(Ok(bytes)) => {
+        let error = match ruse_core::eval_expr(&expr) {
+            Ok(bytes) => {
                 let value = ruse_core::Register::expr_result(bytes);
                 let name = Some('=');
                 run_ex(
@@ -74,15 +74,14 @@ impl Session {
                 );
                 return self.ex_put(addr, name, above);
             }
-            Some(Err(_)) => true,
-            None => false,
+            // `None` for an empty expression: none was ever typed, and nvim says nothing.
+            Err(e) => e.message(),
         };
         if let Some(line) = put_target(ed, addr) {
             goto_line(line.max(1), ed);
         }
-        if failed {
-            ed.status
-                .error(format!("E15: Invalid expression: \"{expr}\""));
+        if let Some(msg) = error {
+            ed.status.error(msg);
         }
     }
 
