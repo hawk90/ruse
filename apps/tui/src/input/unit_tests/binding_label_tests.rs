@@ -125,6 +125,7 @@ fn screen_motions_compose_with_operators() {
             count: 2,
             motion: Motion::GotoLine,
             case: WordCase::Upcase,
+            wise: None,
         })
     );
     assert_eq!(
@@ -133,6 +134,7 @@ fn screen_motions_compose_with_operators() {
             count: 2,
             motion: Motion::GotoLine,
             case: WordCase::Downcase,
+            wise: None,
         })
     );
     assert_eq!(
@@ -141,6 +143,7 @@ fn screen_motions_compose_with_operators() {
             count: 6,
             motion: Motion::GotoLine,
             case: WordCase::Toggle,
+            wise: None,
         })
     );
 }

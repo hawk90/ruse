@@ -130,7 +130,6 @@ vb_dollar_gv # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a li
 vb_dollar_p # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 obs_marks_set_and_moved # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 
-sdot_dollar_gUgk # #1595: the case operators take no forced wise, so the inclusive backward `gUgk` after `$` misses the cursor char
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
 # is unchanged by #1307.

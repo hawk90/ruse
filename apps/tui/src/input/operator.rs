@@ -166,11 +166,13 @@ impl InputEngine {
                 count: total,
                 motion: m,
             },
-            // `gu`/`gU`/`g~`/`g?` recase the operator span (no forced-wise / `cw`->`ce` rewrites apply).
+            // `gu`/`gU`/`g~`/`g?` recase the operator span, under a forced wise when one was typed
+            // (`gUvj`, #1595); no `cw`->`ce` rewrite applies.
             Some(OpClass::Case(case)) => Feed::Cmd(Command::CaseMotion {
                 count: total,
                 motion: m,
                 case,
+                wise: self.normal.forced_wise,
             }),
             // `>`/`<`, `=`, `gq`/`gw` over a motion — the planner works on the motion's LINES.
             Some(OpClass::Shift { left }) => Feed::Cmd(Command::ShiftMotion {
@@ -286,6 +288,7 @@ impl InputEngine {
                 count: n,
                 motion: line,
                 case,
+                wise: None,
             }),
             OpClass::Shift { left: false } => Feed::Cmd(Command::ShiftRight(n)),
             OpClass::Shift { left: true } => Feed::Cmd(Command::ShiftLeft(n)),
