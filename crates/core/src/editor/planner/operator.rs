@@ -4,6 +4,7 @@
 //! Split out of [`super::plan_cmd`] (#1349); [`plan`] routes each operator family to its own planner
 //! (#1479), and the arms are as they were there.
 
+use super::op_marks::start_col_at;
 use super::{
     apply_op, beep, block_op, block_recase, delete_quirk, nop, plan_comment, plan_format_lines,
     plan_reindent, plan_set_indents, plan_shift,
@@ -59,7 +60,9 @@ fn plan_span_op(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &C
                 // An object that selects nothing (`di(` on `(\n)`) still leaves the cursor at its start.
                 return nop(sp.s, st.view.mode);
             }
-            let landing = view_landing(st, b, cur, *m, *count, false);
+            // `dd` keeps the wanted column where it ends (nvim's `nv_lineop`: `beginline(BL_SOL | BL_FIX)`
+            // for a delete), which its change marks take (#1302).
+            let landing = view_landing(st, b, cur, *m, *count, *m == Motion::Line);
             apply_op(st, b, cur, MarkOp::Delete, sp, landing, hint)
         }
         Command::Change(count, m) => plan_change(st, b, cur, *count, m, hint),
@@ -145,8 +148,9 @@ fn plan_line_op(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &C
         {
             beep(cur, st.view.mode)
         }
-        Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
-        Command::ShiftLeft(count) => plan_shift(st, cur, *count, false, hint),
+        // `'[` is where the cursor was (nvim's `oap->start`, #1302).
+        Command::ShiftRight(count) => start_col_at(plan_shift(st, cur, *count, true, hint), b, cur),
+        Command::ShiftLeft(count) => start_col_at(plan_shift(st, cur, *count, false, hint), b, cur),
         Command::ShiftMotion {
             left,
             count,
@@ -159,7 +163,10 @@ fn plan_line_op(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &C
             } else {
                 let (first_line, last_line) = touched_lines(b, s, e);
                 let lines = (last_line - first_line + 1) as u32;
-                plan_shift(st, line_start(b, s), lines, !*left, hint)
+                // `'[` is the earlier of the cursor and the motion's end (nvim's `oap->start`, #1302).
+                let landing = view_landing(st, b, cur, *motion, *count, false);
+                let p = plan_shift(st, line_start(b, s), lines, !*left, hint);
+                start_col_at(p, b, cur.min(landing))
             }
         }
         Command::Reindent { count, motion } => {
@@ -463,7 +470,7 @@ fn plan_format(
         return nop(cur, st.view.mode);
     }
     // Through the last touched line (exclusive of its trailing newline).
-    plan_format_lines(
+    let p = plan_format_lines(
         st,
         cur,
         line_start(b, s),
@@ -471,5 +478,11 @@ fn plan_format(
         keep_cursor,
         exclusive_end_adjusted(b, cur, motion, count),
         hint,
+    );
+    // `'[` is the earlier of the cursor and the motion's end (nvim's `oap->start`, #1302).
+    start_col_at(
+        p,
+        b,
+        cur.min(view_landing(st, b, cur, motion, count, false)),
     )
 }

@@ -215,6 +215,7 @@ impl FmtBuf {
                 let (nl, nc) = self.cur;
                 let pad = si - leader_len;
                 self.lines[nl].splice(nc..nc, std::iter::repeat_n(b' ', pad));
+                self.last_change = Some((nl, nc));
                 shift_col(&mut self.saved, nl, nc, pad as isize);
                 self.cur.1 += pad;
             } else {

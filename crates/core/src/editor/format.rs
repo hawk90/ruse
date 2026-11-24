@@ -339,6 +339,10 @@ pub(crate) struct FmtBuf {
     pub(crate) saved: Option<(usize, usize)>,
     pub(crate) before: Option<Vec<u8>>,
     pub(crate) after: Option<Vec<u8>>,
+    /// Where nvim's last `changed_*` call of the formatting put `'.`, as `(line, byte)` (#1302): a join
+    /// leaves it at column 0 of the line after the joined one (its `del_lines`), which may be past `lines`;
+    /// a break at the column the line was split at; a changed indent at column 0. `None` until a change.
+    pub(crate) last_change: Option<(usize, usize)>,
 }
 
 /// One step of a cluster walk over `line`: the byte after the cluster at `i` and its cells at `v`.
@@ -429,6 +433,7 @@ impl FmtBuf {
         }
         let new_len = new.len();
         self.lines[l].splice(..old_len, new);
+        self.last_change = Some((l, 0));
         let fix = |p: &mut (usize, usize)| {
             if p.0 == l {
                 if p.1 >= old_len {
@@ -447,6 +452,7 @@ impl FmtBuf {
     /// Delete `n` bytes at the start of line `l` (a comment leader `gq` drops before a join).
     fn del_start(&mut self, l: usize, n: usize) {
         self.lines[l].drain(..n);
+        self.last_change = Some((l, 0));
         let fix = |p: &mut (usize, usize)| {
             if p.0 == l {
                 p.1 = p.1.saturating_sub(n);
@@ -501,6 +507,7 @@ impl FmtBuf {
             fix(s);
         }
         self.cur = (l, base);
+        self.last_change = Some((l + 1, 0));
     }
 
     /// Split the cursor line at the cursor for an auto-wrap break (nvim's `open_line(FORWARD,
@@ -575,6 +582,8 @@ impl FmtBuf {
         new_line.extend_from_slice(extra);
         self.lines[l].truncate(col);
         self.lines.insert(l + 1, new_line);
+        // `open_line`'s `changed_lines(lnum, col, …)` at the break.
+        self.last_change = Some((l, col));
         let moved_from = col + skip;
         let fix = |p: &mut (usize, usize)| {
             if p.0 == l && p.1 >= moved_from {

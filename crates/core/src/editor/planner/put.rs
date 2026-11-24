@@ -6,7 +6,7 @@
 use super::{captured, eval_expr_reporting, indent_cols, nop, one, MAX_PUT_BYTES};
 use crate::editor::{
     at_vcol, block_geom, cluster_cells, line_cells, selection_range, text_cells, vcols_at, Action,
-    RegWrite, MAXCOL,
+    MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
 };
 use crate::motion::{self, line_end, line_start, next_boundary, next_grapheme, prev_boundary};
 use crate::{
@@ -630,7 +630,19 @@ pub(super) fn paste(
             .iter()
             .take_while(|&&c| c == b' ' || c == b'\t')
             .count();
-        if after {
+        // nvim's linewise `do_put` marks (#1302): `'[` and `'.` at column 0 of the first put line, `']` on
+        // the first byte of the last put line's last char (column 0 on an empty one).
+        let first = crate::pos::raw::line_of(b, cur) + usize::from(after);
+        let last = first + text.iter().filter(|&&c| c == b'\n').count().max(1) - 1;
+        let marks = |p: Plan| Plan {
+            op_marks: Some(OpMarks {
+                start: MarkAt::new(first, MarkCol::Byte(0)),
+                end: MarkAt::new(last, MarkCol::LastByte),
+                dot: MarkAt::new(first, MarkCol::Byte(0)),
+            }),
+            ..p
+        };
+        let plan = if after {
             let le = line_end(b, cur);
             if le < b.len() {
                 // Insert after the current line's newline: the stored "...\n" becomes a fresh line below.
@@ -651,7 +663,8 @@ pub(super) fn paste(
         } else {
             let ls = line_start(b, cur);
             mk(ls, text, if move_after { ls + tlen } else { ls + fnb })
-        }
+        };
+        marks(plan)
     } else {
         // `{count}p` inserts that many copies inline. Vim's charwise-paste cursor rule splits on whether the
         // pasted text spans lines: single-line content leaves the cursor on the LAST pasted byte, but content

@@ -4,7 +4,7 @@
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
 use super::{edit, eval_expr_reporting, indent_cols, nop, one, replace_selection_with};
-use crate::editor::{MarkWrite, RegWrite};
+use crate::editor::{MarkAt, MarkCol, MarkWrite, OpMarks, RegWrite};
 use crate::motion::{
     self, at_col, line_end, line_start, next_boundary, next_grapheme, prev_boundary, prev_grapheme,
 };
@@ -476,12 +476,26 @@ fn enter_normal(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) -> Plan
                 cut -= 1;
             }
             if cur == le && cut < le {
-                return edit(
-                    one(Edit::delete(BytePos(cut), le - cut)),
-                    cut,
-                    Mode::Normal,
-                    hint,
-                );
+                // The session's change marks end where the blanks went: nvim's `'[` and `']` are on the
+                // insert's start and end as `stop_insert` left them (#1302), not on the old caret.
+                let at = |p: usize| {
+                    let (line, col) = super::op_marks::line_col(b, p);
+                    MarkAt::new(line, MarkCol::Byte(col))
+                };
+                let start = st.view.insert_start.map_or(cut, |s| s.min(cut));
+                return Plan {
+                    op_marks: Some(OpMarks {
+                        start: at(start),
+                        end: at(cut),
+                        dot: at(cut),
+                    }),
+                    ..edit(
+                        one(Edit::delete(BytePos(cut), le - cut)),
+                        cut,
+                        Mode::Normal,
+                        hint,
+                    )
+                };
             }
         }
     }
