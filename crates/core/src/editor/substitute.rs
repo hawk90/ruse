@@ -442,7 +442,10 @@ impl EditorState {
             return Ok(self.substitute_join(range));
         }
         let subs = self.substitute_preview(range, pattern, replacement, flags)?;
-        Ok(self.apply_substitutions(&subs))
+        let bytes = self.doc.bytes();
+        let cursor_line = crate::pos::raw::line_of(bytes, self.view.cursor);
+        let lines = resolve_line_range(range, &line_spans(bytes), cursor_line);
+        Ok(self.apply_substitutions_over(&subs, Some(lines)))
     }
 
     /// `:[range]s/\n//` (with no flag but `g`), which Vim runs as a join (`sub_joining_lines`, nvim
@@ -471,10 +474,13 @@ impl EditorState {
             .map(|li| Edit::delete(BytePos(lines[li].1), 1))
             .collect();
         let cursor = lines[first + seams].0 - seams;
+        let first_len = lines[first].1 - lines[first].0;
         let list = EditList::new(edits).expect("line breaks are disjoint and ordered");
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, None)
             .expect("join substitute applies cleanly");
         self.view.last_was_edit = true;
+        self.set_join_marks(first, first_len, Some(group));
         self.view.cursor = cursor.min(self.doc.bytes().len());
         self.settle_offsets();
         SubOutcome {
@@ -564,6 +570,16 @@ impl EditorState {
     /// cursor to the start of the last changed line (Vim). The subs must be disjoint and in document
     /// order (as [`EditorState::substitute_preview`] returns them, or an accepted subset of it).
     pub fn apply_substitutions(&mut self, subs: &[Substitution]) -> SubOutcome {
+        self.apply_substitutions_over(subs, None)
+    }
+
+    /// [`EditorState::apply_substitutions`] for a `:s` over the 0-based lines `range`, which bound the
+    /// `'[`/`']` marks it leaves (`None`: the lines of the substitutions).
+    pub(super) fn apply_substitutions_over(
+        &mut self,
+        subs: &[Substitution],
+        range: Option<(usize, usize)>,
+    ) -> SubOutcome {
         if subs.is_empty() {
             return SubOutcome {
                 replacements: 0,
@@ -590,9 +606,12 @@ impl EditorState {
         });
         // Disjoint + ordered by construction; `new` re-validates (a bad accepted set is a caller bug).
         let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
+        let old_lines = line_spans(self.doc.bytes());
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, None)
             .expect("substitute transaction applies cleanly");
         self.view.last_was_edit = true;
+        self.set_substitute_marks(subs, &old_lines, range, group);
         if let Some(end) = last_end {
             // Vim: the line the last replacement ends on (a `\r` in it moves the cursor down with the new
             // line), at its first non-blank (`beginline(BL_WHITE | BL_FIX)`).
@@ -610,5 +629,48 @@ impl EditorState {
             replacements,
             lines: lines_seen.len(),
         }
+    }
+}
+
+impl EditorState {
+    /// The change marks a `:s` that substituted `subs` leaves (nvim's `do_sub`, #1303), the lines of the
+    /// buffer before it being `old_lines`: `'[` at the start of the range's first line and `']` at the
+    /// start of its last, where they are now (a `\r` adds lines, a matched newline joins them), and `'.`
+    /// at the start of the first line substituted in the range. `range` is `None` for the lines of `subs`.
+    fn set_substitute_marks(
+        &mut self,
+        subs: &[Substitution],
+        old_lines: &[(usize, usize)],
+        range: Option<(usize, usize)>,
+        group_before: u64,
+    ) {
+        let (Some(head), Some(tail)) = (subs.first(), subs.last()) else {
+            return;
+        };
+        let (first, last) = range.unwrap_or((head.line, tail.line));
+        // An offset of the old buffer where it is now: moved by the length changes of the substitutions
+        // before it (and of those that begin at it, when `at_end`), or at the end of the replacement of
+        // one it is inside.
+        let map = |off: usize, at_end: bool| {
+            let mut delta = 0isize;
+            for s in subs {
+                if s.start.0 > off || (s.start.0 == off && !at_end) {
+                    break;
+                }
+                let new_start = (s.start.0 as isize + delta) as usize;
+                if s.end.0 > off {
+                    return new_start + s.replacement.len();
+                }
+                delta += s.replacement.len() as isize - (s.end.0 - s.start.0) as isize;
+            }
+            (off as isize + delta) as usize
+        };
+        let dot_sub = subs.iter().find(|s| s.line >= first).unwrap_or(head);
+        let b = self.doc.bytes();
+        let line_at = |off: usize| crate::motion::line_start(b, off.min(b.len()));
+        let start = line_at(map(old_lines[first.min(old_lines.len() - 1)].0, false));
+        let end = line_at(map(old_lines[last.min(old_lines.len() - 1)].1, true));
+        let dot = line_at(map(dot_sub.start.0, false));
+        self.set_ex_marks((start, end), dot, Some(group_before));
     }
 }

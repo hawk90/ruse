@@ -177,12 +177,16 @@ impl EditorState {
                 .delete(None, Register::linewise(bytes[ls..le].to_vec()));
         }
         let list = EditList::new(edits).expect("whole-line deletes are disjoint and ordered");
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, None)
             .expect("global-delete applies cleanly");
         self.view.last_was_edit = true;
         // Like Vim, the cursor lands on the line that followed the last deleted one (the last line if
         // that was the end), at its first non-blank.
         let last = marked[marked.len() - 1] + 1 - marked.len();
+        // The last `:d` sets the change marks: all three on that line, past the end when it was the end.
+        let at = self.line_pos(last);
+        self.set_ex_marks((at, at), at, Some(group));
         let nb = self.doc.bytes();
         let line_start = crate::pos::raw::nth_line_start(nb, last).min(nb.len());
         let line_start = if line_start == nb.len() && nb.ends_with(b"\n") {
@@ -232,6 +236,8 @@ impl EditorState {
                 &mut subs,
             );
         }
-        Ok(self.apply_substitutions(&subs).lines)
+        // The last `:s` that substituted sets the change marks: its line is the range.
+        let range = subs.last().map(|s| (s.line, s.line));
+        Ok(self.apply_substitutions_over(&subs, range).lines)
     }
 }
