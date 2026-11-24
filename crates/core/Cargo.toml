@@ -23,7 +23,7 @@ unicode-width = "0.2.3"
 # ReDoS-immune. The Vim-dialect front-end (src/pattern/) lowers a magic-resolved pattern onto it; the
 # crate's types never reach ruse's public API (public_api_exposure: none). The owned NFA engine for
 # lookbehind/backrefs/full-\zs is post-MVP; MVP uses this one alone (scope decided 2026-08-11).
-regex = "1.13.1"
+regex = "1.13.2"
 
 [dev-dependencies]
 # Benchmarking harness (D-042). Lean features: keep cargo-bench integration, drop rayon + plotters/gnuplot.
