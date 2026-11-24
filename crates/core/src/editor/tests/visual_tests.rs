@@ -2283,6 +2283,102 @@ mod visual_op_tests {
         assert_eq!(text(&st), "ax\nybcd\nefgh\nijkl");
     }
 
+    /// The change marks `'[` `']` `'.` as `(line, byte col)`, 0-based, each `None` when unset.
+    fn change_marks(st: &EditorState) -> [Option<(usize, usize)>; 3] {
+        let b = st.doc.bytes();
+        let lc = |p: Option<BytePos>| {
+            p.map(|p| {
+                let ls = crate::motion::line_start(b, p.0);
+                (crate::pos::raw::line_of(b, p.0), p.0 - ls)
+            })
+        };
+        [
+            lc(st.view.change_mark_start()),
+            lc(st.view.change_mark_end()),
+            lc(st.view.last_change()),
+        ]
+    }
+
+    /// `col` steps right, `<C-v>`, `down` steps down and `right` more steps right, then `ops`.
+    fn on_block(text: &str, col: usize, down: usize, right: usize, ops: &[Command]) -> EditorState {
+        let mut cmds = vec![Command::MoveRight; col];
+        cmds.push(visual(BLOCK));
+        cmds.extend(std::iter::repeat_n(Command::MoveDown, down));
+        cmds.extend(std::iter::repeat_n(Command::MoveRight, right));
+        cmds.extend_from_slice(ops);
+        run(text, &cmds)
+    }
+
+    /// #1302: nvim v0.12.6's change marks after the block operators other than a shift (the `vb_mk_*`,
+    /// `vb_dollar_*`, `vb_D_*` and `vb_I_*` fixtures): `'[` `']` on the block's corners as `oap->start` /
+    /// `oap->end` (a line ending before the edge, or a `$` block's bottom line, at its length), with a
+    /// delete's `']` at the top-left's column; `'.` where `op_delete` leaves the cursor, the top-left for
+    /// `r`, column 0 for `~`, and column 0 of the second line after a block insert copies its text down.
+    #[test]
+    fn block_operators_set_the_change_marks_as_nvim() {
+        let some = |m: [(usize, usize); 3]| m.map(Some);
+        let abc = "abc\ndef\nghi";
+        // `<C-v>jjld`: '] on the bottom line at the top-left's column.
+        let st = on_block(abc, 0, 2, 1, &[Command::DeleteSelection]);
+        assert_eq!(change_marks(&st), some([(0, 0), (2, 0), (0, 0)]));
+        // `l<C-v>jD`: '. on the shortened top line's last char, '] past the bottom one's.
+        let to_eol = Command::VisualOp(VisualOp::BlockToEol(OpKind::Delete));
+        let st = on_block("abcd\nefgh\nijkl", 1, 1, 0, &[to_eol]);
+        assert_eq!(text(&st), "a\ne\nijkl");
+        assert_eq!(change_marks(&st), some([(0, 1), (1, 1), (0, 0)]));
+        // `l<C-v>jj$y`: '] past the bottom line's last char; a yank makes no change, so no '.
+        let dollar = Command::Move(1, Motion::LineEnd);
+        let ragged = "abcdef\nabc\nabcdefgh";
+        let st = on_block(ragged, 1, 2, 0, &[dollar.clone(), Command::YankSelection]);
+        assert_eq!(change_marks(&st), [Some((0, 1)), Some((2, 8)), None]);
+        // `l<C-v>jj$~`: '. at column 0 of the top line.
+        let tilde = Command::CaseSelection(crate::command::WordCase::Toggle);
+        let st = on_block(ragged, 1, 2, 0, &[dollar.clone(), tilde]);
+        assert_eq!(change_marks(&st), some([(0, 1), (2, 8), (0, 0)]));
+        // `l<C-v>jj$rx`: '. at the block's top-left.
+        let st = on_block(
+            ragged,
+            1,
+            2,
+            0,
+            &[dollar, Command::ReplaceSelectionChar('x')],
+        );
+        assert_eq!(change_marks(&st), some([(0, 1), (2, 8), (0, 1)]));
+        // `l<C-v>jIZ<Esc>` / `l<C-v>jAZ<Esc>`: '] past the bottom row's copy, '. on the second line.
+        let typed = |kind: BlockInsertKind| {
+            [
+                Command::BlockInsert(kind),
+                Command::InsertChar('Z'),
+                Command::EnterNormal,
+            ]
+        };
+        let st = on_block("abc\ndef", 1, 1, 0, &typed(BlockInsertKind::Insert));
+        assert_eq!(text(&st), "aZbc\ndZef");
+        assert_eq!(change_marks(&st), some([(0, 1), (1, 2), (1, 0)]));
+        let st = on_block("abc\ndef", 1, 1, 0, &typed(BlockInsertKind::Append));
+        assert_eq!(text(&st), "abZc\ndeZf");
+        assert_eq!(change_marks(&st), some([(0, 2), (1, 3), (1, 0)]));
+        // `l<C-v>jjlcXY<Esc>`: a change keeps the Insert's '] on the top row.
+        let change = [
+            Command::ChangeSelection,
+            Command::InsertChar('X'),
+            Command::InsertChar('Y'),
+            Command::EnterNormal,
+        ];
+        let st = on_block("abcd\nefgh\nijkl", 1, 2, 1, &change);
+        assert_eq!(text(&st), "aXYd\neXYh\niXYl");
+        assert_eq!(change_marks(&st), some([(0, 1), (0, 3), (1, 0)]));
+        // `l<C-v>jjc<Esc>`: nothing typed, so '. stays where the delete left the cursor.
+        let st = on_block(
+            "ab\ncd\nef",
+            1,
+            2,
+            0,
+            &[Command::ChangeSelection, Command::EnterNormal],
+        );
+        assert_eq!(change_marks(&st), some([(0, 1), (0, 1), (0, 0)]));
+    }
+
     #[test]
     fn join_covers_the_selected_lines_and_a_single_line_joins_the_next() {
         let st = run(
