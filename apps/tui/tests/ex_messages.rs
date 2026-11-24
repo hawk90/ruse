@@ -1,6 +1,7 @@
 //! What the Ex print commands and the other #609/#610 commands show in the message area, checked against
 //! nvim v0.12.6's output (`print_line`, `ex_z`, `:=`, `:pwd`, `:file`). The buffer and cursor effects are
-//! pinned by the oracle corpus (`exl_*` fixtures); this covers the text the corpus does not capture.
+//! pinned by the oracle corpus (`exl_*` fixtures); this covers the text the corpus does not capture, and the
+//! error a failed `"=` expression shows (#1570).
 
 use ruse_tui::headless::Headless;
 
@@ -99,4 +100,41 @@ fn put_expression_puts_its_result_and_reports_a_bad_one() {
     let mut h = Headless::vim("a\n");
     h.keys("i<C-r>='w'<CR><Esc>:put =<CR>");
     assert_eq!(h.text(), "wa\nw\n");
+}
+
+/// #1570: a failed `"=` expression shows nvim v0.12.6's error at every entry point — `"=…p`, `"=…P`,
+/// Insert `<C-r>=` and `:put =` — and puts nothing; Insert mode carries on after it, as in nvim.
+#[test]
+fn failed_expression_reports_nvims_error_at_every_entry_point() {
+    let cases = [
+        ("1+", r#"E15: Invalid expression: "1+""#),
+        ("0x", r#"E15: Invalid expression: "0x""#),
+        ("nosuchvar", "E121: Undefined variable: nosuchvar"),
+        ("1'000", "E488: Trailing characters: '000"),
+    ];
+    for (expr, want) in cases {
+        let code = want.split(':').next().expect("an E-number");
+        for keys in [
+            format!("\"={expr}<CR>p"),
+            format!("\"={expr}<CR>P"),
+            format!(":put ={expr}<CR>"),
+        ] {
+            let mut h = Headless::vim("a\n");
+            h.keys(&keys);
+            assert_eq!(h.text(), "a\n", "{keys}");
+            assert_eq!(h.status(), want, "{keys}");
+            assert_eq!(h.emsg(), code, "{keys}");
+        }
+        let keys = format!("i<C-r>={expr}<CR>X<Esc>");
+        let mut h = Headless::vim("a\n");
+        h.keys(&keys);
+        assert_eq!(h.text(), "Xa\n", "{keys}");
+        assert_eq!(h.emsg(), code, "{keys}");
+    }
+    // A good expression says nothing.
+    assert_eq!(status_after("a\n", "\"=1+2<CR>p"), "");
+    let mut h = Headless::vim("a\n");
+    h.keys("i<C-r>=1+2<CR><Esc>");
+    assert_eq!(h.text(), "3a\n");
+    assert_eq!(h.emsg(), "");
 }

@@ -3,7 +3,7 @@
 //!
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
-use super::{edit, indent_cols, nop, one, replace_selection_with};
+use super::{edit, eval_expr_reporting, indent_cols, nop, one, replace_selection_with};
 use crate::editor::{MarkWrite, RegWrite};
 use crate::motion::{
     self, at_col, line_end, line_start, next_boundary, next_grapheme, prev_boundary, prev_grapheme,
@@ -133,8 +133,14 @@ fn plan_splice(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Co
         ),
         // `i_CTRL-R=<expr><CR>` — evaluate the expression (a minimal-honest arithmetic/string calculator,
         // NOT full Vimscript) and splice the formatted result at the caret, staying in Insert. A malformed
-        // or unsupported expression evaluates to the empty string and inserts nothing (Vim's degrade).
-        Command::InsertEval(e) => insert_or_nop(cur, crate::expr::eval_or_empty(e), hint),
+        // or unsupported expression evaluates to the empty string and inserts nothing (Vim's degrade),
+        // showing nvim's error (#1570).
+        Command::InsertEval(e) => {
+            let (result, effects) = eval_expr_reporting(e);
+            let mut plan = insert_or_nop(cur, result, hint);
+            plan.effects.extend(effects);
+            plan
+        }
         // An empty paste of any kind is a no-op in the current mode.
         Command::InsertPaste(text) | Command::ReplacePaste(text) | Command::EmacsPaste(text)
             if text.is_empty() =>

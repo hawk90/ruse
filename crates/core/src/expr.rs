@@ -18,7 +18,13 @@
 //!
 //! Explicitly OUT OF SCOPE (each yields [`ExprError`] -> the register is EMPTY, never a crash): variables,
 //! `@r`/`&opt`/`$ENV`/`v:` refs, function/method calls, comparisons and logical/ternary/bitwise operators,
-//! lists/dicts/blobs, and the `**` power operator.
+//! lists/dicts/blobs, and the `**` power operator. A name reports nvim's `E121`/`E117` (ruse has no
+//! variables or functions); the other forms report `E15`.
+//!
+//! A failure carries nvim's error (see [`ExprError::message`]), found left to right as nvim's recursive
+//! descent finds it: the lexer stops at the first text it cannot read and leaves an error token there, so
+//! that text is an error only if the parser reaches it as an operand, and `E488` trailing characters if it
+//! follows a complete expression (`1'000`).
 //!
 //! Two DELIBERATE divergences from Vim, chosen so the calculator is intuitive rather than bug-compatible
 //! with Vimscript warts:
@@ -31,36 +37,91 @@
 
 use std::fmt;
 
-/// Why an expression did not evaluate to a value. Every variant maps to the same OBSERVABLE outcome — the
-/// `"=` register is empty, so the paste/insert does nothing — but the distinct variants let the unit tests
-/// pin down exactly which failure mode a malformed expression hits.
+/// Why an expression did not evaluate to a value. The `"=` register is then empty, so the paste/insert does
+/// nothing, and [`ExprError::message`] is what nvim v0.12.6 shows for the same input (`E15: Invalid
+/// expression: "1+"`), which every `"=` entry point reports.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ExprError {
-    /// The input was empty or only whitespace.
+    /// The input was empty or only whitespace (nvim reuses the previous expression and says nothing).
     Empty,
-    /// A lexer/parser error: an unexpected character, an unterminated string, a missing operand, an
-    /// unbalanced paren, or trailing junk after a complete expression. Carries a short human reason.
-    Parse(String),
-    /// An arithmetic operator was applied to a string operand (this calculator does not coerce
-    /// strings to numbers), or `%` was applied to a float (`:help expr-%` — Vim's E804).
+    /// `E15: Invalid expression: "<text>"`: a missing operand, an operator or character that cannot start
+    /// one, or a malformed number literal. The text is the whole expression, except for a malformed number,
+    /// where it runs from the number to the end (nvim's `eval_number` reports it there: `1+0x` -> `"0x"`).
+    Invalid(String),
+    /// `E121: Undefined variable: <name>` — ruse has no variables, so every name is undefined.
+    UndefinedVariable(String),
+    /// `E117: Unknown function: <name>` — a name followed by `(`; ruse has no functions.
+    UnknownFunction(String),
+    /// `E110: Missing ')'`.
+    MissingParen,
+    /// `E114: Missing quote: <text>` — an unterminated `"` string, from its opening quote to the end.
+    MissingDoubleQuote(String),
+    /// `E115: Missing quote: <text>` — an unterminated `'` string, from its opening quote to the end.
+    MissingSingleQuote(String),
+    /// `E488: Trailing characters: <text>` — input left after a complete expression (`1'000` -> `'000`).
+    Trailing(String),
+    /// `E804: Cannot use '%' with Float`.
+    FloatModulo,
+    /// `E1169: Expression too recursive: <text>` — parentheses nest 1000 deep or more; the text follows
+    /// the 1000th `(`.
+    TooDeep(String),
+    /// An arithmetic operator was applied to a string operand (this calculator does not coerce strings to
+    /// numbers). A deliberate divergence: nvim coerces and reports nothing, so this has no E-number.
     Type(String),
-    /// Integer or float division/modulo by zero (Vim's zero-divisor quirks are intentionally not copied).
+    /// Integer or float division/modulo by zero (Vim's zero-divisor quirks are intentionally not copied;
+    /// no E-number, as nvim reports nothing).
     DivByZero,
-    /// An integer computation overflowed `i64`.
+    /// An integer computation overflowed `i64` (no E-number, as nvim reports nothing).
     Overflow,
-    /// Parentheses nest 1000 deep or more (nvim's E1169 "Expression too recursive").
-    TooDeep,
+}
+
+impl ExprError {
+    /// nvim's error number for this failure (`"E15"`), or `None` where nvim reports nothing: an empty
+    /// expression, and the deliberate divergences ([`ExprError::Type`], [`ExprError::DivByZero`],
+    /// [`ExprError::Overflow`]), which nvim evaluates to a value instead.
+    #[must_use]
+    pub fn code(&self) -> Option<&'static str> {
+        Some(match self {
+            ExprError::Invalid(_) => "E15",
+            ExprError::UndefinedVariable(_) => "E121",
+            ExprError::UnknownFunction(_) => "E117",
+            ExprError::MissingParen => "E110",
+            ExprError::MissingDoubleQuote(_) => "E114",
+            ExprError::MissingSingleQuote(_) => "E115",
+            ExprError::Trailing(_) => "E488",
+            ExprError::FloatModulo => "E804",
+            ExprError::TooDeep(_) => "E1169",
+            ExprError::Empty | ExprError::Type(_) | ExprError::DivByZero | ExprError::Overflow => {
+                return None
+            }
+        })
+    }
+
+    /// The message to show for this failure: nvim's exact text where it has one (see [`ExprError::code`]),
+    /// a plain unnumbered message for ruse's deliberate divergences, and `None` for an empty expression,
+    /// which nvim passes over in silence.
+    #[must_use]
+    pub fn message(&self) -> Option<String> {
+        (*self != ExprError::Empty).then(|| self.to_string())
+    }
 }
 
 impl fmt::Display for ExprError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExprError::Empty => write!(f, "empty expression"),
-            ExprError::Parse(m) => write!(f, "parse error: {m}"),
-            ExprError::Type(m) => write!(f, "type error: {m}"),
-            ExprError::DivByZero => write!(f, "division by zero"),
-            ExprError::Overflow => write!(f, "integer overflow"),
-            ExprError::TooDeep => write!(f, "expression too recursive"),
+            ExprError::Invalid(t) => write!(f, "E15: Invalid expression: \"{t}\""),
+            ExprError::UndefinedVariable(n) => write!(f, "E121: Undefined variable: {n}"),
+            ExprError::UnknownFunction(n) => write!(f, "E117: Unknown function: {n}"),
+            ExprError::MissingParen => write!(f, "E110: Missing ')'"),
+            ExprError::MissingDoubleQuote(t) => write!(f, "E114: Missing quote: {t}"),
+            ExprError::MissingSingleQuote(t) => write!(f, "E115: Missing quote: {t}"),
+            ExprError::Trailing(t) => write!(f, "E488: Trailing characters: {t}"),
+            ExprError::FloatModulo => write!(f, "E804: Cannot use '%' with Float"),
+            ExprError::TooDeep(t) => write!(f, "E1169: Expression too recursive: {t}"),
+            ExprError::Type(m) => write!(f, "Expression type error: {m}"),
+            ExprError::DivByZero => write!(f, "Expression error: division by zero"),
+            ExprError::Overflow => write!(f, "Expression error: integer overflow"),
         }
     }
 }
@@ -76,22 +137,24 @@ pub fn eval(input: &str) -> Result<Vec<u8>, ExprError> {
     if input.trim().is_empty() {
         return Err(ExprError::Empty);
     }
-    let tokens = lex(input)?;
+    let tokens = lex(input);
     let mut p = Parser {
+        input,
         tokens: &tokens,
         pos: 0,
         depth: 0,
     };
     let value = p.parse_concat()?;
-    if p.pos != p.tokens.len() {
-        return Err(ExprError::Parse("trailing input after expression".into()));
+    // Whatever is left after a complete expression, even text that would not lex (`1'000`), is trailing.
+    if let Some(&(_, at)) = p.tokens.get(p.pos) {
+        return Err(ExprError::Trailing(input[at..].to_string()));
     }
     Ok(value.into_display())
 }
 
 /// Evaluate `input`, yielding the formatted result on success and an EMPTY string on any error — the exact
-/// degrade Vim applies to a broken `"=` expression (the paste/insert then inserts nothing). This is the
-/// entry point the editor's expression-register commands call.
+/// degrade Vim applies to a broken `"=` expression (the paste/insert then inserts nothing), without the
+/// error message (the editor's expression-register commands call [`eval`] and report the [`ExprError`]).
 #[must_use]
 pub fn eval_or_empty(input: &str) -> Vec<u8> {
     eval(input).unwrap_or_default()
@@ -191,6 +254,8 @@ enum Token {
     Int(i64),
     Float(f64),
     Str(Vec<u8>),
+    /// A variable or function name (`[A-Za-z_#][A-Za-z0-9_#:]*`); ruse defines none.
+    Name(String),
     Plus,
     Minus,
     Star,
@@ -199,13 +264,20 @@ enum Token {
     Dot,
     LParen,
     RParen,
+    /// A character no token starts with (`!`, `$`, `@`, `[`, …). Always the last token.
+    Unknown,
+    /// Text the lexer could not read (a malformed number, an unterminated string), carrying the error nvim
+    /// gives when it reads that text as an operand. Always the last token.
+    Bad(Box<ExprError>),
 }
 
-/// Tokenize `input`. Whitespace separates tokens and is otherwise ignored. A `.` immediately between two
-/// digit runs (`3.0`) is a float; a `.` anywhere else is the concatenation operator (`2.'x'`, `'a'.'b'`).
-/// A number right after the `.` operator (signs and blanks between allowed) is never a float, as nvim's
-/// `eval7` reads that operand with `want_string`: `1.5.2` is `1 . 5 . 2` -> `152`.
-fn lex(input: &str) -> Result<Vec<Token>, ExprError> {
+/// Tokenize `input` into tokens and the byte offset each starts at. Whitespace separates tokens and is
+/// otherwise ignored. A `.` immediately between two digit runs (`3.0`) is a float; a `.` anywhere else is
+/// the concatenation operator (`2.'x'`, `'a'.'b'`). A number right after the `.` operator (signs and blanks
+/// between allowed) is never a float, as nvim's `eval7` reads that operand with `want_string`: `1.5.2` is
+/// `1 . 5 . 2` -> `152`. Lexing stops at the first text it cannot read, ending the list with a
+/// [`Token::Unknown`] or [`Token::Bad`] there; whether that is an error is the parser's call.
+fn lex(input: &str) -> Vec<(Token, usize)> {
     let bytes = input.as_bytes();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -218,92 +290,98 @@ fn lex(input: &str) -> Result<Vec<Token>, ExprError> {
             b' ' | b'\t' | b'\r' | b'\n' | b'+' | b'-' => after_dot,
             _ => false,
         };
-        match c {
-            b' ' | b'\t' | b'\r' | b'\n' => i += 1,
-            b'+' => {
-                tokens.push(Token::Plus);
+        let single = match c {
+            b' ' | b'\t' | b'\r' | b'\n' => {
                 i += 1;
+                continue;
             }
-            b'-' => {
-                tokens.push(Token::Minus);
-                i += 1;
-            }
-            b'*' => {
-                tokens.push(Token::Star);
-                i += 1;
-            }
-            b'/' => {
-                tokens.push(Token::Slash);
-                i += 1;
-            }
-            b'%' => {
-                tokens.push(Token::Percent);
-                i += 1;
-            }
+            b'+' => Some(Token::Plus),
+            b'-' => Some(Token::Minus),
+            b'*' => Some(Token::Star),
+            b'/' => Some(Token::Slash),
+            b'%' => Some(Token::Percent),
+            b'(' => Some(Token::LParen),
+            b')' => Some(Token::RParen),
+            _ => None,
+        };
+        if let Some(tok) = single {
+            tokens.push((tok, i));
+            i += 1;
+            continue;
+        }
+        let lexed = match c {
             // `..` is the same concatenation as `.` (`:help expr-..`, #1342).
-            b'.' => {
-                tokens.push(Token::Dot);
-                i += if bytes.get(i + 1) == Some(&b'.') {
+            b'.' => Ok((
+                Token::Dot,
+                i + if bytes.get(i + 1) == Some(&b'.') {
                     2
                 } else {
                     1
-                };
+                },
+            )),
+            b'\'' => lex_single_quote(bytes, i),
+            b'"' => lex_double_quote(bytes, i),
+            b'0'..=b'9' => lex_number(bytes, i, want_string),
+            c if is_name_start(c) => {
+                let end = (i + 1..bytes.len())
+                    .find(|&j| !is_name_char(bytes[j]))
+                    .unwrap_or(bytes.len());
+                Ok((Token::Name(input[i..end].to_string()), end))
             }
-            b'(' => {
-                tokens.push(Token::LParen);
-                i += 1;
+            _ => {
+                tokens.push((Token::Unknown, i));
+                break;
             }
-            b')' => {
-                tokens.push(Token::RParen);
-                i += 1;
-            }
-            b'\'' => {
-                let (tok, next) = lex_single_quote(bytes, i)?;
-                tokens.push(tok);
+        };
+        match lexed {
+            Ok((tok, next)) => {
+                tokens.push((tok, i));
                 i = next;
             }
-            b'"' => {
-                let (tok, next) = lex_double_quote(bytes, i)?;
-                tokens.push(tok);
-                i = next;
-            }
-            b'0'..=b'9' => {
-                let (tok, next) = lex_number(bytes, i, want_string)?;
-                tokens.push(tok);
-                i = next;
-            }
-            other => {
-                return Err(ExprError::Parse(format!(
-                    "unexpected character {:?}",
-                    other as char
-                )));
+            Err(e) => {
+                tokens.push((Token::Bad(Box::new(e)), i));
+                break;
             }
         }
     }
-    Ok(tokens)
+    tokens
+}
+
+/// Whether `c` starts a name (nvim's `eval_isnamec1`, plus the `#` of an autoload name, which nvim also
+/// reads as a name: `#` is `E121: Undefined variable: #`).
+fn is_name_start(c: u8) -> bool {
+    c.is_ascii_alphabetic() || c == b'_' || c == b'#'
+}
+
+/// Whether `c` continues a name (nvim's `eval_isnamec`: letters, digits, `_`, `#` and a scope's `:`).
+fn is_name_char(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, b'_' | b'#' | b':')
+}
+
+/// The input from `start` to the end, the text nvim quotes for a literal it cannot read there.
+fn rest(bytes: &[u8], start: usize) -> String {
+    String::from_utf8_lossy(&bytes[start..]).into_owned()
 }
 
 /// Lex a number starting at `start` (on an ASCII digit) as nvim's `eval_number` does. A float is digits,
 /// `.`, digits and an optional `[eE][+-]?digits` exponent that does not run on into a letter or another `.`
 /// (so `1.5x` and `1.5.2` are not floats, and `1e3` needs a fraction); `want_string`, the operand of the
 /// `.` operator, rules a float out. Anything else is an integer read by [`str2nr`], and a letter or digit
-/// right after it is an error, as nvim's strict read makes it (`0b12`, `0o8`, `0x`, `1e3`).
+/// right after it is an error, as nvim's strict read makes it (`0b12`, `0o8`, `0x`, `1e3`): `E15` quoting
+/// the input from the number on, where nvim's `eval_number` reports it.
 fn lex_number(bytes: &[u8], start: usize, want_string: bool) -> Result<(Token, usize), ExprError> {
     if !want_string {
         if let Some(end) = float_end(bytes, start) {
             let text = String::from_utf8_lossy(&bytes[start..end]);
             let f: f64 = text
                 .parse()
-                .map_err(|_| ExprError::Parse(format!("invalid float {text:?}")))?;
+                .map_err(|_| ExprError::Invalid(rest(bytes, start)))?;
             return Ok((Token::Float(f), end));
         }
     }
     let (n, end) = str2nr(bytes, start);
     if bytes.get(end).is_some_and(u8::is_ascii_alphanumeric) {
-        return Err(ExprError::Parse(format!(
-            "invalid number {:?}",
-            String::from_utf8_lossy(&bytes[start..=end])
-        )));
+        return Err(ExprError::Invalid(rest(bytes, start)));
     }
     Ok((Token::Int(n), end))
 }
@@ -373,7 +451,7 @@ fn str2nr(b: &[u8], start: usize) -> (i64, usize) {
 }
 
 /// Lex a single-quoted string starting at the opening quote (`start`). Vim's rule: a doubled `''` is a
-/// literal single quote; there are no backslash escapes. An unterminated literal is a parse error.
+/// literal single quote; there are no backslash escapes. An unterminated literal is nvim's E115.
 fn lex_single_quote(bytes: &[u8], start: usize) -> Result<(Token, usize), ExprError> {
     let mut i = start + 1;
     let mut out = Vec::new();
@@ -390,7 +468,7 @@ fn lex_single_quote(bytes: &[u8], start: usize) -> Result<(Token, usize), ExprEr
             i += 1;
         }
     }
-    Err(ExprError::Parse("unterminated single-quoted string".into()))
+    Err(ExprError::MissingSingleQuote(rest(bytes, start)))
 }
 
 /// Lex a double-quoted string starting at the opening quote (`start`) with nvim's escapes (`:help
@@ -405,7 +483,7 @@ fn lex_single_quote(bytes: &[u8], start: usize) -> Result<(Token, usize), ExprEr
 /// - a backslash before any other character drops: `\z` is `z`.
 ///
 /// A NUL (`\0`, `\x00`, `\u0000`) ends the string, since nvim's strings are C strings. An unterminated
-/// literal is a parse error.
+/// literal is nvim's E114.
 fn lex_double_quote(bytes: &[u8], start: usize) -> Result<(Token, usize), ExprError> {
     let mut i = start + 1;
     let mut out = Vec::new();
@@ -479,7 +557,7 @@ fn lex_double_quote(bytes: &[u8], start: usize) -> Result<(Token, usize), ExprEr
             other => out.push(other),
         }
     }
-    Err(ExprError::Parse("unterminated double-quoted string".into()))
+    Err(ExprError::MissingDoubleQuote(rest(bytes, start)))
 }
 
 /// nvim's `utf_char2bytes`: a value below 0x80 (a negative one too, which nvim's signed compare lets
@@ -576,7 +654,10 @@ fn named_key(name: &[u8]) -> Option<Vec<u8>> {
 // ---------------------------------------------------------------------------------------------------------
 
 struct Parser<'a> {
-    tokens: &'a [Token],
+    /// The whole expression, which an `E15` quotes.
+    input: &'a str,
+    /// The tokens and the byte offset each starts at.
+    tokens: &'a [(Token, usize)],
     pos: usize,
     /// Open parentheses around the current position.
     depth: usize,
@@ -587,11 +668,11 @@ const MAX_DEPTH: usize = 1000;
 
 impl Parser<'_> {
     fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
+        self.tokens.get(self.pos).map(|(t, _)| t)
     }
 
     fn bump(&mut self) -> Option<&Token> {
-        let t = self.tokens.get(self.pos);
+        let t = self.tokens.get(self.pos).map(|(t, _)| t);
         if t.is_some() {
             self.pos += 1;
         }
@@ -669,28 +750,39 @@ impl Parser<'_> {
         Ok(v)
     }
 
-    /// primary := Int | Float | Str | '(' concat ')'
+    /// primary := Int | Float | Str | '(' concat ')'. A name is an undefined variable, or an unknown
+    /// function before a `(`; text the lexer could not read reports its own error; anything else here (an
+    /// operator, `)`, an unknown character, the end) is `E15` quoting the whole expression.
     fn parse_primary(&mut self) -> Result<Value, ExprError> {
-        match self.bump() {
-            Some(Token::Int(n)) => Ok(Value::Int(*n)),
-            Some(Token::Float(f)) => Ok(Value::Float(*f)),
-            Some(Token::Str(s)) => Ok(Value::Str(s.clone())),
-            Some(Token::LParen) => {
+        let tokens = self.tokens;
+        let Some((tok, at)) = tokens.get(self.pos) else {
+            return Err(ExprError::Invalid(self.input.to_string()));
+        };
+        self.pos += 1;
+        match tok {
+            Token::Int(n) => Ok(Value::Int(*n)),
+            Token::Float(f) => Ok(Value::Float(*f)),
+            Token::Str(s) => Ok(Value::Str(s.clone())),
+            Token::Name(name) if self.peek() == Some(&Token::LParen) => {
+                Err(ExprError::UnknownFunction(name.clone()))
+            }
+            Token::Name(name) => Err(ExprError::UndefinedVariable(name.clone())),
+            Token::Bad(e) => Err(e.as_ref().clone()),
+            Token::LParen => {
                 // Nesting is the one recursion left; nvim refuses the 1000th level (E1169, #756), which
                 // also keeps a pasted run of `(` from overflowing the stack and aborting the process.
                 self.depth += 1;
                 if self.depth >= MAX_DEPTH {
-                    return Err(ExprError::TooDeep);
+                    return Err(ExprError::TooDeep(self.input[at + 1..].to_string()));
                 }
                 let v = self.parse_concat()?;
                 self.depth -= 1;
                 match self.bump() {
                     Some(Token::RParen) => Ok(v),
-                    _ => Err(ExprError::Parse("missing ')'".into())),
+                    _ => Err(ExprError::MissingParen),
                 }
             }
-            Some(t) => Err(ExprError::Parse(format!("unexpected token {t:?}"))),
-            None => Err(ExprError::Parse("unexpected end of expression".into())),
+            _ => Err(ExprError::Invalid(self.input.to_string())),
         }
     }
 }
@@ -758,7 +850,7 @@ fn float_arith(a: f64, b: f64, op: char) -> Result<Value, ExprError> {
             }
             a / b
         }
-        '%' => return Err(ExprError::Type("'%' cannot be used with a float".into())),
+        '%' => return Err(ExprError::FloatModulo),
         _ => unreachable!("arith only passes + - * / %"),
     };
     Ok(Value::Float(v))
@@ -1104,15 +1196,18 @@ mod tests {
         // Parse errors.
         assert!(matches!(eval(""), Err(ExprError::Empty)));
         assert!(matches!(eval("   "), Err(ExprError::Empty)));
-        assert!(matches!(eval("1 +"), Err(ExprError::Parse(_))));
-        assert!(matches!(eval("(1+2"), Err(ExprError::Parse(_))));
-        assert!(matches!(eval("1 2"), Err(ExprError::Parse(_))));
-        assert!(matches!(eval("2 ** 3"), Err(ExprError::Parse(_))));
-        assert!(matches!(eval("abc"), Err(ExprError::Parse(_)))); // no variables
-        assert!(matches!(eval("'unterminated"), Err(ExprError::Parse(_))));
-        // Type errors: arithmetic over a string, `%` over a float.
+        assert!(matches!(eval("1 +"), Err(ExprError::Invalid(_))));
+        assert!(matches!(eval("(1+2"), Err(ExprError::MissingParen)));
+        assert!(matches!(eval("1 2"), Err(ExprError::Trailing(_))));
+        assert!(matches!(eval("2 ** 3"), Err(ExprError::Invalid(_))));
+        assert!(matches!(eval("abc"), Err(ExprError::UndefinedVariable(_)))); // no variables
+        assert!(matches!(
+            eval("'unterminated"),
+            Err(ExprError::MissingSingleQuote(_))
+        ));
+        // Type errors: arithmetic over a string; `%` over a float is nvim's E804.
         assert!(matches!(eval("'a' + 1"), Err(ExprError::Type(_))));
-        assert!(matches!(eval("10.0 % 3"), Err(ExprError::Type(_))));
+        assert!(matches!(eval("10.0 % 3"), Err(ExprError::FloatModulo)));
         // Division / modulo by zero.
         assert!(matches!(eval("7 / 0"), Err(ExprError::DivByZero)));
         assert!(matches!(eval("5 % 0"), Err(ExprError::DivByZero)));
@@ -1165,6 +1260,66 @@ mod tests {
         }
     }
 
+    /// #1570: a failure carries nvim's error, number and text, found where nvim finds it. Each row is
+    /// nvim v0.12.6's `v:errmsg` after `"={expr}<CR>p` (`nvim -u NONE -i NONE --headless`).
+    #[test]
+    fn errors_carry_nvims_message() {
+        for (input, want) in [
+            ("1+", r#"E15: Invalid expression: "1+""#),
+            ("0x", r#"E15: Invalid expression: "0x""#),
+            ("0b12", r#"E15: Invalid expression: "0b12""#),
+            ("0o18", r#"E15: Invalid expression: "0o18""#),
+            ("1e3", r#"E15: Invalid expression: "1e3""#),
+            ("1.5.", r#"E15: Invalid expression: "1.5.""#),
+            ("*1", r#"E15: Invalid expression: "*1""#),
+            (")", r#"E15: Invalid expression: ")""#),
+            ("$", r#"E15: Invalid expression: "$""#),
+            ("(1+", r#"E15: Invalid expression: "(1+""#),
+            // A malformed number quotes the input from the number on, as nvim's `eval_number` does.
+            ("0x 1", r#"E15: Invalid expression: "0x 1""#),
+            ("1+0x", r#"E15: Invalid expression: "0x""#),
+            ("1.5e", r#"E15: Invalid expression: "5e""#),
+            ("1.5x", r#"E15: Invalid expression: "5x""#),
+            ("nosuchvar", "E121: Undefined variable: nosuchvar"),
+            ("x+1", "E121: Undefined variable: x"),
+            ("1+_", "E121: Undefined variable: _"),
+            ("#", "E121: Undefined variable: #"),
+            ("abc.def", "E121: Undefined variable: abc"),
+            ("foo()", "E117: Unknown function: foo"),
+            ("1'000", "E488: Trailing characters: '000"),
+            ("1)", "E488: Trailing characters: )"),
+            ("1 2", "E488: Trailing characters: 2"),
+            ("1 0x", "E488: Trailing characters: 0x"),
+            ("1)'abc", "E488: Trailing characters: )'abc"),
+            ("1+2 #", "E488: Trailing characters: #"),
+            ("(1", "E110: Missing ')'"),
+            ("(1 2)", "E110: Missing ')'"),
+            (r#""abc"#, r#"E114: Missing quote: "abc"#),
+            (r#"1+"abc"#, r#"E114: Missing quote: "abc"#),
+            ("'abc", "E115: Missing quote: 'abc"),
+            ("1+'abc", "E115: Missing quote: 'abc"),
+            ("1.5%2", "E804: Cannot use '%' with Float"),
+        ] {
+            let err = eval(input).expect_err(input);
+            assert_eq!(err.message().as_deref(), Some(want), "{input}");
+            assert_eq!(err.code(), want.split(':').next(), "{input}");
+        }
+    }
+
+    /// An empty expression fails silently (nvim reuses the last one and says nothing); ruse's deliberate
+    /// divergences, which nvim evaluates to a value, say why without an E-number.
+    #[test]
+    fn silent_and_unnumbered_failures() {
+        assert_eq!(ExprError::Empty.message(), None);
+        assert_eq!(ExprError::Empty.code(), None);
+        for input in ["'a'+1", "7/0", "5%0", "-'a'"] {
+            let err = eval(input).expect_err(input);
+            assert_eq!(err.code(), None, "{input}");
+            let msg = err.message().expect("a message");
+            assert!(!msg.as_bytes()[1].is_ascii_digit(), "{input}: {msg}");
+        }
+    }
+
     /// #756: deep nesting is an error at nvim's limit (999 levels evaluate, 1000 give E1169), and a long run
     /// of parens or signs never overflows the stack. Run on an 8 MiB stack, the main thread's, where the
     /// editor evaluates `"=` (a debug build needs about 2.5 KiB a level, more than a 2 MiB test thread has).
@@ -1173,8 +1328,13 @@ mod tests {
         let run = || {
             let nest = |n: usize| format!("{}1{}", "(".repeat(n), ")".repeat(n));
             assert_eq!(eval(&nest(999)), Ok("1".into()));
-            assert_eq!(eval(&nest(1000)), Err(ExprError::TooDeep));
-            assert_eq!(eval(&"(".repeat(2_000_000)), Err(ExprError::TooDeep));
+            let deep = eval(&nest(1000)).expect_err("1000 levels are too deep");
+            assert_eq!(deep, ExprError::TooDeep(format!("1{}", ")".repeat(1000))));
+            assert_eq!(deep.code(), Some("E1169"));
+            assert!(matches!(
+                eval(&"(".repeat(2_000_000)),
+                Err(ExprError::TooDeep(_))
+            ));
             assert_eq!(
                 eval(&format!("{}1", "-".repeat(1_000_001))),
                 Ok("-1".into())

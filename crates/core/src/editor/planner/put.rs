@@ -3,7 +3,7 @@
 //!
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
-use super::{captured, indent_cols, nop, one, MAX_PUT_BYTES};
+use super::{captured, eval_expr_reporting, indent_cols, nop, one, MAX_PUT_BYTES};
 use crate::editor::{
     at_vcol, block_geom, cluster_cells, line_cells, selection_range, text_cells, vcols_at, Action,
     RegWrite, MAXCOL,
@@ -96,11 +96,16 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Pla
         },
         // `"=<expr><CR>` — evaluate the expression, store the formatted result in the `"=` slot, and arm `=`
         // as the pending register so the following `p`/`P` pastes it. An empty result (malformed/unsupported
-        // expression) makes that paste a no-op (Vim's degrade). Like `SetRegister`, a pure state set.
-        Command::SetExprRegister(e) => Plan {
-            action: Action::SetExprPending(crate::expr::eval_or_empty(e)),
-            ..nop(cur, st.view.mode)
-        },
+        // expression) makes that paste a no-op (Vim's degrade), and the failure shows nvim's error (#1570).
+        // Like `SetRegister`, a pure state set.
+        Command::SetExprRegister(e) => {
+            let (result, effects) = eval_expr_reporting(e);
+            Plan {
+                action: Action::SetExprPending(result),
+                effects,
+                ..nop(cur, st.view.mode)
+            }
+        }
         _ => unreachable!("planner::put plans only its own commands"),
     }
 }

@@ -374,6 +374,19 @@ fn beep(cursor: usize, mode: Mode) -> Plan {
     }
 }
 
+/// Evaluate a `"=` / `i_CTRL-R_=` expression: its formatted result, empty when it fails (Vim's degrade —
+/// the paste/insert then does nothing), and the effects that report the failure, nvim's message
+/// (`E15: Invalid expression: "1+"`) on the status line. An empty expression fails silently, as in nvim.
+fn eval_expr_reporting(expr: &str) -> (Vec<u8>, Vec<Effect>) {
+    match crate::expr::eval(expr) {
+        Ok(bytes) => (bytes, Vec::new()),
+        Err(e) => (
+            Vec::new(),
+            e.message().map(Effect::Status).into_iter().collect(),
+        ),
+    }
+}
+
 fn nop(cursor: usize, mode: Mode) -> Plan {
     Plan {
         action: Action::Nop,
