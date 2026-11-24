@@ -6,7 +6,7 @@
 use crate::pattern;
 
 /// The byte offset of the first search match whose landing is at/after `from`, wrapping to the first
-/// match of the document (F-009). Matches are the ones a `/` search sees ([`search_spans`]), compared by
+/// match of the document under `'wrapscan'` (`wrap`, F-009; without it, none past the end is `None`). Matches are the ones a `/` search sees ([`search_spans`]), compared by
 /// [`landing_key`], so `n` agrees with `/`: a `\zs` match is found by its reported start, and an empty
 /// match (`^`, `$`, `\<`) counts. Invalid UTF-8, an unrepresentable/malformed pattern, or no match yields
 /// `None` — the caller keeps the cursor (Vim rings the bell).
@@ -15,13 +15,14 @@ pub(crate) fn search_fwd(
     pattern: &str,
     from: usize,
     opts: pattern::Options,
+    wrap: bool,
 ) -> Option<usize> {
     let spans = search_spans(b, pattern, opts);
     spans
         .iter()
         .map(|&(s, _)| s)
         .find(|&s| landing_key(b, s) >= from)
-        .or_else(|| spans.first().map(|&(s, _)| s))
+        .or_else(|| spans.first().filter(|_| wrap).map(|&(s, _)| s))
 }
 
 /// Take `count` (at least one) steps of `step` from `start`, or `None` when a step finds nothing. A search
@@ -140,12 +141,13 @@ pub(crate) fn step_char(b: &[u8], pos: usize, n: i32) -> usize {
 }
 
 /// The byte offset of the previous search match landing strictly before `before`, wrapping to the last
-/// match (see [`search_fwd`] for which matches count).
+/// match under `'wrapscan'` (`wrap`; see [`search_fwd`] for which matches count).
 pub(crate) fn search_bwd(
     b: &[u8],
     pattern: &str,
     before: usize,
     opts: pattern::Options,
+    wrap: bool,
 ) -> Option<usize> {
     let spans = search_spans(b, pattern, opts);
     spans
@@ -153,7 +155,7 @@ pub(crate) fn search_bwd(
         .rev()
         .map(|&(s, _)| s)
         .find(|&s| landing_key(b, s) < before)
-        .or_else(|| spans.last().map(|&(s, _)| s))
+        .or_else(|| spans.last().filter(|_| wrap).map(|&(s, _)| s))
 }
 
 #[cfg(test)]

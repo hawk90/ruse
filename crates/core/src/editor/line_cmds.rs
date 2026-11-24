@@ -104,9 +104,14 @@ impl EditorState {
         // where `u` puts it back (nvim 0.12.6: `4l:3d<CR>u` -> line 3, column 4).
         let col = self.view.cursor - line_start(bytes, self.view.cursor);
         let undo_at = snap(bytes, (fs + col).min(first_end));
+        let group = self.doc.history().current_group();
         self.apply_ex_edit(list, self.origin, Some(undo_at))
             .expect("line-range delete applies cleanly");
         self.view.last_was_edit = true;
+        // `'[`, `']` and `'.` on the line that took their place (nvim's `op_delete`): past the last line
+        // when the range ran to the end.
+        let at = self.line_pos(first);
+        self.set_ex_marks((at, at), at, Some(group));
         // On the line that took their place, or the new last line (never the slot after a final newline,
         // nor past the end of an unterminated last line), at its first non-blank.
         let nb = self.doc.bytes();
@@ -136,6 +141,14 @@ impl EditorState {
         // `Register::linewise` normalizes to end with `\n`, so an unterminated last line still yanks clean.
         let text = bytes[fs..end].to_vec();
         self.view.registers.yank(reg, Register::linewise(text));
+        // A linewise yank's `'[`/`']`: the range's first line and its last (nvim's `op_yank`, #1303).
+        let last_ls = line_span(&self.doc, last).0;
+        self.view.change_start = Some(fs);
+        self.view.change_end = Some(if le > last_ls {
+            motion::prev_grapheme(bytes, le)
+        } else {
+            last_ls
+        });
         last - first + 1
     }
 
@@ -161,6 +174,7 @@ impl EditorState {
             Command::JoinLines(count)
         };
         let before = self.doc.line_starts().len();
+        let first_len = line_span(&self.doc, first).1 - first_start;
         apply_command(self, &cmd);
         // Unlike `J` (cursor on the join seam), Vim's `:join` leaves the cursor on the FIRST NON-BLANK of the
         // joined line (`ex_join` → `beginline(BL_WHITE)`; nvim v0.12.6). The join keeps `first`'s start.
@@ -170,10 +184,24 @@ impl EditorState {
                                                 // The lines that took part: one more than the seams removed (0 when nothing joined).
         let seams = before - self.doc.line_starts().len();
         if seams == 0 {
-            0
-        } else {
-            seams + 1
+            return 0;
         }
+        self.set_join_marks(first, first_len, None);
+        seams + 1
+    }
+
+    /// The change marks a join of the lines from 0-based `first` leaves, the first of which was
+    /// `first_len` bytes long (nvim's `do_join` for `:j` and `:s/\n//`, #1303): `'[` where that line
+    /// ended, `']` at the end of the joined line, and `'.` at the start of the line after it.
+    pub(super) fn set_join_marks(
+        &mut self,
+        first: usize,
+        first_len: usize,
+        group_before: Option<u64>,
+    ) {
+        let (ls, le) = line_span(&self.doc, first);
+        let next = self.line_pos(first + 1);
+        self.set_ex_marks(((ls + first_len).min(le), le), next, group_before);
     }
 
     /// `:[range]>` / `:[range]<` — shift the range's lines one indent level right (`left = false`) or left
@@ -201,6 +229,16 @@ impl EditorState {
         for _ in 0..levels.max(1) {
             apply_command(self, &cmd);
         }
+        // `'[` and `'.` at the start of the range, `']` on the last char of its last line (nvim's
+        // `op_shift`, #1303).
+        let start = self.line_pos(first);
+        let (last_ls, last_le) = line_span(&self.doc, last);
+        let end = if last_le > last_ls {
+            motion::prev_grapheme(self.doc.bytes(), last_le)
+        } else {
+            last_ls
+        };
+        self.set_ex_marks((start, end), start, None);
         // Vim's `:>`/`:<` leaves the cursor on the first non-blank of the range's LAST line (normal `>>`
         // leaves it on the FIRST). A shift never adds/removes lines, so `last` still names that line;
         // recompute its start against the POST-shift buffer (indent changed the byte offsets).
@@ -212,6 +250,35 @@ impl EditorState {
         // `:>` keeps the wanted column (`beginline(BL_SOL | BL_FIX)` under 'nostartofline', #1104).
         self.view.curswant = want;
         count as usize
+    }
+
+    /// The start of 0-based line `line` of the buffer; past the last line, the end of the text (the slot
+    /// after a final newline, which reads as the line after the last, as nvim leaves a mark there).
+    pub(super) fn line_pos(&self, line: usize) -> usize {
+        self.doc.nth_line_start(line).0
+    }
+
+    /// The change marks an Ex edit leaves (#1303): `'[` at `start`, `']` at `end`, and `'.` at `dot`, each
+    /// a byte offset of the edited buffer. nvim's Ex commands set `b_op_start`/`b_op_end` themselves and
+    /// `'.` through `changed_lines`, so each command picks its own lines (nvim v0.12.6). `group_before` is
+    /// the undo group before the edit: see [`EditorState::set_ex_dot`].
+    pub(super) fn set_ex_marks(
+        &mut self,
+        (start, end): (usize, usize),
+        dot: usize,
+        group_before: Option<u64>,
+    ) {
+        self.set_ex_dot(dot, group_before);
+        self.view.change_start = Some(start);
+        self.view.change_end = Some(end);
+    }
+
+    /// `'.` alone after an Ex edit (`:sort` and `:retab` leave `'[`/`']` as they were): the newest
+    /// change-list entry moves to `dot`, or a new one is made there when the edit began an undo step after
+    /// `group_before`. `None`: the edit ran as a Normal command, whose commit already chose the entry.
+    pub(super) fn set_ex_dot(&mut self, dot: usize, group_before: Option<u64>) {
+        let new_step = group_before.is_some_and(|g| self.doc.history().current_group() != g);
+        self.view.push_change(self.doc.bytes(), dot, new_step);
     }
 
     /// Where `:m`/`:t` leave the cursor on the line starting at `ls` of `bytes`: the wanted column (Vim
