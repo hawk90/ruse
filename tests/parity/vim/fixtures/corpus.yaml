@@ -183752,6 +183752,1152 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1561_vit_single_char_inner",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a>x</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_wider_inner",
+      "lines": [
+        "<a>xy</a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "xy",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_widens",
+      "lines": [
+        "<a>xy</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a>xy</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_nested_single",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_nested",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vititit_past_top",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvitititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vat_nested",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvatd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vatat_nested",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvatatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vatatat_past_top",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxvatatatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitat_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvitatd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vatit_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvatitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>xy</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_v2it_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxv2itd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit2it_nested_wide",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvit2itd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_v3it_too_deep",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxv3itd",
+      "expect": {
+        "text": [
+          "<a><b></b></a>"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_past_inner_end",
+      "lines": [
+        "<a><b>xy</b> z</a>"
+      ],
+      "keys": "fxvfzitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b> z",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_backward",
+      "lines": [
+        "<a><b>xy</b> z</a>"
+      ],
+      "keys": "fzvFxitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b> z",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_o_swapped",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvitoitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_o_swapped_cursor",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvloit<Esc>",
+      "expect": {
+        "text": [
+          "<a><b>xy</b></a>"
+        ],
+        "cursor": [
+          1,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_reversed_area_equals_inner",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fyvhitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_equals_inner",
+      "lines": [
+        "<a><b>xy</b></a>"
+      ],
+      "keys": "fxvlitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>xy</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_area_fails_unchanged",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "fxvllitd",
+      "expect": {
+        "text": [
+          "<a>a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x</",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_empty_on_open",
+      "lines": [
+        "<a></a>"
+      ],
+      "keys": "vitd",
+      "expect": {
+        "text": [
+          "<a>/a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_empty_on_close_lt",
+      "lines": [
+        "<a></a>"
+      ],
+      "keys": "f/hvitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_empty_on_close",
+      "lines": [
+        "<a></a>"
+      ],
+      "keys": "f/vitd",
+      "expect": {
+        "text": [
+          "<a>/a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_open_lt",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "vitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_open_gt",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "f>vitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_close_slash",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "f/vitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_close_lt",
+      "lines": [
+        "<a>x</a>"
+      ],
+      "keys": "f/hvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_on_close_lt_wide",
+      "lines": [
+        "<a>xy</a>"
+      ],
+      "keys": "f/hvitd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "xy",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvitd",
+      "expect": {
+        "text": [
+          "<div></div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "\nhello\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vitit_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<div>\nhello\n</div>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vat_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<div>\nhello\n</div>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_multiline_cursor",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jvit<Esc>",
+      "expect": {
+        "text": [
+          "<div>",
+          "hello",
+          "</div>"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_linewise_vit_turns_charwise",
+      "lines": [
+        "<div>",
+        "x",
+        "</div>"
+      ],
+      "keys": "jVitd",
+      "expect": {
+        "text": [
+          "<div></div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "\nx\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_indent",
+      "lines": [
+        "  <a>x</a>"
+      ],
+      "keys": "vitd",
+      "expect": {
+        "text": [
+          "  <a></a>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_case_insensitive",
+      "lines": [
+        "<A>x</a>"
+      ],
+      "keys": "fxvitd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<A>x</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_attrs",
+      "lines": [
+        "<a href=\"q\">xy</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a href=\"q\">xy</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_unclosed_outer",
+      "lines": [
+        "<p><a>xy</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          "<p>"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "<a>xy</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vat_selfclose_inside",
+      "lines": [
+        "<a>x<br/>y</a>"
+      ],
+      "keys": "fyvatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a>x<br/>y</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_nested_same_name",
+      "lines": [
+        "<a><a>x</a>y</a>"
+      ],
+      "keys": "fxvititd",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<a>x</a>y",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1561_vit_no_tag",
+      "lines": [
+        "plain"
+      ],
+      "keys": "lvitd",
+      "expect": {
+        "text": [
+          "pain"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "l",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
     }
   ]
 }
