@@ -679,6 +679,16 @@ pub enum Command {
         op: SearchOp,
         count: u32,
     },
+    /// Visual `*`/`#` — search forward (`*`) or backward (`#`) for the SELECTED text, nvim's default
+    /// `v_star-default` mapping (`:help v_star-default`). The input engine has no buffer, so the FRONTEND
+    /// resolves it: it reads the pattern from the live selection
+    /// ([`crate::Workspace::selection_search`]), records it as the last search and in the search history,
+    /// leaves Visual and runs the `count`-th search as a [`Command::Search`] (what the mapping's
+    /// `<Esc>{count}n` does). The planner treats it as a no-op, so it is never recorded itself.
+    SearchSelection {
+        forward: bool,
+        count: u32,
+    },
     /// `g&` — repeat the last `:s` over the WHOLE FILE with its flags (Vim). The core has no substitute
     /// history, so the FRONTEND resolves this against its last-substitute state (like [`SearchWordUnder`]);
     /// the planner treats it as a no-op.

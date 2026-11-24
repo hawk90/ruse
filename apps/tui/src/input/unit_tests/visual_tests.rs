@@ -652,3 +652,39 @@ fn visual_count_gj_hands_off_then_clears_the_count() {
         Feed::Cmd(Command::Move(2, Motion::Right))
     );
 }
+
+#[test]
+fn visual_star_hash_emit_search_selection() {
+    // Visual `*`/`#` search for the selected text (nvim's `v_star-default`, #1557), carrying the count, in
+    // every Visual kind; in Select a typed `*` replaces the selection instead.
+    let mut e = InputEngine::new();
+    for kind in [
+        SelectKind::Charwise,
+        SelectKind::Linewise,
+        SelectKind::Blockwise,
+    ] {
+        let vis = Mode::Visual { kind };
+        assert_eq!(
+            e.feed(k('*'), vis),
+            Feed::Cmd(Command::SearchSelection {
+                forward: true,
+                count: 1
+            })
+        );
+        assert_eq!(e.feed(k('2'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('#'), vis),
+            Feed::Cmd(Command::SearchSelection {
+                forward: false,
+                count: 2
+            })
+        );
+    }
+    let sel = Mode::Select {
+        kind: SelectKind::Charwise,
+    };
+    assert_eq!(
+        e.feed(k('*'), sel),
+        Feed::Cmd(Command::ReplaceSelection('*'))
+    );
+}

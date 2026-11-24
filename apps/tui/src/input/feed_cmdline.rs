@@ -704,6 +704,12 @@ impl InputEngine {
         self.last_search = Some((pattern, forward, SearchOffset::None));
     }
 
+    /// Add `pattern` to the search history, as nvim's `histadd('/', …)` in the Visual `*`/`#` mapping does
+    /// (#1557): a later `/<Up>` recalls it.
+    pub fn push_search_history(&mut self, pattern: &str) {
+        self.search_history.push(pattern);
+    }
+
     /// Replace the last search PATTERN only, keeping its direction and offset (forward with no offset when
     /// there was none), as an Ex `:s/pat/` or `:g/pat/` does in Vim (`save_re_pat`): `n` then finds `pat`.
     pub fn set_last_search_pattern(&mut self, pattern: String) {
