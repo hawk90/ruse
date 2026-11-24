@@ -157,8 +157,12 @@ A **line** anchor (`Track::Line(gravity)`) is how a Vim mark follows an edit: by
 as nvim's `mark_adjust` / `mark_col_adjust` move marks (#686). A position is `(line, column)`:
 
 - an edit inside its line — or one that starts in its line and splits it, or joins the next line onto it —
-  leaves the column alone, clamped onto the line (`x` before a mark does not move it; nvim keeps the
-  column);
+  leaves the column alone (`x` before a mark does not move it; nvim keeps the column). The offset is
+  clamped onto the line, but the position keeps its **raw** column (`Tracked::past`, `LineMap::map_raw`,
+  #1304): nvim stores a mark as `(line, col)` and clamps the column only where the mark is used
+  (`check_cursor`, a mark jump), so `getpos()` still reports the old column after `$x`, and a line that
+  grows back finds the mark there again. A charwise delete across lines and a join add to the raw column;
+  a position that moves with the text after an edit keeps how far it lay past it;
 - whole lines inserted or deleted before it shift its line; a replaced block of whole lines (`:{range}!`,
   `:sort`) keeps it on the line of the same index while one is left;
 - a join that runs into its line from above (the `\n` and the next line's indent replaced by blanks) moves

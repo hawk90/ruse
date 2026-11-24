@@ -85,6 +85,7 @@ pub(super) fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
                 SelectKind::Blockwise => at_vcol(b, end_ls, start_col + g.cols - 1, ts),
             };
             st.view.mode = Mode::Visual { kind: g.kind };
+            st.view.redo_visual = true;
             st.view.anchor = Some(cur);
             st.view.cursor = end;
             if g.to_eol {

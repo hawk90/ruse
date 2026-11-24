@@ -352,7 +352,9 @@ proptest! {
 // - lines inserted at or above a mark's line shift it down;
 // - a deleted line takes a `Drop` mark with it, moves a `Keep` mark to the line that took its place (the
 //   new last line past the end) at its column, and a `Cursor` mark to column 0 of the line above;
-// - an edit inside a mark's line keeps its column, clamped to the new line.
+// - an edit inside a mark's line keeps its column, clamped to the new line. A `Tracked` position keeps the
+//   raw column past the line's end (`Tracked::past`, #1304), as nvim keeps a mark's `(line, col)`; a
+//   document line anchor is the clamped offset alone.
 //
 // Undo applies the inverse change by the same rules; a mark undo restores (`Tracked::restored`, Vim's
 // lowercase marks) then goes back to where it was when the undone change began, and the step keeps the
@@ -449,7 +451,12 @@ impl LineModel {
                             LineGravity::Drop => None,
                             LineGravity::Keep => {
                                 let to = from.min(n - 1);
-                                Some((to, c.min(self.lines[to].len())))
+                                let c = if m.kind == 0 {
+                                    c.min(self.lines[to].len())
+                                } else {
+                                    c
+                                };
+                                Some((to, c))
                             }
                             LineGravity::Cursor => Some((from.saturating_sub(1), 0)),
                         }
@@ -460,7 +467,7 @@ impl LineModel {
             Lines::InLine(i, text) => {
                 let old = std::mem::replace(&mut self.lines[*i], text.clone());
                 let len = text.len();
-                for m in &mut self.marks {
+                for m in self.marks.iter_mut().filter(|m| m.kind == 0) {
                     if let Some((l, c)) = &mut m.pos {
                         if *l == *i {
                             *c = (*c).min(len);
@@ -667,9 +674,14 @@ proptest! {
             }
             for (i, t) in &tracked {
                 let m = model.marks[*i];
+                // The offset is the raw column clamped onto the line; `past` is the rest.
+                let want = m.pos.map(|(l, c)| {
+                    let at = c.min(model.lines[l].len());
+                    (model.offset((l, at)), c - at)
+                });
                 prop_assert_eq!(
-                    t.pos.map(|p| p.0),
-                    m.pos.map(|p| model.offset(p)),
+                    t.pos.map(|p| (p.0, t.past)),
+                    want,
                     "tracked mark {} {:?} after {:?}", i, m, op
                 );
             }

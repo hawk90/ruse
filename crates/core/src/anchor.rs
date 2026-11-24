@@ -549,12 +549,15 @@ pub fn map_byte(edits: &EditList, o: BytePos, bias: Bias) -> BytePos {
 /// store (a View's marks, #686): `pos` is updated in place by each change, `None` once a
 /// [`LineGravity::Drop`] line was deleted (or before it was ever set). `restore` = an undo puts it back
 /// where it was when the undone change began, as Vim's `u_undoredo` restores the lowercase and Visual
-/// marks.
+/// marks. `past` = how many bytes the position's raw column lies beyond `pos` (#1304): nvim keeps a
+/// mark's column when an edit shortens its line under it, so a line-tracked position keeps the column
+/// [`LineMap::map_raw`] gives it while `pos` stays on the line.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Tracked {
     pub pos: Option<BytePos>,
     pub track: Track,
     pub restore: bool,
+    pub past: usize,
 }
 
 impl Tracked {
@@ -565,7 +568,15 @@ impl Tracked {
             pos,
             track: Track::Line(gravity),
             restore: false,
+            past: 0,
         }
+    }
+
+    /// This position with its raw column `past` bytes beyond it.
+    #[must_use]
+    pub fn past(mut self, past: usize) -> Tracked {
+        self.past = past;
+        self
     }
 
     /// Mark this position as one undo restores.
@@ -577,13 +588,22 @@ impl Tracked {
 
     /// Carry this position through one change.
     pub fn apply(&mut self, edits: &EditList, map: &LineMap<'_>) {
-        self.pos = self.pos.and_then(|p| match self.track {
-            Track::Byte(bias) => Some(BytePos(crate::motion::snap(
-                map.new,
-                map_byte_inside(edits.edits(), p.0, bias).0,
-            ))),
-            Track::Line(g) => map.map(p, g),
-        });
+        let (pos, past) = match (self.pos, self.track) {
+            (None, _) => (None, 0),
+            (Some(p), Track::Byte(bias)) => (
+                Some(BytePos(crate::motion::snap(
+                    map.new,
+                    map_byte_inside(edits.edits(), p.0, bias).0,
+                ))),
+                0,
+            ),
+            (Some(p), Track::Line(g)) => match map.map_raw(p, self.past, g) {
+                Some((p, past)) => (Some(p), past),
+                None => (None, 0),
+            },
+        };
+        self.pos = pos;
+        self.past = past;
     }
 }
 
@@ -591,7 +611,7 @@ impl Tracked {
 /// edits apply, as nvim's `mark_adjust` moves a mark. A position is `(line, column)`:
 ///
 /// - an edit inside its line, or one that starts in its line and splits it or joins the next line on,
-///   leaves the column alone (clamped into the line);
+///   leaves the column alone (the offset clamped into the line, the raw column kept by [`LineMap::map_raw`]);
 /// - whole lines inserted or deleted before it shift its line; a deleted line takes the position with it
 ///   ([`LineGravity`]); a replaced block keeps it on the line of the same index while one is left;
 /// - a join running into its line from above (its line's `\n` and the next line's indent replaced by
@@ -618,6 +638,20 @@ pub struct LineMap<'a> {
     /// The lines of `old` and of `new` found so far.
     old_lines: Lines,
     new_lines: Lines,
+}
+
+/// A mapped position: the new-text offset and how many bytes its raw column lies past it (#1304).
+#[derive(Clone, Copy)]
+struct Raw {
+    at: usize,
+    past: usize,
+}
+
+impl Raw {
+    /// An offset whose raw column is its own.
+    fn at(at: usize) -> Raw {
+        Raw { at, past: 0 }
+    }
 }
 
 /// The lines of one text found so far, as `(start, end)` (`end` the line's `\n` or the text's end),
@@ -688,11 +722,16 @@ impl<'a> LineMap<'a> {
             && (e.ins.is_empty() || e.ins.starts_with(b"\n"))
     }
 
-    /// The new-text offset of column `col` on the line starting at `ls` (clamped onto the line).
-    fn at_col(&self, ls: usize, col: usize) -> usize {
+    /// The new-text offset of column `col` on the line starting at `ls`, clamped onto the line, with how
+    /// far `col` lies past it.
+    fn at_col(&self, ls: usize, col: usize) -> Raw {
         let ls = ls.min(self.new.len());
         let le = self.new_lines.of(self.new, ls).1;
-        ls + col.min(le - ls)
+        let at = col.min(le - ls);
+        Raw {
+            at: ls + at,
+            past: col - at,
+        }
     }
 
     /// The start of the new-text line holding `p`; the slot after a final newline is no line, so it
@@ -712,11 +751,32 @@ impl<'a> LineMap<'a> {
         self.map_offset(o.0, gravity).map(BytePos)
     }
 
+    /// [`LineMap::map`] for a position whose raw column lies `past` bytes beyond `o` (a Vim mark left past
+    /// its line's end by an earlier edit, or a `$` area's end, #1304): the new offset, clamped onto its
+    /// line, and how far the raw column now lies beyond it. nvim keeps a mark's `(line, col)` and clamps the
+    /// column only where the mark is used, so a line that grows back under the mark finds it at its old
+    /// column.
+    #[must_use]
+    pub fn map_raw(
+        &self,
+        o: BytePos,
+        past: usize,
+        gravity: LineGravity,
+    ) -> Option<(BytePos, usize)> {
+        self.map_col(o.0, past, gravity)
+            .map(|(p, past)| (BytePos(p), past))
+    }
+
     /// [`LineMap::map`] over a bare offset, for the store's own sweep.
     fn map_offset(&self, o: usize, gravity: LineGravity) -> Option<usize> {
+        self.map_col(o, 0, gravity).map(|(p, _)| p)
+    }
+
+    /// [`LineMap::map_raw`] over a bare offset.
+    fn map_col(&self, o: usize, past: usize, gravity: LineGravity) -> Option<(usize, usize)> {
         let o = o.min(self.old.len());
         let (ls, le) = self.old_lines.of(self.old, o);
-        let col = o - ls;
+        let col = o - ls + past;
         let mut i = self.edits.partition_point(|e| e.end().0 < ls);
         let mut delta = self.prefix[i];
         let mut out = None;
@@ -756,8 +816,8 @@ impl<'a> LineMap<'a> {
                 out = Some(if e.end().0 > le {
                     match gravity {
                         LineGravity::Drop => None,
-                        LineGravity::Keep => Some(base + e.ins.len()),
-                        LineGravity::Cursor => Some(self.new_lines.of(self.new, base).0),
+                        LineGravity::Keep => Some(Raw::at(base + e.ins.len())),
+                        LineGravity::Cursor => Some(Raw::at(self.new_lines.of(self.new, base).0)),
                     }
                 } else if e.ins.is_empty() && !self.is_join(e) {
                     // A charwise delete across lines (#1125): nvim's `op_delete` cuts both ends without
@@ -767,9 +827,13 @@ impl<'a> LineMap<'a> {
                     let start = self.new_lines.of(self.new, base).0;
                     Some(self.at_col(start, base - start + col))
                 } else if o >= e.end().0 {
-                    Some((o as isize + delta + e.delta()) as usize)
+                    // It moves with the text after the edit, its raw column with it.
+                    Some(Raw {
+                        at: (o as isize + delta + e.delta()) as usize,
+                        past,
+                    })
                 } else {
-                    Some(base + e.ins.len())
+                    Some(Raw::at(base + e.ins.len()))
                 });
             }
             break;
@@ -778,7 +842,8 @@ impl<'a> LineMap<'a> {
             Some(r) => r?,
             None => self.at_col((ls as isize + delta) as usize, col),
         };
-        Some(crate::motion::snap(self.new, new))
+        let at = crate::motion::snap(self.new, new.at);
+        Some((at, new.past + new.at.saturating_sub(at)))
     }
 
     /// Whether the charwise `e` is a join: it starts at its line's `\n`, removes only blanks after it on
@@ -794,7 +859,7 @@ impl<'a> LineMap<'a> {
     /// inserts those very lines as whole lines elsewhere (`:m`, #1125): the line of the same index in that
     /// insert. `lead`: `e` removes the lines after a `\n` (an end-aligned delete) rather than lines ending
     /// in one. `None` when `e` inserts text or no edit carries its lines.
-    fn moved(&self, e: &Edit, j: usize, col: usize, lead: bool) -> Option<usize> {
+    fn moved(&self, e: &Edit, j: usize, col: usize, lead: bool) -> Option<Raw> {
         if !e.ins.is_empty() {
             return None;
         }
@@ -844,7 +909,7 @@ impl<'a> LineMap<'a> {
         col: usize,
         gravity: LineGravity,
         lead: bool,
-    ) -> Option<usize> {
+    ) -> Option<Raw> {
         // The start offsets (in `e.ins`) of the inserted lines.
         let mut starts: Vec<usize> = Vec::new();
         if !lead && !e.ins.is_empty() {
@@ -866,12 +931,12 @@ impl<'a> LineMap<'a> {
                 Some(self.at_col(self.new_line_start(after), col))
             }
             // Column 0 of the line before the deleted ones: the block's last line, else the one above.
-            LineGravity::Cursor => Some(match starts.last() {
+            LineGravity::Cursor => Some(Raw::at(match starts.last() {
                 Some(&s) => base + s,
                 None if lead => crate::pos::raw::line_start(self.new, base),
                 None if base == 0 => 0,
                 None => crate::pos::raw::line_start(self.new, base - 1),
-            }),
+            })),
         }
     }
 }
@@ -1172,6 +1237,32 @@ mod tests {
         // A column past the shortened line clamps onto its end.
         let del = vec![Edit::delete(BytePos(0), 5)];
         assert_eq!(line("abcdefgh\nx\n", del, 7, LineGravity::Drop), Some(3));
+    }
+
+    fn raw(old: &str, edits: Vec<Edit>, o: usize, past: usize) -> Option<(usize, usize)> {
+        let list = EditList::new(edits).unwrap();
+        let new = list.apply_to(old.as_bytes());
+        LineMap::new(old.as_bytes(), &new, &list)
+            .map_raw(BytePos(o), past, LineGravity::Keep)
+            .map(|(p, past)| (p.0, past))
+    }
+
+    #[test]
+    fn a_line_anchor_keeps_its_raw_column_past_a_shortened_line() {
+        // `4lma$xx` (#1304): the offset clamps onto "abcd"'s end, the raw column stays 4.
+        let del = vec![Edit::delete(BytePos(4), 2)];
+        assert_eq!(raw("abcdef\ngh\n", del, 4, 0), Some((4, 0)));
+        let del = vec![Edit::delete(BytePos(3), 3)];
+        assert_eq!(raw("abcdef\ngh\n", del, 4, 0), Some((3, 1)));
+        // `0P` grows the line back: the mark is at column 4 again.
+        let ins = vec![Edit::insert(BytePos(0), b"ef".to_vec())];
+        assert_eq!(raw("abc\ngh\n", ins, 3, 1), Some((4, 0)));
+        // A deleted line above moves it, raw column and all.
+        let dd = vec![Edit::delete(BytePos(0), 2)];
+        assert_eq!(raw("x\nabc\n", dd, 5, 3), Some((3, 3)));
+        // A join from above adds the kept head to the raw column.
+        let join = vec![Edit::replace(BytePos(2), 1, b" ".to_vec())];
+        assert_eq!(raw("ab\ncd\n", join, 5, 2), Some((5, 2)));
     }
 
     #[test]

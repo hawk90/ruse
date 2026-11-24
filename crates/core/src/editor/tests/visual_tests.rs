@@ -2317,3 +2317,81 @@ mod visual_op_tests {
         assert_eq!(st.register().text(), b"ab\nde");
     }
 }
+
+#[cfg(test)]
+mod raw_mark_column_tests {
+    //! The marks keep nvim's raw column through an edit that shortens their line (#1304, #1306).
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    /// Mark `c` as nvim's `getpos()` column: the offset's column plus how far the raw column lies past it.
+    fn raw_col(st: &EditorState, c: char) -> Option<usize> {
+        let (p, past) = st.view.mark_raw(c)?;
+        Some(p.0 - crate::motion::line_start(st.bytes(), p.0) + past)
+    }
+
+    fn mv(m: Motion) -> Command {
+        Command::Move(1, m)
+    }
+
+    const CHAR: Command = Command::EnterVisual {
+        kind: SelectKind::Charwise,
+    };
+
+    #[test]
+    fn a_named_mark_keeps_its_column_past_a_shortened_line() {
+        // `4lma$xx` on "abcdef": the line is "abcd", `'a` still reads column 4.
+        let mut cmds = vec![mv(Motion::Right); 4];
+        cmds.extend([
+            Command::SetNamedMark('a'),
+            mv(Motion::LineEnd),
+            Command::DeleteUnder(1),
+            Command::DeleteUnder(1),
+        ]);
+        let st = run("abcdef\ngh\n", &cmds);
+        assert_eq!(st.bytes(), b"abcd\ngh\n");
+        assert_eq!(raw_col(&st, 'a'), Some(4));
+        // The offset a jump reads stays on the line.
+        assert_eq!(st.view.named_mark('a').map(|p| p.0), Some(4));
+    }
+
+    #[test]
+    fn a_dollar_area_ends_past_its_last_char_but_dollar_v_does_not() {
+        let st = run(
+            "abcdef\nabc\n",
+            &[CHAR, mv(Motion::LineEnd), Command::EnterNormal],
+        );
+        assert_eq!(raw_col(&st, '>'), Some(6));
+        let st = run(
+            "abcdef\nabc\n",
+            &[mv(Motion::LineEnd), CHAR, Command::EnterNormal],
+        );
+        assert_eq!(raw_col(&st, '>'), Some(5));
+    }
+
+    #[test]
+    fn the_last_insert_keeps_its_column_past_a_shortened_line() {
+        // `jAxy<Esc>xx` (#1306): `'^` stays at column 5 of "def".
+        let st = run(
+            "abc\ndef\n",
+            &[
+                mv(Motion::Down),
+                Command::AppendLineEnd,
+                Command::InsertChar('x'),
+                Command::InsertChar('y'),
+                Command::EnterNormal,
+                Command::DeleteUnder(1),
+                Command::DeleteUnder(1),
+            ],
+        );
+        assert_eq!(st.bytes(), b"abc\ndef\n");
+        assert_eq!(raw_col(&st, '^'), Some(5));
+    }
+}

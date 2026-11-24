@@ -116,7 +116,10 @@ Vim marks (`a`–`z`, `A`–`Z`, `` `^ ``, `[`/`]`, `<`/`>`), the jumplist and t
 `View` as byte offsets that the Document carries through every change by the LINE-anchor rule
 ([anchor-store §3.1](anchor-store.md#anchor-line)), as nvim's `mark_adjust` does (#686): a whole line
 inserted or deleted above moves them, an edit inside their line leaves their column, a lowercase mark or
-`` `^ `` on a deleted line is removed (`E20` after), and undo restores the lowercase and Visual marks. The
+`` `^ `` on a deleted line is removed (`E20` after), and undo restores the lowercase and Visual marks. A
+named mark, `` `^ `` and the Visual marks keep nvim's raw column beside the offset (#1304): an edit that
+shortens the line under one leaves its column, which a jump clamps; a `$` area's `'>` is one past its line's
+last char; a dot-repeat of a Visual operator leaves `'<`/`'>` and `gv` alone (nvim's `redo_VIsual`). The
 View hands them to the Document per transaction (`EditorState::apply_txn`); a View at rest while another
 View edits its document pins them, with its cursor (`Workspace::lend`). The Emacs mark stays a snapped
 offset: Emacs keeps markers through an in-place replacement (casing), which the byte rule does not. Per-buffer (rather than per-View) marks and the `Selection` model stay deferred (#636).

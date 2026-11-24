@@ -140,9 +140,9 @@ pub struct View {
     mark: Option<usize>,
     /// The LAST selection left behind, as `(anchor, active_end, linewise)` — captured whenever a Visual/
     /// Select mode is exited, restored by `gv` ([`Command::ReselectVisual`]). This is the depth-1
-    /// degenerate of D-027's `` `< ``/`` `> `` selection history: one remembered selection, stored in the
-    /// same raw-offset representation as the live `anchor` (both migrate to the anchor store together).
-    last_visual: Option<(usize, usize, SelectKind)>,
+    /// degenerate of D-027's `` `< ``/`` `> `` selection history: one remembered selection, each end a
+    /// [`Mark`] (the offset, and nvim's raw column past it, #1304).
+    last_visual: Option<(Mark, Mark, SelectKind)>,
     /// The kind `visualmode()` reports (nvim's `b_visual_mode_eval`): the kind of the last Visual/Select
     /// exit, set beside [`View::last_visual`], except that the uppercase line forms `D`/`X`/`Y`/`C`/`S`/`R`
     /// over a charwise or blockwise selection report linewise while `gv` and `'<`/`'>` keep the selection's
@@ -223,15 +223,24 @@ pub struct View {
     /// #1241), read by [`Command::GotoNamedMark`], and snapped on every commit like the change list. An
     /// uppercase or numbered (file) mark is kept with this view's buffer: a jump to one set in another
     /// buffer is deferred (#1088), and the numbered marks are not filled from a shada file.
-    named_marks: [Option<usize>; 62],
+    named_marks: [Option<Mark>; 62],
     /// The one end of the last Visual area that is set (`'<'`, its start, or `'>'`, its end) when `:mark <`
     /// or `:mark >` made it with no Visual area before (#1241). Vim's other end is then unset: both `<` and
     /// `>` read the one that is (so [`View::last_visual`] holds it twice), but `gv` has nothing to reselect.
     visual_one_end: Option<char>,
+    /// Whether the Visual cursor was last moved with `curswant` at MAXCOL (`v$`, `$vj`), where nvim's
+    /// `coladvance(MAXCOL)` leaves it on the NUL one past the line's last char, so the area's `'>` reads
+    /// there (#1304). A Visual area begun after `$` without a move (`$v`) keeps the cursor on the last
+    /// char. Reset on entering a selection.
+    visual_eol: bool,
+    /// Set by a dot-repeat that rebuilds a Visual area at the caret ([`prepare_selection_op`]): nvim's
+    /// `redo_VIsual` runs the operator without making that area the last Visual one, so `'<`/`'>`, `gv`
+    /// and `visualmode()` keep the area the user made (#1304). Consumed by the [`commit`] that leaves it.
+    redo_visual: bool,
     /// Where Insert mode was last left (Vim's `` `^ `` mark), for `gi` to resume Insert there. Set in
     /// [`commit`] on an Insert→Normal transition to the pre-clamp caret, and snapped like the marks. `None`
     /// until the first Insert session ends.
-    last_insert: Option<usize>,
+    last_insert: Option<Mark>,
     /// Vim's `[` mark: the byte offset of the FIRST char of the last changed OR yanked text. Set in
     /// [`commit`] after any committing edit (delete/replace/put), on leaving an Insert session, or on a
     /// yank; snapped every commit like the named marks. `None` before the first change/yank. Read by
@@ -269,6 +278,25 @@ pub struct View {
     /// The current cursor into [`jumps`] for `CTRL-O`/`CTRL-I`. Equals `jumps.len()` (past the newest) until
     /// the first `CTRL-O`, which saves the current position so `CTRL-I` can return, then walks the list.
     jump_idx: usize,
+}
+
+/// A stored Vim mark (#1304): `at`, the in-buffer byte offset a jump or an operator reads, and `past`, how
+/// many bytes the mark's raw column lies beyond it. nvim keeps a mark as `(line, col)` and clamps the column
+/// only where the mark is used (`check_cursor`), so an edit that shortens the mark's line leaves `getpos()`
+/// reporting the old column, and a line that grows back finds the mark there again; a `$` area's `'>` is
+/// one past its line's last char. `at` stays on the mark's line; the Document carries both through every
+/// change ([`crate::LineMap::map_raw`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct Mark {
+    pub(crate) at: usize,
+    pub(crate) past: usize,
+}
+
+impl Mark {
+    /// A mark at `at`, its raw column its own.
+    pub(crate) fn at(at: usize) -> Mark {
+        Mark { at, past: 0 }
+    }
 }
 
 /// The [`View::named_marks`] slot of mark `c`: `a`–`z` are 0–25, `A`–`Z` 26–51, `0`–`9` 52–61.
