@@ -7,7 +7,7 @@ use proptest::prelude::*;
 
 /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
 fn any_key() -> impl Strategy<Value = KeyEvent> {
-    let named = "0123456789hjklwbeWBEdcyiaoOAIxfFtT;,vVpPunN$/:gGrJ~%(){}[]<>\"'`sp"
+    let named = "0123456789hjklwbeWBEdcyiaoOAIxfFtT;,vVpPunN$/:gGrJ~%(){}[]<>\"'`spHML."
         .chars()
         .collect::<Vec<_>>();
     prop_oneof![
@@ -22,9 +22,41 @@ fn any_key() -> impl Strategy<Value = KeyEvent> {
     ]
 }
 
+/// The viewport motion `key` is when the frontend takes it before the engine, as `screen_line_owns`
+/// does for `H` / `M` / `L` in Normal mode at a command boundary or under an operator (#1577). The
+/// property draws a mode per key, so it also asks for no Insert-side prefix and no command line: in the
+/// session the view cannot be in Normal mode with one of them open.
+fn viewport_key(e: &InputEngine, key: KeyEvent, mode: Mode) -> Option<ScreenMotion> {
+    let insert_state = e.insert.ctrl_g || e.insert.ctrl_r || e.insert.ctrl_x || e.insert.keep_undo;
+    if mode != Mode::Normal
+        || !key.modifiers.is_empty()
+        || insert_state
+        || !e.activations.is_empty()
+        || e.cmdline.is_some()
+        || !matches!(e.pending(), Pending::Base | Pending::Operator)
+    {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char('H') => Some(ScreenMotion::ViewHigh),
+        KeyCode::Char('M') => Some(ScreenMotion::ViewMiddle),
+        KeyCode::Char('L') => Some(ScreenMotion::ViewLow),
+        _ => None,
+    }
+}
+
 /// Finish a `Feed::ScreenMotion` the way the frontend's `resolve_screen_motion` can, rotating through
-/// its four finishers by step index so every one of them is held to the no-leak invariant.
-fn finish_screen_motion(e: &mut InputEngine, step: usize) -> Feed {
+/// its four finishers by step index so every one of them is held to the no-leak invariant. A viewport
+/// motion (`.` of a `dL`) is finished as the session does, through `screen_op`.
+fn finish_screen_motion(
+    e: &mut InputEngine,
+    motion: ScreenMotion,
+    count: u32,
+    step: usize,
+) -> Feed {
+    if motion.is_viewport() {
+        return e.screen_op(motion, count, 1 + (step % 3) as u32);
+    }
     match step % 4 {
         0 => e.screen_motion_to(0),
         1 => e.screen_motion_line_end(1),
@@ -67,8 +99,15 @@ proptest! {
     fn no_pending_state_ever_leaks(steps in prop::collection::vec((any_key(), any_mode()), 0..80)) {
         let mut e = InputEngine::new();
         for (i, (key, mode)) in steps.into_iter().enumerate() {
-            let mut feed = e.feed(key, mode);
-            if let Feed::ScreenMotion { count, .. } = feed {
+            // `H` / `M` / `L` never reach `feed`: the frontend resolves the line and finishes them (#1577).
+            let mut feed = match viewport_key(&e, key, mode) {
+                Some(motion) => {
+                    let count = e.screen_count();
+                    e.screen_op(motion, count, 1 + (i % 3) as u32)
+                }
+                None => e.feed(key, mode),
+            };
+            if let Feed::ScreenMotion { motion, count } = feed {
                 // `.` of a change over a screen motion hands it out with the recorded count and no
                 // operator armed, though it resolves as one (#1539).
                 let redo = e.has_op() && e.normal.op.is_none();
@@ -76,7 +115,7 @@ proptest! {
                     prop_assert_eq!(count, e.mcount(), "handoff count differs from the armed count");
                 }
                 prop_assert!(e.normal.awaiting == Awaiting::Nothing, "key-expectation armed across a handoff");
-                feed = finish_screen_motion(&mut e, i);
+                feed = finish_screen_motion(&mut e, motion, count, i);
             }
             // Orthogonal-axis invariant: a text object is only ever awaited with an operator armed
             // (`diw`) or from a selection mode (`viw`) — never bare in Normal. `mode` is the mode the

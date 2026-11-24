@@ -310,3 +310,44 @@ fn dot_repeats_the_screen_motion_not_the_span() {
         lines(&[&format!("{}{}", &l[..39], &l[40..])])
     );
 }
+
+/// #1576: after `$`, `dgk` is inclusive and goes back, so it also deletes the char under the cursor
+/// (nvim v0.12.6, 80 columns): 41 chars from column 79 through the line's last char, leaving 79.
+/// Without `$` (`G90ldgk`) and with `dvgk` it stays exclusive.
+#[test]
+fn backward_dgk_after_dollar_takes_the_cursor_char() {
+    let l = "0123456789".repeat(12);
+    let run = |keys: &str| {
+        let text: String = (0..4).map(|_| format!("{l}\n")).collect();
+        let mut h = Headless::with_size(Profile::Vim, &text, 80, 24);
+        h.keys(keys);
+        let t = h.text();
+        let last = t.lines().last().unwrap_or_default().len();
+        (last, h.register('"').0.len(), h.cursor_row_col())
+    };
+    assert_eq!(run("G$dgk"), (79, 41, (4, 78)));
+    assert_eq!(run("G$ygk"), (120, 41, (4, 79)));
+    assert_eq!(run("G$dvgk"), (80, 40, (4, 79)));
+    assert_eq!(run("G90ldgk"), (40, 80, (4, 10)));
+}
+
+/// #1577: `.` after an operator over `H` / `M` / `L` resolves the viewport line again, as nvim's redo
+/// buffer holds the keys and not the lines (nvim v0.12.6, 23 text rows, 'scrolloff' 3).
+#[test]
+fn dot_repeats_h_m_l_not_the_lines() {
+    let text: String = (1..=100).map(|i| format!("line {i}\n")).collect();
+    let run = |keys: &str| {
+        let mut h = Headless::with_size(Profile::Vim, &text, 80, 24);
+        h.keys(":set so=3<CR>");
+        h.keys(keys);
+        let t = h.text();
+        let first = t.lines().next().unwrap_or_default().to_string();
+        (t.lines().count(), first, h.cursor_row_col().0)
+    };
+    // `dL` deletes the 23 lines shown; `.` deletes the 23 shown after it.
+    assert_eq!(run("dL."), (54, "line 47".to_string(), 1));
+    assert_eq!(run("dM."), (76, "line 25".to_string(), 1));
+    assert_eq!(run("cLx<Esc>.").0, 56);
+    // `.` after scrolling resolves `L` in the scrolled window.
+    assert_eq!(run("dL5<C-e>."), (57, "line 24".to_string(), 9));
+}

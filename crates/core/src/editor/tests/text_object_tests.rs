@@ -512,8 +512,7 @@ mod tag_text_object_tests {
 
     #[test]
     fn visual_count_it_expands_to_an_outer_level() {
-        // v2it selects the inner content of the second-level-out tag (users reach outer levels via a
-        // count; bare repeated `it` re-expansion in Visual is a documented v0 limitation).
+        // v2it selects the inner content of the second-level-out tag.
         let st = at(
             "<a><b>x</b></a>",
             6,
@@ -527,6 +526,85 @@ mod tag_text_object_tests {
         );
         assert_eq!(text(&st), "<a></a>");
         assert_eq!(st.register().text(), b"<b>x</b>");
+    }
+
+    /// #1561, nvim v0.12.6 `current_tagblock`: `it`/`at` read the current Visual area, so an area
+    /// that already is the inner text takes the whole block and a repeat climbs a level.
+    #[test]
+    fn visual_repeated_it_and_at_widen_like_nvim() {
+        let visual = || Command::EnterVisual {
+            kind: SelectKind::Charwise,
+        };
+        let it = |n| Command::Move(n, Motion::Tag { around: false });
+        let at_ = |n| Command::Move(n, Motion::Tag { around: true });
+        type Case = (
+            &'static str,
+            usize,
+            Vec<Command>,
+            &'static str,
+            &'static [u8],
+        );
+        let cases: Vec<Case> = vec![
+            // `fxvitd` on `<a>x</a>`: the one-char area IS the inner, so `it` takes the block.
+            ("<a>x</a>", 3, vec![visual(), it(1)], "", b"<a>x</a>"),
+            ("<a>xy</a>", 3, vec![visual(), it(1)], "<a></a>", b"xy"),
+            (
+                "<a>xy</a>",
+                3,
+                vec![visual(), it(1), it(1)],
+                "",
+                b"<a>xy</a>",
+            ),
+            (
+                "<a><b>x</b></a>",
+                6,
+                vec![visual(), it(1)],
+                "<a></a>",
+                b"<b>x</b>",
+            ),
+            (
+                "<a><b>x</b></a>",
+                6,
+                vec![visual(), it(1), it(1)],
+                "",
+                b"<a><b>x</b></a>",
+            ),
+            (
+                "<a><b>x</b></a>",
+                6,
+                vec![visual(), at_(1), at_(1)],
+                "",
+                b"<a><b>x</b></a>",
+            ),
+            // A count past the nesting fails and leaves the area as it was.
+            (
+                "<a><b>x</b></a>",
+                6,
+                vec![visual(), it(3)],
+                "<a><b></b></a>",
+                b"x",
+            ),
+        ];
+        for (buf, cur, mut cmds, want, reg) in cases {
+            cmds.push(Command::DeleteSelection);
+            let st = at(buf, cur, &cmds);
+            assert_eq!(text(&st), want, "{buf} {cmds:?}");
+            assert_eq!(st.register().text(), reg, "{buf} {cmds:?}");
+        }
+        // `Vit` turns the selection charwise (`VIsual_mode = 'v'`).
+        let st = at(
+            "<div>\nx\n</div>",
+            6,
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                it(1),
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "<div></div>");
+        assert_eq!(st.register().text(), b"\nx\n");
     }
 }
 

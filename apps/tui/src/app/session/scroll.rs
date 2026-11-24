@@ -179,6 +179,74 @@ fn scroll_start(
     )
 }
 
+/// The 0-based buffer line `H` / `M` / `L` (`motion`, one of the viewport [`ScreenMotion`]s) with the
+/// effective `count` lands on in the focused window, keeping `scrolloff` rows from its edges. Shared by the
+/// `H` / `M` / `L` key and by `.` of a change over one, which resolves the line again (#1577).
+///
+/// [`ScreenMotion`]: crate::input::ScreenMotion
+#[allow(clippy::too_many_arguments)]
+pub(super) fn viewport_line(
+    motion: crate::input::ScreenMotion,
+    count: u32,
+    scrolloff: usize,
+    ws: &Workspace,
+    frame: &FrameCtx,
+    line_idx: &line_index::LineIndex,
+    folds: &[crate::folds::Fold],
+    focused_h: usize,
+) -> usize {
+    use super::viewport;
+    use crate::input::ScreenMotion;
+    let to = match motion {
+        ScreenMotion::ViewHigh => viewport::ScreenTo::High,
+        ScreenMotion::ViewMiddle => viewport::ScreenTo::Middle,
+        _ => viewport::ScreenTo::Low,
+    };
+    let snapshot = &frame.snapshot;
+    // The last real line: the slot after a final newline is no line (#677), so `M` on a short
+    // buffer takes the middle of its lines, not of one more.
+    let last_line = line_idx
+        .line_of(ruse_core::motion::off_phantom(snapshot, ruse_core::BytePos(snapshot.len())).0);
+    // The lines that show whole: fewer than the rows when lines wrap (#615).
+    let top = ws.focused().view.top();
+    let shown = match frame.wins.get(ws.focus()) {
+        Some(win) => {
+            let lines = PaneLines {
+                text: PaneText {
+                    bytes: snapshot,
+                    idx: line_idx,
+                },
+                win,
+                folds,
+                virt: &[],
+                height: focused_h,
+            };
+            if folds.iter().any(|f| f.closed) {
+                // A closed fold is one screen line (#1141): pick among the lines shown.
+                let (vis, at_end) = viewport::shown_lines(&lines, top, focused_h);
+                // Indices into `vis`, offset by one when the window does not start at the first
+                // line, so `H` keeps its 'scrolloff' margin there.
+                let t0 = usize::from(top > 0);
+                let last = t0 + if at_end { vis.len() - 1 } else { vis.len() };
+                let i = viewport::screen_line(t0, vis.len(), scrolloff, to, count, last);
+                Err(vis[(i - t0).min(vis.len() - 1)])
+            } else {
+                let (bot, _) = viewport::botline(&lines, top, focused_h);
+                Ok(if bot >= viewport::Lines::count(&lines) {
+                    focused_h
+                } else {
+                    (bot - top).max(1)
+                })
+            }
+        }
+        None => Ok(focused_h),
+    };
+    match shown {
+        Ok(shown) => viewport::screen_line(top, shown, scrolloff, to, count, last_line),
+        Err(row) => row,
+    }
+}
+
 /// Resolve a screen-line motion (`gj`, `gk`, `g0`, `g^`, `gm`, `g$`; #615) in the focused window and let
 /// the engine finish it: the bare move, or its armed operator over it. `want` carries nvim's wanted
 /// column from one `gj` / `gk` to the next while the cursor stays where it left it (the core's own wanted
@@ -249,6 +317,12 @@ pub(super) fn resolve_screen_motion(
         Resolved::At { landing, .. } => {
             let start = text.start(landing.line);
             let mut byte = start + landing.byte;
+            // Backward and inclusive (`dgk` after `$`), the inclusive end is the cursor, so the operator
+            // takes the cursor's char and not the one after the landing (#1576).
+            if op && landing.inclusive && byte < cursor {
+                *want = None;
+                return engine.screen_motion_back_inclusive(byte);
+            }
             if op && landing.inclusive {
                 // An inclusive motion under an operator reaches the byte after its char.
                 let line_text = text.line(landing.line);

@@ -145,13 +145,7 @@ vput_char_sel_dot_repeats_the_delete # #1346: nvim's `.` after Visual p repeats 
 vput_empty_mid_line_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
 vput_empty_last_line_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
 vput_emptied_char_sel_undo_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
-# `dgk` after `$` (wanted column MAXCOL) is inclusive in nvim, so it also takes the char under the cursor
-# at the span's END; ruse makes the landing inclusive instead (one char too few at each end). Not a `.`
-# problem: the bare `G$dgk` diverges too, and `.` of it then runs from a different cursor (#1539).
-sdot_dollar_dgk # nvim's inclusive backward `dgk` after `$` also deletes the cursor char; ruse keeps it
-sdot_dollar_3dgk # nvim's inclusive backward `dgk` after `$` also deletes the cursor char; ruse keeps it
-sdot_dollar_dgk_dot # follows sdot_dollar_dgk: the first `dgk` leaves a different cursor for `.`
-sdot_3dgk_dot # follows sdot_dollar_3dgk: the first `3dgk` leaves a different cursor for `.`
+sdot_dollar_gUgk # #1595: the case operators take no forced wise, so the inclusive backward `gUgk` after `$` misses the cursor char
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
 # is unchanged by #1307.
