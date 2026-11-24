@@ -39,6 +39,15 @@ impl Workspace {
             .map(|(_, p)| p)
     }
 
+    /// The search Visual `*`/`#` ([`Command::SearchSelection`](crate::Command::SearchSelection)) runs over
+    /// the focused selection: its `\V` pattern (empty when nothing is selected, E348) and whether a backward
+    /// search counts the selection once more. `None` outside Visual. See [`crate::View::selection_search`].
+    #[must_use]
+    pub fn selection_search(&self) -> Option<(String, bool)> {
+        let pane = self.focused();
+        pane.view.selection_search(pane.doc.bytes())
+    }
+
     /// The keyword under (or forward-on-line from) the focused cursor — the pattern source for Vim `*`/`#`.
     /// `None` when the current line has no keyword at/after the cursor. A byte that is not UTF-8 is
     /// spelled as the regex engine's escape char ([`crate::pattern::spell`]), so the text is a pattern.

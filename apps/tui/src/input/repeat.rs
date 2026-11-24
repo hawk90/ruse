@@ -299,7 +299,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         C::SetNamedMark(_) | C::GotoNamedMark(_) | C::GotoNamedMarkLine(_) => K::NotAChange,
         C::SetRegister(_) | C::SetExprRegister(_) => K::NotAChange,
         // Not a change — searches, `&`/`g&`, Ex, keyword lookups.
-        C::SearchNext(_) | C::SearchPrev(_) => K::NotAChange,
+        C::SearchNext(_) | C::SearchPrev(_) | C::SearchSelection { .. } => K::NotAChange,
         C::RepeatSubstituteGlobal | C::RepeatSubstituteLine | C::Ex(_) => K::NotAChange,
         C::GotoDeclaration { .. } | C::GotoFirstMatch(_) | C::ShowKeywordLines { .. } => {
             K::NotAChange
@@ -535,6 +535,8 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         C::SearchNext(..) | C::SearchPrev(..) => cmd.clone(),
         C::RepeatSubstituteGlobal | C::RepeatSubstituteLine | C::Ex(_) => cmd.clone(),
         C::GotoDeclaration { .. } | C::GotoFirstMatch(..) => cmd.clone(),
+        // Visual `*`/`#` are never recorded: the frontend runs the `Search` they resolve to.
+        C::SearchSelection { .. } => cmd.clone(),
         C::ShowKeywordLines { .. } => cmd.clone(),
         // Count-free — undo/redo, file and session.
         C::Undo | C::Redo | C::UndoOlder | C::UndoNewer | C::LineUndo => cmd.clone(),

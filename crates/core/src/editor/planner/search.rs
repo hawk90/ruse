@@ -73,6 +73,9 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
         // `gd`/`gD` are resolved by the frontend (it reads the keyword under the cursor from the buffer and
         // rewrites this to a concrete `GotoFirstMatch`), so the pure core never acts on it directly.
         Command::GotoDeclaration { .. } => nop(cur, st.view.mode),
+        // Visual `*`/`#` are resolved by the frontend into the `Search` they run (it records the pattern
+        // and leaves Visual first), so the pure core never acts on them directly.
+        Command::SearchSelection { .. } => nop(cur, st.view.mode),
         // `[i`/`]i`/`[I`/`]I` are resolved by the frontend (it reads the keyword under the cursor and scans
         // the buffer lines, echoing or listing the matches); a pure display command — never mutates.
         Command::ShowKeywordLines { .. } => nop(cur, st.view.mode),
@@ -462,6 +465,28 @@ pub(crate) fn word_search(b: &[u8], cur: usize, whole_word: bool) -> Option<(usi
         word.to_string()
     };
     Some((s, pattern))
+}
+
+/// The pattern Visual `*`/`#` search for over the selected `text` (nvim's `_visual_search`): very nomagic
+/// (`\V`), with each `\` doubled and each line break spelled `\n`, so the text matches literally — a `/`
+/// needs no escape, since the pattern never passes through a `/` command line. A byte that is not UTF-8
+/// is spelled as the regex engine's escape char ([`crate::pattern::spell`]). Empty for empty `text`
+/// (nvim's E348).
+pub(crate) fn selection_search_pattern(text: &[u8]) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let text = crate::pattern::spell(text);
+    let mut pattern = String::with_capacity(2 + 2 * text.len());
+    pattern.push_str("\\V");
+    for c in text.chars() {
+        match c {
+            '\\' => pattern.push_str("\\\\"),
+            '\n' => pattern.push_str("\\n"),
+            c => pattern.push(c),
+        }
+    }
+    pattern
 }
 
 /// The target line of a line-offset search (`/pat/+N`): the `count`-th match's line moved by `n`, clamped

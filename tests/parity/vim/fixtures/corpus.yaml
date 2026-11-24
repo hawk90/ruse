@@ -196999,6 +196999,1346 @@
         "failed": false,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1557_vstar_d_keeps_text",
+      "lines": [
+        "(foo) foo x"
+      ],
+      "keys": "v*d",
+      "expect": {
+        "text": [
+          "(foo) foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_viw_star",
+      "lines": [
+        "(foo) foo x"
+      ],
+      "keys": "lviw*",
+      "expect": {
+        "text": [
+          "(foo) foo x"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_viw_hash_from_end",
+      "lines": [
+        "(foo) foo x"
+      ],
+      "keys": "$viw#",
+      "expect": {
+        "text": [
+          "(foo) foo x"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_vl_star",
+      "lines": [
+        "(foo) foo x"
+      ],
+      "keys": "vl*",
+      "expect": {
+        "text": [
+          "(foo) foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_word",
+      "lines": [
+        "foo bar foo",
+        "foo"
+      ],
+      "keys": "viw*",
+      "expect": {
+        "text": [
+          "foo bar foo",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_word_n",
+      "lines": [
+        "foo bar foo",
+        "foo"
+      ],
+      "keys": "viw*n",
+      "expect": {
+        "text": [
+          "foo bar foo",
+          "foo"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_word_N",
+      "lines": [
+        "foo bar foo",
+        "foo"
+      ],
+      "keys": "viw*N",
+      "expect": {
+        "text": [
+          "foo bar foo",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_dot",
+      "lines": [
+        "a.b axb a.b"
+      ],
+      "keys": "vll*",
+      "expect": {
+        "text": [
+          "a.b axb a.b"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_dot_pattern",
+      "lines": [
+        "a.b axb a.b"
+      ],
+      "keys": "vll*\"/P",
+      "expect": {
+        "text": [
+          "a.b axb \\Va.ba.b"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_backslash",
+      "lines": [
+        "a\\b x a\\b"
+      ],
+      "keys": "vll*",
+      "expect": {
+        "text": [
+          "a\\b x a\\b"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_backslash_pattern",
+      "lines": [
+        "a\\b x a\\b"
+      ],
+      "keys": "vll*\"/P",
+      "expect": {
+        "text": [
+          "a\\b x \\Va\\\\ba\\b"
+        ],
+        "cursor": [
+          1,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_slash",
+      "lines": [
+        "a/b x a/b"
+      ],
+      "keys": "vll*",
+      "expect": {
+        "text": [
+          "a/b x a/b"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_slash_pattern",
+      "lines": [
+        "a/b x a/b"
+      ],
+      "keys": "vll*\"/P",
+      "expect": {
+        "text": [
+          "a/b x \\Va/ba/b"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_multiline",
+      "lines": [
+        "ab",
+        "cd",
+        "x ab",
+        "cd"
+      ],
+      "keys": "lvj*",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "x ab",
+          "cd"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_multiline_pattern",
+      "lines": [
+        "ab",
+        "cd",
+        "x ab",
+        "cd"
+      ],
+      "keys": "lvj*\"/P",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "x a\\Vb\\ncdb",
+          "cd"
+        ],
+        "cursor": [
+          3,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_to_eol",
+      "lines": [
+        "ab",
+        "x",
+        "ab",
+        "y"
+      ],
+      "keys": "v$*",
+      "expect": {
+        "text": [
+          "ab",
+          "x",
+          "ab",
+          "y"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_to_eol_pattern",
+      "lines": [
+        "ab",
+        "x",
+        "ab",
+        "y"
+      ],
+      "keys": "v$*\"/P",
+      "expect": {
+        "text": [
+          "ab",
+          "x",
+          "\\Vabab",
+          "y"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_hash",
+      "lines": [
+        "ab x ab x ab"
+      ],
+      "keys": "$hvl#",
+      "expect": {
+        "text": [
+          "ab x ab x ab"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_hash_cursor_at_start",
+      "lines": [
+        "ab x ab x ab"
+      ],
+      "keys": "$vh#",
+      "expect": {
+        "text": [
+          "ab x ab x ab"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_hash_n",
+      "lines": [
+        "ab x ab x ab"
+      ],
+      "keys": "$vh#n",
+      "expect": {
+        "text": [
+          "ab x ab x ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_hash_N",
+      "lines": [
+        "ab x ab x ab"
+      ],
+      "keys": "$vh#N",
+      "expect": {
+        "text": [
+          "ab x ab x ab"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_count_star",
+      "lines": [
+        "ab x ab x ab x ab"
+      ],
+      "keys": "vl2*",
+      "expect": {
+        "text": [
+          "ab x ab x ab x ab"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_count_hash",
+      "lines": [
+        "ab x ab x ab x ab"
+      ],
+      "keys": "$vh2#",
+      "expect": {
+        "text": [
+          "ab x ab x ab x ab"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_count_hash_from_end",
+      "lines": [
+        "ab x ab x ab x ab"
+      ],
+      "keys": "$hvl2#",
+      "expect": {
+        "text": [
+          "ab x ab x ab x ab"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_count_star_six",
+      "lines": [
+        "ab ab ab ab ab ab"
+      ],
+      "keys": "vl3*",
+      "expect": {
+        "text": [
+          "ab ab ab ab ab ab"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_count_hash_six",
+      "lines": [
+        "ab ab ab ab ab ab"
+      ],
+      "keys": "$hvl3#",
+      "expect": {
+        "text": [
+          "ab ab ab ab ab ab"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_history",
+      "lines": [
+        "ab x ab",
+        "cd x cd"
+      ],
+      "keys": "vl*/cd<CR>/<Up><Up><CR>",
+      "expect": {
+        "text": [
+          "ab x ab",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_select_star_replaces",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "gh*<Esc>",
+      "expect": {
+        "text": [
+          "*oo bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_unnamed_unchanged",
+      "lines": [
+        "foo bar foo bar"
+      ],
+      "keys": "yiwwviw*",
+      "expect": {
+        "text": [
+          "foo bar foo bar"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_unnamed_unchanged_put",
+      "lines": [
+        "foo bar foo bar"
+      ],
+      "keys": "yiwwviw*P",
+      "expect": {
+        "text": [
+          "foo bar foo foobar"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_nows_star_fails",
+      "lines": [
+        "foo",
+        "x",
+        "foo"
+      ],
+      "keys": ":set nows<CR>Gviw*",
+      "expect": {
+        "text": [
+          "foo",
+          "x",
+          "foo"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E385",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_nows_hash_fails",
+      "lines": [
+        "foo",
+        "x",
+        "foo"
+      ],
+      "keys": ":set nows<CR>viw#",
+      "expect": {
+        "text": [
+          "foo",
+          "x",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E384",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_nows_star_finds",
+      "lines": [
+        "foo",
+        "x",
+        "foo"
+      ],
+      "keys": ":set nows<CR>viw*",
+      "expect": {
+        "text": [
+          "foo",
+          "x",
+          "foo"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_ignorecase",
+      "lines": [
+        "Foo x foo FOO"
+      ],
+      "keys": ":set ic<CR>wwviw*",
+      "expect": {
+        "text": [
+          "Foo x foo FOO"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_smartcase",
+      "lines": [
+        "Foo x foo FOO"
+      ],
+      "keys": ":set ic scs<CR>viw*",
+      "expect": {
+        "text": [
+          "Foo x foo FOO"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_smartcase_lower",
+      "lines": [
+        "foo x Foo foo"
+      ],
+      "keys": ":set ic scs<CR>viw*",
+      "expect": {
+        "text": [
+          "foo x Foo foo"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_linewise",
+      "lines": [
+        "ab",
+        "x",
+        "ab",
+        "y"
+      ],
+      "keys": "V*",
+      "expect": {
+        "text": [
+          "ab",
+          "x",
+          "ab",
+          "y"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_linewise_pattern",
+      "lines": [
+        "ab",
+        "x",
+        "ab",
+        "y"
+      ],
+      "keys": "V*\"/P",
+      "expect": {
+        "text": [
+          "ab",
+          "x",
+          "\\Vabab",
+          "y"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_linewise_hash_mid",
+      "lines": [
+        "ab",
+        "x",
+        "ab",
+        "y"
+      ],
+      "keys": "GklV#",
+      "expect": {
+        "text": [
+          "ab",
+          "x",
+          "ab",
+          "y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_linewise_hash_col0",
+      "lines": [
+        "ab",
+        "x",
+        "ab",
+        "y"
+      ],
+      "keys": "GkV#",
+      "expect": {
+        "text": [
+          "ab",
+          "x",
+          "ab",
+          "y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_linewise_two_lines",
+      "lines": [
+        "ab",
+        "cd",
+        "ab",
+        "cd"
+      ],
+      "keys": "Vj*",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_block",
+      "lines": [
+        "ab",
+        "cd",
+        "x",
+        "ab",
+        "cd"
+      ],
+      "keys": "<C-v>jl*",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "x",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_block_pattern",
+      "lines": [
+        "ab",
+        "cd",
+        "x",
+        "ab",
+        "cd"
+      ],
+      "keys": "<C-v>jl*\"/P",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "x",
+          "\\Vab\\ncdab",
+          "cd"
+        ],
+        "cursor": [
+          4,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_block_hash",
+      "lines": [
+        "xab",
+        "xcd",
+        "ab",
+        "cd"
+      ],
+      "keys": "Gk<C-v>jl#",
+      "expect": {
+        "text": [
+          "xab",
+          "xcd",
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_empty_line",
+      "lines": [
+        "",
+        "a"
+      ],
+      "keys": "v*",
+      "expect": {
+        "text": [
+          "",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E348",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1557_marks_after",
+      "lines": [
+        "foo bar foo"
+      ],
+      "keys": "wviw*",
+      "expect": {
+        "text": [
+          "foo bar foo"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }

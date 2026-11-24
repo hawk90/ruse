@@ -29,7 +29,7 @@ use lines::{
 };
 pub(in crate::editor) use lines::{plan_set_indents, refused_linewise_cursor, RefusedOp};
 use recase::{recase, recase_bytes, recase_emacs, recase_span};
-pub(crate) use search::{span_lines, word_search};
+pub(crate) use search::{selection_search_pattern, span_lines, word_search};
 
 pub(crate) use comment::open_comment_line_in;
 use comment::plan_open_comment;
@@ -773,6 +773,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         | Command::Search { .. }
         | Command::SearchObject { .. }
         | Command::SearchWordUnder { .. }
+        | Command::SearchSelection { .. }
         | Command::GotoDeclaration { .. }
         | Command::ShowKeywordLines { .. }
         | Command::GotoFirstMatch(..) => search::plan(st, b, cur, hint, cmd),
