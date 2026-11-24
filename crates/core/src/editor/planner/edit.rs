@@ -115,8 +115,11 @@ fn plan_rewrite_chars(
         Command::ReplaceChar(count, c) => {
             // `{count}r{ch}`: replace `count` chars with `ch`. Per Vim it is a NO-OP if fewer than
             // `count` chars remain on the line (never a partial replace). Cursor lands on the last one.
+            // A count of 0 only comes from a replayed trace (the engine sends at least 1): plan it as 1, so
+            // the `count - 1` below cannot underflow (#1347).
+            let count = (*count).max(1);
             let le = line_end(b, cur);
-            let (end, reached) = advance_graphemes(b, cur, *count, le);
+            let (end, reached) = advance_graphemes(b, cur, count, le);
             if !reached {
                 // Vim beeps (`nv_replace`), so a macro or `:normal` stops here (#1111).
                 beep(cur, st.view.mode)
@@ -132,11 +135,11 @@ fn plan_rewrite_chars(
             } else {
                 let mut buf = [0u8; 4];
                 let one_ch = c.encode_utf8(&mut buf).as_bytes();
-                let mut bytes = Vec::with_capacity(one_ch.len() * *count as usize);
-                for _ in 0..*count {
+                let mut bytes = Vec::with_capacity(one_ch.len() * count as usize);
+                for _ in 0..count {
                     bytes.extend_from_slice(one_ch);
                 }
-                let last = cur + one_ch.len() * (*count as usize - 1);
+                let last = cur + one_ch.len() * (count as usize - 1);
                 edit(
                     one(Edit::replace(BytePos(cur), end - cur, bytes)),
                     last,

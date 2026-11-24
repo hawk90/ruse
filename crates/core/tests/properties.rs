@@ -88,6 +88,9 @@ fn command() -> impl Strategy<Value = Command> {
         Just(Command::InsertNewline),
         Just(Command::DeleteBack),
         (1u32..4).prop_map(Command::DeleteUnder),
+        // `r`/`gr` with a count from 0 (a replayed trace can carry 0, #1347).
+        (0u32..4, any::<char>()).prop_map(|(n, c)| Command::ReplaceChar(n, c)),
+        (0u32..4, any::<char>()).prop_map(|(n, c)| Command::VirtualReplaceChar(n, c)),
         (1u32..4, motion()).prop_map(|(n, m)| Command::Move(n, m)),
         (1u32..4, motion()).prop_map(|(n, m)| Command::Delete(n, m)),
         (1u32..4, motion()).prop_map(|(n, m)| Command::Change(n, m)),

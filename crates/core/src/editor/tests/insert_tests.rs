@@ -841,4 +841,19 @@ mod virtual_replace_tests {
         assert_eq!(text(&st), "XXXX");
         assert_eq!(st.cursor().0, 3);
     }
+
+    #[test]
+    fn gr_with_count_zero_is_planned_as_one() {
+        // #1347: no key sends a count of 0 (`0` is a motion), but a replayed trace can. It plans as `1gr`
+        // (every counted command treats 0 as 1) instead of underflowing the cursor arithmetic.
+        let st = run("a\n", &[Command::VirtualReplaceChar(0, 'x')]);
+        assert_eq!(text(&st), "x\n");
+        assert_eq!(st.cursor().0, 0);
+        assert_eq!(st.view.mode, Mode::Normal);
+        let st = run("", &[Command::VirtualReplaceChar(0, 'x')]);
+        let one = run("", &[Command::VirtualReplaceChar(1, 'x')]);
+        assert_eq!(text(&st), text(&one), "on an empty buffer too");
+        let st = run("\tX", &[Command::VirtualReplaceChar(0, 'A')]);
+        assert_eq!(text(&st), "A\tX");
+    }
 }

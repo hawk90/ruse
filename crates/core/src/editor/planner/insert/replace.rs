@@ -239,6 +239,10 @@ fn plan_virtual_replace_char(
     c: char,
     hint: GroupHint,
 ) -> Plan {
+    // A count of 0 never comes from a key (`0` is a motion; the engine sends at least 1), but a replayed
+    // trace can carry one: plan it as 1, like the other counted commands, so the loop below always runs
+    // and the cursor arithmetic after it cannot underflow (#1347).
+    let count = count.max(1);
     let tabw = st.view.indent.tabs();
     let ls = line_start(b, cur);
     let le = line_end(b, cur);
@@ -281,7 +285,7 @@ fn plan_virtual_replace_char(
     // One replace of the line tail from the cursor; everything before `start` is unchanged.
     let new_tail = line[start..].to_vec();
     // Vim leaves Replace nudging left one boundary → the cursor rests on the LAST typed char at `ls + p - tn`
-    // (p advanced by at least one `tn` per iteration, so this never precedes the line start).
+    // (`count >= 1` and p advances by at least one `tn` per iteration, so this never precedes the line start).
     let cursor = ls + p - tn;
     edit(
         one(Edit::replace(BytePos(cur), le - cur, new_tail)),

@@ -1010,6 +1010,11 @@ FIXTURES: list[dict] = [
     {"name": "grchar_past_eol_appends", "lines": ["ab"], "keys": "4grX"},
     {"name": "grchar_over_tab", "lines": ["\tX"], "keys": "grA", "setup": "set tabstop=4 noexpandtab"},
     {"name": "grchar_count_over_tab", "lines": ["\tX"], "keys": "2grA", "setup": "set tabstop=4 noexpandtab"},
+    #     #1347: a count never starts with `0` (`0` is the line-start motion), so `$0grX` is `$`, `0`, `grX`
+    #     and `$0rX` is `$`, `0`, `rX`; a `0` after a digit is part of the count (`10grX` overruns and appends).
+    {"name": "r1347_zero_then_gr", "lines": ["abcdef"], "keys": "$0grX"},
+    {"name": "r1347_zero_then_r", "lines": ["abcdef"], "keys": "$0rX"},
+    {"name": "r1347_count_ten_gr", "lines": ["ab"], "keys": "10grX"},
     # (No `R`-then-`u` fixture: the oracle sets the buffer via set_lines, which is NOT an undo boundary, so
     #  `u` undoes past the initial content to empty — an oracle artifact, not Vim behavior. R+undo is covered
     #  by a core unit test instead.)
