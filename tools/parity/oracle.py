@@ -5814,6 +5814,27 @@ FIXTURES: list[dict] = [
      "observe": ["marks"]},
     {"name": "i1305_V_Y_vmode", "lines": ["abcd", "efgh", "ijkl"], "keys": "lVjY",
      "observe": ["marks"]},
+    # --- #1564 ---
+    {"name": "i1564_vis_older", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;"},
+    {"name": "i1564_vis_newer", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg,"},
+    {"name": "i1564_vis_older_d", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;d"},
+    {"name": "i1564_vis_older_esc", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;<Esc>"},
+    {"name": "i1564_vline_older", "lines": ["abc", "def", "ghi"], "keys": "GxggVg;"},
+    {"name": "i1564_vline_older_d", "lines": ["abc", "def", "ghi"], "keys": "GxggVg;d"},
+    {"name": "i1564_block_older", "lines": ["abc", "def", "ghi"], "keys": "Gxgg<C-v>g;"},
+    {"name": "i1564_block_older_d", "lines": ["abc", "def", "ghi"], "keys": "Gxgg<C-v>lg;d"},
+    {"name": "i1564_vis_empty", "lines": ["abc", "def", "ghi"], "keys": "vg;"},
+    {"name": "i1564_vis_empty_newer", "lines": ["abc", "def", "ghi"], "keys": "vg,"},
+    {"name": "i1564_vis_count", "lines": ["abc", "def", "ghi"], "keys": "GxkxggvG2g;"},
+    {"name": "i1564_vis_then_normal", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;<Esc>g;"},
+    {"name": "i1564_vis_move_after", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;jd"},
+    {"name": "i1564_op_older", "lines": ["abc", "def", "ghi"], "keys": "Gxggdg;"},
+    {"name": "i1564_op_older_then", "lines": ["abc", "def", "ghi"], "keys": "Gxggdg;x"},
+    {"name": "i1564_op_newer", "lines": ["abc", "def", "ghi"], "keys": "Gxggdg,"},
+    {"name": "i1564_normal_older", "lines": ["abc", "def", "ghi"], "keys": "Gxggg;"},
+    {"name": "i1564_normal_newer", "lines": ["abc", "def", "ghi"], "keys": "Gxggg;g,"},
+    {"name": "i1564_vis_ctrl_o", "lines": ["abc", "def", "ghi"], "keys": "Gxggv<C-o>"},
+    {"name": "i1564_vis_ctrl_o_d", "lines": ["abc", "def", "ghi"], "keys": "Gxggv<C-o>d"},
 ]
 
 
