@@ -47,7 +47,7 @@ tree-sitter-md = "0.5.4"
 # F-014 file URIs: RFC 3986 percent-encoding of paths (DEP-PERCENT-ENCODING). Never hand-roll escapes (D-034).
 percent-encoding = "2.3.2"
 # #614 config loader: TOML config files with source spans for provenance (DEP-TOML; parse only, no writer).
-toml = { version = "1.2.1", default-features = false, features = ["std", "parse", "serde"] }
+toml = { version = "1.2.2", default-features = false, features = ["std", "parse", "serde"] }
 # #614 workspace trust: the content hash of `.ruse/` a trust record holds is SHA-256 (DEP-CRYPTO-HASH).
 sha2 = "0.11.1"
 
