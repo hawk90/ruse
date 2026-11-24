@@ -43,6 +43,15 @@ impl InputEngine {
             // `/` and `?` open the search line; the match it lands on extends the selection, as any
             // motion does (`v_/`, #1113). In Select a printable key replaces the selection instead.
             KeyCode::Char(c @ ('/' | '?')) if visual => Some(self.enter_search(c == '?')),
+            // `*` / `#` search forward / backward for the selected text and leave Visual (nvim's default
+            // `v_star-default` mapping, #1557); the frontend reads the selection.
+            KeyCode::Char(c @ ('*' | '#')) if visual => {
+                let count = self.mcount();
+                Some(self.action(Command::SearchSelection {
+                    forward: c == '*',
+                    count,
+                }))
+            }
             // `n` / `N` repeat the last search as a motion that extends the selection.
             KeyCode::Char('n' | 'N') if visual => None,
             KeyCode::Char(c @ (':' | '!')) => Some(self.selection_cmdline(c)),

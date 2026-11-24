@@ -738,6 +738,14 @@ fn samples() -> Vec<Command> {
             op: SearchOp::Case(WordCase::Upcase),
             count: 3,
         },
+        Command::SearchSelection {
+            forward: true,
+            count: 1,
+        },
+        Command::SearchSelection {
+            forward: false,
+            count: 4,
+        },
         Command::Undo,
         Command::Redo,
         Command::LineUndo,

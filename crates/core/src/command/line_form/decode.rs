@@ -504,6 +504,19 @@ pub(super) fn decode_search(parts: LineParts<'_>) -> Result<Option<Command>, Com
                 count,
             }
         }
+        "search_selection" => {
+            let mut it = raw.split_whitespace();
+            let forward = match it.next() {
+                Some("fwd") => true,
+                Some("bwd") => false,
+                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            };
+            let count = it
+                .next()
+                .and_then(|c| c.parse().ok())
+                .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+            Command::SearchSelection { forward, count }
+        }
         "repeat_substitute_global" => Command::RepeatSubstituteGlobal,
         "repeat_substitute_line" => Command::RepeatSubstituteLine,
         "goto_declaration" => Command::GotoDeclaration {

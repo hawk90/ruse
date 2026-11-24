@@ -234,6 +234,7 @@ impl Command {
             Command::SearchNext(..)
             | Command::SearchPrev(..)
             | Command::SearchWordUnder { .. }
+            | Command::SearchSelection { .. }
             | Command::RepeatSubstituteGlobal
             | Command::RepeatSubstituteLine
             | Command::GotoDeclaration { .. }
@@ -595,6 +596,10 @@ impl Command {
                 if *forward { "fwd" } else { "bwd" },
                 if *whole_word { "whole" } else { "any" },
                 search_op_token(*op),
+            ),
+            Command::SearchSelection { forward, count } => format!(
+                "search_selection {} {count}",
+                if *forward { "fwd" } else { "bwd" }
             ),
             Command::RepeatSubstituteGlobal => "repeat_substitute_global".into(),
             Command::RepeatSubstituteLine => "repeat_substitute_line".into(),

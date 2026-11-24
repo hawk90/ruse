@@ -147,6 +147,12 @@ impl Session {
             search_hl,
             ..
         } = self;
+        let cmd = match cmd {
+            Command::SearchSelection { forward, count } => {
+                selection_search(ed, engine, forward, count)?
+            }
+            cmd => cmd,
+        };
         // `*`/`#` (word under cursor): the planner resolves the keyword and searches; record the same
         // pattern as the last search (direction too, so `#` then `n` continues backward) and for
         // hlsearch. No keyword on the line → E348 and nothing runs.
@@ -486,6 +492,36 @@ pub(super) fn note_word_search(
             false
         }
     }
+}
+
+/// Visual `*`/`#` ([`Command::SearchSelection`], #1557), as nvim's default mapping runs them
+/// (`:help v_star-default`): read the selected text's `\V` pattern, leave Visual, record the pattern as the
+/// last search (with its direction, so `n`/`N` continue with it) and in the search history, and give back
+/// the `count`-th search it runs — the mapping's `<Esc>{count}n`, one more backward when the cursor rests
+/// past the selection's start. No register is touched. An empty selection (an empty line) is E348 and
+/// nothing more runs; picked outside Visual (the palette) it does nothing.
+fn selection_search(
+    ed: &mut Editing,
+    engine: &mut InputEngine,
+    forward: bool,
+    count: u32,
+) -> Option<Command> {
+    let found = ed.ws.selection_search();
+    ed.run(Command::EnterNormal);
+    let (pattern, past_start) = found?;
+    if pattern.is_empty() {
+        ed.status.error("E348: No string under cursor");
+        return None;
+    }
+    engine.set_last_search(pattern.clone(), forward);
+    engine.push_search_history(&pattern);
+    Some(Command::Search {
+        op: ruse_core::SearchOp::Move,
+        count: count.saturating_add(u32::from(!forward && past_start)),
+        pattern,
+        backward: !forward,
+        offset: ruse_core::SearchOffset::None,
+    })
 }
 
 /// Whether `cmd` is a search the engine issued with no previous pattern to repeat (an empty one, #1173),
