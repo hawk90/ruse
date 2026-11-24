@@ -189766,6 +189766,540 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1573_vp_dot",
+      "lines": [
+        "ab",
+        "xy",
+        "zw"
+      ],
+      "keys": "yiwjvpj.",
+      "expect": {
+        "text": [
+          "ab",
+          "aby",
+          "z"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "w",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_viwp_w_dot",
+      "lines": [
+        "abc def uvw"
+      ],
+      "keys": "yiwwviwpw.",
+      "expect": {
+        "text": [
+          "abc abc "
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "uvw",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_vP_dot",
+      "lines": [
+        "abc def uvw"
+      ],
+      "keys": "yiwwviwPw.",
+      "expect": {
+        "text": [
+          "abc abc "
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_vlp_dot",
+      "lines": [
+        "abc defgh"
+      ],
+      "keys": "yiwwvlp0.",
+      "expect": {
+        "text": [
+          "c abcfgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_Vp_dot",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "yyjVp.",
+      "expect": {
+        "text": [
+          "a",
+          "c",
+          "d",
+          "e"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_Vjp_dot",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f"
+      ],
+      "keys": "yyjVjpj.",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "f"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d\ne\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_VP_dot",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "yyjVPj.",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "d",
+          "e"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_ctrlv_p_dot",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop"
+      ],
+      "keys": "yl<C-v>jlpjj0.",
+      "expect": {
+        "text": [
+          "acd",
+          "agh",
+          "kl",
+          "op"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ij\nmn",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_ctrlv_P_dot",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop"
+      ],
+      "keys": "yl<C-v>jlPjj0.",
+      "expect": {
+        "text": [
+          "acd",
+          "agh",
+          "kl",
+          "op"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_v3p_dot",
+      "lines": [
+        "ab cd ef gh"
+      ],
+      "keys": "yiwwviw3pw.",
+      "expect": {
+        "text": [
+          "ab ababab  gh"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "ef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_v3p_count_dot",
+      "lines": [
+        "ab cd ef gh ij"
+      ],
+      "keys": "yiwwviwp2w3.",
+      "expect": {
+        "text": [
+          "ab ab ef  ij"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "gh",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_named_reg_dot",
+      "lines": [
+        "ab cd ef gh"
+      ],
+      "keys": "\"ayiwwviw\"apw.",
+      "expect": {
+        "text": [
+          "ab ab  gh"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "ef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_named_reg_P_dot",
+      "lines": [
+        "ab cd ef gh"
+      ],
+      "keys": "\"ayiwwviw\"aPw.",
+      "expect": {
+        "text": [
+          "ab ab  gh"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_dot_undo",
+      "lines": [
+        "ab cd ef gh"
+      ],
+      "keys": "yiwwviwpw.u",
+      "expect": {
+        "text": [
+          "ab ab ef gh"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "ef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_dot_dot",
+      "lines": [
+        "ab cd ef gh ij"
+      ],
+      "keys": "yiwwviwpw.w.",
+      "expect": {
+        "text": [
+          "ab ab   ij"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "gh",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_line_reg_char_sel_dot",
+      "lines": [
+        "ab",
+        "cd ef",
+        "gh ij"
+      ],
+      "keys": "yyjviwpj0.",
+      "expect": {
+        "text": [
+          "ab",
+          "",
+          "ab",
+          "f",
+          "gh ij"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": " e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_char_reg_line_sel_dot",
+      "lines": [
+        "ab",
+        "cd",
+        "ef",
+        "gh"
+      ],
+      "keys": "yiwjVpj.",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "gh"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ef\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1573_dotreg_dot",
+      "lines": [
+        "ab cd ef gh"
+      ],
+      "keys": "iX<Esc>wviw\".pw.",
+      "expect": {
+        "text": [
+          "Xab X X gh"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "ef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }

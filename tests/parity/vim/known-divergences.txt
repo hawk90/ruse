@@ -138,13 +138,6 @@ vb_dollar_gv # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a li
 vb_dollar_p # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '< '> differ: nvim keeps the area's columns through the edit and puts a $ area's '> past the last char
 obs_marks_set_and_moved # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 
-# #1346: nvim's `.` after a Visual put repeats only the Visual delete `nv_put_opt` ran (its redo buffer
-# holds that `d`), so it deletes the same size of text and puts nothing; ruse's `.` repeats the whole
-# Visual put. Not specific to the empty line (the plain-text fixture diverges on main too).
-vput_char_sel_dot_repeats_the_delete # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
-vput_empty_mid_line_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
-vput_empty_last_line_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
-vput_emptied_char_sel_undo_dot # #1346: nvim's `.` after Visual p repeats only the delete; ruse repeats the put
 sdot_dollar_gUgk # #1595: the case operators take no forced wise, so the inclusive backward `gUgk` after `$` misses the cursor char
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take

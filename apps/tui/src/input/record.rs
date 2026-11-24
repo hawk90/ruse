@@ -152,11 +152,20 @@ impl InputEngine {
             }
             ChangeKind::Immediate => {
                 self.replaced_change = Some((self.last_change.take(), self.recording.take()));
+                let mut register = self.pending_record_register.take();
+                let mut expr = self.pending_record_expr.take();
+                let lead = match repeat::visual_put_redo(cmd, register, mode) {
+                    Some((lead, reg)) => {
+                        (register, expr) = (reg, None);
+                        lead
+                    }
+                    None => cmd.clone(),
+                };
                 self.last_change = Some(ChangeIntent {
-                    lead: cmd.clone(),
+                    lead,
                     insert: Vec::new(),
-                    register: self.pending_record_register.take(),
-                    expr: self.pending_record_expr.take(),
+                    register,
+                    expr,
                     entry_count: 1,
                     screen: None,
                 });
