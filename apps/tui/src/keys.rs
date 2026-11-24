@@ -190,6 +190,12 @@ impl MacroState {
         self.pending_at
     }
 
+    /// Whether `q` or `@` is armed and the next key names its register.
+    #[must_use]
+    pub fn awaits_register(&self) -> bool {
+        self.pending_q || self.pending_at
+    }
+
     /// [`step_gated`](Self::step_gated) where `normal` gates both `@`/`Q` and the `q` command.
     pub fn step(&mut self, key: KeyEvent, from_replay: bool, normal: bool) -> Step {
         self.step_gated(key, from_replay, normal, normal)

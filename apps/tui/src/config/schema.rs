@@ -374,6 +374,13 @@ pub const SCHEMA: &[KeyDef] = &[
         false,
     ),
     key(
+        "editor.wrapscan",
+        Ty::Bool,
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
+    key(
         "editor.hlsearch",
         Ty::Bool,
         Scope::User,
