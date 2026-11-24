@@ -21,6 +21,22 @@ pub enum ScreenMotion {
     Middle,
     /// `g$` / `g<End>`.
     End,
+    /// `H`: a viewport line, not a screen row. The frontend resolves `H` / `M` / `L` itself through
+    /// [`InputEngine::screen_op`] and hands this variant out only for `.` of a change over one, so the
+    /// repeat resolves the line in the window as it is then (#1577).
+    ViewHigh,
+    /// `M`, as [`ViewHigh`](Self::ViewHigh).
+    ViewMiddle,
+    /// `L`, as [`ViewHigh`](Self::ViewHigh).
+    ViewLow,
+}
+
+impl ScreenMotion {
+    /// Whether this is `H` / `M` / `L`, a viewport line rather than a screen row (#1577).
+    #[must_use]
+    pub fn is_viewport(self) -> bool {
+        matches!(self, Self::ViewHigh | Self::ViewMiddle | Self::ViewLow)
+    }
 }
 
 /// A [`Feed::ScreenMotion`] waiting for its finisher (#1539): the motion and its effective count, and
@@ -68,9 +84,14 @@ impl InputEngine {
     /// operator (`:help H`), which the core `GotoLine` operator path already gives — the range is `[min,max]`
     /// of the cursor and target lines, so direction does not matter. With NO operator armed this is the bare
     /// cursor move (`Move(line, GotoLine)`), preserving plain `H`/`M`/`L`. The frontend owns the viewport, so
-    /// it resolves `line` (honoring any `[count]`, read via [`peek_count`](Self::peek_count)) and passes it in.
-    pub fn screen_op(&mut self, line: u32) -> Feed {
-        self.op_over_motion(Motion::GotoLine, line)
+    /// it resolves `line` (honoring the effective `count`, [`screen_count`](Self::screen_count)) and passes
+    /// it in with the viewport motion (`motion`) it resolved. The change is recorded for `.` with the motion,
+    /// as a screen-line motion's is, so `.` hands the motion back to resolve the line again (#1577); under
+    /// that `.`, this finishes the repeated change over `line`.
+    pub fn screen_op(&mut self, motion: ScreenMotion, count: u32, line: u32) -> Feed {
+        // The frontend took the key before `feed`, so this arms what `feed` arms for a screen-line motion.
+        self.arm_screen_handoff(motion, count, Some(Mode::Normal));
+        self.finish_screen_motion(Motion::GotoLine, line)
     }
 
     /// Hand a screen-line motion to the frontend ([`Feed::ScreenMotion`]), keeping the operator armed.

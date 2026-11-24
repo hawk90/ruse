@@ -3,10 +3,11 @@
 //! resolve without the buffer, and `H`/`M`/`L`. Each borrows the `Session` fields it uses.
 
 use super::{
-    insert_page_key, is_ctrl, place_cursor, run_scroll, viewport, Command, DocumentId, Editing,
-    Feed, FrameCtx, HScroll, HashMap, KeyCode, KeyEvent, KeyModifiers, Mode, PaneLines, PaneText,
-    Pending, Prefix, ScrollKey, Session, SplitDir, Workspace,
+    insert_page_key, is_ctrl, place_cursor, run_scroll, viewport, viewport_line, Command,
+    DocumentId, Editing, Feed, FrameCtx, HScroll, HashMap, KeyCode, KeyEvent, KeyModifiers, Mode,
+    PaneLines, PaneText, Pending, Prefix, ScrollKey, Session, SplitDir, Workspace,
 };
+use crate::input::ScreenMotion;
 
 mod normal_chord;
 mod z_fold;
@@ -494,7 +495,6 @@ impl Session {
             folds,
             ..
         } = self;
-        let snapshot = &frame.snapshot;
         let KeyCtx {
             chord, cancels_op, ..
         } = at;
@@ -513,62 +513,20 @@ impl Session {
                 .contains(crossterm::event::KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('H' | 'M' | 'L'))
         {
-            let to = match key.code {
-                KeyCode::Char('H') => viewport::ScreenTo::High,
-                KeyCode::Char('M') => viewport::ScreenTo::Middle,
-                _ => viewport::ScreenTo::Low,
+            let motion = match key.code {
+                KeyCode::Char('H') => ScreenMotion::ViewHigh,
+                KeyCode::Char('M') => ScreenMotion::ViewMiddle,
+                _ => ScreenMotion::ViewLow,
             };
             // The effective count (`2H` = 2nd line from top; `3d2H` = 6H) resolves the target line; the op
             // itself is consumed by `screen_op`. `screen_count` applies the operator*motion multiplication.
             let count = engine.screen_count();
-            // The last real line: the slot after a final newline is no line (#677), so `M` on a short
-            // buffer takes the middle of its lines, not of one more.
-            let last_line = line_idx.line_of(
-                ruse_core::motion::off_phantom(snapshot, ruse_core::BytePos(snapshot.len())).0,
-            );
             // Under an operator Vim IGNORES 'scrolloff' — `dH`/`dL` operate through the TRUE top/bottom visible
             // line (verified against nvim), whereas the bare cursor-motion keeps the scrolloff margin.
             let scrolloff = if engine.has_op() { 0 } else { so };
-            // The lines that show whole: fewer than the rows when lines wrap (#615).
-            let top = ws.focused().view.top();
-            let shown = match frame.wins.get(ws.focus()) {
-                Some(win) => {
-                    let fv = focused_folds(folds, ws);
-                    let lines = PaneLines {
-                        text: PaneText {
-                            bytes: snapshot,
-                            idx: line_idx,
-                        },
-                        win,
-                        folds: fv,
-                        virt: &[],
-                        height: focused_h,
-                    };
-                    if fv.iter().any(|f| f.closed) {
-                        // A closed fold is one screen line (#1141): pick among the lines shown.
-                        let (vis, at_end) = viewport::shown_lines(&lines, top, focused_h);
-                        // Indices into `vis`, offset by one when the window does not start at the first
-                        // line, so `H` keeps its 'scrolloff' margin there.
-                        let t0 = usize::from(top > 0);
-                        let last = t0 + if at_end { vis.len() - 1 } else { vis.len() };
-                        let i = viewport::screen_line(t0, vis.len(), scrolloff, to, count, last);
-                        Err(vis[(i - t0).min(vis.len() - 1)])
-                    } else {
-                        let (bot, _) = viewport::botline(&lines, top, focused_h);
-                        Ok(if bot >= viewport::Lines::count(&lines) {
-                            focused_h
-                        } else {
-                            (bot - top).max(1)
-                        })
-                    }
-                }
-                None => Ok(focused_h),
-            };
-            let row = match shown {
-                Ok(shown) => viewport::screen_line(top, shown, scrolloff, to, count, last_line),
-                Err(row) => row,
-            };
-            match engine.screen_op(row as u32 + 1) {
+            let fv = focused_folds(folds, ws);
+            let row = viewport_line(motion, count, scrolloff, ws, frame, line_idx, fv, focused_h);
+            match engine.screen_op(motion, count, row as u32 + 1) {
                 Feed::Cmd(cmd) => self.ed.run(cmd),
                 // `!H` / `!L` / `!M`: the filter over the screen line opens its pre-seeded `:{range}!` line,
                 // exactly like `!{motion}` below (#800) — it was dropped, so the command was typed as text.

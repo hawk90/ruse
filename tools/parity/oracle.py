@@ -4440,6 +4440,22 @@ FIXTURES: list[dict] = [
     {"name": "fold_scroll_H_after_ctrl_e", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jgg8<C-e>H", "setup": PAGE_SETUP, "folds": True, "topline": True},
     {"name": "fold_scroll_M_with_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggM", "setup": PAGE_SETUP, "folds": True, "topline": True},
     {"name": "fold_scroll_dL_with_folds", "lines": HUNDRED, "keys": "5Gzf19j40Gzf19jggdL", "setup": PAGE_SETUP, "folds": True, "topline": True},
+    # #1577: `.` after an operator over `H` / `M` / `L` resolves the viewport line again at `.` time, as
+    #     nvim's redo buffer holds the keys `dL`, not the lines `dL` deleted.
+    {"name": "hmldot_dL_dot", "lines": HUNDRED, "keys": "dL.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_dH_dot", "lines": HUNDRED, "keys": "50GdH.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_dM_dot", "lines": HUNDRED, "keys": "dM.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_cL_dot", "lines": HUNDRED, "keys": "cLx<Esc>.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_3dL_dot", "lines": HUNDRED, "keys": "3dL.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_dL_count_dot", "lines": HUNDRED, "keys": "dL2.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_3d2H_dot", "lines": HUNDRED, "keys": "50G3d2H.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_dL_scrolled_dot", "lines": HUNDRED, "keys": "dL5<C-e>.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_gUL_dot", "lines": HUNDRED, "keys": "gUL.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_yL_dot_repeats_x", "lines": HUNDRED, "keys": "xyL.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_bare_L_dot_repeats_x", "lines": HUNDRED, "keys": "xL.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_dL_dot_dot", "lines": HUNDRED, "keys": "dL..", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_dM_dot_moved", "lines": HUNDRED, "keys": "dM20G.", "setup": PAGE_SETUP, "topline": True},
+    {"name": "hmldot_cH_dot", "lines": HUNDRED, "keys": "60GcHy<Esc>.", "setup": PAGE_SETUP, "topline": True},
     # --- #617 indent options: autoindent, copyindent, preserveindent, shiftround, smarttab, softtabstop,
     #     smartindent. The options are set in the KEYS so ruse runs the same configuration (a `0` before a
     #     shift from a tab, as in the #601 block). ---------------------------------------------------------

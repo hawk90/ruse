@@ -6,9 +6,9 @@ use super::normal_keys::focused_folds;
 use super::{
     confirm_key, is_ctrl, no_previous_pattern, note_word_search, open_file_into_buffer,
     place_cursor, pty, record_register_writes, resolve_screen_motion, run_ex, run_repeat,
-    search_misses, sync_journals, sync_special_registers, Accepted, BytePos, Command, Editing,
-    ExCmd, ExCompletion, Feed, FrameCtx, KeyCode, KeyEvent, KeyModifiers, Mode, Pending,
-    PickOutcome, Prefix, Session, E35,
+    search_misses, sync_journals, sync_special_registers, viewport_line, Accepted, BytePos,
+    Command, Editing, ExCmd, ExCompletion, Feed, FrameCtx, KeyCode, KeyEvent, KeyModifiers, Mode,
+    Pending, PickOutcome, Prefix, Session, E35,
 };
 
 impl Session {
@@ -407,6 +407,7 @@ impl Session {
     /// Feed `key` to the input engine and report its error; a screen-line motion (#615) is finished here,
     /// where the window's screen rows are known.
     fn engine_feed(&mut self, key: KeyEvent, frame: &FrameCtx) -> Feed {
+        let focused_h = self.focused_height(frame);
         let Session {
             ed: Editing { ws, status, .. },
             line_idx,
@@ -423,6 +424,13 @@ impl Session {
         }
         // A screen-line motion (#615) lands where the window's screen rows say; the engine finishes it.
         let fed = match fed {
+            // `.` of a change over `H` / `M` / `L` resolves the line in the window as it is now (#1577);
+            // the repeat runs as an operator's, so 'scrolloff' does not apply.
+            Feed::ScreenMotion { motion, count } if motion.is_viewport() => {
+                let fv = focused_folds(folds, ws);
+                let row = viewport_line(motion, count, 0, ws, frame, line_idx, fv, focused_h);
+                engine.screen_op(motion, count, u32::try_from(row + 1).unwrap_or(u32::MAX))
+            }
             Feed::ScreenMotion { motion, count } => {
                 let fv = focused_folds(folds, ws);
                 resolve_screen_motion(motion, count, ws, engine, frame, line_idx, fv, screen_want)
