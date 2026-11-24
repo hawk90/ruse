@@ -1,0 +1,234 @@
+//! #1302: the change marks `'[` `']` `'.` after the non-block operators, as nvim v0.12.6 leaves them (the
+//! `cm_*` oracle fixtures and the `v_*` ones they came from).
+
+#[cfg(test)]
+mod change_mark_tests {
+    use crate::editor::*;
+    use crate::VisualOp;
+
+    fn run(initial: &str, cursor: usize, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        st.view.indent.style = IndentStyle::Space;
+        st.set_cursor(BytePos(cursor));
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    /// `'[` `']` `'.` as `(line, byte col)`, 0-based; `'.` past the buffer's end is the line after its last.
+    fn marks(st: &EditorState) -> [(usize, usize); 3] {
+        let b = st.doc.bytes();
+        let lc = |p: Option<BytePos>| {
+            let p = p.expect("mark set").0;
+            let ls = crate::motion::line_start(b, p);
+            (crate::pos::raw::line_of(b, p), p - ls)
+        };
+        [
+            lc(st.view.change_mark_start()),
+            lc(st.view.change_mark_end()),
+            lc(st.view.last_change()),
+        ]
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    const SHIFT: &str = "abc def\nghi jkl\nmno\n";
+
+    /// `op_shift`: `'[` at the raw column the operator started at, `']` on the last line's last byte, `'.`
+    /// at column 0 of the first line, even for a shift that moves nothing.
+    #[test]
+    fn shift_marks_the_lines_from_where_it_started() {
+        // `w>>`: '[ keeps the cursor's column, though the text moved right under it.
+        let st = run(SHIFT, 4, &[Command::ShiftRight(1)]);
+        assert_eq!(text(&st), "    abc def\nghi jkl\nmno\n");
+        assert_eq!(marks(&st), [(0, 4), (0, 10), (0, 0)]);
+        // `jw<k`: the motion's end comes first.
+        let st = run(
+            SHIFT,
+            12,
+            &[Command::ShiftMotion {
+                left: true,
+                count: 1,
+                motion: Motion::Up,
+            }],
+        );
+        assert_eq!(marks(&st), [(0, 4), (1, 6), (0, 0)]);
+        // `w<<` at column 0 changes nothing, and still marks the line.
+        let st = run(SHIFT, 4, &[Command::ShiftLeft(1)]);
+        assert_eq!(text(&st), SHIFT);
+        assert_eq!(marks(&st), [(0, 4), (0, 6), (0, 0)]);
+        // `Vj>` over an empty last line: '] at its column 0.
+        let st = run(
+            "abc def\n\nmno\n",
+            0,
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::MoveDown,
+                Command::VisualOp(VisualOp::Shift {
+                    left: false,
+                    count: 1,
+                }),
+            ],
+        );
+        assert_eq!(marks(&st), [(0, 0), (1, 0), (0, 0)]);
+    }
+
+    /// `do_join`: `'[` where the first line ended, `']` past the joined line, `'.` at column 0 of the line
+    /// after it, past the buffer's end when the join took the last line.
+    #[test]
+    fn join_marks_the_seam_and_the_line_after() {
+        let st = run("a\nb\nc\n", 0, &[Command::JoinLines(3)]);
+        assert_eq!(text(&st), "a b c\n");
+        assert_eq!(marks(&st), [(0, 1), (0, 5), (1, 0)]);
+        let st = run("a\nb\nc\n", 2, &[Command::JoinLines(2)]);
+        assert_eq!(marks(&st), [(1, 1), (1, 3), (2, 0)]);
+        let st = run("a\n  b\nc\n", 0, &[Command::JoinLinesNoSpace(2)]);
+        assert_eq!(text(&st), "a  b\nc\n");
+        assert_eq!(marks(&st), [(0, 1), (0, 4), (1, 0)]);
+    }
+
+    /// `op_format`: `']` on the cursor `gq` leaves, `'.` where its last change was: a join's line after,
+    /// or the column a break split the line at.
+    #[test]
+    fn gq_marks_its_last_join_or_break() {
+        let gqq = Command::Format {
+            count: 1,
+            motion: Motion::Line,
+            keep_cursor: false,
+        };
+        let mut st = EditorState::new(b"aa bb cc dd ee\nff\n".to_vec());
+        st.view.text_width = 5;
+        apply_command(&mut st, &gqq);
+        assert_eq!(text(&st), "aa bb\ncc dd\nee\nff\n");
+        assert_eq!(marks(&st), [(0, 0), (2, 0), (1, 5)]);
+        // `gqj` joins two lines: '. at column 0 of the line after the joined one.
+        let st = run(
+            "aa\nbb\ncc\n",
+            0,
+            &[Command::Format {
+                count: 1,
+                motion: Motion::Down,
+                keep_cursor: false,
+            }],
+        );
+        assert_eq!(text(&st), "aa bb\ncc\n");
+        assert_eq!(marks(&st), [(0, 0), (0, 0), (1, 0)]);
+    }
+
+    /// `op_delete`: `'[` and `']` on where the operator started, `'.` at column 0 of the first deleted
+    /// line, or of the line after the start for a charwise delete over lines.
+    #[test]
+    fn delete_marks_its_start() {
+        // `3ldd`: the column is kept on the line that moves up.
+        let st = run("abcdef\nxyzuvw\n", 3, &[Command::Delete(1, Motion::Line)]);
+        assert_eq!(text(&st), "xyzuvw\n");
+        assert_eq!(marks(&st), [(0, 3), (0, 3), (0, 0)]);
+        // `Gdd`: the marks are on the deleted line's number, past the buffer's end.
+        let st = run("abc\nd\nefg\n", 6, &[Command::Delete(1, Motion::Line)]);
+        assert_eq!(text(&st), "abc\nd\n");
+        assert_eq!(marks(&st), [(2, 0), (2, 0), (2, 0)]);
+        // `lvjjd`: charwise over three lines, '. on the line after the start.
+        let st = run(
+            "abc\nd\nefg\n",
+            1,
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveDown,
+                Command::MoveDown,
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "ag\n");
+        assert_eq!(marks(&st), [(0, 1), (0, 1), (1, 0)]);
+        // `x` within a line keeps the default marks.
+        let st = run("abc\n", 1, &[Command::DeleteUnder(1)]);
+        assert_eq!(marks(&st), [(0, 1), (0, 1), (0, 1)]);
+    }
+
+    /// A linewise put's `']` is on the last put line's last char; a charwise yank that takes a newline ends
+    /// `']` on the char before it.
+    #[test]
+    fn put_and_yank_end_on_a_char() {
+        let st = run(
+            "abc\nde\n",
+            0,
+            &[
+                Command::Yank(2, Motion::Line),
+                Command::Paste {
+                    after: false,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "abc\nde\nabc\nde\n");
+        assert_eq!(marks(&st), [(0, 0), (1, 1), (0, 0)]);
+        let st = run(
+            "abcdef\nxyz\n",
+            1,
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::LineEnd),
+                Command::YankSelection,
+            ],
+        );
+        let b = st.doc.bytes();
+        let end = st.view.change_mark_end().expect("'] set").0;
+        assert_eq!(st.view.change_mark_start(), Some(BytePos(1)));
+        assert_eq!((crate::pos::raw::line_of(b, end), end), (0, 5));
+    }
+
+    /// A char typed in Insert puts `'.` on that char, where nvim's `ins_char` calls `changed_bytes`, not on
+    /// the caret after it.
+    #[test]
+    fn typed_char_dot_is_on_the_char() {
+        let st = run(
+            "abcd\n",
+            1,
+            &[
+                Command::EnterInsert,
+                Command::InsertChar('x'),
+                Command::InsertChar('y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "axybcd\n");
+        assert_eq!(marks(&st), [(0, 1), (0, 3), (0, 2)]);
+    }
+
+    /// A join that took the last line leaves `'.` on the line past the buffer's end: `` `. ``, `'.` and `g;`
+    /// there fail as nvim's `E19` and the cursor stays; any later change clears it.
+    #[test]
+    fn a_dot_past_the_end_is_no_line() {
+        for jump in [
+            Command::GotoLastChange,
+            Command::GotoLastChangeLine,
+            Command::GotoOlderChange,
+        ] {
+            let mut st = run("a\nb\n", 0, &[Command::JoinLines(2)]);
+            assert_eq!(marks(&st)[2], (1, 0));
+            let effects = apply_command(&mut st, &jump);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::Status(m) if m.starts_with("E19"))),
+                "{jump:?}: {effects:?}"
+            );
+            assert_eq!(st.cursor().0, 1, "{jump:?} leaves the cursor on the seam");
+        }
+        // `x` on an unterminated last line's only char leaves the same bytes, but that line is real: no E19.
+        let mut st = run("a\nb", 2, &[Command::DeleteUnder(1)]);
+        apply_command(&mut st, &Command::Move(1, Motion::Up));
+        let effects = apply_command(&mut st, &Command::GotoLastChange);
+        assert!(!effects.iter().any(|e| matches!(e, Effect::Status(_))));
+    }
+}

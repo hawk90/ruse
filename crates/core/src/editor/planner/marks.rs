@@ -12,13 +12,17 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
     match cmd {
         Command::GotoLastChange => {
             // `` `. `` — move to the last change position (snapped into range). No-op before any edit.
+            // On the line past the buffer's end (`'.` after a join or a delete that took the last line,
+            // #1302) it is no line: the jump fails (nvim's `E19`, which the frontend reports).
             match st.view.last_change() {
+                _ if past_end_dot(st, b) => invalid_mark(cur, st.view.mode),
                 Some(BytePos(pos)) => nop(motion::snap(b, pos), st.view.mode),
                 None => beep(cur, st.view.mode),
             }
         }
         // `'.` — LINEWISE to the first non-blank of the last change's line. No-op before any edit.
         Command::GotoLastChangeLine => match st.view.last_change() {
+            _ if past_end_dot(st, b) => invalid_mark(cur, st.view.mode),
             Some(BytePos(pos)) => nop(mark_line_target(b, pos), st.view.mode),
             None => beep(cur, st.view.mode),
         },
@@ -183,5 +187,21 @@ pub(in crate::editor) fn mark_char_target(b: &[u8], pos: usize, mode: Mode) -> u
         prev_grapheme(b, le)
     } else {
         p
+    }
+}
+
+/// Whether `'.` is on the line past the buffer's end (`View::dot_past_end`, #1302).
+fn past_end_dot(st: &EditorState, b: &[u8]) -> bool {
+    st.view.dot_past_end && st.view.last_change().is_some_and(|p| p.0 >= b.len())
+}
+
+/// A jump to a mark on no line: nvim's `E19`, the cursor stays.
+fn invalid_mark(cur: usize, mode: Mode) -> Plan {
+    Plan {
+        effects: vec![
+            crate::Effect::Status("E19: Mark has invalid line number".to_string()),
+            crate::Effect::Beep,
+        ],
+        ..nop(cur, mode)
     }
 }

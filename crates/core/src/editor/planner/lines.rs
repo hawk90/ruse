@@ -4,7 +4,7 @@
 //! Split out of `planner/mod.rs` (#1392); the items are as they were there.
 
 use super::{beep, edit, hspace_end, indent_cols, mark_line_target, nop, one};
-use crate::editor::{format, op_landing, want_col, MAXCOL};
+use crate::editor::{format, op_landing, want_col, MarkAt, MarkCol, OpMarks, MAXCOL};
 use crate::motion::{self, line_end, line_start, next_grapheme};
 use crate::{BytePos, Command, Edit, EditList, EditorState, GroupHint, Mode, Motion, Plan, Tabs};
 
@@ -39,6 +39,7 @@ pub(super) fn plan_join(
     let mut removed: isize = 0;
     let mut le = line_end(b, cur);
     let first_ls = line_start(b, cur);
+    let first_len = le - first_ls;
     // nvim's `sumsize != 0` (anything joined so far) and `endcurr1`/`endcurr2` (the last two characters of
     // the latest line part, none after an empty one). An empty line taking part adds nothing, so
     // `a`+``+`b` joins to `a b`, and `foo`+`` to `foo` (#677).
@@ -130,12 +131,23 @@ pub(super) fn plan_join(
         // (#1111). A count past the end joins what is there instead.
         return beep(cur, mode);
     }
-    edit(
-        EditList::new(edits).expect("join seams are disjoint and ordered"),
-        cursor,
-        mode,
-        hint,
-    )
+    // nvim's `do_join` marks (#1302): `'[` where the first line ended, `']` past the joined line's end
+    // (`sumsize`), and `'.` at column 0 of the line after it: the `del_lines` of the joined lines calls
+    // `changed_lines` last, so `'.` is past the buffer's end when the join reached the last line.
+    let top = crate::pos::raw::line_of(b, first_ls);
+    Plan {
+        op_marks: Some(OpMarks {
+            start: MarkAt::new(top, MarkCol::Byte(first_len)),
+            end: MarkAt::new(top, MarkCol::Byte(usize::MAX)),
+            dot: MarkAt::new(top + 1, MarkCol::Byte(0)),
+        }),
+        ..edit(
+            EditList::new(edits).expect("join seams are disjoint and ordered"),
+            cursor,
+            mode,
+            hint,
+        )
+    }
 }
 
 /// Apply explicit indent `levels` (one per line from `first_line`) to `[first_line, last_line]`: each
@@ -253,6 +265,7 @@ pub(super) fn plan_format_lines(
         saved,
         before,
         after,
+        last_change: None,
     };
     let o = fmt_opts(st);
     fb.format_lines(n, st.view.text_width_for(true), &o);
@@ -263,10 +276,8 @@ pub(super) fn plan_format_lines(
             + col.min(fb.lines[l].len())
     };
     let new_len = new.len();
-    let cursor = if keep_cursor {
-        let (l, col) = fb.saved.unwrap_or((0, 0));
-        offset(l.min(fb.lines.len() - 1), col)
-    } else if below && end + 1 < b.len() {
+    // Where `gq` leaves the cursor, which is also where nvim's `op_format` puts `']` (`gw` puts it back).
+    let last = if below && end + 1 < b.len() {
         // The line after the block, at its first non-blank.
         let fnb = motion::first_non_blank(b, end + 1);
         start + new_len + (fnb - end)
@@ -278,15 +289,42 @@ pub(super) fn plan_format_lines(
             .count();
         offset(l, ws)
     };
+    let cursor = if keep_cursor {
+        let (l, col) = fb.saved.unwrap_or((0, 0));
+        offset(l.min(fb.lines.len() - 1), col)
+    } else {
+        last
+    };
     if new[..] == b[start..end] {
         return nop(cursor, Mode::Normal);
     }
-    edit(
-        one(Edit::replace(BytePos(start), end - start, new)),
-        cursor,
-        Mode::Normal,
-        hint,
-    )
+    // nvim's `op_format` marks (#1302): `'[` on the first line (column 0 here; the callers move it to where
+    // the operator started), `']` where the cursor ends, `'.` where the formatting's last change put it.
+    let top = crate::pos::raw::line_of(b, start);
+    let (end_line, end_col) = if last > start + new_len {
+        // The line after the block: its first non-blank.
+        (top + fb.lines.len(), last - (start + new_len) - 1)
+    } else {
+        let head = &new[..last - start];
+        let line_start = head.iter().rposition(|&c| c == b'\n').map_or(0, |i| i + 1);
+        let lines = head.iter().filter(|&&c| c == b'\n').count();
+        (top + lines, head.len() - line_start)
+    };
+    let (dl, dc) = fb.last_change.unwrap_or((0, 0));
+    let op_marks = Some(OpMarks {
+        start: MarkAt::new(top, MarkCol::Byte(0)),
+        end: MarkAt::new(end_line, MarkCol::Byte(end_col)),
+        dot: MarkAt::new(top + dl, MarkCol::Byte(dc)),
+    });
+    Plan {
+        op_marks,
+        ..edit(
+            one(Edit::replace(BytePos(start), end - start, new)),
+            cursor,
+            Mode::Normal,
+            hint,
+        )
+    }
 }
 
 /// `gc` over the lines `first..=last` (0-based): comment them out with `'commentstring'`, or uncomment
@@ -474,7 +512,10 @@ pub(super) fn plan_shift_times(
     // The first line's rebuilt leading whitespace, for the cursor below.
     let mut first_new_ws: Vec<u8> = Vec::new();
     let mut ls = first_ls;
+    // The last line the shift covers, for `']`.
+    let mut last_ls = first_ls;
     for i in 0..count.max(1) {
+        last_ls = ls;
         let le = line_end(b, ls);
         let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tabs());
         // Vim indents a whitespace-only line but never a truly EMPTY one (`ls == le`).
@@ -512,11 +553,26 @@ pub(super) fn plan_shift_times(
         first_ls + line_col_cursor(&line, st.view.curswant.get(), st.view.indent.tabs())
     };
 
+    // nvim's `op_shift` marks the lines whatever it changed (#1302): `'[` on the first line (at column 0
+    // here; the callers move it to where the operator started, `start_col_at`), `']` on the last line's last
+    // byte, `'.` at column 0 of the first line (`changed_lines`).
+    let top = crate::pos::raw::line_of(b, first_ls);
+    let op_marks = Some(OpMarks {
+        start: MarkAt::new(top, MarkCol::Byte(0)),
+        end: MarkAt::new(crate::pos::raw::line_of(b, last_ls), MarkCol::LastByte),
+        dot: MarkAt::new(top, MarkCol::Byte(0)),
+    });
     if edits.is_empty() {
         // Nothing to indent/unindent (e.g. `<<` at column 0, or `>>` on an empty line): a pure cursor move.
-        return nop(cursor, st.mode());
+        return Plan {
+            op_marks,
+            ..nop(cursor, st.mode())
+        };
     }
     let edits = EditList::new(edits)
         .expect("shift edits sit at distinct line starts, so they are disjoint");
-    edit(edits, cursor, st.mode(), hint)
+    Plan {
+        op_marks,
+        ..edit(edits, cursor, st.mode(), hint)
+    }
 }

@@ -129,8 +129,17 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let op_marks = plan.op_marks.map(|m| resolve_op_marks(st.doc.bytes(), m));
     if plan.is_edit || op_marks.is_some() {
         let new_step = !plan.is_edit || st.doc.history().current_group() != entry_group;
-        let dot = op_marks.map_or(st.view.cursor, |(_, _, dot)| dot);
+        // A change typed in Insert/Replace puts `'.` where it began, on the char it typed (nvim's
+        // `ins_char` → `changed_bytes` at that char's column), not on the caret after it (#1302).
+        let typed = is_text_entry(entry.mode) && is_text_entry(st.view.mode);
+        let at = match applied.edit_span {
+            Some((s, _)) if typed => s,
+            _ => st.view.cursor,
+        };
+        let dot = op_marks.map_or(at, |(_, _, dot)| dot);
         st.view.push_change(st.doc.bytes(), dot, new_step);
+        let b = st.doc.bytes();
+        st.view.dot_past_end |= op_marks.is_some() && !st.view.keep_jumps && past_last_line(b, dot);
     }
     let leaving_entry = set_change_marks(st, &entry, &plan.set_register, &applied);
     if let Some((start, end, _)) = op_marks {
@@ -223,10 +232,18 @@ fn apply_action(st: &mut EditorState, action: Action, mode: Mode, entry: &Entry)
         Action::LineUndo => out.nav_target = st.line_undo_at(entry.cursor),
         Action::JumpChange { older } => {
             // A change on a line shortened since rests on its last char, as `` `a `` does (#728).
-            out.nav_target = st
-                .view
-                .nav_change(older)
-                .map(|p| planner::mark_char_target(st.doc.bytes(), p, mode));
+            let target = st.view.nav_change(older);
+            // The newest entry on the line past the buffer's end (a join or a delete that took the last
+            // line, #1302) is no line: nvim's `E19`, and the cursor stays.
+            let newest = st.view.change_idx + 1 == st.view.changes.len();
+            if newest && st.view.dot_past_end && target.is_some_and(|p| p >= st.doc.bytes().len()) {
+                out.extra.push(Effect::Status(
+                    "E19: Mark has invalid line number".to_string(),
+                ));
+                out.extra.push(Effect::Beep);
+                return out;
+            }
+            out.nav_target = target.map(|p| planner::mark_char_target(st.doc.bytes(), p, mode));
             if out.nav_target.is_none() {
                 // nvim's `nv_pcmark`: each end of the change list has its own error.
                 let msg = if st.view.changes.is_empty() {
@@ -744,4 +761,9 @@ fn refuse_unwritable_register(st: &EditorState, cmd: &Command, p: &Plan) -> Opti
         set_mark: None,
         op_marks: None,
     })
+}
+
+/// Whether `pos` is the slot after a final newline: the line past the buffer's last (#1302).
+fn past_last_line(b: &[u8], pos: usize) -> bool {
+    pos >= b.len() && b.last() == Some(&b'\n')
 }

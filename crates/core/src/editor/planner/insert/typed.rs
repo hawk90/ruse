@@ -289,6 +289,7 @@ fn auto_wrap(st: &EditorState, b: &[u8], cur: usize, c: char, hint: GroupHint) -
         saved: None,
         before: None,
         after: None,
+        last_change: None,
     };
     fb.internal_format(tw, -1, false, false, false, Some(c), &o);
     if fb.lines.len() == 1 {

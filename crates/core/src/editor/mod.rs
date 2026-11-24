@@ -211,6 +211,10 @@ pub struct View {
     /// and snapped so a later buffer-resizing edit keeps every entry in range. Navigated by `g;` / `g,`
     /// through [`change_idx`].
     changes: Vec<usize>,
+    /// The newest change-list entry is on the line past the buffer's end, where an operator's `'.` can be
+    /// (a join or a delete that took the last line: nvim's `changed_lines` names that line number, #1302).
+    /// A jump there fails (`E19`). Set by `commit` after the entry is pushed; any later push clears it.
+    dot_past_end: bool,
     /// Vim's `b_new_change`: an undo step began since the change list last took a new entry, so the next
     /// change far enough from the newest entry takes one (#722).
     new_change: bool,

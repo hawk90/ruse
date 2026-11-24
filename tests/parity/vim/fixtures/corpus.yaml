@@ -201290,6 +201290,1649 @@
         "vmode": "blockwise",
         "visual": null
       }
+    },
+    {
+      "name": "cm_shift_from_word",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "w>>",
+      "setup": "set shiftwidth=4 expandtab",
+      "expect": {
+        "text": [
+          "    abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            1,
+            10
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_shift_from_eol",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "$>>",
+      "setup": "set shiftwidth=4 expandtab",
+      "expect": {
+        "text": [
+          "    abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            6
+          ],
+          "]": [
+            1,
+            10
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_shift_motion_up",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "jw<k",
+      "setup": "set shiftwidth=4 expandtab",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            2,
+            6
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_shift_noop_left",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "w<<",
+      "setup": "set shiftwidth=4 expandtab",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            4
+          ],
+          "]": [
+            1,
+            6
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_shift_visual_up_eol",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "j$vk>",
+      "setup": "set shiftwidth=4 expandtab",
+      "expect": {
+        "text": [
+          "    abc def",
+          "    ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            7
+          ],
+          ">": [
+            2,
+            6
+          ],
+          "[": [
+            1,
+            7
+          ],
+          "]": [
+            2,
+            10
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "cm_shift_visual_line_dot",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "jwVk>j.",
+      "setup": "set shiftwidth=4 expandtab",
+      "expect": {
+        "text": [
+          "    abc def",
+          "        ghi jkl",
+          "    mno"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            2,
+            4
+          ],
+          "]": [
+            3,
+            6
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "linewise"
+      }
+    },
+    {
+      "name": "cm_shift_empty_last_line",
+      "lines": [
+        "abc def",
+        "",
+        "mno"
+      ],
+      "keys": "Vj>",
+      "setup": "set shiftwidth=4 expandtab",
+      "expect": {
+        "text": [
+          "    abc def",
+          "",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "linewise"
+      }
+    },
+    {
+      "name": "cm_join_count_to_end",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "3J",
+      "expect": {
+        "text": [
+          "a b c"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            5
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_join_middle",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jJ",
+      "expect": {
+        "text": [
+          "a",
+          "b c"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            1
+          ],
+          "]": [
+            2,
+            3
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_join_empty_first",
+      "lines": [
+        "",
+        "b",
+        "c"
+      ],
+      "keys": "J",
+      "expect": {
+        "text": [
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_join_from_eol",
+      "lines": [
+        "abc",
+        "d"
+      ],
+      "keys": "$J",
+      "expect": {
+        "text": [
+          "abc d"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            5
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_gq_breaks_line",
+      "lines": [
+        "aa bb cc dd ee",
+        "ff"
+      ],
+      "keys": ":set tw=5<CR>gqq",
+      "expect": {
+        "text": [
+          "aa bb",
+          "cc dd",
+          "ee",
+          "ff"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            2,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_gq_joins_then_breaks",
+      "lines": [
+        "x",
+        "yy zz ww",
+        "q"
+      ],
+      "keys": ":set tw=5<CR>gqj",
+      "expect": {
+        "text": [
+          "x yy",
+          "zz ww",
+          "q"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_gq_paragraphs",
+      "lines": [
+        "aa",
+        "bb",
+        "",
+        "cc",
+        "dd",
+        "ee"
+      ],
+      "keys": "gqG",
+      "expect": {
+        "text": [
+          "aa bb",
+          "",
+          "cc dd ee"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            4,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_gq_motion_up",
+      "lines": [
+        "aa",
+        "bb",
+        "cc"
+      ],
+      "keys": "jlgqk",
+      "expect": {
+        "text": [
+          "aa bb",
+          "cc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_gq_autoindent",
+      "lines": [
+        "  aa",
+        "bb"
+      ],
+      "keys": ":set ai<CR>Vjgq",
+      "expect": {
+        "text": [
+          "  aa bb"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            -1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            2
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "linewise"
+      }
+    },
+    {
+      "name": "cm_gw_keeps_cursor",
+      "lines": [
+        "aa bb cc dd ee",
+        "ff"
+      ],
+      "keys": ":set tw=5<CR>wgww",
+      "expect": {
+        "text": [
+          "aa bb",
+          "cc dd",
+          "ee",
+          "ff"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            2,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_dd_last_line",
+      "lines": [
+        "abc",
+        "d",
+        "efg"
+      ],
+      "keys": "Gdd",
+      "expect": {
+        "text": [
+          "abc",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "efg\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_dd_keeps_column",
+      "lines": [
+        "abcdef",
+        "xyzuvw"
+      ],
+      "keys": "3ldd",
+      "expect": {
+        "text": [
+          "xyzuvw"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "abcdef\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            3
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_dk_from_column",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "jlldk",
+      "expect": {
+        "text": [
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc\ndef\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            1,
+            2
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_d_search_lines",
+      "lines": [
+        "abc",
+        "d",
+        "efg"
+      ],
+      "keys": "ld/f<CR>",
+      "expect": {
+        "text": [
+          "afg"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\nd\ne",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_visual_d_three_lines",
+      "lines": [
+        "abc",
+        "d",
+        "efg"
+      ],
+      "keys": "lvjjd",
+      "expect": {
+        "text": [
+          "ag"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\nd\nef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            2
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "cm_visual_line_d_up",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "jlVkd",
+      "expect": {
+        "text": [
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abc\ndef\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            -1
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "linewise"
+      }
+    },
+    {
+      "name": "cm_put_lines_above",
+      "lines": [
+        "abc",
+        "de"
+      ],
+      "keys": "yjP",
+      "expect": {
+        "text": [
+          "abc",
+          "de",
+          "abc",
+          "de"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nde\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc\nde\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            1
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_put_lines_below",
+      "lines": [
+        "abc",
+        "de",
+        "f"
+      ],
+      "keys": "yjGp",
+      "expect": {
+        "text": [
+          "abc",
+          "de",
+          "f",
+          "abc",
+          "de"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nde\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc\nde\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            4,
+            0
+          ],
+          "]": [
+            5,
+            1
+          ],
+          ".": [
+            4,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_put_line_wide_end",
+      "lines": [
+        "ab中",
+        "x"
+      ],
+      "keys": "yyjp",
+      "expect": {
+        "text": [
+          "ab中",
+          "x",
+          "ab中"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab中\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab中\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            3,
+            2
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_yank_to_newline",
+      "lines": [
+        "abcdef",
+        "xyz"
+      ],
+      "keys": "lv$y",
+      "expect": {
+        "text": [
+          "abcdef",
+          "xyz"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcdef\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bcdef\n",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            6
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            5
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "cm_yank_empty_line_newline",
+      "lines": [
+        "abc",
+        "",
+        "x"
+      ],
+      "keys": "jv$y",
+      "expect": {
+        "text": [
+          "abc",
+          "",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            2,
+            0
+          ],
+          ">": [
+            2,
+            0
+          ],
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "cm_insert_one_char",
+      "lines": [
+        "abcd"
+      ],
+      "keys": "liZ<Esc>",
+      "expect": {
+        "text": [
+          "aZbcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            2
+          ],
+          ".": [
+            1,
+            1
+          ],
+          "^": [
+            1,
+            2
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_insert_cr",
+      "lines": [
+        "abcd"
+      ],
+      "keys": "lli<CR><Esc>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            2
+          ],
+          "^": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_insert_typed_run",
+      "lines": [
+        "abcd"
+      ],
+      "keys": "lixyz<Esc>",
+      "expect": {
+        "text": [
+          "axyzbcd"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            1
+          ],
+          "^": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_join_dot_jump_past_end",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "J`.x",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": " ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E19",
+        "failed": true,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            1,
+            1
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_join_dot_line_jump_past_end",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "J'.x",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": " ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E19",
+        "failed": true,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            1,
+            1
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_join_change_list_past_end",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "Jg;x",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": " ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E19",
+        "failed": true,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ],
+          ".": [
+            1,
+            1
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "cm_dd_dot_jump_past_end",
+      "lines": [
+        "abc",
+        "d",
+        "efg"
+      ],
+      "keys": "Gdd`.x",
+      "expect": {
+        "text": [
+          "abc",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E19",
+        "failed": true,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
     }
   ]
 }

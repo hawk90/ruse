@@ -16,6 +16,7 @@ mod insert;
 mod lines;
 mod marks;
 pub(super) use marks::mark_char_target;
+mod op_marks;
 mod operator;
 mod put;
 mod recase;
@@ -143,7 +144,8 @@ fn apply_op(
         MarkOp::Delete | MarkOp::Yank | MarkOp::Case(_) if s >= e => nop(cur, mode),
         MarkOp::Delete if !linewise => {
             let reg = captured(b, s, e, false);
-            edit_yank(one(Edit::delete(BytePos(s), e - s)), s, mode, hint, reg)
+            let p = edit_yank(one(Edit::delete(BytePos(s), e - s)), s, mode, hint, reg);
+            op_marks::with_marks(p, op_marks::delete_marks(b, s, e, false, s))
         }
         MarkOp::Delete => {
             let reg = captured(b, s, e, true);
@@ -164,13 +166,16 @@ fn apply_op(
             } else {
                 want_col(b, line, st.view.curswant.get(), st.view.indent.tabs())
             };
-            edit_yank(
+            let p = edit_yank(
                 one(Edit::delete(BytePos(del_start), e - del_start)),
                 at - shift,
                 mode,
                 hint,
                 reg,
-            )
+            );
+            // `'[` `']` keep the column the operator started at (the earlier of the cursor and the
+            // motion's end, nvim's `oap->start`), `'.` is column 0 of the first deleted line (#1302).
+            op_marks::with_marks(p, op_marks::delete_marks(b, s, e, true, cur.min(landing)))
         }
         MarkOp::Change if linewise && failed => nop(cur, Mode::Normal),
         MarkOp::Change if linewise => {
@@ -191,7 +196,14 @@ fn apply_op(
             )
         }
         MarkOp::Yank => Plan {
-            set_register: Some(RegWrite::Yank(captured(b, s, e, linewise), (s, e))),
+            set_register: Some(RegWrite::Yank(
+                captured(b, s, e, linewise),
+                if linewise {
+                    (s, e)
+                } else {
+                    op_marks::yank_mark_span(b, s, e)
+                },
+            )),
             ..nop(rest, mode)
         },
         // Recase the span; an all-non-letter span is just a cursor move (Vim). Invalid UTF-8 bytes are kept.
@@ -288,13 +300,15 @@ fn plan_op_over_span(
         return match op {
             MarkOp::Shift { left } => {
                 let lines = (last - first + 1) as u32;
-                plan_shift(st, line_start(b, lo), lines, !left, hint)
+                let p = plan_shift(st, line_start(b, lo), lines, !left, hint);
+                op_marks::start_col_at(p, b, cur.min(landing))
             }
             MarkOp::Reindent => plan_reindent(st, first, last, hint),
             MarkOp::Format { keep } => {
                 let start = crate::pos::raw::nth_line_start(b, first);
                 let end = line_end(b, crate::pos::raw::nth_line_start(b, last));
-                plan_format_lines(st, cur, start, end, keep, end_adjusted, hint)
+                let p = plan_format_lines(st, cur, start, end, keep, end_adjusted, hint);
+                op_marks::start_col_at(p, b, cur.min(landing))
             }
             MarkOp::Comment => plan_comment(st, first, last, cur.min(lo), hint),
             _ => unreachable!("guarded by matches! above"),

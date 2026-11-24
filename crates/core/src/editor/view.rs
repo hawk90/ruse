@@ -217,6 +217,7 @@ impl View {
             search_case: ViewOptions::DEFAULT.search_case,
             caret: ViewOptions::DEFAULT.caret,
             changes: Vec::new(),
+            dot_past_end: false,
             new_change: false,
             change_idx: 0,
             named_marks: [None; 62],
@@ -381,6 +382,7 @@ impl View {
         if self.keep_jumps {
             return;
         }
+        self.dot_past_end = false;
         self.new_change |= new_step;
         if self.new_change || self.changes.is_empty() {
             let line_col = |p: usize| {

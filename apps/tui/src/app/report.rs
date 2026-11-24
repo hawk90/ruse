@@ -210,18 +210,14 @@ impl NormalReport {
                 line_delta(before, crate::app::dispatch::line_count(bytes), report)
             }
             NormalReport::Yank(reg) => {
-                let kind = ws
-                    .registers()
-                    .get(reg.map(|c| c.to_ascii_lowercase()))
-                    .kind();
+                let yanked_reg = ws.registers().get(reg.map(|c| c.to_ascii_lowercase()));
+                let kind = yanked_reg.kind();
                 let n = marked().unwrap_or(0);
                 let charwise = kind == ruse_core::RegKind::Charwise;
                 // A charwise yank that takes a line's newline (`v$y`) reaches the next line, as nvim's
-                // operator end does; one inside one line counts no lines (nvim's `op_yank`).
-                let ends_at_newline = pane
-                    .view
-                    .change_mark_end()
-                    .is_some_and(|e| bytes.get(e.0) == Some(&b'\n'));
+                // operator end does; one inside one line counts no lines (nvim's `op_yank`). Its `']` is
+                // on the char before the newline (#1302), so the register's text says whether it took it.
+                let ends_at_newline = yanked_reg.text().last() == Some(&b'\n');
                 let n = n + usize::from(charwise && ends_at_newline);
                 let n = if charwise && n == 1 { 0 } else { n };
                 yanked(n, kind == ruse_core::RegKind::Blockwise, reg, report)

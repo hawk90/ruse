@@ -2,6 +2,7 @@
 //!
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
+use super::op_marks::{delete_marks, start_col_at, visual_op_start, with_marks, yank_mark_span};
 use super::{
     block_insert_point, block_op, block_recase, captured, edit, edit_yank, nop, one, plan_comment,
     plan_format_lines, plan_join, plan_linewise_change, plan_paste_selection, plan_reindent,
@@ -281,7 +282,14 @@ fn plan_selection_span(
         // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal: on a char,
         // so a start on a line's break (`$vk` reaches past the end, #1176) is its last char.
         OpKind::Yank => Plan {
-            set_register: Some(RegWrite::Yank(reg, (s, e))),
+            set_register: Some(RegWrite::Yank(
+                reg,
+                if line {
+                    (s, e)
+                } else {
+                    yank_mark_span(b, s, e)
+                },
+            )),
             ..nop(
                 {
                     let (ls, le) = (line_start(b, s), line_end(b, s));
@@ -295,6 +303,14 @@ fn plan_selection_span(
             )
         },
         OpKind::Delete if s < e => {
+            // nvim's `op_delete` marks (#1302), from the selection as it was.
+            let kind = if line {
+                SelectKind::Linewise
+            } else {
+                SelectKind::Charwise
+            };
+            let start = visual_op_start(b, anchor, cur, kind, st.view.redo_visual);
+            let marks = delete_marks(b, s, e, line, start);
             // A linewise delete keeps the wanted column on the line that moves up under the cursor (nvim's
             // `nostartofline`: `lVjd` lands on column 1); `at_col` clamps it to that line's end.
             // Lines through the end of the buffer also take the newline before them (no blank line is left
@@ -320,13 +336,14 @@ fn plan_selection_span(
             } else {
                 (s, s)
             };
-            edit_yank(
+            let p = edit_yank(
                 one(Edit::delete(BytePos(s), e - s)),
                 cursor,
                 Mode::Normal,
                 hint,
                 reg,
-            )
+            );
+            with_marks(p, marks)
         }
         OpKind::Change if s < e => edit_yank(
             one(Edit::delete(BytePos(s), e - s)),
@@ -375,26 +392,26 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
                 hint,
             ))
         }
-        VisualOp::Shift { left, count } => normal(plan_shift_times(
-            st,
-            line_start(b, lo),
-            lines,
-            !left,
-            count.max(1),
-            hint,
-        )),
+        VisualOp::Shift { left, count } => {
+            let p = plan_shift_times(st, line_start(b, lo), lines, !left, count.max(1), hint);
+            normal(start_col_at(
+                p,
+                b,
+                visual_op_start(b, anchor, cur, kind, st.view.redo_visual),
+            ))
+        }
         VisualOp::Join { spaces } => plan_join(st, lo, lines.max(2), Mode::Normal, hint, !spaces),
         VisualOp::Reindent => normal(plan_reindent(st, first, last, hint)),
         VisualOp::Comment => normal(plan_comment(st, first, last, lo, hint)),
-        VisualOp::Format => normal(plan_format_lines(
-            st,
-            cur,
-            line_start(b, lo),
-            line_end(b, hi),
-            false,
-            false,
-            hint,
-        )),
+        VisualOp::Format => {
+            let (s, e) = (line_start(b, lo), line_end(b, hi));
+            let p = plan_format_lines(st, cur, s, e, false, false, hint);
+            normal(start_col_at(
+                p,
+                b,
+                visual_op_start(b, anchor, cur, kind, st.view.redo_visual),
+            ))
+        }
         // `zy`: a block yank drops each row's trailing white space; any other shape yanks as `y` does.
         VisualOp::YankTrim if kind == SelectKind::Blockwise => {
             let mut p = block_op(

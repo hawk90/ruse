@@ -6,6 +6,7 @@ mod insert_tests;
 mod line_model_tests;
 mod motion_tests;
 mod normal_edit_tests;
+mod op_marks_tests;
 mod registers_tests;
 mod search_tests;
 mod substitute_tests;
