@@ -5805,6 +5805,15 @@ FIXTURES: list[dict] = [
     {"name": "i1573_line_reg_char_sel_dot", "lines": ["ab", "cd ef", "gh ij"], "keys": "yyjviwpj0."},
     {"name": "i1573_char_reg_line_sel_dot", "lines": ["ab", "cd", "ef", "gh"], "keys": "yiwjVpj."},
     {"name": "i1573_dotreg_dot", "lines": ["ab cd ef gh"], "keys": "iX<Esc>wviw\".pw."},
+    # --- #1305 Visual D/X/Y/C/S/R: visualmode() is linewise, but gv and '< '> keep the area's kind. ---
+    {"name": "i1305_v_Y_gv_charwise", "lines": ["abcd", "efgh", "ijkl"], "keys": "lvjYgvy",
+     "observe": ["marks"]},
+    {"name": "i1305_v_Y_gv_esc", "lines": ["abcd", "efgh", "ijkl"], "keys": "lvjYgv<Esc>",
+     "observe": ["marks"]},
+    {"name": "i1305_v_Y_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "lvjYjj.",
+     "observe": ["marks"]},
+    {"name": "i1305_V_Y_vmode", "lines": ["abcd", "efgh", "ijkl"], "keys": "lVjY",
+     "observe": ["marks"]},
 ]
 
 

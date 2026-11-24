@@ -190300,6 +190300,208 @@
         "failed": false,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1305_v_Y_gv_charwise",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "lvjYgvy",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcd\nef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bcd\nef",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            2,
+            1
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1305_v_Y_gv_esc",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "lvjYgv<Esc>",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abcd\nefgh\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abcd\nefgh\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            -1
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1305_v_Y_dot",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop"
+      ],
+      "keys": "lvjYjj.",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl",
+          "mnop"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcd\nefgh\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abcd\nefgh\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            -1
+          ]
+        },
+        "vmode": "linewise"
+      }
+    },
+    {
+      "name": "i1305_V_Y_vmode",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "lVjY",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcd\nefgh\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abcd\nefgh\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            -1
+          ]
+        },
+        "vmode": "linewise"
+      }
     }
   ]
 }

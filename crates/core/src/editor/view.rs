@@ -191,6 +191,7 @@ impl View {
             anchor: None,
             mark: None,
             last_visual: None,
+            visual_mode_eval: None,
             replace_stack: Vec::new(),
             block_insert: None,
             last_block_geom: None,
@@ -328,6 +329,12 @@ impl View {
     pub fn last_visual_bounds(&self) -> Option<(BytePos, BytePos, SelectKind)> {
         let (a, e, kind) = self.last_visual?;
         Some((BytePos(a.min(e)), BytePos(a.max(e)), kind))
+    }
+
+    /// The kind Vim's `visualmode()` reports for the last Visual area (see [`View::visual_mode_eval`]), or
+    /// `None` before any Visual area has been left.
+    pub fn visual_mode(&self) -> Option<SelectKind> {
+        self.visual_mode_eval
     }
 
     /// The context mark (Vim `` ` ``/`'`): the position before the latest jump — the newest jumplist entry.
