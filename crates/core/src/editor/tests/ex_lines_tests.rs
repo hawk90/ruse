@@ -349,3 +349,43 @@ mod history_list_tests {
         }
     }
 }
+
+/// #1259: an Ex edit takes no forced undo break, so the undo step ends where the frontend syncs (Vim's
+/// `u_sync`, before each typed command). Every edit of one typed Ex line, `|`-chained commands included,
+/// is one step; a sync between them keeps two. Ground truth: nvim v0.12.6 (`:1t0|4t0` then `u`).
+#[cfg(test)]
+mod chained_ex_undo_tests {
+    use crate::editor::*;
+
+    fn text(st: &EditorState) -> &[u8] {
+        st.doc.bytes()
+    }
+
+    #[test]
+    fn ex_edits_with_no_sync_between_undo_as_one_step() {
+        let mut st = EditorState::new(b"a\nb\nc\nd\n".to_vec());
+        // `:1t0|4t0`: line 4 is counted after the first copy, so it is `c`.
+        st.copy_lines(SubRange::Lines(1, 1), LineAddr::Line(0));
+        st.copy_lines(SubRange::Lines(4, 4), LineAddr::Line(0));
+        assert_eq!(text(&st), b"c\na\na\nb\nc\nd\n");
+        st.doc.undo();
+        assert_eq!(text(&st), b"a\nb\nc\nd\n", "one u undoes the whole chain");
+    }
+
+    #[test]
+    fn a_sync_between_ex_edits_keeps_two_steps() {
+        let mut st = EditorState::new(b"a\nb\nc\nd\n".to_vec());
+        // `:1t0<CR>:4t0<CR>`: two typed lines, with the frontend's sync between them.
+        st.copy_lines(SubRange::Lines(1, 1), LineAddr::Line(0));
+        st.doc.sync_undo();
+        st.copy_lines(SubRange::Lines(4, 4), LineAddr::Line(0));
+        st.doc.undo();
+        assert_eq!(
+            text(&st),
+            b"a\na\nb\nc\nd\n",
+            "u undoes only the second line"
+        );
+        st.doc.undo();
+        assert_eq!(text(&st), b"a\nb\nc\nd\n");
+    }
+}

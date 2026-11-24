@@ -6110,6 +6110,18 @@ FIXTURES: list[dict] = [
     {"name": "i1557_block_hash", "lines": ["xab", "xcd", "ab", "cd"], "keys": "Gk<C-v>jl#"},
     {"name": "i1557_empty_line", "lines": ["", "a"], "keys": "v*"},
     {"name": "i1557_marks_after", "lines": ["foo bar foo"], "keys": "wviw*"},
+    # --- #1259 --- a |-chained Ex line is one undo step: the step ends where the frontend syncs, before each
+    # typed command (Vim's u_sync), so every edit of one typed line joins one group; two typed lines are two.
+    {"name": "i1259_chain_t", "lines": ["a", "b", "c", "d"], "keys": ":1t0|4t0<CR>u"},
+    {"name": "i1259_chain_d", "lines": ["a", "b", "c", "d"], "keys": ":1d|1d<CR>u"},
+    {"name": "i1259_chain_s_s", "lines": ["a", "b", "c", "d"], "keys": ":1s/a/x/|2s/b/y/<CR>u"},
+    {"name": "i1259_two_lines", "lines": ["a", "b", "c", "d"], "keys": ":1t0<CR>:4t0<CR>u"},
+    {"name": "i1259_chain_after_x", "lines": ["a", "b", "c", "d"], "keys": "x:1t0|4t0<CR>u"},
+    {"name": "i1259_chain_after_x_uu", "lines": ["ab", "b", "c", "d"], "keys": "x:1t0|4t0<CR>uu"},
+    {"name": "i1259_chain_then_x_u", "lines": ["ab", "b", "c", "d"], "keys": ":1t0|4t0<CR>xu"},
+    {"name": "i1259_chain_error_mid", "lines": ["a", "b", "c", "d"], "keys": ":1t0|bogus|2t0<CR>u"},
+    {"name": "i1259_normal_then_ex_chain", "lines": ["ab", "b", "c", "d"], "keys": ":normal x<CR>:1t0|1d<CR>u"},
+    {"name": "i1259_chain_undo_inside", "lines": ["a", "b", "c", "d"], "keys": ":1d|undo<CR>"},
 ]
 
 

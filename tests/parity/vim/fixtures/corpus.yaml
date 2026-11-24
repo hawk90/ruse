@@ -198339,6 +198339,339 @@
         "failed": false,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1259_chain_t",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":1t0|4t0<CR>u",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_chain_d",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":1d|1d<CR>u",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_chain_s_s",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":1s/a/x/|2s/b/y/<CR>u",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_two_lines",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":1t0<CR>:4t0<CR>u",
+      "expect": {
+        "text": [
+          "a",
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_chain_after_x",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "x:1t0|4t0<CR>u",
+      "expect": {
+        "text": [
+          "",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_chain_after_x_uu",
+      "lines": [
+        "ab",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "x:1t0|4t0<CR>uu",
+      "expect": {
+        "text": [
+          "ab",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_chain_then_x_u",
+      "lines": [
+        "ab",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":1t0|4t0<CR>xu",
+      "expect": {
+        "text": [
+          "c",
+          "ab",
+          "ab",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_chain_error_mid",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":1t0|bogus|2t0<CR>u",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_normal_then_ex_chain",
+      "lines": [
+        "ab",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":normal x<CR>:1t0|1d<CR>u",
+      "expect": {
+        "text": [
+          "b",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1259_chain_undo_inside",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":1d|undo<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }
