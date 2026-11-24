@@ -3,8 +3,10 @@
 //! Split out of `planner/mod.rs` (#1392); the items are as they were there.
 
 use super::{edit, edit_yank, nop, recase, recase_span};
-use crate::editor::{cluster_cells, Action, Block, BlockInsert, RegWrite};
-use crate::motion::line_end;
+use crate::editor::{
+    cluster_cells, Action, Block, BlockInsert, BlockRow, MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
+};
+use crate::motion::{line_end, prev_grapheme};
 use crate::{BytePos, Edit, EditList, GroupHint, Mode, OpKind, Plan, Register, Tabs, WordCase};
 
 /// Blockwise recase (Vim `op_tilde` over `block_prep`): each row's characters wholly inside the block take
@@ -20,8 +22,70 @@ pub(super) fn block_recase(b: &[u8], block: &Block, case: WordCase, hint: GroupH
         .collect();
     let at = block.rows[0].ds;
     match EditList::new(edits) {
-        Ok(list) if !list.is_empty() => edit(list, at, Mode::Normal, hint),
+        // nvim's `op_tilde` (#1302): `'[` `']` on the block's corners, `'.` at column 0 of the top line
+        // (`changed_lines(start, 0, ..)`), which it calls only when something changed.
+        Ok(list) if !list.is_empty() => {
+            let (start, end) = block_corners(b, block);
+            Plan {
+                op_marks: Some(OpMarks {
+                    start,
+                    end,
+                    dot: MarkAt::new(start.line, MarkCol::Byte(0)),
+                }),
+                ..edit(list, at, Mode::Normal, hint)
+            }
+        }
         _ => nop(at, Mode::Normal),
+    }
+}
+
+/// A block's corners as nvim's `do_pending_operator` sets `oap->start` / `oap->end` for a blockwise
+/// operator (#1302), each a line and a byte column of the text before the operator: the top line at the
+/// char covering the left edge, the bottom line at the char covering the right edge. A line that ends
+/// before the edge gets its length (Visual's `coladvance` stops one past the last char), and so does the
+/// bottom line of a `$` block. nvim's end is the last BYTE of a multibyte char (`mb_adjust_opend`); ruse's
+/// marks stay on a char's first byte.
+pub(super) fn block_corners(b: &[u8], block: &Block) -> (MarkAt, MarkAt) {
+    let line = |r: &BlockRow| crate::pos::raw::line_of(b, r.ls);
+    let (top, bottom) = (&block.rows[0], &block.rows[block.rows.len() - 1]);
+    let end_col = if block.hi != MAXCOL && bottom.cells > block.hi {
+        prev_grapheme(b, bottom.de) - bottom.ls
+    } else {
+        bottom.le - bottom.ls
+    };
+    (
+        MarkAt::new(line(top), MarkCol::Byte(top.ds - top.ls)),
+        MarkAt::new(line(bottom), MarkCol::Byte(end_col)),
+    )
+}
+
+/// The change marks of a block delete, as nvim's `op_delete` (#1302): `'[` the block's top-left, `']` the
+/// bottom line at the same byte column (`b_op_end = (end.lnum, start.col)`), and `'.` where the cursor
+/// rests on the top line once `check_cursor_col` has moved it off the line's end.
+/// A block change (`c`) sets them too as its Insert begins; `'.` stays there when nothing is typed.
+pub(super) fn block_delete_marks(b: &[u8], block: &Block) -> OpMarks {
+    let (start, end) = block_corners(b, block);
+    let top = &block.rows[0];
+    let col = top.ds - top.ls;
+    // The top line after the delete: `b[ls..ds]`, the straddlers' outside cells as spaces, `b[de..le]`.
+    let spaces = top.out_l + top.out_r;
+    let new_len = (top.le - top.ls) - (top.de - top.ds) + spaces;
+    let cursor = col + top.out_l;
+    let dot = if cursor < new_len {
+        cursor
+    } else if top.de < top.le {
+        prev_grapheme(b, top.le) - top.de + col + spaces
+    } else if spaces > 0 {
+        col + spaces - 1
+    } else if top.ds > top.ls {
+        prev_grapheme(b, top.ds) - top.ls
+    } else {
+        0
+    };
+    OpMarks {
+        start,
+        end: MarkAt::new(end.line, MarkCol::Byte(col)),
+        dot: MarkAt::new(start.line, MarkCol::Byte(dot)),
     }
 }
 
@@ -62,18 +126,37 @@ pub(super) fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> 
     };
     match op {
         // Yank leaves the buffer unchanged, cursor at the block's top-left, back to Normal.
-        OpKind::Yank => Plan {
-            set_register: Some(RegWrite::Yank(reg, block_span)),
-            ..nop(Mode::Normal)
-        },
+        // nvim's `op_yank` puts `'[` `']` on the block's corners (#1302). A yank changes nothing, so commit
+        // records no `'.` for it.
+        OpKind::Yank => {
+            let (start, end) = block_corners(b, block);
+            Plan {
+                set_register: Some(RegWrite::Yank(reg, block_span)),
+                op_marks: Some(OpMarks {
+                    start,
+                    end,
+                    dot: start,
+                }),
+                ..nop(Mode::Normal)
+            }
+        }
         OpKind::Delete => {
+            // nvim marks the block even when it removes nothing: `op_delete` saves for undo and calls
+            // `changed_lines` whatever it deleted.
+            let op_marks = Some(block_delete_marks(b, block));
             let edits = deletes();
             if edits.is_empty() {
                 // The block sits entirely past every line's end — nothing to remove.
-                return nop(Mode::Normal);
+                return Plan {
+                    op_marks,
+                    ..nop(Mode::Normal)
+                };
             }
             let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
-            edit_yank(list, top_left, Mode::Normal, hint, reg)
+            Plan {
+                op_marks,
+                ..edit_yank(list, top_left, Mode::Normal, hint, reg)
+            }
         }
         // Operator-forced blockwise change (`c<C-v>{motion}`): delete the block on every row (captured
         // blockwise, above), then ARM a replicate session at the top-left — the SAME machinery
@@ -105,6 +188,7 @@ pub(super) fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> 
                 },
                 is_edit,
                 set_register: Some(RegWrite::Edit(reg)),
+                op_marks: Some(block_delete_marks(b, block)),
                 ..self::nop(top_left, Mode::Insert)
             }
         }

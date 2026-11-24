@@ -3,9 +3,39 @@
 
 use super::{edit, motion, nop, BytePos, Edit, GroupHint, Mode, Plan};
 use crate::editor::planner::block_insert_point;
-use crate::editor::{line_cells, range, BlockInsert};
+use crate::editor::{line_cells, range, BlockInsert, MarkAt, MarkCol, OpMarks};
 use crate::motion::{line_end, line_start};
 use crate::{EditList, Tabs};
+
+/// The change marks of a block insert or change whose `<Esc>` copies the typed text down the block, as
+/// nvim's `op_insert` / `op_change` leave them (#1302): `'[` `']` the Insert's own (where it began and where
+/// `<Esc>` found the caret), except that `block_insert` (`I`/`A`) moves `']` to the end of the text it put
+/// on the block's bottom row (`bottom`, when that row took it); `'.` column 0 of the line below the top one,
+/// from the `changed_lines(start + 1, 0, ..)` that ends the copy even when every row was skipped. `None`
+/// for a one-row block, where nothing is copied. Each mark is a line and column of the text BEFORE the
+/// copy, which only inserts within lines below the top one: nvim's marks keep their raw columns there.
+fn replicate_marks(
+    b: &[u8],
+    cur: usize,
+    session: &BlockInsert,
+    entry_start: Option<usize>,
+    bottom: Option<MarkAt>,
+) -> Option<OpMarks> {
+    if session.rows_below == 0 {
+        return None;
+    }
+    let at = |p: usize| {
+        let ls = line_start(b, p);
+        MarkAt::new(crate::pos::raw::line_of(b, ls), MarkCol::Byte(p - ls))
+    };
+    let s = entry_start.unwrap_or(cur);
+    let top = crate::pos::raw::line_of(b, session.top_line_start);
+    Some(OpMarks {
+        start: at(s.min(cur)),
+        end: bottom.unwrap_or_else(|| at(s.max(cur))),
+        dot: MarkAt::new(top + 1, MarkCol::Byte(0)),
+    })
+}
 
 /// Finish a blockwise insert-replicate session (`<Esc>` after `CTRL-V` `I`/`A`/`c`): take the text typed
 /// on the top row since `session.insert_start` and insert it at `session.target_col` on each of the
@@ -13,11 +43,13 @@ use crate::{EditList, Tabs};
 /// rows shorter than the target column are skipped (Vim). A newline typed on the top row aborts the
 /// replicate (Vim). For `I`/`A` the cursor returns to the block's top-left corner (`session.top_left`);
 /// for `c` (change) it rests one char left of the top row's typed text — the normal Insert-exit position,
-/// which Vim keeps for a block change (matters only when more than one char was typed).
+/// which Vim keeps for a block change (matters only when more than one char was typed). `entry_start` is
+/// where the Insert began (the view's `insert_start`), for the change marks.
 pub(super) fn block_replicate(
     b: &[u8],
     cur: usize,
     session: BlockInsert,
+    entry_start: Option<usize>,
     hint: GroupHint,
     ts: Tabs,
 ) -> Plan {
@@ -29,7 +61,7 @@ pub(super) fn block_replicate(
     let cur_ls = line_start(b, cur);
     let tls = session.top_line_start;
     if session.change && cur_ls > tls && line_start(b, tls) == tls {
-        return block_change_split(b, cur, &session, hint, ts);
+        return block_change_split(b, cur, &session, entry_start, hint, ts);
     }
     if cur_ls != tls {
         return nop(motion::prev_boundary(b, cur).max(cur_ls));
@@ -44,8 +76,13 @@ pub(super) fn block_replicate(
     while start < cur && start < b.len() && (b[start] & 0xC0) == 0x80 {
         start += 1;
     }
-    // The text typed on the top row. Empty (or containing a newline) → nothing to replicate.
-    if cur <= start || b[start..cur].contains(&b'\n') {
+    // The text typed on the top row. Empty (or containing a newline) → nothing to replicate. With nothing
+    // typed the cursor steps left as a plain `<Esc>` does: nvim's `op_insert` / `op_change` move it back to
+    // the block only after copying (`l<C-v>jjc<Esc>` rests on column 0, `A<Esc>` on the block's last column).
+    if cur <= start {
+        return nop(motion::prev_boundary(b, cur).max(cur_ls));
+    }
+    if b[start..cur].contains(&b'\n') {
         return nop(end_cursor);
     }
     let typed = &b[start..cur];
@@ -57,15 +94,26 @@ pub(super) fn block_replicate(
 
     let mut edits: Vec<Edit> = Vec::new();
     let mut rs = session.top_line_start;
-    for _ in 0..session.rows_below {
+    // `']` at the end of what the bottom row took (nvim's `block_insert`); a block change leaves it alone.
+    let mut bottom = None;
+    for i in 0..session.rows_below {
         let le = line_end(b, rs);
         if le >= b.len() {
             break; // no further line to replicate onto
         }
         rs = le + 1;
         let row_le = line_end(b, rs);
+        let mut mark_end = |col: usize| {
+            if i + 1 == session.rows_below && !session.change {
+                bottom = Some(MarkAt::new(
+                    crate::pos::raw::line_of(b, rs),
+                    MarkCol::Byte(col),
+                ));
+            }
+        };
         if session.to_eol {
             // `$A`: append at THIS row's own end (ragged), never a fixed column.
+            mark_end(row_le - rs + typed.len());
             edits.push(Edit::insert(BytePos(row_le), typed.to_vec()));
             continue;
         }
@@ -78,13 +126,21 @@ pub(super) fn block_replicate(
         let mut ins = vec![b' '; pre];
         ins.extend_from_slice(typed);
         ins.extend(std::iter::repeat_n(b' ', post));
+        mark_end(at - rs + ins.len());
         edits.push(Edit::replace(BytePos(at), del, ins));
     }
+    let op_marks = replicate_marks(b, cur, &session, entry_start, bottom);
     if edits.is_empty() {
-        return nop(rest_cursor);
+        return Plan {
+            op_marks,
+            ..nop(rest_cursor)
+        };
     }
     let list = EditList::new(edits).expect("block-replicate inserts are disjoint (one per line)");
-    edit(list, rest_cursor, Mode::Normal, hint)
+    Plan {
+        op_marks,
+        ..edit(list, rest_cursor, Mode::Normal, hint)
+    }
 }
 
 /// A block change (`c`/`C`) whose Insert broke the top row with a `<CR>` (#1142), as nvim's `op_change`:
@@ -97,6 +153,7 @@ fn block_change_split(
     b: &[u8],
     cur: usize,
     session: &BlockInsert,
+    entry_start: Option<usize>,
     hint: GroupHint,
     ts: Tabs,
 ) -> Plan {
@@ -131,8 +188,12 @@ fn block_change_split(
             text.to_vec(),
         ));
     }
+    let op_marks = replicate_marks(b, cur, session, entry_start, None);
     if edits.is_empty() {
-        return nop(rest, Mode::Normal);
+        return Plan {
+            op_marks,
+            ..nop(rest, Mode::Normal)
+        };
     }
     // The lines above the cursor's grew; its own line keeps the cursor's byte column.
     let shift: usize = edits
@@ -141,5 +202,8 @@ fn block_change_split(
         .map(|e| e.ins.len())
         .sum();
     let list = EditList::new(edits).expect("one insert per line, top to bottom: disjoint");
-    edit(list, rest + shift, Mode::Normal, hint)
+    Plan {
+        op_marks,
+        ..edit(list, rest + shift, Mode::Normal, hint)
+    }
 }

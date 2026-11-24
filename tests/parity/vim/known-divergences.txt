@@ -8,7 +8,6 @@ ik_js_brace_object_value # nvim's JavaScript indent script (GetJavascriptIndent,
 
 # #900: the observables the oracle records since #900 (mode, marks, visualmode). Each line names
 # what differs; the follow-up issues are proposed in the #900 PR.
-visual_block_delete # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_iw_change # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_l_stops_at_last_char # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_shift_right # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
@@ -22,22 +21,12 @@ v_X_linewise # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a li
 v_C_linewise # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_S_linewise # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_R_linewise # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_D_to_eol # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_X_blockwise # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_C_to_eol # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 vb_S_linewise # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 vb_R_linewise # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_O_moves_horizontally # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_gq_reflows # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_I_inserts # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_A_appends # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_D_keeps_wanted_column # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_dollar_D_to_eol_column # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '< '> differ: nvim leaves them on line 2 after the area's lines are deleted to one line, past the buffer's end, which a byte offset cannot hold
 v_C_keeps_indent # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_d_ragged # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_D_ragged # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_X_narrow # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_D_whole_rows # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_gq_joins_short # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '> differs: ruse's gq replaces the lines as one edit, so a mark on the joined line goes to its end, where nvim's join moves it with the text
 v_shift_dot_same_lines # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 v_D_dot # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
@@ -51,41 +40,26 @@ sc_mark_y_quote_back # #900: the change marks '[ '] '. differ (nvim: '. at col 0
 sc_mark_c_quote # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 mk_o_text_on_empty_line # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 mk_O_text_on_empty_line # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_C_bs_joins_the_top_line_up # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
+vb_C_bs_joins_the_top_line_up # #1302: '. after an Insert that copies nothing down the block: nvim puts it on the last inserted char (ins_char's changed_bytes at that char's column, also when typed key by key), ruse one past it; Insert mode's '., not a block mark
 vb_shift_right_skips_a_short_line # #900: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
 vb_shift_right_ragged_middle # #1302: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
 vb_shift_right_undo # #1302: u/CTRL-R of a block shift put '. on the bottom row's line; nvim saves the block as one undo entry (op_shift's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
 vb_shift_right_redo # #1302: u/CTRL-R of a block shift put '. on the bottom row's line; nvim saves the block as one undo entry (op_shift's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
 vb_shift_left_undo # #1302: u/CTRL-R of a block shift put '. on the bottom row's line; nvim saves the block as one undo entry (op_shift's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
 vb_shift_right_wide_last_char # #1302: '] after a block shift onto a line ending in a multibyte char: nvim's op_shift puts it on the line's last BYTE (ml_get_len - 1, inside the char), ruse keeps marks on a char's first byte
-vb_C_cr_twice # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_C_cr_first # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_C_cr_undo # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_c_cr_moves_the_tail # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_I_cr_copies_nothing # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_A_cr_copies_nothing # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_A_dollar_cr_copies_nothing # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_I_cr_dot # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_h_d # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_h_c # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_l_y # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_h_d_short_last # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_h_A # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_j_y # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
+vb_C_cr_first # #1302: '. after an Insert that copies nothing down the block: nvim puts it on the last inserted char (ins_char's changed_bytes at that char's column, also when typed key by key), ruse one past it; Insert mode's '., not a block mark
+vb_C_cr_undo # #1302: u of a block change puts '. on a lower row's line; nvim saves the block as one undo entry (op_delete's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
+vb_c_cr_moves_the_tail # #1302: '. after an Insert that copies nothing down the block: nvim puts it on the last inserted char (ins_char's changed_bytes at that char's column, also when typed key by key), ruse one past it; Insert mode's '., not a block mark
+vb_I_cr_copies_nothing # #1302: '. after an Insert that copies nothing down the block: nvim puts it on the last inserted char (ins_char's changed_bytes at that char's column, also when typed key by key), ruse one past it; Insert mode's '., not a block mark
+vb_A_cr_copies_nothing # #1302: '. after an Insert that copies nothing down the block: nvim puts it on the last inserted char (ins_char's changed_bytes at that char's column, also when typed key by key), ruse one past it; Insert mode's '., not a block mark
+vb_A_dollar_cr_copies_nothing # #1302: '. after an Insert that copies nothing down the block: nvim puts it on the last inserted char (ins_char's changed_bytes at that char's column, also when typed key by key), ruse one past it; Insert mode's '., not a block mark
+vb_I_cr_dot # #1302: '. after an Insert that copies nothing down the block: nvim puts it on the last inserted char (ins_char's changed_bytes at that char's column, also when typed key by key), ruse one past it; Insert mode's '., not a block mark
 v_dollar_j_y # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_ge_y # #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one
-vb_dollar_bs_y # #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one
-vb_dollar_h_empty_last # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_h_l_y # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_h_x_wide # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_I # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_A # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_o_y # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_r # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
+vb_dollar_ge_y # #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
+vb_dollar_bs_y # #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
+vb_dollar_h_x_wide # #1302: '] after a block yank whose bottom-right is a multibyte char: nvim puts it on the char's last BYTE (mb_adjust_opend), ruse keeps marks on a char's first byte
 vb_dollar_J # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_tilde # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_gv # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-vb_dollar_p # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end); '< '> after a Visual put are the put's '[ '] in nvim
+vb_dollar_p # #1302: a Visual-block put of a one-line charwise register: nvim's do_put leaves '[ '] on the top row's put text and '. on the last row it put on, and '< '> become '[ ']; ruse takes the marks from its one replacing edit and keeps the old area
 obs_marks_set_and_moved # #900: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
@@ -114,5 +88,3 @@ i1304_dot_x_lines # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 o
 i1306_caret_gi # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 i1306_caret_line_deleted # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
 i1306_caret_autoindent # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-i1306_caret_block_insert # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
-i1306_caret_block_append # #1302: the change marks '[ '] '. differ (nvim: '. at col 0 of a linewise or block change and on the last inserted char, '] at the change's end)
