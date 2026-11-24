@@ -137,3 +137,4 @@ i1307_normal_ixy # '. after Insert: nvim at col 0 of the insert, ruse on its end
 i1307_normal_ghl # '. '[ after a Select-mode replace: nvim at col 0, ruse after the typed char
 i1307_normal_R # '^ after an empty Replace: nvim sets it where Replace ended, ruse leaves it unset
 i1307_all_normal_vlx # '> after a Visual delete that empties the line: nvim keeps col 1, ruse clamps to 0
+i1259_chain_undo_inside # #639: ruse has no :undo Ex command yet (E492); the chained undo grouping itself verifies
