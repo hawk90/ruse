@@ -283,8 +283,11 @@ cursor and undo grouping, with no IO and no re-resolution):
   `UndoSync` for Vim's `u_sync` before a typed command (recorded only when it closes a group), `Mark` for
   `:mark`/`:k`, and `Yank` for `:y` (registers are named, R1). A macro replay's undo block records as an
   `ex_begin macro` group, like `:normal`'s.
-- **`:s///c`** records the resolved `:s` once the loop ends, with one answer per match (`c:ynyn`); matches
-  never answered are "no". The jump `:s///c` pushes before its first prompt is pushed by that record.
+- **`:s///c`** records the resolved `:s` once the loop ends, with one answer per match prompted for, as its
+  key (`y n a l q`; `<Esc>` is `q`), ending at the answer that ended the loop (`c:nyq`, `c:na`). Matches never
+  prompted for are "no" (after `a`, "yes"); where the answers stop places the cursor, `'.` and `']` as nvim's
+  loop leaves them (#1628). A trace written before #1628 holds one `y`/`n` per match and still decodes. The
+  jump `:s///c` pushes before its first prompt is pushed by that record.
 - **The starting options** (R4) are `ex_set` lines for `ignorecase`, `smartcase`, `tabstop`,
   `shiftwidth`, `expandtab` and `textwidth`, captured when the session starts.
 - **Format.** The verbs are `ex_substitute`, `ex_global`, `ex_delete`, `ex_yank`, `ex_join`, `ex_shift`,

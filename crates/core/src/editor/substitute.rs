@@ -8,6 +8,9 @@ use crate::pattern::{Match, Regex};
 use crate::pos::BytePos;
 use crate::{motion, Edit, EditList, EditorState, RegexError};
 
+mod confirm;
+use confirm::DotAt;
+
 /// The pure decision for one command.
 #[must_use]
 /// The line range a `:s` acts on. `Lines` is 1-based inclusive (as the user types `:N,Ms`).
@@ -591,6 +594,17 @@ impl EditorState {
         subs: &[Substitution],
         range: Option<(usize, usize)>,
     ) -> SubOutcome {
+        self.apply_substitutions_marked(subs, range, None)
+    }
+
+    /// [`EditorState::apply_substitutions_over`] with `'.` at `dot` (`None`: the first line substituted
+    /// in the range).
+    fn apply_substitutions_marked(
+        &mut self,
+        subs: &[Substitution],
+        range: Option<(usize, usize)>,
+        dot: Option<DotAt>,
+    ) -> SubOutcome {
         if subs.is_empty() {
             return SubOutcome {
                 replacements: 0,
@@ -622,7 +636,7 @@ impl EditorState {
         self.apply_ex_edit(list, self.origin, None)
             .expect("substitute transaction applies cleanly");
         self.view.last_was_edit = true;
-        self.set_substitute_marks(subs, &old_lines, range, group);
+        self.set_substitute_marks(subs, &old_lines, (range, dot), group);
         if let Some(end) = last_end {
             // Vim: the line the last replacement ends on (a `\r` in it moves the cursor down with the new
             // line), at its first non-blank (`beginline(BL_WHITE | BL_FIX)`).
@@ -647,12 +661,13 @@ impl EditorState {
     /// The change marks a `:s` that substituted `subs` leaves (nvim's `do_sub`, #1303), the lines of the
     /// buffer before it being `old_lines`: `'[` at the start of the range's first line and `']` at the
     /// start of its last, where they are now (a `\r` adds lines, a matched newline joins them), and `'.`
-    /// at the start of the first line substituted in the range. `range` is `None` for the lines of `subs`.
+    /// at the start of the first line substituted in the range. `range` is `None` for the lines of `subs`;
+    /// `dot`, when given, names the substitution `'.` is on instead (a `:s///c`, #1628).
     fn set_substitute_marks(
         &mut self,
         subs: &[Substitution],
         old_lines: &[(usize, usize)],
-        range: Option<(usize, usize)>,
+        (range, dot_at): (Option<(usize, usize)>, Option<DotAt>),
         group_before: u64,
     ) {
         let (Some(head), Some(tail)) = (subs.first(), subs.last()) else {
@@ -681,7 +696,15 @@ impl EditorState {
         let line_at = |off: usize| crate::motion::line_start(b, off.min(b.len()));
         let start = line_at(map(old_lines[first.min(old_lines.len() - 1)].0, false));
         let end = line_at(map(old_lines[last.min(old_lines.len() - 1)].1, true));
-        let dot = line_at(map(dot_sub.start.0, false));
+        let dot = match dot_at {
+            // A confirmed `y`/`l` puts it on the line the replacement ends on, an `a` where it starts.
+            Some(DotAt { sub, at_end }) => {
+                let s = &subs[sub.min(subs.len() - 1)];
+                let len = if at_end { s.replacement.len() } else { 0 };
+                line_at(map(s.start.0, false) + len)
+            }
+            None => line_at(map(dot_sub.start.0, false)),
+        };
         self.set_ex_marks((start, end), dot, Some(group_before));
     }
 }

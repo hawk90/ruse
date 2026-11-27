@@ -33,13 +33,6 @@ i1259_chain_undo_inside # #639: ruse has no :undo Ex command yet (E492); the cha
 # char, as ruse does.
 cm_insert_typed_run # oracle typeahead batching (interactive nvim puts '. on the last inserted char)
 
-# #1618: a confirmed `:s///c`. The text and the change marks verify; the cursor differs. nvim's do_sub leaves the
-# cursor at column 0 of the line of the last match it prompted for (where `q` was typed, or the last match in the
-# range); ruse puts it on the first non-blank of the last ACCEPTED substitution's line, as for a plain `:s`.
-i1618_s_confirm_one_yes # cursor: nvim on the last prompted match's line, ruse on the accepted line (marks verify)
-i1618_s_confirm_global_one_line # cursor: nvim on the last prompted match's line, ruse on the accepted line (marks verify)
-i1618_s_confirm_quit # cursor: nvim on the line `q` was typed at, ruse on the accepted line (marks verify)
-i1618_s_confirm_sub_range # cursor: nvim on the line `q` was typed at, ruse on the accepted line (marks verify)
 vb_C_cr_redo # #1612: CTRL-R of a block change whose Insert took a <CR> puts '. on the line the <CR> opened; nvim types onto that line under open_line's save, so it makes no entry of its own and '. is on the top line. A plain ix<CR>y<Esc>u<C-r> differs the same way: an Insert-mode entry difference, not a block one
 vb_forced_d_undo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on the block and visualmode() empty in nvim (do_pending_operator's temporary Visual sets b_visual); ruse leaves '< '> unset. Not an undo difference: '. after u/CTRL-R matches
 vb_forced_d_redo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on the block and visualmode() empty in nvim (do_pending_operator's temporary Visual sets b_visual); ruse leaves '< '> unset. Not an undo difference: '. after u/CTRL-R matches

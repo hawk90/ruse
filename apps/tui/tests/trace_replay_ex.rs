@@ -89,11 +89,12 @@ const SESSIONS: &[(&str, &str, &str)] = &[
     ("aa\naa\naa\n", ":s/a/b/<CR>j&", "ex_substitute"),
     ("aa\naa\naa\n", ":s/a/b/<CR>jg&", "ex_substitute"),
     ("aa\naa\naa\n", ":s/a/b/g<CR>j:&&<CR>", "ex_substitute"),
-    // The 4th match is still asking when the session's closing `<Esc>` quits the loop.
-    ("a a a\na\n", ":%s/a/b/gc<CR>yny", "c:ynyn"),
-    ("a a a\na\n", ":%s/a/b/gc<CR>nq", "c:nnnn"),
-    ("a a a\na\n", ":%s/a/b/gc<CR>na", "c:nyyy"),
-    ("a a a\na\n", ":%s/a/b/gc<CR>yl", "c:yynn"),
+    // The 4th match is still asking when the session's closing `<Esc>` quits the loop. One answer per
+    // match prompted for, ending at the one that ended the loop (#1628).
+    ("a a a\na\n", ":%s/a/b/gc<CR>yny", "c:ynyq\n"),
+    ("a a a\na\n", ":%s/a/b/gc<CR>nq", "c:nq\n"),
+    ("a a a\na\n", ":%s/a/b/gc<CR>na", "c:na\n"),
+    ("a a a\na\n", ":%s/a/b/gc<CR>yl", "c:yl\n"),
     ("one\ntwo\nthree\n", ":2d a<CR>\"ap", "ex_delete"),
     ("one\ntwo\nthree\n", ":2,3y b<CR>G\"bp", "ex_yank"),
     ("one\n  two\nthree\n", ":.,+1j<CR>", "ex_join"),
