@@ -80,7 +80,8 @@ all now would be exactly the "pattern names first" over-design warned against ab
   its extension, and an error is its `io::ErrorKind` and OS error number. The one exception is a panic's
   message and location, which the code writes. The exact never-log list stays open in D-017.
 - **§11.4 the status bar is a view.** v0 renders one status line; it is not the source of truth for any
-  subsystem state (INV-STATUS holds trivially with ~one component).
+  subsystem state. INV-STATUS is not yet enforced: the Health Registry is deferred (below; see its marker in
+  [reference-invariants.md](../invariants/reference-invariants.md)).
 
 **Deferred (returns with its boundary — RFC-0012 re-boundary triggers):**
 - §2.1 the `ErrorCode` ecosystem API — with the plugin protocol (asserting-on-a-code needs an ecosystem).
@@ -576,6 +577,9 @@ points (in-editor command, offline CLI), never a divergent second implementation
 
 This doc depends on these registry invariants (defined in
 [../invariants/reference-invariants.md](../invariants/reference-invariants.md); not redefined here):
+
+> **Code status (#891):** INV-STATUS is not yet enforced in code; INV-ERR-CLASS is only partly enforced. See
+> their markers in [reference-invariants.md](../invariants/reference-invariants.md).
 
 - **INV-ERR-CLASS** — Expected failures are typed errors; impossible states are assertions; errors gain
   context while propagating and are logged once, at ownership boundaries. (§1, §3)

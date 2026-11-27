@@ -125,6 +125,10 @@ local terms:
 
 This doc **depends on and enforces** (does not mint — single-registry rule, D-022):
 
+> **Code status (#891):** INV-PLUGIN-NO-CORE and INV-PROTOCOL-VERSIONED are not yet enforced in code;
+> INV-PRIORITY and INV-ERR-CLASS are only partly enforced. See their markers in
+> [reference-invariants.md](../invariants/reference-invariants.md).
+
 - **INV-CMD-SEMANTIC** — a Command has a stable namespaced id, typed args, decoupled from any binding/
   command-line string; keymaps resolve *onto* commands. *This doc is its primary realization.* Guards
   CMD-1/6/7/8.

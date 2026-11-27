@@ -126,6 +126,10 @@ INV-SCHED-1 (background work is scheduler-owned, coalesced, cancellable), INV-PL
 snapshots/handles only), INV-DOC-VIEW (view-local state is not in the Document), INV-RENDER-IR (the render
 snapshot feeds lowering; it is not backend bytes).
 
+> **Code status (#891):** INV-SCHED-1, INV-PLUGIN-NO-CORE and INV-RENDER-IR are not yet enforced in code;
+> INV-HANDLE is only partly enforced. See their markers in
+> [reference-invariants.md](../invariants/reference-invariants.md).
+
 ## Proposed design
 
 ### 1. The Query contract (Q-QUERY)
@@ -651,6 +655,10 @@ Depends on / reaffirms: **INV-ANCHOR** (snapshot positions are anchors; rebasabl
 **INV-DOC-VIEW** (`ViewSnapshot` separate from `DocumentSnapshot`), **INV-RENDER-IR** (the render snapshot
 feeds lowering; it is not backend bytes), **INV-BUFFER-KIND** (streaming/append buffers snapshot a bounded
 window), **INV-ADDITIVE** (the query catalog evolves additively).
+
+> **Code status (#891):** INV-SCHED-1, INV-PLUGIN-NO-CORE, INV-RENDER-IR and INV-BUFFER-KIND are not yet
+> enforced in code; INV-HANDLE is only partly enforced. See their markers in
+> [reference-invariants.md](../invariants/reference-invariants.md).
 
 ## Trade-offs
 
