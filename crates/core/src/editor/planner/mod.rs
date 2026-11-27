@@ -176,7 +176,15 @@ fn apply_op(
             );
             // `'[` `']` keep the column the operator started at (the earlier of the cursor and the
             // motion's end, nvim's `oap->start`), `'.` is column 0 of the first deleted line (#1302).
-            op_marks::with_marks(p, op_marks::delete_marks(b, s, e, true, cur.min(landing)))
+            // A vertical motion onto a shorter line lands on its newline here; nvim's cursor rests on
+            // the last char, which is the raw column the marks keep (`j5ldk`, #1615).
+            let start = cur.min(landing);
+            let start = if b.get(start) == Some(&b'\n') && start > line_start(b, start) {
+                prev_grapheme(b, start)
+            } else {
+                start
+            };
+            op_marks::with_marks(p, op_marks::delete_marks(b, s, e, true, start))
         }
         MarkOp::Change if linewise && failed => nop(cur, Mode::Normal),
         MarkOp::Change if linewise => {

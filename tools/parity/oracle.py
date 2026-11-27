@@ -6404,6 +6404,19 @@ FIXTURES: list[dict] = [
     {"name": "i1269_coll_lower_byte_ic", "lines": ["AZ\xc9\xe9"], "keys": "/[[:lower:]]\\c<CR>", "bytes": True},
     # `<cword>` holding a byte that is not UTF-8.
     {"name": "i1269_cword_invalid", "lines": ["foo\xffbar baz"], "keys": ":s/<C-r><C-w>/Z/<CR>", "bytes": True},
+    # --- #1615 '[ '] keep the raw column a linewise delete started at, past the end of the line that takes
+    #     the deleted ones' place (or on the line past the buffer's end); a jump to them clamps onto the line.
+    {"name": "i1615_dd_last_line", "lines": ["ab", "cdef"], "keys": "j3ldd", "observe": ["marks"]},
+    {"name": "i1615_dd_count", "lines": ["abcdef", "g", "hi"], "keys": "5l2dd", "observe": ["marks"]},
+    {"name": "i1615_dj_short", "lines": ["abcdef", "gh", "ij", "klmnop"], "keys": "4ldj", "observe": ["marks"]},
+    {"name": "i1615_dk_from_long", "lines": ["ab", "abcdef", "ij"], "keys": "j5ldk", "observe": ["marks"]},
+    {"name": "i1615_dd_jump_start", "lines": ["abcdef", "gh"], "keys": "5ldd`[", "observe": ["marks"]},
+    {"name": "i1615_dd_jump_end_line", "lines": ["abcdef", "  gh"], "keys": "5ldd']", "observe": ["marks"]},
+    {"name": "i1615_dd_d_to_mark", "lines": ["abcdef", "ghij", "kl"], "keys": "5lddjd`[", "observe": ["marks"]},
+    {"name": "i1615_dd_undo", "lines": ["abcdef", "gh"], "keys": "5lddu", "setup": UNDO_SETUP,
+     "observe": ["marks"]},
+    {"name": "i1615_Vd_col", "lines": ["abcdef", "gh", "ij"], "keys": "5lVd", "observe": ["marks"]},
+    {"name": "i1615_dd_multibyte", "lines": ["abcdef", "éé"], "keys": "3ldd", "observe": ["marks"]},
 ]
 
 

@@ -120,6 +120,9 @@ inserted or deleted above moves them, an edit inside their line leaves their col
 named mark, `` `^ `` and the Visual marks keep nvim's raw column beside the offset (#1304): an edit that
 shortens the line under one leaves its column, which a jump clamps; a `$` area's `'>` is one past its line's
 last char; a dot-repeat of a Visual operator leaves `'<`/`'>` and `gv` alone (nvim's `redo_VIsual`). The
+`[`/`]` change marks keep a raw column too (#1615): a linewise delete leaves both at the column the operator
+started at (`oap->start`), past the end of the line now in the deleted one's place or on the line past the
+buffer's end, which `getpos()` reports and a jump clamps. The
 View hands them to the Document per transaction (`EditorState::apply_txn`); a View at rest while another
 View edits its document pins them, with its cursor (`Workspace::lend`). The Emacs mark stays a snapped
 offset: Emacs keeps markers through an in-place replacement (casing), which the byte rule does not. Per-buffer (rather than per-View) marks and the `Selection` model stay deferred (#636).
