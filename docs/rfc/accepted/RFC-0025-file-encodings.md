@@ -9,7 +9,7 @@ summary: >
   UTF-8 byte text. It decides the detection order, what happens to undecodable bytes and unencodable
   characters, the Vim and Emacs commands, the journal field and the config keys.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../design/persistence-and-recovery.md
   - ../../../spec/DECISIONS.md

@@ -38,9 +38,6 @@ row says which decision did it. Each RFC is in exactly one row below.
 | RFC | Title | Decisions | Waiting on | Design detail |
 | --- | --- | --- | --- | --- |
 | [RFC-0006](proposed/RFC-0006-remote-runtime.md) | Remote Runtime & Agent | D-011/024/029/030/031/032 | D-024 (version skew) and D-032 (debug backend detail) are open; D-039 defers remote | [remote-runtime](../design/remote-runtime.md), [parity/remote](../parity/remote.md) |
-| [RFC-0025](proposed/RFC-0025-file-encodings.md) | File encodings at the persist boundary ('fileencoding', ++enc, C-x RET f) | D-066 | D-066 (maintainer approval) | [persistence-and-recovery](../design/persistence-and-recovery.md) |
-| [RFC-0027](proposed/RFC-0027-cmdheight-shortmess-pager.md) | The message area: 'cmdheight', 'shortmess' flags and one pager for listing output | D-068 | D-068 is open: the default 'cmdheight', the `F` default, pickers vs pager, `wait:`, config keys, the issue split | [render-and-frontends](../design/render-and-frontends.md) |
-| [RFC-0026](proposed/RFC-0026-large-file-safety.md) | Large-file safety: bounded undo, stop-at-first-match search, a highlight budget | D-067 | D-067 (open): the maintainer's choice of the undo defaults, the highlight rules and the slice order | [persistence-and-recovery](../design/persistence-and-recovery.md) |
 
 ## Accepted
 
@@ -69,6 +66,9 @@ row says which decision did it. Each RFC is in exactly one row below.
 | [RFC-0022](accepted/RFC-0022-typed-positions-at-the-core-boundary.md) | Positions are typed at the core boundary | D-063 | | [reference-invariants](../invariants/reference-invariants.md) |
 | [RFC-0023](accepted/RFC-0023-per-transaction-journal.md) | Per-transaction recovery journal (RJ01), state-dir location, three-way recovery | D-064 | | [persistence-and-recovery](../design/persistence-and-recovery.md) |
 | [RFC-0024](accepted/RFC-0024-line-terminated-text.md) | Line-terminated buffer text, the final newline as `'endofline'` | D-065 | | [persistence-and-recovery](../design/persistence-and-recovery.md) |
+| [RFC-0025](accepted/RFC-0025-file-encodings.md) | File encodings at the persist boundary ('fileencoding', ++enc, C-x RET f) | D-066 | approved 2026-11-28 | [persistence-and-recovery](../design/persistence-and-recovery.md) |
+| [RFC-0026](accepted/RFC-0026-large-file-safety.md) | Large-file safety: bounded undo, stop-at-first-match search, a highlight budget | D-067 | approved 2026-11-28 | [persistence-and-recovery](../design/persistence-and-recovery.md) |
+| [RFC-0027](accepted/RFC-0027-cmdheight-shortmess-pager.md) | The message area: 'cmdheight', 'shortmess' flags and one pager for listing output | D-068 | approved 2026-11-28 | [render-and-frontends](../design/render-and-frontends.md) |
 
 ## Rejected (do-not-relitigate)
 
