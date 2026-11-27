@@ -527,13 +527,27 @@ impl Command {
                     format!("paste_before_inner {count}")
                 }
             }
-            Command::PasteSelection { swap, count } => {
+            Command::PasteSelection {
+                swap,
+                count,
+                after,
+                move_after,
+            } => {
                 let mode = if *swap { "swap" } else { "keep" };
-                if *count == 1 {
-                    format!("paste_selection {mode}")
-                } else {
-                    format!("paste_selection {mode} {count}")
+                // The direction defaults to the register mode's (`p` after, `P` before); `gP` swaps and goes
+                // before, and `gp`/`gP` move after the put (#1616). The count comes first when a flag follows.
+                let mut out = format!("paste_selection {mode}");
+                let turned = *after != *swap;
+                if *count != 1 || turned || *move_after {
+                    out.push_str(&format!(" {count}"));
                 }
+                if turned {
+                    out.push_str(if *after { " after" } else { " before" });
+                }
+                if *move_after {
+                    out.push_str(" move");
+                }
+                out
             }
             Command::SetRegister(name) => match name {
                 Some(c) => format!("select_register {}", *c as u32),

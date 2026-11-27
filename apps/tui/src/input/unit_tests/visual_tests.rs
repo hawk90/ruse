@@ -156,6 +156,8 @@ fn visual_p_and_capital_p_emit_paste_selection() {
         Feed::Cmd(Command::PasteSelection {
             swap: true,
             count: 1,
+            after: true,
+            move_after: false,
         })
     );
     assert_eq!(
@@ -163,6 +165,41 @@ fn visual_p_and_capital_p_emit_paste_selection() {
         Feed::Cmd(Command::PasteSelection {
             swap: false,
             count: 1,
+            after: false,
+            move_after: false,
+        })
+    );
+}
+
+#[test]
+fn visual_gp_and_g_capital_p_emit_a_swapping_paste_selection() {
+    // #1616 (nvim `nv_put_opt`): Visual `gp`/`gP` replace the selection; only `P` keeps the registers, so
+    // both swap, `gP` puts before, and both leave the cursor after the put text. Normal `gp` is unchanged.
+    let mut e = InputEngine::new();
+    let vis = Mode::Visual {
+        kind: SelectKind::Charwise,
+    };
+    for (key, after) in [('p', true), ('P', false)] {
+        assert_eq!(e.feed(k('2'), vis), Feed::Pending);
+        assert_eq!(e.feed(k('g'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k(key), vis),
+            Feed::Cmd(Command::PasteSelection {
+                swap: true,
+                count: 2,
+                after,
+                move_after: true,
+            }),
+            "g{key}"
+        );
+    }
+    assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+    assert_eq!(
+        e.feed(k('p'), Mode::Normal),
+        Feed::Cmd(Command::Paste {
+            after: true,
+            count: 1,
+            move_after: true,
         })
     );
 }

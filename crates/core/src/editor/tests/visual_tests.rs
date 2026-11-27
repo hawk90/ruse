@@ -742,6 +742,8 @@ fn visual_p_replaces_selection_and_swaps_the_register() {
             Command::PasteSelection {
                 swap: true,
                 count: 1,
+                after: true,
+                move_after: false,
             },
         ],
     );
@@ -749,6 +751,66 @@ fn visual_p_replaces_selection_and_swaps_the_register() {
     assert_eq!(st.mode(), Mode::Normal);
     // The swap put the replaced "bar" into the unnamed register — a following `p` pastes it.
     assert_eq!(st.register().text(), b"bar");
+}
+
+#[test]
+fn visual_gp_swaps_and_rests_just_after_the_put() {
+    // #1616 (nvim v0.12.6): `yiwwviwgp` on `ab cd ef gh` gives `ab ab ef gh`, the cursor on the space after
+    // the put `ab` ([1,5]) and `cd` in the unnamed register; `gP` does the same (it swaps too).
+    for after in [true, false] {
+        let st = run(
+            "ab cd ef gh",
+            &[
+                Command::Yank(1, Motion::InnerWord),
+                Command::Move(1, Motion::WordFwd),
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::InnerWord),
+                Command::PasteSelection {
+                    swap: true,
+                    count: 1,
+                    after,
+                    move_after: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "ab ab ef gh", "after {after}");
+        assert_eq!(st.cursor().0, 5, "after {after}");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.register().text(), b"cd", "after {after}");
+    }
+}
+
+#[test]
+fn visual_g_capital_p_puts_lines_above_a_block_and_rests_below_them() {
+    // #1616 (nvim v0.12.6): `yyl<C-v>jgP` on `abc def ghi jkl` gives `abc ac df ghi jkl` (the lines above
+    // the block, like `P`), the cursor on the line after the put ([2,0]); `gp` puts them below, cursor [4,0].
+    for (after, want, cursor) in [
+        (false, "abc\nac\ndf\nghi\njkl", 4),
+        (true, "ac\ndf\nabc\nghi\njkl", 10),
+    ] {
+        let st = run(
+            "abc\ndef\nghi\njkl",
+            &[
+                Command::Yank(1, Motion::Line),
+                Command::MoveRight,
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::PasteSelection {
+                    swap: true,
+                    count: 1,
+                    after,
+                    move_after: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), want, "after {after}");
+        assert_eq!(st.cursor().0, cursor, "after {after}");
+        assert_eq!(st.register().text(), b"b\ne", "after {after}");
+    }
 }
 
 #[test]
@@ -767,6 +829,8 @@ fn visual_capital_p_preserves_the_register() {
             Command::PasteSelection {
                 swap: false,
                 count: 1,
+                after: false,
+                move_after: false,
             },
         ],
     );
@@ -1240,6 +1304,8 @@ mod blockwise_tests {
                 Command::PasteSelection {
                     swap: true,
                     count: 1,
+                    after: true,
+                    move_after: false,
                 },
             ],
         );
@@ -1260,6 +1326,8 @@ mod blockwise_tests {
                 Command::PasteSelection {
                     swap: false,
                     count: 1,
+                    after: false,
+                    move_after: false,
                 },
             ],
         );
@@ -1283,6 +1351,8 @@ mod blockwise_tests {
                 Command::PasteSelection {
                     swap: true,
                     count: 1,
+                    after: true,
+                    move_after: false,
                 },
             ],
         );
@@ -1312,6 +1382,8 @@ mod blockwise_tests {
     const PUT_SWAP: Command = Command::PasteSelection {
         swap: true,
         count: 1,
+        after: true,
+        move_after: false,
     };
 
     #[test]
@@ -1339,7 +1411,15 @@ mod blockwise_tests {
         // `vp` / `vP` of the linewise unnamed register splits the line: nvim gives `["", "ab"]`.
         for swap in [true, false] {
             let mut st = emptied_in_visual(SelectKind::Charwise);
-            apply_command(&mut st, &Command::PasteSelection { swap, count: 1 });
+            apply_command(
+                &mut st,
+                &Command::PasteSelection {
+                    swap,
+                    count: 1,
+                    after: swap,
+                    move_after: false,
+                },
+            );
             assert_eq!(text(&st), "\nab\n", "swap {swap}");
             assert_eq!(st.cursor().0, 1, "swap {swap}");
             assert_eq!(st.view.registers.get(None).text(), b"ab\n");
@@ -1352,6 +1432,8 @@ mod blockwise_tests {
             &Command::PasteSelection {
                 swap: true,
                 count: 3,
+                after: true,
+                move_after: false,
             },
         );
         assert_eq!(text(&st), "ababab\n");
