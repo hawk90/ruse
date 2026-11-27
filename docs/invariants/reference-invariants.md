@@ -68,13 +68,18 @@ remove it in the change that closes the gap (#891).
 - **INV-TXN** — Every mutation of an **editable Document** goes through a Transaction carrying
   `base_revision`; applying a transaction strictly increases the Document revision. Direct insert/delete
   scattered through the code is forbidden. *Guards:* TEXT-9/10; assert in [stability §1](../design/stability-and-observability.md).
-- **INV-UNDO** — Every Transaction on an editable Document is undoable; undo is recorded by logical unit
-  (not per keystroke), and the undo history is itself consistent (no orphaned parents). *Guards:* TEXT-12/13.
+- **INV-UNDO** — Every Transaction on an editable Document is undoable while it is within the undo bound
+  (`'undolevels'` + 1 groups and the undo payload budget, D-067); the newest change always is, unless
+  `'undolevels'` is negative (no undo, as nvim). Undo is recorded by logical unit (not per keystroke), and the
+  undo history is itself consistent: one root (the oldest kept state), no orphaned parents, `seq` increasing
+  with creation and never renumbered. No state within the bound is lost; branching loses nothing.
+  *Guards:* TEXT-12/13.
 - **INV-BUFFER-KIND** — *(NOT YET ENFORCED — there is no buffer-kind type: every Document is editable.
   The terminal (F-011) keeps its grid outside any Document (`apps/tui/src/term_buffer.rs`), so the exemption
   is never exercised.)* **Ephemeral/append-only buffers** (terminal/PTY, streaming logs, generated output,
   and large-file/degraded mode) are an explicit exception to INV-TXN/INV-UNDO: they use a bounded or absent
-  undo log and an append path that is not a full transaction. A buffer's kind
+  undo log and an append path that is not a full transaction. The large-file/degraded mode has no undo window
+  of its own: it keeps the bound of every buffer (D-067), the incremental journal and highlighting off. A buffer's kind
   (editable / read-only / generated / streaming / interactive — see [parity/workspace.md](../parity/workspace.md))
   determines which mutation contract applies. *Guards:* the INV-TXN↔INV-UNDO contradiction for F-011/WS-5/COM-12 (V-4).
 - **INV-ORIGIN** — Every mutation has an explicit origin (UserInput | Macro | Plugin | Lsp | AiAgent |
