@@ -464,8 +464,9 @@ pub(super) fn repeat_substitute_lines(
 }
 
 /// For `*`/`#`/`g*`/`g#` ([`Command::SearchWordUnder`]): record the keyword pattern the planner will search
-/// for as the engine's last search (with its direction) and as the hlsearch pattern. `false` (with E348 on
-/// the status line) when the line has no keyword, so the caller runs nothing. Any other command passes.
+/// for as the engine's last search (with its direction), in the search history (#1617) and as the hlsearch
+/// pattern. `false` (with E348 on the status line) when the line has no keyword, so the caller runs nothing.
+/// Any other command passes.
 pub(super) fn note_word_search(
     cmd: &Command,
     ws: &Workspace,
@@ -483,6 +484,8 @@ pub(super) fn note_word_search(
     };
     match ws.word_search_pattern(whole_word) {
         Some(pat) => {
+            // nvim's `nv_ident` adds it to the search history too (#1617): `/<Up>` recalls it.
+            engine.push_search_history(&pat);
             engine.set_last_search(pat.clone(), forward);
             *search_hl = Some(pat);
             true

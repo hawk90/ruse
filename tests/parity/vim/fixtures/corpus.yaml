@@ -204434,6 +204434,325 @@
         },
         "vmode": ""
       }
+    },
+    {
+      "name": "i1617_star_history",
+      "lines": [
+        "foo x foo",
+        "cd x cd"
+      ],
+      "keys": "*/cd<CR>gg/<Up><Up><CR>",
+      "expect": {
+        "text": [
+          "foo x foo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_star_history_pattern",
+      "lines": [
+        "foo x foo",
+        "cd x cd"
+      ],
+      "keys": "*/cd<CR>gg/<Up><Up><CR>\"/P",
+      "expect": {
+        "text": [
+          "foo x \\<foo\\>foo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_hash_history",
+      "lines": [
+        "foo x foo",
+        "cd x cd"
+      ],
+      "keys": "#/cd<CR>gg/<Up><Up><CR>",
+      "expect": {
+        "text": [
+          "foo x foo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_gstar_history",
+      "lines": [
+        "foo x foobar",
+        "cd x cd"
+      ],
+      "keys": "g*/cd<CR>gg/<Up><Up><CR>",
+      "expect": {
+        "text": [
+          "foo x foobar",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_gstar_history_pattern",
+      "lines": [
+        "foo x foobar",
+        "cd x cd"
+      ],
+      "keys": "g*/cd<CR>gg/<Up><Up><CR>\"/P",
+      "expect": {
+        "text": [
+          "foo x foofoobar",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_ghash_history",
+      "lines": [
+        "foobar x foo",
+        "cd x cd"
+      ],
+      "keys": "$g#/cd<CR>gg/<Up><Up><CR>",
+      "expect": {
+        "text": [
+          "foobar x foo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_ghash_history_pattern",
+      "lines": [
+        "foobar x foo",
+        "cd x cd"
+      ],
+      "keys": "$g#/cd<CR>gg/<Up><Up><CR>\"/P",
+      "expect": {
+        "text": [
+          "foobar x foofoo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_hash_history_pattern",
+      "lines": [
+        "foo x foo",
+        "cd x cd"
+      ],
+      "keys": "#/cd<CR>gg/<Up><Up><CR>\"/P",
+      "expect": {
+        "text": [
+          "foo x \\<foo\\>foo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_count_star_history",
+      "lines": [
+        "foo x foo foo",
+        "cd x cd"
+      ],
+      "keys": "2*/cd<CR>gg/<Up><Up><CR>",
+      "expect": {
+        "text": [
+          "foo x foo foo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_star_up_once",
+      "lines": [
+        "foo x foo",
+        "cd x cd"
+      ],
+      "keys": "*gg/<Up><CR>",
+      "expect": {
+        "text": [
+          "foo x foo",
+          "cd x cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1617_star_no_word_no_history",
+      "lines": [
+        "foo x foo",
+        "  "
+      ],
+      "keys": "/x<CR>j*gg/<Up><CR>",
+      "expect": {
+        "text": [
+          "foo x foo",
+          "  "
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E348",
+        "failed": true,
+        "mode": "n"
+      }
     }
   ]
 }
