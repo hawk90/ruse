@@ -411,7 +411,8 @@ fn resolve_op_marks(b: &[u8], m: OpMarks) -> (Mark, Mark, usize) {
         let (col, raw) = match m.col {
             MarkCol::Byte(c) => (c, true),
             MarkCol::LineEnd => (len, true),
-            MarkCol::LastByte => (len.saturating_sub(1), false),
+            MarkCol::LastByte => (len.saturating_sub(1), true),
+            MarkCol::LastChar => (len.saturating_sub(1), false),
         };
         let on = ls + col.min(len);
         let at = snap(b, on);

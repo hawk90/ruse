@@ -291,12 +291,16 @@ fn plan_search_object(
                 reg,
             )
         }
+        // `ygn` is inclusive: `']` on the match's last byte (#1613).
         SearchOp::Yank => {
             let reg = captured(b, s, e, false);
-            Plan {
-                set_register: Some(RegWrite::Yank(reg, (s, e))),
-                ..nop(s, st.view.mode)
-            }
+            super::op_marks::with_marks(
+                Plan {
+                    set_register: Some(RegWrite::Yank(reg, (s, e))),
+                    ..nop(s, st.view.mode)
+                },
+                super::op_marks::inclusive_yank_marks(b, (s, e)),
+            )
         }
         // `gUgn`, `>gn`, `gqgn`, ...: the shared span-operator planner over the match.
         SearchOp::Case(_)
