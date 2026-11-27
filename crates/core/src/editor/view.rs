@@ -260,6 +260,20 @@ impl View {
         self.mark_raw(c).map(|(p, _)| p)
     }
 
+    /// The byte offset of mark `c` as an operator reads it by name (`` d`[ ``, `y']`, `` c`. ``, `d''`,
+    /// #1645), or `None` if unset: a mark [`View::named_mark`] resolves, a change mark `[`/`]`, the
+    /// last-change mark `.` or the context mark `'`/`` ` ``.
+    #[must_use]
+    pub fn op_mark(&self, c: char) -> Option<BytePos> {
+        match c {
+            '[' => self.change_mark_start(),
+            ']' => self.change_mark_end(),
+            '.' => self.last_change(),
+            '\'' | '`' => self.context_mark(),
+            _ => self.named_mark(c),
+        }
+    }
+
     /// Mark `c` as [`View::named_mark`] reads it, with how many bytes its raw column lies past that offset
     /// (#1304): the column nvim's `getpos()` reports, which an edit that shortened the mark's line did not
     /// clamp, and which is one past the last char for the end of a `$` area.
