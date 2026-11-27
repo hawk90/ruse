@@ -204,17 +204,31 @@ fn apply_op(
                 reg,
             )
         }
-        MarkOp::Yank => Plan {
-            set_register: Some(RegWrite::Yank(
-                captured(b, s, e, linewise),
-                if linewise {
-                    (s, e)
-                } else {
-                    op_marks::yank_mark_span(b, s, e)
-                },
-            )),
-            ..nop(rest, mode)
-        },
+        MarkOp::Yank => {
+            let p = Plan {
+                set_register: Some(RegWrite::Yank(
+                    captured(b, s, e, linewise),
+                    if linewise {
+                        (s, e)
+                    } else {
+                        op_marks::yank_mark_span(b, s, e)
+                    },
+                )),
+                ..nop(rest, mode)
+            };
+            // An inclusive motion takes the char it lands on: the span runs past both the cursor and the
+            // landing (`y$`, `ye`, `yf`, `yiw`, `y/x/e`), where an exclusive one ends on one of them (#1613).
+            // An exclusive span pulled back to its line's end from a landing past it (`yw` on a line's last
+            // word, the exclusive-linewise rule) is inclusive too, as nvim's `do_pending_operator` makes it.
+            let pulled_back = adjusted || (b.get(e) == Some(&b'\n') && landing > e);
+            let inclusive = !linewise && (e > cur.max(landing) || pulled_back);
+            op_marks::with_marks(
+                p,
+                inclusive
+                    .then(|| op_marks::inclusive_yank_marks(b, (s, e)))
+                    .flatten(),
+            )
+        }
         // Recase the span; an all-non-letter span is just a cursor move (Vim). Invalid UTF-8 bytes are kept.
         MarkOp::Case(case) => {
             let recased = recase_bytes(&b[s..e], case);

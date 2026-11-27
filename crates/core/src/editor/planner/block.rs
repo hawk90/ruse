@@ -45,13 +45,13 @@ pub(super) fn block_recase(b: &[u8], block: &Block, case: WordCase, hint: GroupH
 /// operator (#1302), each a line and a byte column of the text before the operator: the top line at the
 /// char covering the left edge, the bottom line at the char covering the right edge. A line that ends
 /// before the edge gets its length (Visual's `coladvance` stops one past the last char), and so does the
-/// bottom line of a `$` block. nvim's end is the last BYTE of a multibyte char (`mb_adjust_opend`); ruse's
-/// marks stay on a char's first byte.
+/// bottom line of a `$` block. The end is the last BYTE of a multibyte char (`mb_adjust_opend`), the raw
+/// column `']` keeps (#1613).
 pub(super) fn block_corners(b: &[u8], block: &Block) -> (MarkAt, MarkAt) {
     let line = |r: &BlockRow| crate::pos::raw::line_of(b, r.ls);
     let (top, bottom) = (&block.rows[0], &block.rows[block.rows.len() - 1]);
     let end_col = if block.hi != MAXCOL && bottom.cells > block.hi {
-        prev_grapheme(b, bottom.de) - bottom.ls
+        bottom.de - 1 - bottom.ls
     } else {
         bottom.le - bottom.ls
     };

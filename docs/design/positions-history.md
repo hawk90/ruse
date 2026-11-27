@@ -122,7 +122,12 @@ shortens the line under one leaves its column, which a jump clamps; a `$` area's
 last char; a dot-repeat of a Visual operator leaves `'<`/`'>` and `gv` alone (nvim's `redo_VIsual`). The
 `[`/`]` change marks keep a raw column too (#1615): a linewise delete leaves both at the column the operator
 started at (`oap->start`), past the end of the line now in the deleted one's place or on the line past the
-buffer's end, which `getpos()` reports and a jump clamps. The
+buffer's end, which `getpos()` reports and a jump clamps. The same raw column carries `']` inside a
+multibyte char (#1613): an inclusive yank (`y$`, `ye`, `yiw`, a Visual or block area, `ygn`) and a shift
+leave it on the last char's LAST byte, as nvim's `mb_adjust_opend` and `op_shift` (`ml_get_len - 1`) do,
+while an exclusive yank (`decl` of its end), a put and `r` leave it on the char's first byte. No new
+position type: the offset stays on the char's first byte (so `` `] `` lands on the char) and the bytes into
+it are the raw column beyond the offset. The
 View hands them to the Document per transaction (`EditorState::apply_txn`); a View at rest while another
 View edits its document pins them, with its cursor (`Workspace::lend`). The Emacs mark stays a snapped
 offset: Emacs keeps markers through an in-place replacement (casing), which the byte rule does not. Per-buffer (rather than per-View) marks and the `Selection` model stay deferred (#636).

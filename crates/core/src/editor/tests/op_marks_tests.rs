@@ -199,6 +199,56 @@ mod change_mark_tests {
         assert_eq!(raw_change_marks(&st), [(0, 1), (0, 1)]);
     }
 
+    /// An inclusive yank and a shift put `']` on a multibyte char's LAST byte, as nvim's `getpos()` reports
+    /// it (#1613); an exclusive yank and a put keep it on the char's first byte. The offset stays on the
+    /// char, so `` `] `` lands on it.
+    #[test]
+    fn inclusive_end_is_the_last_byte() {
+        // `y$` over "ab中" (中 is bytes 2..5): '] at column 4.
+        let mut st = run("ab\u{4e2d}\n", 0, &[Command::Yank(1, Motion::LineEnd)]);
+        assert_eq!(raw_change_marks(&st), [(0, 0), (0, 4)]);
+        assert_eq!(st.view.change_mark_end(), Some(BytePos(2)));
+        apply_command(&mut st, &Command::GotoChangeMarkEnd);
+        assert_eq!(st.cursor().0, 2, "`] rests on the char's first byte");
+        // `y2l` over "a中中b": exclusive, '] on the first byte of the last char taken.
+        let st = run(
+            "a\u{4e2d}\u{4e2d}b\n",
+            0,
+            &[Command::Yank(2, Motion::Right)],
+        );
+        assert_eq!(raw_change_marks(&st), [(0, 0), (0, 1)]);
+        // `vly` over "a😀b" (😀 is bytes 1..5): '] at column 4.
+        let st = run(
+            "a\u{1f600}b\n",
+            0,
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::Right),
+                Command::YankSelection,
+            ],
+        );
+        assert_eq!(raw_change_marks(&st), [(0, 0), (0, 4)]);
+        // `>>` on "é" with 'sw' 4: "    é", '] on its last byte.
+        let st = run("\u{e9}\n", 0, &[Command::ShiftRight(1)]);
+        assert_eq!(raw_change_marks(&st), [(0, 0), (0, 5)]);
+        // `yyjp`: a linewise put's '] is on the first byte of the last line's last char.
+        let st = run(
+            "ab\u{4e2d}\nx\n",
+            0,
+            &[
+                Command::Yank(1, Motion::Line),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        assert_eq!(raw_change_marks(&st), [(1, 0), (1, 2)]);
+    }
+
     /// A linewise put's `']` is on the last put line's last char; a charwise yank that takes a newline ends
     /// `']` on the char before it.
     #[test]

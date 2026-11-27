@@ -212139,6 +212139,1606 @@
         "failed": false,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1613_y_dollar_2byte",
+      "lines": [
+        "abé"
+      ],
+      "keys": "y$",
+      "expect": {
+        "text": [
+          "abé"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abé",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abé",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            3
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_y_dollar_3byte",
+      "lines": [
+        "ab中"
+      ],
+      "keys": "y$",
+      "expect": {
+        "text": [
+          "ab中"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_y_dollar_4byte",
+      "lines": [
+        "ab😀"
+      ],
+      "keys": "y$",
+      "expect": {
+        "text": [
+          "ab😀"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab😀",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab😀",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_y_dollar_jump",
+      "lines": [
+        "ab中"
+      ],
+      "keys": "y$0`]",
+      "expect": {
+        "text": [
+          "ab中"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_y_dollar_count",
+      "lines": [
+        "a中",
+        "b中"
+      ],
+      "keys": "2y$",
+      "expect": {
+        "text": [
+          "a中",
+          "b中"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a中\nb中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a中\nb中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            3
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yf_4byte",
+      "lines": [
+        "ab😀c"
+      ],
+      "keys": "yf😀",
+      "expect": {
+        "text": [
+          "ab😀c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab😀",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab😀",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yt_3byte",
+      "lines": [
+        "a中中b"
+      ],
+      "keys": "ytb",
+      "expect": {
+        "text": [
+          "a中中b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a中中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a中中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            6
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yiw_2byte",
+      "lines": [
+        "x éé y"
+      ],
+      "keys": "2lyiw",
+      "expect": {
+        "text": [
+          "x éé y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "éé",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "éé",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            1,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yiw_4byte",
+      "lines": [
+        "😀😀"
+      ],
+      "keys": "yiw",
+      "expect": {
+        "text": [
+          "😀😀"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "😀😀",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "😀😀",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            7
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yi_paren_wide",
+      "lines": [
+        "(a中)"
+      ],
+      "keys": "lyi(",
+      "expect": {
+        "text": [
+          "(a中)"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_ygn_wide",
+      "lines": [
+        "a中b"
+      ],
+      "keys": "/中<CR>0ygn",
+      "expect": {
+        "text": [
+          "a中b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1613_y2l_exclusive",
+      "lines": [
+        "a中中b"
+      ],
+      "keys": "y2l",
+      "expect": {
+        "text": [
+          "a中中b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            1
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yl_on_wide",
+      "lines": [
+        "a中 b"
+      ],
+      "keys": "lyl",
+      "expect": {
+        "text": [
+          "a中 b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_vy_4byte",
+      "lines": [
+        "a😀b"
+      ],
+      "keys": "vly",
+      "expect": {
+        "text": [
+          "a😀b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a😀",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a😀",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1613_vy_back_4byte",
+      "lines": [
+        "a😀b"
+      ],
+      "keys": "lvhy",
+      "expect": {
+        "text": [
+          "a😀b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a😀",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a😀",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1613_vy_combining",
+      "lines": [
+        "aéb"
+      ],
+      "keys": "vly",
+      "expect": {
+        "text": [
+          "aéb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "aé",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "aé",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1613_vy_jump",
+      "lines": [
+        "ab中 x"
+      ],
+      "keys": "vlly0`]",
+      "expect": {
+        "text": [
+          "ab中 x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            2
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1613_v_dollar_y_wide",
+      "lines": [
+        "a😀"
+      ],
+      "keys": "v$y",
+      "expect": {
+        "text": [
+          "a😀"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a😀",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a😀",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            1,
+            5
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            1
+          ]
+        },
+        "vmode": "charwise"
+      }
+    },
+    {
+      "name": "i1613_vb_y_wide",
+      "lines": [
+        "ab中",
+        "xy中"
+      ],
+      "keys": "l<C-v>jly",
+      "expect": {
+        "text": [
+          "ab中",
+          "xy中"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b中\ny中",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "b中\ny中",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            2
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            2,
+            4
+          ]
+        },
+        "vmode": "blockwise"
+      }
+    },
+    {
+      "name": "i1613_shift_line_3byte",
+      "lines": [
+        "ab中"
+      ],
+      "keys": ":set sw=4 et<CR>>>",
+      "expect": {
+        "text": [
+          "    ab中"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            8
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_shift_line_4byte",
+      "lines": [
+        "ab😀"
+      ],
+      "keys": ":set sw=4 et<CR>>>",
+      "expect": {
+        "text": [
+          "    ab😀"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            9
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_shift_line_2byte",
+      "lines": [
+        "é"
+      ],
+      "keys": ":set sw=4 et<CR>>>",
+      "expect": {
+        "text": [
+          "    é"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            5
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_shift_down_wide",
+      "lines": [
+        "ab",
+        "x中"
+      ],
+      "keys": ":set sw=4 et<CR>>j",
+      "expect": {
+        "text": [
+          "    ab",
+          "    x中"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            7
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_V_shift_wide",
+      "lines": [
+        "ab",
+        "x中"
+      ],
+      "keys": ":set sw=4 et<CR>Vj>",
+      "expect": {
+        "text": [
+          "    ab",
+          "    x中"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            7
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "linewise"
+      }
+    },
+    {
+      "name": "i1613_unshift_wide",
+      "lines": [
+        "    ab中"
+      ],
+      "keys": ":set sw=4 et<CR><<",
+      "expect": {
+        "text": [
+          "ab中"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_shift_jump",
+      "lines": [
+        "ab中"
+      ],
+      "keys": ":set sw=4 et<CR>>>0`]",
+      "expect": {
+        "text": [
+          "    ab中"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            8
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_put_line_wide",
+      "lines": [
+        "ab中",
+        "x"
+      ],
+      "keys": "yyjp",
+      "expect": {
+        "text": [
+          "ab中",
+          "x",
+          "ab中"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab中\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab中\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            3,
+            2
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_put_line_above_wide",
+      "lines": [
+        "ab中",
+        "x"
+      ],
+      "keys": "yyjP",
+      "expect": {
+        "text": [
+          "ab中",
+          "ab中",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab中\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab中\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            2
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_put_char_wide",
+      "lines": [
+        "a中中b"
+      ],
+      "keys": "lyl$p",
+      "expect": {
+        "text": [
+          "a中中b中"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            8
+          ],
+          "]": [
+            1,
+            8
+          ],
+          ".": [
+            1,
+            8
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_gp_char_wide",
+      "lines": [
+        "a中中b"
+      ],
+      "keys": "lyl$gp",
+      "expect": {
+        "text": [
+          "a中中b中"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            8
+          ],
+          "]": [
+            1,
+            8
+          ],
+          ".": [
+            1,
+            8
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_r_count_wide",
+      "lines": [
+        "a中中中b"
+      ],
+      "keys": "l3r好",
+      "expect": {
+        "text": [
+          "a好好好b"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            7
+          ],
+          ".": [
+            1,
+            7
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yge_wide",
+      "lines": [
+        "ab 中x"
+      ],
+      "keys": "3lyge",
+      "expect": {
+        "text": [
+          "ab 中x"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b 中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "b 中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            5
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yh_wide",
+      "lines": [
+        "a中b"
+      ],
+      "keys": "$yh",
+      "expect": {
+        "text": [
+          "a中b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            1
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yw_line_end_wide",
+      "lines": [
+        "a 中",
+        "b"
+      ],
+      "keys": "wyw",
+      "expect": {
+        "text": [
+          "a 中",
+          "b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            2
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_yve_exclusive",
+      "lines": [
+        "ab中 x"
+      ],
+      "keys": "yve",
+      "expect": {
+        "text": [
+          "ab中 x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_ysearch_e_wide",
+      "lines": [
+        "ab中x"
+      ],
+      "keys": "y/中/e<CR>",
+      "expect": {
+        "text": [
+          "ab中x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab中",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            4
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1613_vb_r_wide",
+      "lines": [
+        "ab中",
+        "xy中"
+      ],
+      "keys": "l<C-v>jlrZ",
+      "expect": {
+        "text": [
+          "aZZZ",
+          "xZZZ"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            2
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            2,
+            4
+          ],
+          ".": [
+            1,
+            1
+          ]
+        },
+        "vmode": "blockwise"
+      }
+    },
+    {
+      "name": "i1613_vb_U_wide",
+      "lines": [
+        "abé",
+        "xyé"
+      ],
+      "keys": "l<C-v>jlU",
+      "expect": {
+        "text": [
+          "aBÉ",
+          "xYÉ"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            2
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            2,
+            3
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise"
+      }
     }
   ]
 }
