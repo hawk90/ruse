@@ -592,11 +592,19 @@ impl UndoStep {
 }
 
 impl EditorState {
-    /// Apply a plan's edits as one transaction whose cursor is `start`, where the change began.
-    fn apply_planned_txn(&mut self, edits: EditList, hint: GroupHint, start: usize) {
+    /// Apply a plan's edits as one transaction whose cursor is `start`, where the change began, its edits
+    /// making Vim undo entries as `undo_entry` says (#1612).
+    fn apply_planned_txn(
+        &mut self,
+        edits: EditList,
+        hint: GroupHint,
+        start: usize,
+        undo_entry: crate::undo_cursor::UndoEntry,
+    ) {
         let txn = Transaction::new(self.doc.revision(), edits, self.origin)
             .with_hint(hint)
-            .with_cursor(BytePos(start));
+            .with_cursor(BytePos(start))
+            .with_undo_entry(undo_entry);
         // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
         self.apply_txn(txn)
             .expect("planned transaction applies cleanly");
