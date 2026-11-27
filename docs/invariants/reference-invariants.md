@@ -27,6 +27,13 @@ IDs but must not privately define new ones — a new invariant is added here in 
 `spec validate`, D-022). Design docs' local "Reference Invariants" sections list the IDs they depend on;
 they do not mint new numbering.
 
+**Enforcement status.** An invariant with no marker is enforced by today's code (a test, an assert, or the
+type structure holds it). Otherwise an italic marker right after the ID says how far the code is from it, in
+the same shape as the `DEFERRED` marker: *(NOT YET ENFORCED — …)* means the code has no mechanism for it
+yet, so it binds new code but no design doc may cite it as enforced; *(PARTLY ENFORCED — …)* names the part
+that holds and the part that does not. The marker cites the evidence and the decision that scopes the gap;
+remove it in the change that closes the gap (#891).
+
 ## State & Ownership
 
 - **INV-DOC-VIEW** — A Document must not know about a View. Document ≠ View ≠ Window ≠ File; the same
@@ -35,7 +42,10 @@ they do not mint new numbering.
 - **INV-NO-GLOBAL-STATE** — There is no single global mutable editor state; components own their state and
   communicate by messages/handles, never by shared `Arc<Mutex<_>>` over everything.
   *Guards:* CORE-2/3.
-- **INV-HANDLE** — Long-lived references are stable IDs / typed handles (with generation), never raw
+- **INV-HANDLE** — *(PARTLY ENFORCED — `AnchorId` is generation-checked
+  (`crates/core/src/anchor.rs`); `DocumentId` is generation-free (`crates/core/src/document.rs`) and `ViewId`
+  is a plain arena index whose stale use resolves to a `None` hole (`crates/core/src/workspace/mod.rs`);
+  generational validation of those is post-MVP.)* Long-lived references are stable IDs / typed handles (with generation), never raw
   pointers or offsets; using a freed-generation handle is an invariant violation (assert), not an error.
   *Guards:* CORE-14, and see [stability §1](../design/stability-and-observability.md).
 
@@ -60,7 +70,9 @@ they do not mint new numbering.
   scattered through the code is forbidden. *Guards:* TEXT-9/10; assert in [stability §1](../design/stability-and-observability.md).
 - **INV-UNDO** — Every Transaction on an editable Document is undoable; undo is recorded by logical unit
   (not per keystroke), and the undo history is itself consistent (no orphaned parents). *Guards:* TEXT-12/13.
-- **INV-BUFFER-KIND** — **Ephemeral/append-only buffers** (terminal/PTY, streaming logs, generated output,
+- **INV-BUFFER-KIND** — *(NOT YET ENFORCED — there is no buffer-kind type: every Document is editable.
+  The terminal (F-011) keeps its grid outside any Document (`apps/tui/src/term_buffer.rs`), so the exemption
+  is never exercised.)* **Ephemeral/append-only buffers** (terminal/PTY, streaming logs, generated output,
   and large-file/degraded mode) are an explicit exception to INV-TXN/INV-UNDO: they use a bounded or absent
   undo log and an append path that is not a full transaction. A buffer's kind
   (editable / read-only / generated / streaming / interactive — see [parity/workspace.md](../parity/workspace.md))
@@ -76,7 +88,10 @@ they do not mint new numbering.
 - **INV-PROFILE-ISOLATION** — Bindings from different input profiles never share a key space; a real
   conflict requires same profile + same sequence + overlapping context + same priority, and is detected
   statically. *Guards:* PROFILE-1/4/5.
-- **INV-PRIORITY** — Key resolution follows two ordered axes, never one flat tier list (D-046).
+- **INV-PRIORITY** — *(PARTLY ENFORCED — the scope axis is the layer stack in
+  `crates/core/src/keymap.rs`; the provenance axis has nothing to order yet: only built-in bindings exist,
+  and the `keymap.*` config tables other than `keymap.lang` are read but not installed
+  (`spec/config-schema.yaml`).)* Key resolution follows two ordered axes, never one flat tier list (D-046).
   **Scope** (decided, D-045): the key is offered to the active keymap **layers** by descending rank —
   temporary state → active view → buffer-local — stopping at the first layer that binds, or at a `sealed`
   layer, whose own `unmatched_key` policy then applies. **Provenance** (principle locked, ordering open per
@@ -86,12 +101,15 @@ they do not mint new numbering.
 
 ## Plugin & Extension
 
-- **INV-PLUGIN-NO-CORE** — A Plugin cannot mutate Core state directly and never receives internal types
+- **INV-PLUGIN-NO-CORE** — *(NOT YET ENFORCED — no plugin host or extension surface exists; F-016 is planned.)*
+  A Plugin cannot mutate Core state directly and never receives internal types
   (Rope, View, slotmap, undo node, renderer). It sees only handles, snapshots, commands, events, typed UI
   models, and capabilities. *Guards:* PLUGIN-1/2/3, CORE-15.
-- **INV-PLUGIN-ISOLATED** — A Plugin fails independently; a plugin panic/timeout never terminates the
+- **INV-PLUGIN-ISOLATED** — *(NOT YET ENFORCED — no plugin host or extension surface exists; F-016 is planned.)*
+  A Plugin fails independently; a plugin panic/timeout never terminates the
   editor and never crosses an FFI/host boundary. *Guards:* PLUGIN-4/5, [stability §6/§8](../design/stability-and-observability.md).
-- **INV-PROTOCOL-VERSIONED** — The extension surface is a versioned protocol (WASM/external process), never
+- **INV-PROTOCOL-VERSIONED** — *(NOT YET ENFORCED — no plugin host or extension surface exists; F-016 is planned.)*
+  The extension surface is a versioned protocol (WASM/external process), never
   a Rust dynamic-library ABI; API, command IDs, config schema, and profiles are all versioned with
   deprecation windows. *Guards:* PLUGIN-1/14, ECO-2, CMD-6.
 
@@ -109,13 +127,16 @@ they do not mint new numbering.
 
 ## Failure & Observability
 
-- **INV-ERR-CLASS** — Expected failures are typed errors (with stable `ErrorCode`); impossible states are
+- **INV-ERR-CLASS** — *(PARTLY ENFORCED — typed `Result` errors vs `debug_assert!` is live and a merge
+  gate (D-040, D-041); the stable `ErrorCode` is deferred by D-040 and no such type exists yet.)* Expected failures are typed errors (with stable `ErrorCode`); impossible states are
   assertions; the two are never interchanged. Errors gain context while propagating and are logged once,
   at ownership boundaries. *Guards:* stability §1–§4; SEC.
 - **INV-FAIL-BOUNDED** — System stability means bounding each error's blast radius, not hiding errors.
   Core-invariant failure triggers a recovery snapshot and safe shutdown; external failure degrades only.
   *Guards:* stability §6/§7.
-- **INV-STATUS** — Status is a per-component state machine with restricted transitions; overall health is an
+- **INV-STATUS** — *(NOT YET ENFORCED — the multi-component Health Registry is deferred by D-040; no
+  per-component status state machine exists. `:checkhealth` (`apps/tui/src/health.rs`) is a pure report
+  built from a snapshot, not a subscribed registry.)* Status is a per-component state machine with restricted transitions; overall health is an
   aggregate; the UI (status bar) only renders a subscribed Health Registry and never owns the state.
   *Guards:* UI, stability §11.
 - **INV-ASYNC-ORDER** — Observable ordering is preserved by a single-threaded deterministic executor;
@@ -130,12 +151,15 @@ they do not mint new numbering.
   internal Rust type is not, by itself, an API change. *Guards:* SPEC, ECO-1/17.
 - **INV-ADDITIVE** — Compatible evolution is additive; readers handle unknown variants/fields/capabilities
   gracefully; breaking changes require a major bump. *Guards:* ECO-2/3, APIX.
-- **INV-PROMOTION** — No API reaches Stable without ≥2 independent users and a migration strategy.
+- **INV-PROMOTION** — *(NOT YET ENFORCED — no API has a Stable tier yet, so the rule has nothing to gate.)*
+  No API reaches Stable without ≥2 independent users and a migration strategy.
   *Guards:* APIX-1.
 
 ## Render
 
-- **INV-RENDER-IR** — All output is produced by lowering a single semantic Render Tree; no view or plugin
+- **INV-RENDER-IR** — *(NOT YET ENFORCED — D-014 is deferred by D-039; there is no Render Tree. The TUI
+  paints a cell grid and diffs it to escape sequences (`apps/tui/src/screen.rs`); the semantic Render-Tree
+  IR is post-MVP (`spec/PRD.yaml` F-006 notes).)* All output is produced by lowering a single semantic Render Tree; no view or plugin
   emits backend-specific bytes (escape sequences, GPU calls) directly. *Guards:* TERMOUT-10, PLUGIN-8/9,
   RIR-*.
 - **INV-RENDER-PROFILE** — A render profile (compatibility | enhanced) is pinned per **client-view** and not
@@ -147,7 +171,11 @@ they do not mint new numbering.
 
 ## Scheduler
 
-- **INV-SCHED-1** — All background work is owned by a central scheduler; user input and screen refresh
+- **INV-SCHED-1** — *(NOT YET ENFORCED — no central scheduler exists (D-018: its first users are
+  post-MVP). Background work runs on ad-hoc threads: the LSP reader (`apps/tui/src/lsp/codec.rs`), the PTY
+  reader (`apps/tui/src/pty.rs`), shell filters (`apps/tui/src/shell.rs`), the journal writer
+  (`apps/tui/src/persist/journal/writer.rs`). Stale LSP replies are dropped by revision (INV-ASYNC-ORDER).)*
+  All background work is owned by a central scheduler; user input and screen refresh
   always outrank background tasks; duplicate per-document index/parse requests are coalesced and superseded
   requests cancelled. *Guards:* SCHED-1/3/4/8. (Priority/deadline/budget *specifics* are open — D-018.)
 
