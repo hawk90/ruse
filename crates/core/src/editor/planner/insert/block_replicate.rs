@@ -5,6 +5,7 @@ use super::{edit, motion, nop, BytePos, Edit, GroupHint, Mode, Plan};
 use crate::editor::planner::block_insert_point;
 use crate::editor::{line_cells, range, BlockInsert, MarkAt, MarkCol, OpMarks};
 use crate::motion::{line_end, line_start};
+use crate::undo_cursor::UndoEntry;
 use crate::{EditList, Tabs};
 
 /// The change marks of a block insert or change whose `<Esc>` copies the typed text down the block, as
@@ -137,8 +138,16 @@ pub(super) fn block_replicate(
         };
     }
     let list = EditList::new(edits).expect("block-replicate inserts are disjoint (one per line)");
+    // `I`/`A`: nvim's `block_insert` saves the rows below as one entry. A change (`c`): `op_change` copies
+    // into them without saving them, as `op_delete` saved the block.
+    let undo_entry = if session.change {
+        UndoEntry::Covered
+    } else {
+        UndoEntry::One
+    };
     Plan {
         op_marks,
+        undo_entry,
         ..edit(list, rest_cursor, Mode::Normal, hint)
     }
 }
@@ -202,8 +211,10 @@ fn block_change_split(
         .map(|e| e.ins.len())
         .sum();
     let list = EditList::new(edits).expect("one insert per line, top to bottom: disjoint");
+    // nvim's `op_change` copies into the lines below without saving them: `op_delete` saved the block.
     Plan {
         op_marks,
+        undo_entry: UndoEntry::Covered,
         ..edit(list, rest + shift, Mode::Normal, hint)
     }
 }
