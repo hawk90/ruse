@@ -1055,8 +1055,8 @@ related:
 - Refs: [RFC-0024](../docs/rfc/accepted/RFC-0024-line-terminated-text.md), D-005, D-064, RFC-0007, INV-TXN,
   INV-UNDO, F-001, F-008, F-012, #730, #1298.
 
-## D-066 — File encodings are decoded at the persist boundary with encoding_rs behind ruse's name table · open
-- **Proposed decision:** A file's encoding is part of its `FileFormat` in the frontend (apps/tui persist); a
+## D-066 — File encodings are decoded at the persist boundary with encoding_rs behind ruse's name table · decided (design)
+- **Decision:** A file's encoding is part of its `FileFormat` in the frontend (apps/tui persist); a
   read decodes to UTF-8 before line-ending detection and a write encodes after it, so the core keeps its UTF-8
   byte text (invalid bytes allowed) and gains no dependency. Codecs: `encoding_rs` (DEP-ENCODING, wrapped)
   for the WHATWG sets, hand-written ISO-8859-1, UTF-16 encoding and UTF-32, all chosen through ruse's own name
@@ -1066,23 +1066,26 @@ related:
   UTF-8 file, such as Korean text, into Latin-1 mojibake); when every entry fails the file reads as UTF-8 with
   its invalid bytes kept and shown `<xx>`, as today, so read then write reproduces the bytes. Latin-1 and
   legacy files are listed in `files.fileencodings` (Korean: `ucs-bom,utf-8,cp949`) or read with `++enc`.
-  Proposed, still open for approval: undecodable bytes in a forced `++enc` read are kept (`++bad=keep`,
-  nvim `?`), and a character the encoding cannot hold fails the write with E513 for every encoding, before
+  Undecodable bytes in a forced `++enc` read are kept (`++bad=keep`, a recorded divergence from nvim's `?`),
+  and a character the encoding cannot hold fails the write with E513 for every encoding, before
   any file is opened (nvim writes a substitute byte for its built-in encodings). `:w ++enc=` leaves `'fenc'`; `++enc` does not stick. The Emacs
-  profile: `C-x RET f`/`c`/`r`, `emacs.prefer_coding_system` (default utf-8), and Emacs's
+  profile: `C-x RET f`/`c`/`r`, `emacs.prefer_coding_system` (default utf-8; read list `ucs-bom`, the preferred
+  system, `utf-8`, with no `latin1`), and Emacs's
   `select-safe-coding-system` switch on save. RJ01 1.2 appends the encoding name to Header and Meta format
   records. Status line `[{fenc}]` when not UTF-8. Full design:
-  [RFC-0025](../docs/rfc/proposed/RFC-0025-file-encodings.md).
+  [RFC-0025](../docs/rfc/accepted/RFC-0025-file-encodings.md). Approved by the maintainer 2026-11-28 with every
+  recommendation of the RFC (the `fileencodings` default, `++bad=keep`, E513 for every encoding, the Emacs read
+  list).
 - **Reason:** #1292: a Latin-1, Shift_JIS, EUC-KR or UTF-16 file shows as invalid bytes; nvim v0.12.6 and
   Emacs 31.1 both decode them (42 probed cases in RFC-0025). RFC-0008 §6 already puts the encoding beside the
   Document. iconv is absent on Windows and unsafe FFI; the `encoding` crate is unmaintained.
 - **Re-evaluate if:** an encoding `encoding_rs` lacks is needed (EBCDIC, ISO-2022-KR, strict EUC-KR writes);
   a second frontend or remote peer reads files itself; measured decode cost on large files is material.
-- Refs: [RFC-0025](../docs/rfc/proposed/RFC-0025-file-encodings.md), RFC-0008, RFC-0017, RFC-0023, D-034,
+- Refs: [RFC-0025](../docs/rfc/accepted/RFC-0025-file-encodings.md), RFC-0008, RFC-0017, RFC-0023, D-034,
   D-042, D-056, D-064, D-065, F-008, DEP-ENCODING, #1292.
 
-## D-068 — The message area is a bar row plus 'cmdheight' rows; listing output goes through one pager · open
-- **Decision (proposed):** The bottom of the screen is the bar (ruse's one global status line) plus
+## D-068 — The message area is a bar row plus 'cmdheight' rows; listing output goes through one pager · decided (design)
+- **Decision:** The bottom of the screen is the bar (ruse's one global status line) plus
   `'cmdheight'` message rows, each value meaning what it means in nvim v0.12.6. At N ≥ 1 the bar has its own
   row above N rows of messages and command line, and the windows get rows − 1 − N. At 0 the bar is the last
   row and shows the message after its prefix. That is today's layout, not nvim's `ch=0` policy of a hit-enter
@@ -1093,14 +1096,14 @@ related:
   Multi-row output (`:!`, `:w !`, `:ls`, every view-only `show_rows` listing, `:messages`) goes through the
   #1274 `-- More --` pager, with the typed command as its first row, `g<` (the last output, once) and
   `'more'`. Interactive pickers (`:reg :marks :jumps :changes :dig`) stay. The Emacs profile's growing echo
-  area is a separate design. Full design: [RFC-0027](../docs/rfc/proposed/RFC-0027-cmdheight-shortmess-pager.md).
-- **Open for the maintainer:**
-  - The default `'cmdheight'`: 1, nvim's and Emacs's layout (recommended), or 0, today's look.
-  - The `F` default: follow nvim and drop the `:e` file message (recommended).
-  - `:reg :marks :jumps :changes :dig`: keep the pickers (recommended) or print through the pager.
-  - `'messagesopt'` `wait:`: implement it (recommended), or document it as having no effect.
-  - Config keys `render.cmdheight`, `render.shortmess` and `render.more` (recommended).
-  - Splitting the pager slices (3–4) off #1275 into their own issue (recommended).
+  area is a separate design. Full design: [RFC-0027](../docs/rfc/accepted/RFC-0027-cmdheight-shortmess-pager.md).
+- **Approved by the maintainer 2026-11-28** (every RFC recommendation):
+  - The default `'cmdheight'` is 1, nvim's and Emacs's layout; 0 keeps today's shared row.
+  - `F` is in the default `'shortmess'` as in nvim, so `:e` gives no file message.
+  - `:reg :marks :jumps :changes :dig` stay interactive pickers.
+  - `'messagesopt'` `wait:` is implemented.
+  - Config keys `render.cmdheight`, `render.shortmess` and `render.more`.
+  - The pager slices (3–4) move off #1275 into their own issue.
 - **Reason:** #1275. The shared last row costs every message the cells of the bar's prefix and needs the
   `CutRow` special case (#1235). `:!` output is joined with ` | `, `:ls` is one row, and view-only listings
   open an overlay instead of the pager. `'cmdheight'`, `'shortmess'` and `'more'` are only names. Probed
@@ -1111,12 +1114,12 @@ related:
   - ruse gains `'showcmd'`: the last-row width becomes `v:echospace`.
   - nvim's ui2 replaces the legacy message grid upstream.
   - The Emacs-profile echo-area design needs the layout per profile.
-- Refs: [RFC-0027](../docs/rfc/proposed/RFC-0027-cmdheight-shortmess-pager.md), RFC-0009, RFC-0017, D-056,
+- Refs: [RFC-0027](../docs/rfc/accepted/RFC-0027-cmdheight-shortmess-pager.md), RFC-0009, RFC-0017, D-056,
   F-006, INV-DOC-VIEW, INV-CMD-SEMANTIC, #1275, #1274, #1235, #1222.
 
-## D-067 — Large-file safety: bounded undo, stop-at-first-match search, a highlight budget · open
-- **Direction:** Undo is bounded for every editable buffer by `'undolevels'` (default 1000; nvim keeps
-  `'undolevels'` + 1 groups) and an undo payload budget (proposed 256 MiB). Past either, whole groups are
+## D-067 — Large-file safety: bounded undo, stop-at-first-match search, a highlight budget · decided (design)
+- **Decision:** Undo is bounded for every editable buffer by `'undolevels'` (default 1000; nvim keeps
+  `'undolevels'` + 1 groups) and an undo payload budget (256 MiB). Past either, whole groups are
   dropped oldest first by re-rooting the tree (nvim's `u_freeheader`, sibling branches go with it); the
   current group is never dropped, so the newest change stays undoable; `seq` is never renumbered; the bound
   reads only options and edit payloads, so `--replay` stays deterministic. RJ01 replay and recovery are
@@ -1124,11 +1127,13 @@ related:
   landing and poll `interrupt::breakcheck`. Highlighting is bounded by `'redrawtime'` (2000 ms) for a parse
   or query, by `'synmaxcol'` (3000) on a long line, with the query range cut to the visible bytes. The Emacs
   profile asks the large-file question for the startup file; the Vim profile asks nothing. Full design and
-  measurements: [RFC-0026](../docs/rfc/proposed/RFC-0026-large-file-safety.md).
-- **Open:** the byte budget default (256 MiB, or none); a ruse-only reparse rule (three edits over 250 ms
-  switch highlighting off) on top of nvim's `'redrawtime'`; `'undolevels'` 0 (Vi toggle) now or later; the
-  Emacs undo variables stay unoffered. Out of scope: the O(file) copy per edit (a rope decision of its own).
+  measurements: [RFC-0026](../docs/rfc/accepted/RFC-0026-large-file-safety.md).
+- **Approved by the maintainer 2026-11-28** (every RFC recommendation): the 256 MiB byte budget; a ruse-only
+  reparse rule on top of `'redrawtime'` (three edits in a row whose reparse takes over 250 ms switch
+  highlighting off); `'undolevels'` 0 (the Vi toggle) in slice 1; the Emacs undo variables stay unoffered (a
+  recorded divergence: they trim at garbage collection and drop the newest change). Out of scope: the O(file)
+  copy per edit, which is a rope / piece-table decision of its own (D-003, DEP-ROPE).
 - **Re-evaluate if:** a large-file workload becomes a stated goal (rope / piece table, D-003); persistent undo
   is designed (its rebuild must apply the bound); the budget fires on normal files.
-- Refs: [RFC-0026](../docs/rfc/proposed/RFC-0026-large-file-safety.md), D-005, D-064, RFC-0007, RFC-0008,
+- Refs: [RFC-0026](../docs/rfc/accepted/RFC-0026-large-file-safety.md), D-005, D-064, RFC-0007, RFC-0008,
   INV-UNDO, INV-BUFFER-KIND, INV-FAIL-BOUNDED, F-005, F-008, F-009, F-015, COM-12, #1289, #1290.
