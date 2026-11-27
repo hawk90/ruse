@@ -164,7 +164,7 @@ pub(super) fn plan_paste_selection(
         move_after,
         ts,
     };
-    let (mut b3, cursor) = put.place(kind, &reg, after, del.block_lines);
+    let (mut b3, cursor, marks) = put.place(kind, &reg, after, del.block_lines);
     // Putting lines into a buffer the delete emptied leaves no extra empty line behind (Vim deletes it).
     if kind == SelectKind::Linewise
         && b2.is_empty()
@@ -180,7 +180,12 @@ pub(super) fn plan_paste_selection(
     // 4. One edit from the old text to the new. The replaced text goes to the unnamed register, not the one
     //    being put (nvim deletes with no register named, #707); a delete of nothing writes no register.
     let set_register = del.deleted.filter(|_| swap).map(RegWrite::Replaced);
-    replacement_plan(b, &b3, cursor, set_register)
+    // The change marks are the put's, not the replacing edit's ends (#1614): nvim's `do_put` sets them, and
+    // `commit` copies them into `'<` `'>`.
+    Plan {
+        op_marks: marks,
+        ..replacement_plan(b, &b3, cursor, set_register)
+    }
 }
 
 /// The delete half of a Visual put: the edits that remove the selection, the text they capture, the cursor
@@ -305,6 +310,10 @@ struct SelectionPut<'a> {
     ts: Tabs,
 }
 
+/// What a [`SelectionPut`] leaves: the text after the put, the cursor, and the put's change marks `'[`
+/// `']` `'.` (nvim's `do_put`; `None` when nothing was put).
+type Placed = (Vec<u8>, usize, Option<OpMarks>);
+
 impl SelectionPut<'_> {
     /// The text after the put and the cursor, shaped by the selection and register kinds; `after` puts a
     /// linewise register below a block selection rather than above it.
@@ -314,10 +323,10 @@ impl SelectionPut<'_> {
         reg: &Register,
         after: bool,
         block_lines: Option<(usize, usize)>,
-    ) -> (Vec<u8>, usize) {
+    ) -> Placed {
         let (b2, c2, forward) = (self.b2, self.c2, self.forward);
         if reg.is_empty() {
-            return (b2.to_vec(), c2.min(b2.len()));
+            return (b2.to_vec(), c2.min(b2.len()), None);
         }
         match (kind, reg.kind()) {
             (SelectKind::Linewise, RegKind::Linewise) => self.put(reg, c2, forward),
@@ -338,8 +347,9 @@ impl SelectionPut<'_> {
         }
     }
 
-    /// An ordinary put of `reg` at `at`, applied to the post-delete text.
-    fn put(&self, reg: &Register, at: usize, after: bool) -> (Vec<u8>, usize) {
+    /// An ordinary put of `reg` at `at`, applied to the post-delete text. Its marks are the Normal put's: a
+    /// linewise one names them, a charwise or blockwise one spans its edits, with `'.` on `'[`.
+    fn put(&self, reg: &Register, at: usize, after: bool) -> Placed {
         let p = paste(
             self.b2,
             at,
@@ -353,13 +363,18 @@ impl SelectionPut<'_> {
             self.ts,
         );
         match p.action {
-            Action::Txn { edits, .. } => (edits.apply_to(self.b2), p.cursor),
-            _ => (self.b2.to_vec(), p.cursor),
+            Action::Txn { edits, .. } => {
+                let out = edits.apply_to(self.b2);
+                let marks = p.op_marks.or_else(|| span_marks(&out, &edits));
+                (out, p.cursor, marks)
+            }
+            _ => (self.b2.to_vec(), p.cursor, None),
         }
     }
 
     /// A linewise register over a charwise selection: split the line and put the lines between the halves.
-    fn lines_into_line(&self, reg: &Register) -> (Vec<u8>, usize) {
+    /// `'[` and `'.` are the first put line's start, `']` the last put line's last char.
+    fn lines_into_line(&self, reg: &Register) -> Placed {
         let b2 = self.b2;
         let sp = if self.forward {
             next_boundary(b2, self.c2)
@@ -377,21 +392,29 @@ impl SelectionPut<'_> {
         // `gp`/`gP` rest at the start of the line after the put lines: the line's second half.
         let after_put = out.len();
         out.extend_from_slice(&b2[sp..]);
+        let first = crate::pos::raw::line_of(&out, sp + 1);
+        let last = first + reps * reg.text().iter().filter(|&&c| c == b'\n').count().max(1) - 1;
+        let marks = Some(OpMarks {
+            start: MarkAt::new(first, MarkCol::Byte(0)),
+            end: MarkAt::new(last, MarkCol::LastByte),
+            dot: MarkAt::new(first, MarkCol::Byte(0)),
+        });
         if self.move_after {
-            return (out, after_put);
+            return (out, after_put, marks);
         }
         let fnb = reg
             .text()
             .iter()
             .take_while(|&&c| c == b' ' || c == b'\t')
             .count();
-        (out, sp + 1 + fnb)
+        (out, sp + 1 + fnb, marks)
     }
 
     /// A one-line charwise register over a block selection: put the text (`count` times) on every row of
     /// the block's lines `first..=last`, skipping rows shorter than the block's left edge. The cursor rests
-    /// on the first row's last put char, or just after it for `gp`/`gP` (on it when nothing follows).
-    fn text_on_block_rows(&self, reg: &Register, first: usize, last: usize) -> (Vec<u8>, usize) {
+    /// on the first row's last put char, or just after it for `gp`/`gP` (on it when nothing follows). `'[`
+    /// `']` span the first row's put text and `'.` is where the last row's went (nvim's `do_put`).
+    fn text_on_block_rows(&self, reg: &Register, first: usize, last: usize) -> Placed {
         let (b2, c2, ts) = (self.b2, self.c2, self.ts);
         let (v0, v1) = vcols_at(b2, c2, ts);
         let vcol = if self.forward { v1 + 1 } else { v0 };
@@ -403,6 +426,7 @@ impl SelectionPut<'_> {
         let text = reg.text().repeat(reps);
         let mut edits = Vec::new();
         let mut first_put = None;
+        let mut put_rows = None;
         for line in first..=last {
             let ls = crate::pos::raw::nth_line_start(b2, line);
             if ls > b2.len() || line_cells(b2, ls, ts) < vcol {
@@ -417,6 +441,8 @@ impl SelectionPut<'_> {
             if line == first {
                 first_put = Some((at + text.len(), at == le));
             }
+            let (top, _) = put_rows.unwrap_or(((line, at - ls), (line, at - ls)));
+            put_rows = Some((top, (line, at - ls)));
             edits.push(Edit::insert(BytePos(at), text.clone()));
         }
         let list = EditList::new(edits).expect("one insert per line");
@@ -427,8 +453,40 @@ impl SelectionPut<'_> {
             Some((end, _)) => prev_boundary(&out, end),
             None => c2,
         };
-        (out, cursor)
+        // One insert per row, so a row's put text keeps its post-delete column.
+        let last_char = motion::prev_grapheme(&text, text.len());
+        let marks = put_rows.map(|((l0, c0), (l1, c1))| OpMarks {
+            start: MarkAt::new(l0, MarkCol::Byte(c0)),
+            end: MarkAt::new(l0, MarkCol::Byte(c0 + last_char)),
+            dot: MarkAt::new(l1, MarkCol::Byte(c1)),
+        });
+        (out, cursor, marks)
     }
+}
+
+/// The marks of a charwise or blockwise put whose `edits` made `out`: `'[` where the first edit begins,
+/// `']` on the last char the last edit put, and `'.` on `'['.
+fn span_marks(out: &[u8], edits: &EditList) -> Option<OpMarks> {
+    let list = edits.edits();
+    let (first, last) = (list.first()?, list.last()?);
+    let shift: isize = list[..list.len() - 1].iter().map(Edit::delta).sum();
+    let end = (last.pos.0 as isize + shift).max(0) as usize + last.ins.len();
+    let s = first.pos.0.min(out.len());
+    let e = end.min(motion::content_end(out)).max(s);
+    let e = if e > s {
+        motion::prev_grapheme(out, e)
+    } else {
+        s
+    };
+    let at = |p: usize| {
+        let ls = line_start(out, p);
+        MarkAt::new(crate::pos::raw::line_of(out, ls), MarkCol::Byte(p - ls))
+    };
+    Some(OpMarks {
+        start: at(s),
+        end: at(e),
+        dot: at(s),
+    })
 }
 
 /// The plan that turns `b` into `b3` as one edit: the changed middle between the common ends, kept on char

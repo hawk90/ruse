@@ -209685,6 +209685,1404 @@
           ]
         ]
       }
+    },
+    {
+      "name": "v_put_marks_char_char_p",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviwp",
+      "expect": {
+        "text": [
+          "ab ab gh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_P",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviwP",
+      "expect": {
+        "text": [
+          "ab ab gh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_gp",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviwgp",
+      "expect": {
+        "text": [
+          "ab ab gh"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_gP",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviwgP",
+      "expect": {
+        "text": [
+          "ab ab gh"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_count",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviw2p",
+      "expect": {
+        "text": [
+          "ab abab gh"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            6
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            6
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_undo",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviwpu",
+      "expect": {
+        "text": [
+          "ab cdef gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            6
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_redo",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviwpu<C-r>",
+      "expect": {
+        "text": [
+          "ab ab gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            1,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_gv",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "yiwwviwpgvy",
+      "expect": {
+        "text": [
+          "ab ab gh"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_char_dot",
+      "lines": [
+        "ab cdef gh ij"
+      ],
+      "keys": "yiwwviwpw.",
+      "expect": {
+        "text": [
+          "ab ab j"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "gh i",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            6
+          ],
+          "]": [
+            1,
+            6
+          ],
+          ".": [
+            1,
+            6
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_dollar",
+      "lines": [
+        "ab cdef",
+        "gh"
+      ],
+      "keys": "yiwwv$p",
+      "expect": {
+        "text": [
+          "ab abgh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "cdef\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_multiline",
+      "lines": [
+        "ab cd",
+        "ef gh"
+      ],
+      "keys": "yiwwvjp",
+      "expect": {
+        "text": [
+          "ab abh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "cd\nef g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            3
+          ],
+          ">": [
+            1,
+            4
+          ],
+          "[": [
+            1,
+            3
+          ],
+          "]": [
+            1,
+            4
+          ],
+          ".": [
+            1,
+            3
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_line_reg",
+      "lines": [
+        "ab cd",
+        "ef gh"
+      ],
+      "keys": "yyjwviwp",
+      "expect": {
+        "text": [
+          "ab cd",
+          "ef ",
+          "ab cd",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "gh",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab cd\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            3,
+            0
+          ],
+          ">": [
+            3,
+            4
+          ],
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            3,
+            4
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_char_block_reg",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jlyjjwhviwp",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "bc",
+          "fg"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ijkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            3,
+            0
+          ],
+          ">": [
+            4,
+            1
+          ],
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            4,
+            1
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "charwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_line_char_reg",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "yiwjVp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            2,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "linewise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_line_line_p",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "yyjVp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            2,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "linewise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_line_line_count",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "yyjV2p",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "ab",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            2,
+            0
+          ],
+          ">": [
+            3,
+            -1
+          ],
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            3,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "linewise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_line_line_gp",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "yyjVgp",
+      "expect": {
+        "text": [
+          "ab",
+          "ab",
+          "ef"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            2,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            2,
+            1
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "linewise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_line_line_undo",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "yyjVpu",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ab\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            2,
+            0
+          ],
+          ">": [
+            2,
+            -1
+          ],
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": "linewise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_line_block_reg",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop"
+      ],
+      "keys": "l<C-v>jlyjjVp",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "bc",
+          "fg",
+          "mnop"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ijkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            3,
+            0
+          ],
+          ">": [
+            4,
+            -1
+          ],
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            4,
+            1
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "linewise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_block_char_p",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yiwl<C-v>jp",
+      "expect": {
+        "text": [
+          "aabcc",
+          "dabcf",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "b\ne",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            3
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            3
+          ],
+          ".": [
+            2,
+            1
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_block_char_P",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yiwl<C-v>jP",
+      "expect": {
+        "text": [
+          "aabcc",
+          "dabcf",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            3
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            3
+          ],
+          ".": [
+            2,
+            1
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_block_char_gp",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yiwl<C-v>jgp",
+      "expect": {
+        "text": [
+          "aabcc",
+          "dabcf",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "b\ne",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            3
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            3
+          ],
+          ".": [
+            2,
+            1
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_block_char_count",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yiwl<C-v>jl2p",
+      "expect": {
+        "text": [
+          "aabcabc",
+          "dabcabc",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "bc\nef",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            1,
+            6
+          ],
+          "[": [
+            1,
+            1
+          ],
+          "]": [
+            1,
+            6
+          ],
+          ".": [
+            2,
+            1
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_block_char_undo",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "yiwl<C-v>jpu",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\ne",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_block_line_reg",
+      "lines": [
+        "abc",
+        "def",
+        "ghi",
+        "jkl"
+      ],
+      "keys": "yyl<C-v>jp",
+      "expect": {
+        "text": [
+          "ac",
+          "df",
+          "abc",
+          "ghi",
+          "jkl"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\ne",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            3,
+            0
+          ],
+          ">": [
+            3,
+            2
+          ],
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            3,
+            2
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
+    },
+    {
+      "name": "v_put_marks_block_block_reg",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop"
+      ],
+      "keys": "l<C-v>jlyjj0<C-v>jlp",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "bckl",
+          "fgop"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ij\nmn",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "bc\nfg",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            3,
+            0
+          ],
+          ">": [
+            4,
+            1
+          ],
+          "[": [
+            3,
+            0
+          ],
+          "]": [
+            4,
+            1
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null
+      }
     }
   ]
 }

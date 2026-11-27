@@ -278,4 +278,78 @@ mod change_mark_tests {
         let effects = apply_command(&mut st, &Command::GotoLastChange);
         assert!(!effects.iter().any(|e| matches!(e, Effect::Status(_))));
     }
+
+    const VISUAL_P: Command = Command::PasteSelection {
+        swap: true,
+        count: 1,
+        after: true,
+        move_after: false,
+    };
+
+    /// The last Visual area as `(start, end)` byte offsets and its kind.
+    fn visual_area(st: &EditorState) -> (usize, usize, SelectKind) {
+        let (s, e, kind) = st.view.last_visual_bounds().expect("a last Visual area");
+        (s.0, e.0, kind)
+    }
+
+    /// `yiw`, `w`, `viw`, `p`: a charwise Visual put of the first word over the second.
+    fn yiw_w_viw_p(initial: &str) -> EditorState {
+        run(
+            initial,
+            0,
+            &[
+                Command::Yank(1, Motion::InnerWord),
+                Command::Move(1, Motion::WordFwd),
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::InnerWord),
+                VISUAL_P,
+            ],
+        )
+    }
+
+    /// #1614: a Visual put leaves `'<` `'>` on its `'[` `']` in the selection's kind, and `'.` where nvim's
+    /// `do_put` last changed text; undo brings the replaced area back and redo the put's (nvim v0.12.6,
+    /// the `v_put_marks_*` fixtures).
+    #[test]
+    fn visual_put_sets_the_visual_marks_to_the_put() {
+        // `yiwwviwp` on `ab cdef gh`: `cdef` becomes `ab`, '< '> = '[ '] = (0,3)-(0,4), '. on '[.
+        let mut st = yiw_w_viw_p("ab cdef gh\n");
+        assert_eq!(text(&st), "ab ab gh\n");
+        assert_eq!(marks(&st), [(0, 3), (0, 4), (0, 3)]);
+        assert_eq!(visual_area(&st), (3, 4, SelectKind::Charwise));
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(visual_area(&st), (3, 6, SelectKind::Charwise));
+        apply_command(&mut st, &Command::Redo);
+        assert_eq!(visual_area(&st), (3, 4, SelectKind::Charwise));
+        // A replaced text sharing its ends with the put one still marks the whole put: `ab` over `ac`.
+        let st = yiw_w_viw_p("ab ac\n");
+        assert_eq!(text(&st), "ab ab\n");
+        assert_eq!(marks(&st), [(0, 3), (0, 4), (0, 3)]);
+        assert_eq!(visual_area(&st), (3, 4, SelectKind::Charwise));
+    }
+
+    /// #1614: a one-line charwise register over a block marks the top row's put text, and `'.` the last
+    /// row's; the area stays blockwise.
+    #[test]
+    fn visual_block_put_marks_the_top_row() {
+        // `yiwl<C-v>jp` on `abc/def/ghi`: nvim gives `aabcc/dabcf/ghi`, '[ '] (0,1)-(0,3), '. (1,1).
+        let st = run(
+            "abc\ndef\nghi\n",
+            0,
+            &[
+                Command::Yank(1, Motion::InnerWord),
+                Command::MoveRight,
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                VISUAL_P,
+            ],
+        );
+        assert_eq!(text(&st), "aabcc\ndabcf\nghi\n");
+        assert_eq!(marks(&st), [(0, 1), (0, 3), (1, 1)]);
+        assert_eq!(visual_area(&st), (1, 3, SelectKind::Blockwise));
+    }
 }

@@ -620,7 +620,22 @@ fn apply_command_here(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     if let Some(refused) = refused {
         p = refused;
     }
+    // A Visual put leaves `'<` `'>` on what it put, in the selection's kind (nvim's `nv_put_opt` copies
+    // `'[` `']` into `b_visual`, #1614); a dot-repeat's rebuilt area is not remembered. The put's marks lie
+    // on the put text, so they are read at their in-buffer offsets (nvim has no past-end column there).
+    let visual_put = matches!(cmd, Command::PasteSelection { .. })
+        && entry_mode.selection().is_some()
+        && !st.view.redo_visual;
     let mut effects = commit(st, p);
+    if visual_put && st.view.mode.selection().is_none() {
+        if let (Some((_, _, kind)), Some(s), Some(e)) = (
+            st.view.last_visual,
+            st.view.change_mark_start(),
+            st.view.change_mark_end(),
+        ) {
+            st.view.last_visual = Some((Mark::at(s.0), Mark::at(e.0), kind));
+        }
+    }
     // The uppercase line forms over a charwise or blockwise selection run linewise, so `visualmode()` says
     // linewise; `gv` and `'<`/`'>` keep the selection's kind (nvim's `v_visop` / `restore_visual_mode`, #1305).
     if forces_linewise(cmd, entry_mode) {
