@@ -573,6 +573,13 @@ pub const SCHEMA: &[KeyDef] = &[
         false,
     ),
     key(
+        "render.cmdheight",
+        int(0, 2147483647),
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
+    key(
         "files.watcher",
         Ty::Enum(&["native", "poll", "off"]),
         Scope::Workspace,
