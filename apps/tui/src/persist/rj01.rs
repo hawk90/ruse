@@ -20,7 +20,8 @@
 //!
 //! * Header: `pid u32`, `host bytes`, `start_ms u64`, `path bytes`, `format u8` ([`format_bits`]),
 //!   `created_ms u64`, `base u8` (0 = a Checkpoint follows, 1 = disk: `len u64`, `sha256 [32]`);
-//!   since 1.1 `format_ext u8` ([`format_ext_bits`]).
+//!   since 1.1 `format_ext u8` ([`format_ext_bits`]), since 1.2 `enc bytes` (the encoding's canonical name,
+//!   RFC-0025 §7; empty for UTF-8 with invalid bytes kept, the only encoding before 1.2).
 //! * Checkpoint: `node u64`, `revision u64`, `text` (`u64` length + bytes).
 //! * Edit: `seq u64`, `base_revision u64`, `result_revision u64`, `origin u8`, `group_hint u8`,
 //!   `timestamp_ms u64`, `kind u8` (0 = fresh: `node u64`, `parent u64`; 1 = navigate: `to_node u64`), then
@@ -28,7 +29,7 @@
 //!   since 1.1 `origin_full u8`, the origin including values 1.0 has no code for (`origin` then holds the
 //!   nearest 1.0 one).
 //! * Meta: `tag u8`: 0 = save point (`saved_node u64`, `len u64`, `sha256 [32]`), 1 = file format
-//!   (`format u8`, since 1.1 then `format_ext u8`), 2 = rename (`path bytes`).
+//!   (`format u8`, since 1.1 then `format_ext u8`, since 1.2 then `enc bytes`), 2 = rename (`path bytes`).
 //! * Marker: `time_ms u64`, written after each fsync.
 
 use std::io;
@@ -38,14 +39,17 @@ use ruse_core::edit::{Edit, EditList};
 use ruse_core::transaction::{GroupHint, TransactionOrigin};
 use ruse_core::BytePos;
 
+use super::codec::FileEncoding;
 use super::encoding::{Eol, FileFormat};
 
 pub const MAGIC: [u8; 4] = *b"RJ01";
 pub const END_MAGIC: [u8; 4] = *b"rj01";
 pub const SCHEMA_MAJOR: u8 = 1;
 /// 1.1 (#1286, #1326) appends the format extension byte to Header and Meta-format payloads and the full
-/// origin to Edit payloads; a 1.0 record has neither, and reads with the 1.0 defaults.
-pub const SCHEMA_MINOR: u8 = 1;
+/// origin to Edit payloads; a 1.0 record has neither, and reads with the 1.0 defaults. 1.2 (#1292, RFC-0025
+/// §7) appends the encoding's name to Header and Meta-format payloads; an older record has none, which is
+/// the default encoding.
+pub const SCHEMA_MINOR: u8 = 2;
 /// The `schema_ver` this build writes.
 pub const SCHEMA: u16 = (SCHEMA_MAJOR as u16) << 8 | SCHEMA_MINOR as u16;
 /// The fixed record header and trailer sizes.
@@ -179,9 +183,10 @@ pub fn format_ext_bits(f: FileFormat) -> u8 {
     u8::from(f.eof) | u8::from(f.binary) << 1 | u8::from(f.eol == Eol::Cr) << 2
 }
 
-/// A [`FileFormat`] from its 1.0 byte and, when the record has one, its 1.1 extension byte. Without one
-/// (a 1.0 record) `'endoffile'` and `'binary'` are off and the EOL is LF or CRLF.
-fn format_from_bits(b: u8, ext: Option<u8>) -> FileFormat {
+/// A [`FileFormat`] from its 1.0 byte and, when the record has one, its 1.1 extension byte and 1.2 encoding.
+/// Without the extension (a 1.0 record) `'endoffile'` and `'binary'` are off and the EOL is LF or CRLF;
+/// without the encoding (1.0, 1.1) it is the default, which is what those builds read and wrote.
+fn format_from_bits(b: u8, ext: Option<u8>, encoding: FileEncoding) -> FileFormat {
     let ext = ext.unwrap_or(0);
     FileFormat {
         eol: if ext & 4 != 0 {
@@ -195,6 +200,17 @@ fn format_from_bits(b: u8, ext: Option<u8>) -> FileFormat {
         final_newline: b & 4 != 0,
         eof: ext & 1 != 0,
         binary: ext & 2 != 0,
+        encoding,
+    }
+}
+
+/// The 1.2 encoding field after a format: absent in an older record (the default encoding). A name this
+/// build does not have fails the record (`None`), so a journal of a newer build never recovers a buffer
+/// that would then be written in another encoding.
+fn decode_encoding(c: &mut Cursor) -> Option<FileEncoding> {
+    match c.optional_bytes() {
+        None => Some(FileEncoding::default()),
+        Some(name) => FileEncoding::from_canonical(name?),
     }
 }
 
@@ -322,6 +338,7 @@ pub fn encode_header(out: &mut Vec<u8>, h: &Header) -> io::Result<()> {
             }
         }
         o.push(format_ext_bits(h.format));
+        put_bytes(o, h.format.encoding.name().as_bytes());
     })
 }
 
@@ -381,6 +398,7 @@ pub fn encode_meta(out: &mut Vec<u8>, m: &Meta) -> io::Result<()> {
             o.push(1);
             o.push(format_bits(*f));
             o.push(format_ext_bits(*f));
+            put_bytes(o, f.encoding.name().as_bytes());
         }
         Meta::Rename(p) => {
             o.push(2);
@@ -428,6 +446,16 @@ impl<'a> Cursor<'a> {
             None
         } else {
             self.u8()
+        }
+    }
+
+    /// A byte string a newer minor appended: `None` at the end of the payload, else `Some` of the field,
+    /// itself `None` when it does not fit.
+    fn optional_bytes(&mut self) -> Option<Option<&'a [u8]>> {
+        if self.rest() == 0 {
+            None
+        } else {
+            Some(self.bytes())
         }
     }
 
@@ -490,7 +518,8 @@ fn decode_header(c: &mut Cursor) -> Option<Header> {
         },
         _ => return None,
     };
-    let format = format_from_bits(format, c.optional_u8());
+    let ext = c.optional_u8();
+    let format = format_from_bits(format, ext, decode_encoding(c)?);
     Some(Header {
         owner: Owner {
             pid,
@@ -548,7 +577,8 @@ fn decode_meta(c: &mut Cursor) -> Option<Meta> {
         },
         1 => {
             let b = c.u8()?;
-            Meta::Format(format_from_bits(b, c.optional_u8()))
+            let ext = c.optional_u8();
+            Meta::Format(format_from_bits(b, ext, decode_encoding(c)?))
         }
         2 => Meta::Rename(c.bytes()?.to_vec()),
         _ => return None,
@@ -982,6 +1012,7 @@ mod tests {
             final_newline: false,
             eof: false,
             binary: false,
+            encoding: Default::default(),
         };
         let save = Meta::SavePoint {
             saved_node: 3,
@@ -1092,16 +1123,27 @@ mod tests {
             final_newline: false,
             eof: true,
             binary: true,
+            encoding: Default::default(),
         }
     }
 
     /// The record at `at` re-framed as schema 1.0 wrote it: `drop` appended payload bytes removed, the
     /// length, version and both CRCs recomputed.
     fn as_v10(j: &[u8], at: usize, drop: usize) -> Vec<u8> {
+        as_version(j, at, drop, 0x0100)
+    }
+
+    /// The bytes 1.1 and 1.2 append to a Header or Meta-format payload of the default encoding: the
+    /// `format_ext` byte and the empty `enc` name.
+    const V11_FORMAT: usize = 1 + 4;
+    const V12_FORMAT: usize = 4;
+
+    /// [`as_v10`] for schema `ver`.
+    fn as_version(j: &[u8], at: usize, drop: usize, ver: u16) -> Vec<u8> {
         let len = le32(&j[at + 8..at + 12]) as usize;
         let payload = &j[at + HEAD..at + HEAD + len - drop];
         let mut h = j[at..at + HEAD].to_vec();
-        h[4..6].copy_from_slice(&0x0100u16.to_le_bytes());
+        h[4..6].copy_from_slice(&ver.to_le_bytes());
         h[8..12].copy_from_slice(&(payload.len() as u32).to_le_bytes());
         let crc = crc32c(&h[..12]);
         h[12..16].copy_from_slice(&crc.to_le_bytes());
@@ -1154,7 +1196,7 @@ mod tests {
         let mut h = header(Base::Checkpoint);
         h.format = mac_eof_binary();
         encode_header(&mut j, &h).unwrap();
-        let v10 = as_v10(&j, 0, 1);
+        let v10 = as_v10(&j, 0, V11_FORMAT);
         let Record::Header(old) = read_record(&v10, 0).unwrap().0 else {
             panic!()
         };
@@ -1164,6 +1206,7 @@ mod tests {
             final_newline: false,
             eof: false,
             binary: false,
+            encoding: Default::default(),
         };
         assert_eq!(old.format, lf, "1.0 drops endoffile, binary and mac");
         let mut e = entry(1, vec![Edit::insert(BytePos(0), "x")], b"a");
@@ -1199,6 +1242,7 @@ mod tests {
             final_newline: false,
             eof: false,
             binary: false,
+            encoding: Default::default(),
         };
         let disk = Base::Disk {
             len: 9,
@@ -1209,7 +1253,7 @@ mod tests {
             h.format = mac_eof_binary();
             let mut j = Vec::new();
             encode_header(&mut j, &h).unwrap();
-            let Record::Header(old) = read_record(&as_v10(&j, 0, 1), 0).unwrap().0 else {
+            let Record::Header(old) = read_record(&as_v10(&j, 0, V11_FORMAT), 0).unwrap().0 else {
                 panic!()
             };
             assert_eq!((old.format, old.base), (lf, base));
@@ -1217,7 +1261,7 @@ mod tests {
         let mut j = Vec::new();
         encode_meta(&mut j, &Meta::Format(mac_eof_binary())).unwrap();
         assert_eq!(
-            read_record(&as_v10(&j, 0, 1), 0).unwrap().0,
+            read_record(&as_v10(&j, 0, V11_FORMAT), 0).unwrap().0,
             Record::Meta(Meta::Format(lf))
         );
         // An origin this build does not know (a newer minor's) falls back to the 1.0 byte.
@@ -1266,6 +1310,134 @@ mod tests {
         ] {
             assert_eq!(origin_u8_v10(o), origin_u8(o), "{o:?} keeps its 1.0 code");
         }
+    }
+
+    fn in_encoding(name: &str) -> FileFormat {
+        FileFormat {
+            encoding: FileEncoding::from_name(name).unwrap(),
+            ..mac_eof_binary()
+        }
+    }
+
+    /// RFC-0025 §7: the Header and a format Meta carry the encoding's canonical name, and replay gives the
+    /// last one recorded, which a recovery restores.
+    #[test]
+    fn schema_1_2_records_the_encoding() {
+        let mut j = Vec::new();
+        let mut h = header(Base::Checkpoint);
+        h.format = in_encoding("latin1");
+        encode_header(&mut j, &h).unwrap();
+        encode_checkpoint(&mut j, 0, 1, "café\n".as_bytes()).unwrap();
+        assert_eq!(read_record(&j, 0).unwrap().0, Record::Header(h));
+        assert_eq!(replay(&j, None).format, Some(in_encoding("latin1")));
+        let at = j.len();
+        encode_meta(&mut j, &Meta::Format(in_encoding("UTF16LE"))).unwrap();
+        let (rec, _) = read_record(&j, at).unwrap();
+        assert_eq!(rec, Record::Meta(Meta::Format(in_encoding("utf-16le"))));
+        let r = replay(&j, None);
+        assert_eq!(r.format.unwrap().encoding.name(), "utf-16le");
+        assert_eq!(r.text.as_deref(), Some("café\n".as_bytes()));
+        // The field is the name after `format_ext`: length, then the bytes.
+        let len = le32(&j[at + 8..at + 12]) as usize;
+        assert_eq!(
+            &j[at + HEAD + len - 12..at + HEAD + len],
+            b"\x08\0\0\0utf-16le"
+        );
+    }
+
+    /// A 1.0 or 1.1 record has no encoding: it reads as the default, UTF-8 with invalid bytes kept, which
+    /// is what those builds read and wrote, so the recovered buffer writes back the same bytes.
+    #[test]
+    fn a_1_1_record_reads_with_the_default_encoding() {
+        for base in [
+            Base::Checkpoint,
+            Base::Disk {
+                len: 4,
+                sha256: sha256(b"disk"),
+            },
+        ] {
+            let mut h = header(base);
+            h.format = in_encoding("latin1");
+            let mut j = Vec::new();
+            encode_header(&mut j, &h).unwrap();
+            let v11 = as_version(&j, 0, 4 + "latin1".len(), 0x0101);
+            let Record::Header(old) = read_record(&v11, 0).unwrap().0 else {
+                panic!()
+            };
+            assert_eq!((old.format, old.base), (mac_eof_binary(), base));
+        }
+        let mut j = Vec::new();
+        encode_meta(&mut j, &Meta::Format(in_encoding("sjis"))).unwrap();
+        assert_eq!(
+            read_record(&as_version(&j, 0, 4 + "sjis".len(), 0x0101), 0)
+                .unwrap()
+                .0,
+            Record::Meta(Meta::Format(mac_eof_binary()))
+        );
+    }
+
+    /// 1.2 changes no 1.1 byte (INV-ADDITIVE): a 1.2 record of the default encoding is the 1.1 record plus
+    /// an empty name, and a whole journal re-framed as 1.1 or 1.0 replays to the same text.
+    #[test]
+    fn a_1_2_record_is_the_1_1_record_plus_appended_bytes() {
+        let mut j = Vec::new();
+        encode_header(&mut j, &header(Base::Checkpoint)).unwrap();
+        let len = le32(&j[8..12]) as usize;
+        assert_eq!(&j[HEAD + len - V12_FORMAT..HEAD + len], &[0u8; 4]);
+        let v11 = as_version(&j, 0, V12_FORMAT, 0x0101);
+        assert_eq!(
+            read_record(&v11, 0).unwrap().0,
+            Record::Header(header(Base::Checkpoint))
+        );
+        // A 1.1 reader skips the field as a newer minor's: this build reading it as minor+1 does the same.
+        let mut newer = j.clone();
+        set_version(&mut newer, 0, SCHEMA + 1);
+        assert_eq!(
+            read_record(&newer, 0).unwrap().0,
+            Record::Header(header(Base::Checkpoint))
+        );
+
+        // Old journals recover byte-exact: every record of the sample re-framed by the older writer.
+        let (j, ends) = sample();
+        let starts: Vec<usize> = std::iter::once(0).chain(ends.iter().copied()).collect();
+        for (ver, header_drop, edit_drop) in [(0x0101u16, V12_FORMAT, 0), (0x0100, V11_FORMAT, 1)] {
+            let mut old = Vec::new();
+            for w in starts.windows(2) {
+                let drop = match w[0] {
+                    0 => header_drop,
+                    at if j[at + 6] == Kind::Edit as u8 => edit_drop,
+                    _ => 0,
+                };
+                old.extend_from_slice(&as_version(&j, w[0], drop, ver));
+            }
+            let r = replay(&old, None);
+            assert_eq!(r.text.as_deref(), Some(&b"xab\n"[..]), "{ver:#x}");
+            assert!(!r.lost_tail, "{ver:#x}");
+            assert_eq!(r.format.unwrap().encoding, FileEncoding::default());
+        }
+    }
+
+    /// An encoding name this build does not have (a newer build's) fails its record: a Header so, and the
+    /// journal is not offered; a Meta so, and replay stops before it. Nothing is recovered to be written in
+    /// another encoding.
+    #[test]
+    fn an_unknown_encoding_name_fails_its_record() {
+        let mut j = Vec::new();
+        frame(&mut j, Kind::Meta, |o| {
+            o.push(1);
+            o.push(format_bits(FileFormat::default()));
+            o.push(0);
+            put_bytes(o, b"klingon");
+        })
+        .unwrap();
+        assert_eq!(read_record(&j, 0).unwrap_err(), Stop::Corrupt);
+        let (mut s, ends) = sample();
+        s.truncate(ends[1]); // the Header and the Checkpoint
+        s.extend_from_slice(&j);
+        let r = replay(&s, None);
+        assert_eq!(r.text.as_deref(), Some(&b"abc\n"[..]));
+        assert!(r.lost_tail);
+        assert_eq!(r.format, Some(FileFormat::default()));
     }
 
     #[test]
