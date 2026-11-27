@@ -1113,3 +1113,22 @@ related:
   - The Emacs-profile echo-area design needs the layout per profile.
 - Refs: [RFC-0027](../docs/rfc/proposed/RFC-0027-cmdheight-shortmess-pager.md), RFC-0009, RFC-0017, D-056,
   F-006, INV-DOC-VIEW, INV-CMD-SEMANTIC, #1275, #1274, #1235, #1222.
+
+## D-067 — Large-file safety: bounded undo, stop-at-first-match search, a highlight budget · open
+- **Direction:** Undo is bounded for every editable buffer by `'undolevels'` (default 1000; nvim keeps
+  `'undolevels'` + 1 groups) and an undo payload budget (proposed 256 MiB). Past either, whole groups are
+  dropped oldest first by re-rooting the tree (nvim's `u_freeheader`, sibling branches go with it); the
+  current group is never dropped, so the newest change stays undoable; `seq` is never renumbered; the bound
+  reads only options and edit payloads, so `--replay` stays deterministic. RJ01 replay and recovery are
+  unaffected (replay applies forward edits and never reads the tree). `/ ? n N * # gn` stop at the first
+  landing and poll `interrupt::breakcheck`. Highlighting is bounded by `'redrawtime'` (2000 ms) for a parse
+  or query, by `'synmaxcol'` (3000) on a long line, with the query range cut to the visible bytes. The Emacs
+  profile asks the large-file question for the startup file; the Vim profile asks nothing. Full design and
+  measurements: [RFC-0026](../docs/rfc/proposed/RFC-0026-large-file-safety.md).
+- **Open:** the byte budget default (256 MiB, or none); a ruse-only reparse rule (three edits over 250 ms
+  switch highlighting off) on top of nvim's `'redrawtime'`; `'undolevels'` 0 (Vi toggle) now or later; the
+  Emacs undo variables stay unoffered. Out of scope: the O(file) copy per edit (a rope decision of its own).
+- **Re-evaluate if:** a large-file workload becomes a stated goal (rope / piece table, D-003); persistent undo
+  is designed (its rebuild must apply the bound); the budget fires on normal files.
+- Refs: [RFC-0026](../docs/rfc/proposed/RFC-0026-large-file-safety.md), D-005, D-064, RFC-0007, RFC-0008,
+  INV-UNDO, INV-BUFFER-KIND, INV-FAIL-BOUNDED, F-005, F-008, F-009, F-015, COM-12, #1289, #1290.
