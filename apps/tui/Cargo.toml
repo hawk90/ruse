@@ -50,6 +50,9 @@ percent-encoding = "2.3.2"
 toml = { version = "1.2.2", default-features = false, features = ["std", "parse", "serde"] }
 # #614 workspace trust: the content hash of `.ruse/` a trust record holds is SHA-256 (DEP-CRYPTO-HASH).
 sha2 = "0.11.1"
+# RFC-0025 file encodings (DEP-ENCODING, D-066): the WHATWG legacy codecs, wrapped by persist/codec.rs, the
+# only module that names its types. No std (that pulls `multiversion`), no simd-accel.
+encoding_rs = { version = "0.8.44", default-features = false, features = ["alloc"] }
 
 # F-010 live capability probe: a `poll()` liveness net so startup never hangs on a terminal that
 # never answers DA1 (the fence, not the clock, decides support). Unix-only; other targets fall back

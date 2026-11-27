@@ -494,7 +494,10 @@ impl WriteOptions {
             final_newline,
             ..fmt
         }
-        .to_disk(&source);
+        .to_disk(&source)
+        // RFC-0025 slice 1: every buffer has the default encoding, which holds any text. Slice 2 gives
+        // buffers an encoding and refuses the write here instead (E513, §4.1).
+        .expect("the default encoding encodes every text");
         Encoded {
             noeol: !final_newline && !source.is_empty(),
             source,
