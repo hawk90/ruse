@@ -42,6 +42,10 @@ pub struct Transaction {
     /// Where the cursor stood when the change began (Vim's `uh_cursor`), in the text before it — where
     /// `u`/`C-r` put the cursor back. `None` takes the start of the first edited line.
     pub cursor: Option<BytePos>,
+    /// How the edits map onto Vim undo entries: one per edit, or one over all the lines from the first
+    /// edited to the last (a blockwise operator: nvim's `op_shift`/`op_delete` `u_save` the block's lines at
+    /// once, #1612). Only where `u`/`C-r` put the cursor and the `'.` mark read it.
+    pub(crate) undo_entry: crate::undo_cursor::UndoEntry,
 }
 
 impl Transaction {
@@ -54,6 +58,7 @@ impl Transaction {
             origin,
             group_hint: GroupHint::Continue,
             cursor: None,
+            undo_entry: crate::undo_cursor::UndoEntry::PerEdit,
         }
     }
 
@@ -61,6 +66,13 @@ impl Transaction {
     #[must_use]
     pub fn with_cursor(mut self, cursor: BytePos) -> Transaction {
         self.cursor = Some(cursor);
+        self
+    }
+
+    /// Map the edits onto Vim undo entries as `shape` says (see [`Transaction::undo_entry`]).
+    #[must_use]
+    pub(crate) fn with_undo_entry(mut self, shape: crate::undo_cursor::UndoEntry) -> Transaction {
+        self.undo_entry = shape;
         self
     }
 
