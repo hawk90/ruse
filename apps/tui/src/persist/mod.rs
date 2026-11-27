@@ -2,6 +2,7 @@
 //!
 //!   * [`atomic`]   — temp + fsync + rename + directory fsync (durable "Saved"). (#1)
 //!   * [`encoding`] — detect the original EOL/BOM and restore it on save. (#2)
+//!   * [`codec`]    — the file encodings' name table and codecs (RFC-0025, D-066).
 //!   * [`rj01`]     — the per-transaction journal record format and its replay (RFC-0023, D-064). (#4)
 //!   * [`journal`]  — where journals live, the writer, the crash-path rescue, the open-time offer. (#4)
 //!   * [`rjs0`]     — the legacy snapshot journal, read once and archived.
@@ -18,6 +19,7 @@ use ruse_core::{BytePos, ExCmd, TransactionOrigin};
 
 pub mod atomic;
 pub mod backup;
+pub mod codec;
 pub mod diff;
 pub mod disk;
 pub mod encoding;

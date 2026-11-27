@@ -35,7 +35,7 @@ fn atomic_save_preserves_crlf_and_is_durable() {
 
     // Edit in LF, save; the file keeps its CRLF style for every line, new ones included.
     let edited = b"alpha\nBETA\ngamma\n";
-    atomic::save(&f, &fmt.to_disk(edited)).unwrap();
+    atomic::save(&f, &fmt.to_disk(edited).unwrap()).unwrap();
     assert_eq!(std::fs::read(&f).unwrap(), b"alpha\r\nBETA\r\ngamma\r\n");
 }
 

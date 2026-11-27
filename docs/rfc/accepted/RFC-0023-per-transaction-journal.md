@@ -329,6 +329,30 @@ are test and debugging artifacts, not user data. Tests: `rj01::tests::schema_1_1
 and the existing
 `a_newer_minor_version_with_extra_payload_is_read`.
 
+## Amendment 2 — schema 1.2 (#1292, RFC-0025 §7)
+
+A buffer's file encoding (RFC-0025, D-066) is part of its format, so a recovered buffer must be written in
+the encoding it was read in. Schema **1.2** records it, strictly by appending (INV-ADDITIVE):
+
+- **Header** and **Meta** file format: an `enc bytes` field (`u32` length, then the encoding's canonical
+  name from RFC-0025 §2's table) after `format_ext`. The empty name is UTF-8 with invalid bytes kept, the only
+  encoding before 1.2. The `bom` bit of the 1.0 `format` byte now means the BOM of that encoding. Edit,
+  Checkpoint and Marker records are unchanged: their text is the buffer's, which is UTF-8.
+- A name this build does not have fails its record, as a corrupt payload does: a Header so, and the journal
+  is not offered, as any journal whose Header does not decode; a Meta so, and replay stops before it with
+  the tail reported lost. A journal is therefore never recovered into a buffer that would be written in
+  another encoding.
+- `DiskBase` hashes the disk file's text decoded with the Header's format, which now includes the encoding.
+
+**Compatibility.** A 1.2 reader reads a 1.0 or 1.1 record with the default encoding: what those builds read
+and wrote, so the recovered buffer writes back the same bytes. A 1.1 reader skips the field as a newer
+minor's (`payload_len`) and recovers the text, but saves it as UTF-8; that loses the encoding only after a
+downgrade with an unsaved buffer that is not UTF-8, which is accepted. No migration is needed and no record
+is rewritten. RFC-0025 slice 1 writes the field with the default encoding only; slice 2 gives buffers other
+encodings. Tests: `rj01::tests::schema_1_2_records_the_encoding`, `a_1_1_record_reads_with_the_default_encoding`,
+`a_1_2_record_is_the_1_1_record_plus_appended_bytes` (which also replays a whole journal re-framed as 1.1
+and 1.0), `an_unknown_encoding_name_fails_its_record`.
+
 ## Slices
 
 1. Core change log and `drain_changes` with bound and overflow (no format change yet).
