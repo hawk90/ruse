@@ -6299,6 +6299,20 @@ FIXTURES: list[dict] = [
      "keys": "G:1,5s/a/x/c<CR>nyq", "observe": ["marks"]},
     {"name": "i1618_s_confirm_sub_range", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"],
      "keys": "G:2,4s/a/x/c<CR>yq", "observe": ["marks"]},
+    # --- #1617 ---
+    # Normal `*`/`#`/`g*`/`g#` add the pattern they search for to the search history (`\<foo\>` for the
+    # whole-word forms, `foo` for the `g` forms), so a later `/<Up>` recalls it; a count does not change it.
+    {"name": "i1617_star_history", "lines": ["foo x foo", "cd x cd"], "keys": "*/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_star_history_pattern", "lines": ["foo x foo", "cd x cd"], "keys": "*/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_hash_history", "lines": ["foo x foo", "cd x cd"], "keys": "#/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_gstar_history", "lines": ["foo x foobar", "cd x cd"], "keys": "g*/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_gstar_history_pattern", "lines": ["foo x foobar", "cd x cd"], "keys": "g*/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_ghash_history", "lines": ["foobar x foo", "cd x cd"], "keys": "$g#/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_ghash_history_pattern", "lines": ["foobar x foo", "cd x cd"], "keys": "$g#/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_hash_history_pattern", "lines": ["foo x foo", "cd x cd"], "keys": "#/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_count_star_history", "lines": ["foo x foo foo", "cd x cd"], "keys": "2*/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_star_up_once", "lines": ["foo x foo", "cd x cd"], "keys": "*gg/<Up><CR>"},
+    {"name": "i1617_star_no_word_no_history", "lines": ["foo x foo", "  "], "keys": "/x<CR>j*gg/<Up><CR>"},
 ]
 
 

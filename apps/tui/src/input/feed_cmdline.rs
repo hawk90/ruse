@@ -705,7 +705,8 @@ impl InputEngine {
     }
 
     /// Add `pattern` to the search history, as nvim's `histadd('/', …)` in the Visual `*`/`#` mapping does
-    /// (#1557): a later `/<Up>` recalls it.
+    /// (#1557) and its `nv_ident` does for a Normal `*`/`#`/`g*`/`g#` (#1617): a later `/<Up>`
+    /// recalls it.
     pub fn push_search_history(&mut self, pattern: &str) {
         self.search_history.push(pattern);
     }
