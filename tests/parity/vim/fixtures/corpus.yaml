@@ -204753,6 +204753,930 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "vb_x_undo_three",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjxu",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nf\nj",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_x_redo_three",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjxu<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "acd",
+          "egh",
+          "ikl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nf\nj",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_r_undo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjrzu",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_r_redo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjrzu<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "azcd",
+          "ezgh",
+          "izkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_tilde_undo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jj~u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_rot13_redo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjg?u<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "aocd",
+          "esgh",
+          "iwkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_c_undo_three",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjczz<Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nf\nj",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ],
+          "^": [
+            1,
+            3
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_c_redo_three",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjczz<Esc>u<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "azzcd",
+          "ezzgh",
+          "izzkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nf\nj",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ],
+          "^": [
+            1,
+            3
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_I_undo_three",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjIzz<Esc>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ],
+          "^": [
+            1,
+            3
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_I_redo_three",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjIzz<Esc>u<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "azzbcd",
+          "ezzfgh",
+          "izzjkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ],
+          "^": [
+            1,
+            3
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_A_redo_three",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jjAzz<Esc>u<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abzzcd",
+          "efzzgh",
+          "ijzzkl"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ],
+          "^": [
+            1,
+            4
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_C_cr_redo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "l<C-v>jCx<CR>y<Esc>u<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ax",
+          "yx",
+          "e",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bcd\nfgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            3,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "vb_shift_right_ragged_undo",
+      "lines": [
+        "abcdefgh",
+        "",
+        "abcdefgh"
+      ],
+      "keys": ":set ts=8 sw=4 et<CR>4l<C-v>jj>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcdefgh",
+          "",
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            4
+          ],
+          ">": [
+            3,
+            4
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            3,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_forced_d_undo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "ld<C-v>jju",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nf",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": []
+      }
+    },
+    {
+      "name": "vb_forced_d_redo",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "ld<C-v>jju<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "acd",
+          "egh",
+          "ijkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nf",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "<": [
+            1,
+            1
+          ],
+          ">": [
+            2,
+            1
+          ],
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            2,
+            0
+          ],
+          ".": [
+            1,
+            0
+          ]
+        },
+        "vmode": "blockwise",
+        "visual": null,
+        "undo": [
+          [
+            "abcd",
+            "efgh",
+            "ijkl"
+          ]
+        ]
+      }
     }
   ]
 }

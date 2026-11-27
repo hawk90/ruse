@@ -9,6 +9,7 @@ use crate::editor::{
     MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
 };
 use crate::motion::{self, line_end, line_start, next_boundary, next_grapheme, prev_boundary};
+use crate::undo_cursor::UndoEntry;
 use crate::{
     BytePos, CaretGravity, Command, Edit, EditList, EditorState, GroupHint, IndentStyle, Mode,
     Plan, RegKind, Register, SelectKind, Tabs,
@@ -450,6 +451,7 @@ fn replacement_plan(b: &[u8], b3: &[u8], cursor: usize, set_register: Option<Reg
         set_anchor: None,
         set_mark: None,
         op_marks: None,
+        undo_entry: UndoEntry::PerEdit,
     }
 }
 

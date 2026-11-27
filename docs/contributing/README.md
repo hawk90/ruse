@@ -15,6 +15,7 @@ related:
   - ai-assisted-development.md
   - quickstart.md
   - size-ceilings.md
+  - module-layout.md
   - ../operations/development-model.md
   - ../operations/definition-of-done.md
   - ../operations/github-workflow.md
@@ -111,6 +112,7 @@ ruse keeps **one fact in one home**:
 - [ai-assisted-development.md](ai-assisted-development.md) — the tool-agnostic AI policy.
 - [quickstart.md](quickstart.md) — clone → first PR.
 - [size-ceilings.md](size-ceilings.md) — function and file size targets, held by `gov ratchet`.
+- [module-layout.md](module-layout.md) — `x.rs` + `x/` module layout, where unit and integration tests live, test-file naming.
 - [../operations/development-model.md](../operations/development-model.md) — Spec-Gated Iterative Development.
 - [../operations/definition-of-done.md](../operations/definition-of-done.md) — when a change is done.
 - [../operations/github-workflow.md](../operations/github-workflow.md) — labels, milestones, automation.

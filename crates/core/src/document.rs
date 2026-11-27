@@ -407,8 +407,10 @@ impl Document {
             .changes
             .wants()
             .then(|| (txn.edits.clone(), inverse.clone()));
-        self.undo
+        let node = self
+            .undo
             .record(txn.edits, inverse, origin, hint, self.revision, cursor);
+        self.undo.set_undo_entry(node, txn.undo_entry);
         if let Some((forward, inverse)) = logged {
             self.changes.push(ChangeEntry {
                 base_revision: prev,
@@ -603,7 +605,8 @@ impl Document {
             let old = Arc::clone(&self.text);
             self.reapply(edits, step.nodes[i], tracked);
             if i >= step.tail {
-                undo_cursor::entries(&old, &self.text, edits, &mut entries);
+                let shape = step.undo_entry.get(i).copied().unwrap_or_default();
+                undo_cursor::entries(&old, &self.text, edits, shape, &mut entries);
             }
             if let Some(g) = group {
                 if step.groups.get(i + 1).copied() != Some(g) {

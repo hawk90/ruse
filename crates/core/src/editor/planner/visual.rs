@@ -14,6 +14,7 @@ use crate::editor::{
     Action, Block, BlockInsert, MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
 };
 use crate::motion::{self, at_col, col_of, line_end, line_start, prev_grapheme};
+use crate::undo_cursor::UndoEntry;
 use crate::{
     BlockInsertKind, BytePos, CaretGravity, Command, Edit, EditList, EditorState, GroupHint,
     IndentStyle, Mode, OpKind, Plan, Register, SelectKind, VisualOp,
@@ -247,6 +248,7 @@ fn plan_block_insert(
         set_register: reg.map(RegWrite::Edit),
         // A change's delete marks the block as nvim's `op_delete` (#1302); a seeded one has typed already.
         op_marks: (change && seed.is_empty()).then(|| block_delete_marks(b, &block)),
+        undo_entry: UndoEntry::One,
         ..nop(insert_start + seed.len(), Mode::Insert)
     }
 }
@@ -557,6 +559,7 @@ fn block_replace(b: &[u8], block: &Block, c: char, hint: GroupHint) -> Plan {
     match EditList::new(edits) {
         Ok(list) if !list.is_empty() => Plan {
             op_marks,
+            undo_entry: UndoEntry::One,
             ..edit(list, at, Mode::Normal, hint)
         },
         _ => nop(at, Mode::Normal),
@@ -674,6 +677,7 @@ fn plan_block_shift(
     let edits = EditList::new(edits).expect("one edit per block row, top to bottom: disjoint");
     Plan {
         op_marks,
+        undo_entry: UndoEntry::One,
         ..edit(edits, cursor, st.mode(), hint)
     }
 }

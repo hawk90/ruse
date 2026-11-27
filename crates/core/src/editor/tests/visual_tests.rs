@@ -2245,6 +2245,52 @@ mod visual_op_tests {
         assert_eq!(shift_marks(&st), [(0, 1), (1, 7), (0, 0)]);
     }
 
+    /// #1612: a block operator is ONE undo entry (nvim's `op_shift`/`op_delete`/`block_insert` save the
+    /// block's lines at once), so `u` and `CTRL-R` leave `'.` on the block's top line, not its bottom row's
+    /// (the `vb_shift_right_undo`/`_redo`, `vb_x_*_three`, `vb_c_*_three` and `vb_I_*_three` fixtures).
+    #[test]
+    fn a_block_operator_is_one_undo_entry() {
+        let dot_line = |st: &EditorState| {
+            let b = st.doc.bytes();
+            crate::pos::raw::line_of(b, st.view.last_change().expect("'. set").0)
+        };
+        let undo_redo = |mut st: EditorState| {
+            apply_command(&mut st, &Command::Undo);
+            let undone = dot_line(&st);
+            apply_command(&mut st, &Command::Redo);
+            (undone, dot_line(&st))
+        };
+        // `w<C-v>jj>u<C-r>`: '. on the top line both ways, and also when the shift skips a short row.
+        let st = block_shift("abc def\nghi jkl\nmno pqr", 4, 2, false, 1, true);
+        assert_eq!(undo_redo(st), (0, 0));
+        let st = block_shift("abcdefgh\n\nabcdefgh", 4, 2, false, 1, true);
+        assert_eq!(undo_redo(st), (0, 0));
+        // `l<C-v>jjx`, and a block change typed `zz`: its copy down the block is in the delete's entry.
+        // A block insert's copy is an entry of its own below the typed top row: redo leaves '. on line 2.
+        let block = |op: Command, typed: &str| {
+            let mut st = EditorState::new(b"abcd\nefgh\nijkl\n".to_vec());
+            let mut cmds = vec![Command::MoveRight, visual(BLOCK), Command::MoveDown];
+            cmds.extend([Command::MoveDown, op]);
+            cmds.extend(typed.chars().map(Command::InsertChar));
+            if !typed.is_empty() {
+                cmds.push(Command::EnterNormal);
+            }
+            for c in &cmds {
+                apply_command(&mut st, c);
+            }
+            st
+        };
+        let st = block(Command::DeleteSelection, "");
+        assert_eq!(text(&st), "acd\negh\nikl\n");
+        assert_eq!(undo_redo(st), (0, 0));
+        let st = block(Command::BlockInsert(BlockInsertKind::Change), "zz");
+        assert_eq!(text(&st), "azzcd\nezzgh\nizzkl\n");
+        assert_eq!(undo_redo(st), (0, 0));
+        let st = block(Command::BlockInsert(BlockInsertKind::Insert), "zz");
+        assert_eq!(text(&st), "azzbcd\nezzfgh\nizzjkl\n");
+        assert_eq!(undo_redo(st), (0, 1));
+    }
+
     /// #1142: a block change broken by `<CR>` copies what the top row grew by into the lines below it by
     /// number (the new line first), as nvim's `op_change`; `I` that leaves the top row copies nothing.
     #[test]
