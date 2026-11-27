@@ -20,7 +20,7 @@ use crate::line_undo::LineUndo;
 use crate::pos::{BytePos, Revision};
 use crate::snapshot::{AnchorIndex, DocumentSnapshot};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
-use crate::undo::{MonotonicSeq, UndoHistory, UndoStep};
+use crate::undo::{MonotonicSeq, UndoHistory, UndoLimits, UndoStep};
 use crate::undo_cursor::{self, UndoCursor};
 
 /// A typed, generation-free document handle (INV-HANDLE). Process-unique id per open document.
@@ -436,6 +436,10 @@ impl Document {
             // A new undo step: remember the marks as they were before it (Vim's `u_savecommon`).
             self.mark_undo.insert(group, saved);
         }
+        // The undo bound (RFC-0026 §1): the oldest groups past it leave the tree, with their saved marks.
+        for g in self.undo.trim() {
+            self.mark_undo.remove(&g);
+        }
         self.rebuild_index();
         Ok(self.revision)
     }
@@ -801,6 +805,12 @@ impl Document {
         &self.undo
     }
 
+    /// Bound the undo history (`'undolevels'` and the byte budget, RFC-0026 §1). The oldest states past it
+    /// are dropped at the next change, not now, as nvim does.
+    pub fn set_undo_limits(&mut self, limits: UndoLimits) {
+        self.undo.set_limits(limits);
+    }
+
     /// Take an immutable, revision-stamped snapshot. O(1): clones the text `Arc` and the frozen anchor
     /// index `Arc` (INV-QUERY-SNAPSHOT, query-and-snapshot §2). The index is frozen on the first snapshot
     /// after a change, not on every change, so a run of edits with no reader between pays for none.
@@ -849,7 +859,8 @@ impl Document {
     }
 
     /// The invariant walker for one buffer (#906): the undo tree's structure, the anchor store against
-    /// the text, the saved state naming a node of the tree, the mark groups naming issued groups, and
+    /// the text, the saved state naming a node the tree made (the undo bound may have dropped it since:
+    /// the buffer then stays modified, as in nvim), the mark groups naming issued groups, and
     /// a frozen anchor index (if any) agreeing with the store. Panics on the first broken rule; property
     /// and fuzz tests call it after every step, so an inconsistency is caught where it starts rather than
     /// when a later read trips over it.
@@ -859,7 +870,7 @@ impl Document {
         self.anchors.assert_invariants(len);
         if let Some(seq) = self.saved_node {
             assert!(
-                self.undo.has_seq(seq),
+                self.undo.issued_seq(seq),
                 "the saved state {seq:?} is no undo node"
             );
         }

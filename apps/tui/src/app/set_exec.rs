@@ -89,11 +89,23 @@ pub(crate) struct UiOptions {
     pub conceal: bool,
     /// `'report'`: the line count a command's report needs to pass (#1276).
     pub report: i64,
+    /// `'undolevels'` as set, and the `editor.undo_max_bytes` budget: the undo bound every buffer keeps
+    /// (RFC-0026 §1, #1290). The workspace holds the limits made of them.
+    pub undolevels: i64,
+    pub undo_max_bytes: i64,
     /// `'hidden'`, `'confirm'`, `'autowrite'`, `'autowriteall'`, `'autoread'` (#619).
     pub buffers: crate::app::abandon::BufferOptions,
 }
 
+/// `editor.undo_max_bytes`'s default (spec/config-schema.yaml): 256 MiB.
+pub(crate) const UNDO_MAX_BYTES_DEFAULT: i64 = 256 << 20;
+
 impl UiOptions {
+    /// The undo bound `'undolevels'` and `editor.undo_max_bytes` give.
+    pub(crate) fn undo_limits(&self) -> ruse_core::UndoLimits {
+        ruse_core::UndoLimits::from_options(self.undolevels, self.undo_max_bytes)
+    }
+
     /// The `:messages` history size `'messagesopt'` gives (its value was checked when it was set).
     pub(crate) fn message_history(&self) -> usize {
         crate::input::set_cmd::messagesopt_history(&self.messagesopt)
@@ -111,6 +123,8 @@ impl Default for UiOptions {
             foldopen: crate::input::set_cmd::FOLDOPEN.to_string(),
             conceal: true,
             report: crate::app::report::REPORT_DEFAULT,
+            undolevels: i64::from(ruse_core::UndoLimits::DEFAULT_LEVELS),
+            undo_max_bytes: UNDO_MAX_BYTES_DEFAULT,
             buffers: crate::app::abandon::BufferOptions::default(),
         }
     }
@@ -163,6 +177,7 @@ impl OptionHost<'_> {
             | Opt::MessageOptions
             | Opt::FoldOpen
             | Opt::Report
+            | Opt::UndoLevels
             | Opt::History
             | Opt::CpOptions
             | Opt::VerboseFile => self.get_session_ui(opt),
@@ -255,6 +270,7 @@ impl OptionHost<'_> {
             | Opt::MessageOptions
             | Opt::FoldOpen
             | Opt::Report
+            | Opt::UndoLevels
             | Opt::History => self.put_session_ui(opt, val, on, text),
             Opt::FoldMethod | Opt::FoldLevel | Opt::FoldEnable => {
                 self.put_fold(opt, val, on, buf);

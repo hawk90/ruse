@@ -9,8 +9,8 @@
 use proptest::prelude::*;
 use ruse_core::{
     anchor::map_byte, apply_command, AnchorId, AnchorPolicy, Bias, BytePos, Command, Document,
-    DocumentId, Edit, EditList, EditorState, LineGravity, LineMap, Mode, Motion, Revision,
-    SelectKind, Trace, Track, Transaction, TransactionOrigin,
+    DocumentId, Edit, EditList, EditorState, GroupHint, LineGravity, LineMap, Mode, Motion,
+    Revision, SelectKind, Trace, Track, Transaction, TransactionOrigin, UndoLimits,
 };
 
 /// `n` cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920), with the reject budget
@@ -619,5 +619,120 @@ proptest! {
         ], 0..30),
     ) {
         rests_on_clusters(init, &cmds)?;
+    }
+}
+
+/// One step of the undo-bound property: a change (synced first or not), an undo move, or new limits.
+#[derive(Clone, Debug)]
+enum UndoOp {
+    Change(Edit, bool),
+    Undo,
+    Redo,
+    Older,
+    Newer,
+    Limits(UndoLimits),
+}
+
+fn undo_limits() -> impl Strategy<Value = UndoLimits> {
+    (
+        prop_oneof![Just(None), (0u32..5).prop_map(Some)],
+        prop_oneof![Just(None), (0usize..600).prop_map(Some)],
+    )
+        .prop_map(|(levels, bytes)| UndoLimits { levels, bytes })
+}
+
+fn undo_op() -> impl Strategy<Value = UndoOp> {
+    prop_oneof![
+        6 => (edit(), any::<bool>()).prop_map(|(e, s)| UndoOp::Change(e, s)),
+        2 => Just(UndoOp::Undo),
+        1 => Just(UndoOp::Redo),
+        1 => Just(UndoOp::Older),
+        1 => Just(UndoOp::Newer),
+        1 => undo_limits().prop_map(UndoOp::Limits),
+    ]
+}
+
+proptest! {
+    #![proptest_config(cases(256))]
+
+    /// The undo bound (RFC-0026 §1): random changes and undo moves under random limits keep the tree
+    /// valid, the text equal to the text its current state was made with (so every kept state still
+    /// replays to its own text), the level and byte counts within the bound after each change (only the
+    /// current group may stay past the byte budget), and the newest change undoable unless
+    /// `'undolevels'` is negative.
+    #[test]
+    fn the_undo_bound_keeps_a_valid_replayable_tree(
+        init in text(),
+        limits in undo_limits(),
+        ops in prop::collection::vec(undo_op(), 0..80),
+    ) {
+        let mut doc = Document::new(DocumentId(1), init.clone());
+        doc.set_undo_limits(limits);
+        let mut texts = std::collections::HashMap::new();
+        texts.insert(doc.history().current_seq(), init);
+        for op in &ops {
+            match op {
+                UndoOp::Change(e, sync) => {
+                    let Ok(list) = EditList::new(vec![e.clone()]) else { continue };
+                    if *sync {
+                        doc.sync_undo();
+                    }
+                    let hint = if *sync { GroupHint::BreakBefore } else { GroupHint::Continue };
+                    let txn = Transaction::new(doc.revision(), list, TransactionOrigin::UserInput)
+                        .with_hint(hint);
+                    let before = doc.history().current_seq();
+                    if doc.apply(txn).is_err() {
+                        continue;
+                    }
+                    let h = doc.history();
+                    // An empty edit list makes no state, so nothing is bounded until the next one.
+                    if h.current_seq() == before {
+                        continue;
+                    }
+                    texts.insert(h.current_seq(), doc.bytes().to_vec());
+                    let l = h.limits();
+                    match l.levels {
+                        Some(n) => {
+                            prop_assert!(h.group_count() <= n as usize + 1, "{} levels kept", h.group_count());
+                            prop_assert!(h.group_count() >= 1, "the newest change was dropped");
+                        }
+                        None => prop_assert_eq!(h.group_count(), 0, "a negative 'undolevels' keeps a level"),
+                    }
+                    if let Some(b) = l.bytes {
+                        prop_assert!(
+                            h.payload_bytes() <= b || h.group_count() <= 1,
+                            "{} bytes in {} levels past a budget of {}", h.payload_bytes(), h.group_count(), b
+                        );
+                    }
+                }
+                UndoOp::Undo => {
+                    doc.undo();
+                }
+                UndoOp::Redo => {
+                    doc.redo();
+                }
+                UndoOp::Older => {
+                    doc.undo_chronological(true);
+                }
+                UndoOp::Newer => {
+                    doc.undo_chronological(false);
+                }
+                UndoOp::Limits(l) => doc.set_undo_limits(*l),
+            }
+            doc.assert_invariants();
+            let seq = doc.history().current_seq();
+            prop_assert_eq!(Some(doc.bytes()), texts.get(&seq).map(Vec::as_slice), "the text of state {:?}", seq);
+        }
+        // Undo as far as it goes: it ends at the root, the oldest kept state, with that state's text.
+        if doc.history().limits().levels != Some(0) {
+            let mut guard = 0;
+            while doc.undo().is_some() {
+                guard += 1;
+                prop_assert!(guard < 1000, "undo did not terminate");
+            }
+            let root = doc.history().root_seq();
+            prop_assert_eq!(doc.history().current_seq(), root, "undo stops at the root");
+            prop_assert_eq!(Some(doc.bytes()), texts.get(&root).map(Vec::as_slice), "the root's text");
+        }
     }
 }

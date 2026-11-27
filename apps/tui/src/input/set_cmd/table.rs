@@ -116,6 +116,9 @@ pub enum Opt {
     SwapFile,
     UpdateCount,
     Directory,
+    /// `'undolevels'`: how many undo levels every buffer keeps, with the `editor.undo_max_bytes` budget
+    /// (RFC-0026 §1, #1290). Negative: no undo; 0: Vi's `u` that undoes itself.
+    UndoLevels,
 }
 
 /// An option's value.
@@ -1282,6 +1285,19 @@ pub const OPTIONS: &[OptDef] = &[
         OptKind::Bool,
         OptVal::Bool(false),
         OptVal::Bool(false),
+        Locality::Global,
+    ),
+    // RFC-0026 slice 1 (#1290): the undo bound. Global here; nvim's is global-local.
+    def(
+        Opt::UndoLevels,
+        "undolevels",
+        "ul",
+        OptKind::Num {
+            min: INT_MIN,
+            max: INT_MAX,
+        },
+        OptVal::Num(1000),
+        OptVal::Num(1000),
         Locality::Global,
     ),
     def(

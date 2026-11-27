@@ -69,3 +69,22 @@ fn the_user_config_keymap_lang_is_installed() {
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(dir.path("f.txt")).unwrap(), b"xb\n");
 }
+
+/// The undo bound from the user config (#1290, RFC-0026 §1): `editor.undolevels` is `'undolevels'`, and
+/// `editor.undo_max_bytes` bounds the payload so that only the current change stays undoable.
+#[test]
+fn the_config_bounds_undo() {
+    for (config, want) in [
+        (&b"[editor]\nundolevels = 1\n"[..], &b"bcdefgh\n"[..]),
+        (b"[editor]\nundo_max_bytes = 1\n", b"cdefgh\n"),
+    ] {
+        let dir = Scratch::new();
+        dir.file("f.txt", b"abcdefgh\n");
+        std::fs::create_dir_all(dir.path("home/ruse")).unwrap();
+        dir.file("home/ruse/config.toml", config);
+        let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+        ed.keys("xxxuuu:wq\r");
+        assert_eq!(ed.exit_status(), 0);
+        assert_eq!(std::fs::read(dir.path("f.txt")).unwrap(), want);
+    }
+}

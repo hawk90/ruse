@@ -6612,6 +6612,28 @@ FIXTURES: list[dict] = [
     {"name": "i1613_ysearch_e_wide", "lines": ["ab中x"], "keys": "y/中/e<CR>", "observe": ["marks"]},
     {"name": "i1613_vb_r_wide", "lines": ["ab中", "xy中"], "keys": "l<C-v>jlrZ", "observe": ["marks"]},
     {"name": "i1613_vb_U_wide", "lines": ["abé", "xyé"], "keys": "l<C-v>jlU", "observe": ["marks"]},
+    # --- #1290 (RFC-0026 slice 1): the undo bound. nvim keeps 'undolevels' + 1 undo groups and frees the
+    #     oldest at the next change (the oldest undone branch first); `u` past the oldest kept state fails
+    #     (`Already at oldest change`). `:set ul` is itself an undo break, so no setup is needed. 0 is Vi's
+    #     undo (`u` undoes the undo, CTRL-R fails); a negative value keeps no undo. ---------------------------
+    {"name": "i1290_ul3_keeps_four_levels", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxx",
+     "observe": ["undo"]},
+    {"name": "i1290_ul3_u_past_the_oldest", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxxuuuuu"},
+    {"name": "i1290_ul3_u_past_the_oldest_then_x", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxxuuuuux"},
+    {"name": "i1290_ul3_g_minus_stops_at_the_root", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxxg-g-g-g-g-g-"},
+    {"name": "i1290_ul1_drops_the_undone_branch_first", "lines": ["abcdefgh"], "keys": ":set ul=1<CR>xu$xxg-g-g-"},
+    {"name": "i1290_lowered_ul_trims_at_the_next_change", "lines": ["abcdefgh"],
+     "keys": "xxxxx:set ul=1<CR>xuuuu"},
+    {"name": "i1290_lowered_ul_keeps_until_a_change", "lines": ["abcdefgh"], "keys": "xxx:set ul=0<CR>uuu"},
+    {"name": "i1290_ul0_u_undoes_the_undo", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>xxuu"},
+    {"name": "i1290_ul0_u_toggles_back", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>xxuuu"},
+    {"name": "i1290_ul0_ctrl_r_fails", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>xxu<C-r>"},
+    {"name": "i1290_ul0_insert_toggles", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>iXY<Esc>uu"},
+    {"name": "i1290_ul_negative_no_undo", "lines": ["abcdefgh"], "keys": ":set ul=-1<CR>xxu"},
+    {"name": "i1290_ul_negative_frees_the_history", "lines": ["abcdefgh"],
+     "keys": "xx:set ul=-1<CR>x:set ul=1000<CR>uu"},
+    {"name": "i1290_ul_negative_keeps_until_a_change", "lines": ["abcdefgh"],
+     "keys": "xx:set ul=-5<CR>u:set ul=1000<CR>u"},
 ]
 
 

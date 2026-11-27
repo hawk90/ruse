@@ -499,8 +499,10 @@ impl InputEngine {
     }
 
     /// `{count}u` / `{count}<C-r>`: the command `count` times, so the step past the oldest (newest) change
-    /// fails and stops a macro or `:normal`, as Vim's `u_doit` loop does (#1111). Capped: nvim keeps at
-    /// most `'undolevels'` (1000) steps, so a hostile count cannot allocate without bound.
+    /// fails and stops a macro or `:normal`, as Vim's `u_doit` loop does (#1111). The cap is an allocation
+    /// guard for a hostile count, not the undo bound: the core keeps `'undolevels'` + 1 groups (1000 by
+    /// default, RFC-0026 §1) and the step past the oldest kept state fails, so with the default no count
+    /// reaches it; only an `'undolevels'` raised past 9999 can make a count over 10000 stop short.
     fn counted(&mut self, cmd: Command) -> Feed {
         let n = self.mcount().min(10_000) as usize;
         self.reset();

@@ -32,6 +32,7 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::FileFormats => "files.fileformats",
         Opt::SwapFile => "files.swapfile",
         Opt::UpdateCount => "files.updatecount",
+        Opt::UndoLevels => "editor.undolevels",
         Opt::Backup => "files.backup",
         Opt::WriteBackup => "files.writebackup",
         Opt::BackupDir => "files.backupdir",
@@ -172,6 +173,15 @@ pub(crate) fn apply_config_keys(
             cfg.get("render.conceal").map(|e| &e.value),
             Some(crate::config::Value::Bool(false))
         );
+    }
+    // `editor.undo_max_bytes` is no `:set` option (ruse's own, RFC-0026 §1): the config's value, else
+    // the schema default. A value below 0 is no byte bound, as 0 is.
+    if only.is_none_or(|keys| keys.contains(&"editor.undo_max_bytes")) {
+        host.ui.undo_max_bytes = match cfg.get("editor.undo_max_bytes").map(|e| &e.value) {
+            Some(crate::config::Value::Int(n)) => *n,
+            _ => super::UNDO_MAX_BYTES_DEFAULT,
+        };
+        host.ws.set_undo_limits(host.ui.undo_limits());
     }
     for def in OPTIONS {
         let Some(key) = config_key(def.opt) else {

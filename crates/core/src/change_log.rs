@@ -51,22 +51,12 @@ pub struct ChangeEntry {
 }
 
 impl ChangeEntry {
-    /// The bytes this entry holds against the cap: every inserted byte of both lists, plus a fixed cost
-    /// per edit for its position and length.
+    /// The bytes this entry holds against the cap: [`EditList::payload_bytes`] of both lists, the cost
+    /// model the undo bound uses too (RFC-0026 §1).
     #[must_use]
     pub fn payload_bytes(&self) -> usize {
-        list_bytes(&self.forward) + list_bytes(&self.inverse)
+        self.forward.payload_bytes() + self.inverse.payload_bytes()
     }
-}
-
-/// The per-edit cost counted on top of its inserted bytes: a position and a deleted length.
-const EDIT_OVERHEAD: usize = 16;
-
-fn list_bytes(list: &EditList) -> usize {
-    list.edits()
-        .iter()
-        .map(|e| e.ins.len() + EDIT_OVERHEAD)
-        .sum()
 }
 
 /// The log's bound: past either limit it overflows (RFC-0023 §1).
