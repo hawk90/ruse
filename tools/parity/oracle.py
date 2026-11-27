@@ -6299,6 +6299,48 @@ FIXTURES: list[dict] = [
      "keys": "G:1,5s/a/x/c<CR>nyq", "observe": ["marks"]},
     {"name": "i1618_s_confirm_sub_range", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"],
      "keys": "G:2,4s/a/x/c<CR>yq", "observe": ["marks"]},
+    # --- #1617 ---
+    # Normal `*`/`#`/`g*`/`g#` add the pattern they search for to the search history (`\<foo\>` for the
+    # whole-word forms, `foo` for the `g` forms), so a later `/<Up>` recalls it; a count does not change it.
+    {"name": "i1617_star_history", "lines": ["foo x foo", "cd x cd"], "keys": "*/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_star_history_pattern", "lines": ["foo x foo", "cd x cd"], "keys": "*/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_hash_history", "lines": ["foo x foo", "cd x cd"], "keys": "#/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_gstar_history", "lines": ["foo x foobar", "cd x cd"], "keys": "g*/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_gstar_history_pattern", "lines": ["foo x foobar", "cd x cd"], "keys": "g*/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_ghash_history", "lines": ["foobar x foo", "cd x cd"], "keys": "$g#/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_ghash_history_pattern", "lines": ["foobar x foo", "cd x cd"], "keys": "$g#/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_hash_history_pattern", "lines": ["foo x foo", "cd x cd"], "keys": "#/cd<CR>gg/<Up><Up><CR>\"/P"},
+    {"name": "i1617_count_star_history", "lines": ["foo x foo foo", "cd x cd"], "keys": "2*/cd<CR>gg/<Up><Up><CR>"},
+    {"name": "i1617_star_up_once", "lines": ["foo x foo", "cd x cd"], "keys": "*gg/<Up><CR>"},
+    {"name": "i1617_star_no_word_no_history", "lines": ["foo x foo", "  "], "keys": "/x<CR>j*gg/<Up><CR>"},
+    # --- #1612 a Visual-block operator is ONE undo entry (`op_shift`/`op_delete`/`op_tilde`/`op_replace`
+    #     `u_save` over all its lines), so `u`/`CTRL-R` leave `'.` on the block's top line; a block insert's
+    #     replicate is one entry under the typed top row's. ------------------------------------------------
+    {"name": "vb_x_undo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjxu", "setup": UNDO_SETUP},
+    {"name": "vb_x_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjxu<C-r>",
+     "setup": UNDO_SETUP},
+    {"name": "vb_r_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjrzu", "setup": UNDO_SETUP},
+    {"name": "vb_r_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjrzu<C-r>", "setup": UNDO_SETUP},
+    {"name": "vb_tilde_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jj~u", "setup": UNDO_SETUP},
+    {"name": "vb_rot13_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjg?u<C-r>",
+     "setup": UNDO_SETUP},
+    {"name": "vb_c_undo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjczz<Esc>u",
+     "setup": UNDO_SETUP},
+    {"name": "vb_c_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjczz<Esc>u<C-r>",
+     "setup": UNDO_SETUP},
+    {"name": "vb_I_undo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjIzz<Esc>u",
+     "setup": UNDO_SETUP},
+    {"name": "vb_I_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjIzz<Esc>u<C-r>",
+     "setup": UNDO_SETUP},
+    {"name": "vb_A_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjAzz<Esc>u<C-r>",
+     "setup": UNDO_SETUP},
+    {"name": "vb_C_cr_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jCx<CR>y<Esc>u<C-r>",
+     "setup": UNDO_SETUP},
+    {"name": "vb_shift_right_ragged_undo", "lines": ["abcdefgh", "", "abcdefgh"],
+     "keys": ":set ts=8 sw=4 et<CR>4l<C-v>jj>u", "setup": UNDO_SETUP},
+    {"name": "vb_forced_d_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "ld<C-v>jju", "setup": UNDO_SETUP},
+    {"name": "vb_forced_d_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "ld<C-v>jju<C-r>",
+     "setup": UNDO_SETUP},
 ]
 
 

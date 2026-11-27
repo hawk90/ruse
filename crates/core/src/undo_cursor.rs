@@ -12,7 +12,8 @@
 //!
 //! ruse records byte edits, not line entries, so [`entries`] derives the entry an edit would have been in
 //! Vim: a whole-line edit (it starts at a line start and inserts and deletes only whole lines) covers just
-//! those lines, any other edit covers every line it touches.
+//! those lines, any other edit covers every line it touches. A change whose Vim operator saved all its
+//! lines at once (a blockwise operator) says so with an [`UndoEntry`], and its edits make one entry (#1612).
 
 use crate::edit::EditList;
 use crate::pos::count_newlines;
@@ -30,8 +31,77 @@ pub(crate) struct Entry {
     same: usize,
 }
 
-/// Append the entries one applied list contributes: `list` turned `old` into `new`.
-pub(crate) fn entries(old: &[u8], new: &[u8], list: &EditList, out: &mut Vec<Entry>) {
+/// How a change's edits map onto Vim undo entries (#1612). Vim's operators `u_save` their lines before
+/// they change them, so the entries follow the saves, not the edits.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(crate) enum UndoEntry {
+    /// One entry per edit (see [`entries`]): what an edit that saved only its own lines leaves.
+    #[default]
+    PerEdit,
+    /// One entry from the first edited line to the last: a blockwise operator, whose `op_shift` /
+    /// `op_delete` / `op_tilde` / `op_replace` / `block_insert` saves the block's lines at once.
+    One,
+    /// No entry: the lines are in an earlier change of the same undo step, which saved them already. A
+    /// block change copying its text down the block (nvim's `op_change` saves nothing for that copy; its
+    /// `op_delete` saved the block's lines).
+    Covered,
+}
+
+/// Append the entries one applied list contributes: `list` turned `old` into `new`, its edits making
+/// entries as `shape` says.
+pub(crate) fn entries(
+    old: &[u8],
+    new: &[u8],
+    list: &EditList,
+    shape: UndoEntry,
+    out: &mut Vec<Entry>,
+) {
+    if shape == UndoEntry::Covered {
+        return;
+    }
+    let first = out.len();
+    edit_entries(old, new, list, out);
+    if shape == UndoEntry::One && out.len() > first + 1 {
+        let (top, end) = out[first..].iter().fold((usize::MAX, 0), |(top, end), e| {
+            (top.min(e.top), end.max(e.top + e.newsize))
+        });
+        let grown: isize = out[first..]
+            .iter()
+            .map(|e| e.newsize as isize - e.oldsize as isize)
+            .sum();
+        let newsize = end - top;
+        let oldsize = newsize.saturating_add_signed(-grown);
+        let same = same_lines(
+            old,
+            nth_line_start(old, top),
+            new,
+            nth_line_start(new, top),
+            oldsize.min(newsize),
+        );
+        out.truncate(first);
+        out.push(Entry {
+            top,
+            oldsize,
+            newsize,
+            same,
+        });
+    }
+}
+
+/// The byte offset of 0-based line `n` in `text`, or its length when it has fewer lines.
+fn nth_line_start(text: &[u8], n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+    text.iter()
+        .enumerate()
+        .filter(|&(_, &c)| c == b'\n')
+        .nth(n - 1)
+        .map_or(text.len(), |(i, _)| i + 1)
+}
+
+/// Append one entry per edit of `list`, which turned `old` into `new`.
+fn edit_entries(old: &[u8], new: &[u8], list: &EditList, out: &mut Vec<Entry>) {
     let mut scan = 0;
     let mut old_line = 0;
     let mut byte_delta: isize = 0;
@@ -228,11 +298,64 @@ mod tests {
     use crate::pos::BytePos;
 
     fn run(old: &str, edits: Vec<Edit>) -> Vec<(usize, usize, usize)> {
+        run_as(old, edits, UndoEntry::PerEdit)
+    }
+
+    fn run_as(old: &str, edits: Vec<Edit>, shape: UndoEntry) -> Vec<(usize, usize, usize)> {
         let list = EditList::new(edits).expect("disjoint");
         let new = list.apply_to(old.as_bytes());
         let mut out = Vec::new();
-        entries(old.as_bytes(), &new, &list, &mut out);
+        entries(old.as_bytes(), &new, &list, shape, &mut out);
         out.iter().map(|e| (e.top, e.newsize, e.same)).collect()
+    }
+
+    #[test]
+    fn a_one_entry_list_is_one_entry_over_all_its_lines() {
+        // A block `x` on lines 2 to 4: nvim's `op_delete` saves the three lines as one entry (#1612).
+        let x = || {
+            vec![
+                Edit::delete(BytePos(4), 1),
+                Edit::delete(BytePos(7), 1),
+                Edit::delete(BytePos(10), 1),
+            ]
+        };
+        assert_eq!(
+            run_as("ab\ncd\nef\ngh", x(), UndoEntry::PerEdit),
+            [(1, 1, 0), (2, 1, 0), (3, 1, 0)]
+        );
+        assert_eq!(run_as("ab\ncd\nef\ngh", x(), UndoEntry::One), [(1, 3, 0)]);
+        // A block change's copy down the block is in its delete's entry already.
+        assert_eq!(run_as("ab\ncd\nef\ngh", x(), UndoEntry::Covered), []);
+        // A row the block skipped (a short line a `>` leaves alone) is inside the entry, unchanged.
+        assert_eq!(
+            run_as(
+                "ab\n\ncd",
+                vec![
+                    Edit::insert(BytePos(1), b"  ".to_vec()),
+                    Edit::insert(BytePos(5), b"  ".to_vec()),
+                ],
+                UndoEntry::One
+            ),
+            [(0, 3, 0)]
+        );
+        // A block change whose Insert took a `<CR>`: the entry holds the lines it added.
+        assert_eq!(
+            run_as(
+                "ab\ncd",
+                vec![
+                    Edit::replace(BytePos(1), 1, b"x\ny".to_vec()),
+                    Edit::replace(BytePos(4), 1, b"x".to_vec()),
+                ],
+                UndoEntry::One
+            ),
+            [(0, 3, 0)]
+        );
+        // The `[`/`]`/`.` marks undoing it leaves: `.` on the entry's top line, not its last.
+        let list = EditList::new(x()).expect("disjoint");
+        let new = list.apply_to(b"ab\ncd\nef\ngh");
+        let mut out = Vec::new();
+        entries(b"ab\ncd\nef\ngh", &new, &list, UndoEntry::One, &mut out);
+        assert_eq!(change_marks(&out, 4, 4).last_change_line, Some(1));
     }
 
     #[test]
@@ -365,5 +488,53 @@ mod tests {
         assert_eq!(line_count(b"a\n"), 1);
         assert_eq!(line_count(b"a\nb"), 2);
         assert_eq!(line_count(b"\n"), 1);
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::test_cases(256))]
+
+        /// #1612: a block operator's edits (at most one per row, inside the row) as ONE entry: it runs from
+        /// the first edited row to the last, holds every per-edit entry's lines, and undoing it leaves `'.`
+        /// on its top row whichever rows between were edited.
+        #[test]
+        fn a_one_entry_list_spans_its_rows(
+            rows in proptest::collection::vec(
+                ("[a-c]{0,4}", proptest::option::of((0usize..5, 0usize..3, "[xy]{0,2}"))),
+                1..8,
+            ),
+        ) {
+            let mut old = Vec::new();
+            let mut edits = Vec::new();
+            let mut edited = Vec::new();
+            for (i, (line, edit)) in rows.iter().enumerate() {
+                let ls = old.len();
+                old.extend_from_slice(line.as_bytes());
+                old.push(b'\n');
+                if let Some((at, del, ins)) = edit {
+                    let at = (*at).min(line.len());
+                    let del = (*del).min(line.len() - at);
+                    if del > 0 || !ins.is_empty() {
+                        edits.push(Edit::replace(BytePos(ls + at), del, ins.as_bytes().to_vec()));
+                        edited.push(i);
+                    }
+                }
+            }
+            let (Some(&first), Some(&last)) = (edited.first(), edited.last()) else {
+                return Ok(());
+            };
+            let list = EditList::new(edits).expect("one edit per row: disjoint");
+            let new = list.apply_to(&old);
+            let (mut one, mut per) = (Vec::new(), Vec::new());
+            entries(&old, &new, &list, UndoEntry::One, &mut one);
+            entries(&old, &new, &list, UndoEntry::PerEdit, &mut per);
+            proptest::prop_assert_eq!(one.len(), 1);
+            let e = &one[0];
+            proptest::prop_assert_eq!((e.top, e.oldsize, e.newsize), (first, last - first + 1, last - first + 1));
+            for p in &per {
+                proptest::prop_assert!(e.top <= p.top && p.top + p.newsize <= e.top + e.newsize);
+            }
+            let lines = line_count(&old);
+            proptest::prop_assert_eq!(change_marks(&one, lines, lines).last_change_line, Some(first));
+        }
     }
 }

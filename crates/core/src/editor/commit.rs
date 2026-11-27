@@ -74,6 +74,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         // Every command outside a text-entry session is a new change for `U`; inside one only the first
         // change is (and the first after an undo break, which the transaction's `BreakBefore` hint carries).
         new_command: !is_text_entry(st.view.mode),
+        undo_entry: plan.undo_entry,
     };
     // Whether the buffer ended in a newline before this command: only then is a cursor left at the end
     // the phantom slot (see the clamp below). `x` on the one char of an unterminated last line leaves that
@@ -189,6 +190,8 @@ struct Entry {
     mode: Mode,
     /// Whether the command starts a new change for `U` (see [`commit`]).
     new_command: bool,
+    /// How the plan's edits map onto Vim undo entries ([`Plan::undo_entry`], #1612).
+    undo_entry: crate::undo_cursor::UndoEntry,
 }
 
 /// What a plan's action left for the rest of [`commit`] to read.
@@ -323,7 +326,7 @@ fn apply_planned(
         entry.anchor,
         &edits,
     );
-    st.apply_planned_txn(edits, hint, start);
+    st.apply_planned_txn(edits, hint, start, entry.undo_entry);
     span
 }
 
@@ -764,6 +767,7 @@ fn refuse_unwritable_register(st: &EditorState, cmd: &Command, p: &Plan) -> Opti
         set_anchor: None,
         set_mark: None,
         op_marks: None,
+        undo_entry: crate::undo_cursor::UndoEntry::PerEdit,
     })
 }
 
