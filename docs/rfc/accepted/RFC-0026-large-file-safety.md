@@ -10,7 +10,7 @@ summary: >
   every buffer, makes searches stop at the first landing and honour the interrupt, puts a time budget and a
   column cap on highlighting, and asks the Emacs large-file question for the startup file too.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../design/persistence-and-recovery.md
   - ../../parity/common.md

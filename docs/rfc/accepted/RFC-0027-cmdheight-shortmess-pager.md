@@ -10,7 +10,7 @@ summary: >
   'shortmess' flags that change a message ruse gives, and routes all multi-row output through the one
   `-- More --` pager with `g<` and 'more'.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
   - ../../design/render-and-frontends.md
   - ../../../spec/DECISIONS.md
