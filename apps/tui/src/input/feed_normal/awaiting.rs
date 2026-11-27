@@ -182,14 +182,26 @@ impl InputEngine {
         Feed::ExecuteEx(line.to_string())
     }
 
-    /// Whether a mark name after `` ` `` / `'` aborts the armed operator. Only a named mark composes
-    /// with an operator here (`` d`a ``); the special marks do not yet, so under an operator they abort
-    /// rather than jump with the operator dropped (#790).
+    /// Whether a mark name after `` ` `` / `'` aborts the armed operator. A named mark and `^ < > [ ] .
+    /// ' `` ` `` compose with an operator (`` d`a ``, `` y`] ``, #1645); any other name (`(`, `{`, `"`)
+    /// aborts rather than jump with the operator dropped (#790).
     fn mark_aborts_op(&self, key: KeyEvent) -> bool {
         self.normal.op.is_some()
             && !matches!(
                 key.code,
-                KeyCode::Char('a'..='z' | 'A'..='Z' | '0'..='9' | '^' | '<' | '>')
+                KeyCode::Char(
+                    'a'..='z'
+                    | 'A'..='Z'
+                    | '0'..='9'
+                    | '^'
+                    | '<'
+                    | '>'
+                    | '['
+                    | ']'
+                    | '.'
+                    | '\''
+                    | '`',
+                )
             )
     }
 
@@ -203,6 +215,10 @@ impl InputEngine {
             // `` `^ `` (where Insert stopped), and `` d`< ``/`` d`> `` under an operator (#1088).
             KeyCode::Char('^') => self.mark_op('^', false),
             KeyCode::Char(c @ ('<' | '>')) if self.normal.op.is_some() => self.mark_op(c, false),
+            // `` d`[ ``, `` y`] ``, `` c`. ``, `` d`` `` under an operator (#1645).
+            KeyCode::Char(c @ ('[' | ']' | '.' | '`' | '\'')) if self.normal.op.is_some() => {
+                self.mark_op(c, false)
+            }
             // `` `. `` — jump to the last-change mark.
             KeyCode::Char('.') => self.action(Command::GotoLastChange),
             // `` `` `` / `` `' `` — jump to the context mark (position before the latest jump).
@@ -243,6 +259,10 @@ impl InputEngine {
             // `'^`, and `d'<`/`d'>` under an operator (#1088).
             KeyCode::Char('^') => self.mark_op('^', true),
             KeyCode::Char(c @ ('<' | '>')) if self.normal.op.is_some() => self.mark_op(c, true),
+            // `d'[`, `y']`, `c'.`, `d''` under an operator (#1645).
+            KeyCode::Char(c @ ('[' | ']' | '.' | '`' | '\'')) if self.normal.op.is_some() => {
+                self.mark_op(c, true)
+            }
             // `'.` — linewise to the last-change line.
             KeyCode::Char('.') => self.action(Command::GotoLastChangeLine),
             // `''` / `` '` `` — linewise to the context mark's line (position before the latest jump).

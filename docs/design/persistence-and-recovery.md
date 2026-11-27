@@ -328,8 +328,9 @@ directory), not a returned `write()`.
       (<name> shortened to keep the whole within NAME_MAX), O_WRONLY|O_CREAT|O_EXCL, mode 0600 initially,
       a fresh <rand> on EEXIST; a user's file of any name is never removed. EACCES/EROFS on an existing
       target → IN PLACE.
-4. write encoded bytes (apply fileencoding + fileformat/EOL + optional BOM — TEXT-19, VIM-STATE); handle
-      no-trailing-newline ('binary'/'noeol') exactly.
+4. write encoded bytes (fileformat/EOL, then the fileencoding (RFC-0025, persist/codec.rs; from its
+      slice 2 an unencodable character fails the write before step 3), then the optional BOM — TEXT-19,
+      VIM-STATE); handle no-trailing-newline ('binary'/'noeol') exactly.
 5. fchown temp to the captured uid/gid when they differ (EPERM → IN PLACE); fchmod to the captured mode;
       copy every xattr (on Linux this includes the POSIX ACL; a value that cannot be set → IN PLACE).
 6. fsync(temp)                              # data and metadata durable before it becomes the file
@@ -436,7 +437,9 @@ of its own here: every buffer keeps at most `'undolevels'` + 1 undo groups (`edi
 and at most `editor.undo_max_bytes` of edit payload (256 MiB); past either the oldest states are dropped by
 re-rooting the undo tree, never the newest change (RFC-0026 §1, D-067). RJ01 replay never reads the tree, so
 the bound does not touch recovery. Since RJ01 schema 1.1 (#1286) the journal keeps `mac`, `'binary'` and `'endoffile'`, so a recovered
-buffer of such a file comes back with its format; a journal a 1.0 build wrote still recovers as unix. The startup file is not asked about with the Emacs
+buffer of such a file comes back with its format; a journal a 1.0 build wrote still recovers as unix. Schema
+1.2 (RFC-0025 §7, RFC-0023 Amendment 2) adds the file's encoding to the same records; a 1.0 or 1.1 journal
+recovers with the default encoding (UTF-8, invalid bytes kept), which is what those builds wrote. The startup file is not asked about with the Emacs
 large-file question (the question needs the session, which starts after the file is read).
 
 ### 4. Three-way crash recovery
