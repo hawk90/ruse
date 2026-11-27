@@ -1054,3 +1054,29 @@ related:
   second frontend or a remote peer must share the text byte-for-byte with the file.
 - Refs: [RFC-0024](../docs/rfc/accepted/RFC-0024-line-terminated-text.md), D-005, D-064, RFC-0007, INV-TXN,
   INV-UNDO, F-001, F-008, F-012, #730, #1298.
+
+## D-066 — File encodings are decoded at the persist boundary with encoding_rs behind ruse's name table · open
+- **Proposed decision:** A file's encoding is part of its `FileFormat` in the frontend (apps/tui persist); a
+  read decodes to UTF-8 before line-ending detection and a write encodes after it, so the core keeps its UTF-8
+  byte text (invalid bytes allowed) and gains no dependency. Codecs: `encoding_rs` (DEP-ENCODING, wrapped)
+  for the WHATWG sets, hand-written ISO-8859-1, UTF-16 encoding and UTF-32, all chosen through ruse's own name
+  table, never `Encoding::for_label`, so `latin1` is ISO-8859-1 (not windows-1252) and `utf-16` is
+  big-endian. Detection: `'fileencodings'` in order, no guessing; the default is `ucs-bom,utf-8`, a recorded
+  divergence from nvim's `ucs-bom,utf-8,default,latin1` (maintainer's decision: a stray byte must not turn a
+  UTF-8 file, such as Korean text, into Latin-1 mojibake); when every entry fails the file reads as UTF-8 with
+  its invalid bytes kept and shown `<xx>`, as today, so read then write reproduces the bytes. Latin-1 and
+  legacy files are listed in `files.fileencodings` (Korean: `ucs-bom,utf-8,cp949`) or read with `++enc`.
+  Proposed, still open for approval: undecodable bytes in a forced `++enc` read are kept (`++bad=keep`,
+  nvim `?`), and a character the encoding cannot hold fails the write with E513 for every encoding, before
+  any file is opened (nvim writes a substitute byte for its built-in encodings). `:w ++enc=` leaves `'fenc'`; `++enc` does not stick. The Emacs
+  profile: `C-x RET f`/`c`/`r`, `emacs.prefer_coding_system` (default utf-8), and Emacs's
+  `select-safe-coding-system` switch on save. RJ01 1.2 appends the encoding name to Header and Meta format
+  records. Status line `[{fenc}]` when not UTF-8. Full design:
+  [RFC-0025](../docs/rfc/proposed/RFC-0025-file-encodings.md).
+- **Reason:** #1292: a Latin-1, Shift_JIS, EUC-KR or UTF-16 file shows as invalid bytes; nvim v0.12.6 and
+  Emacs 31.1 both decode them (42 probed cases in RFC-0025). RFC-0008 §6 already puts the encoding beside the
+  Document. iconv is absent on Windows and unsafe FFI; the `encoding` crate is unmaintained.
+- **Re-evaluate if:** an encoding `encoding_rs` lacks is needed (EBCDIC, ISO-2022-KR, strict EUC-KR writes);
+  a second frontend or remote peer reads files itself; measured decode cost on large files is material.
+- Refs: [RFC-0025](../docs/rfc/proposed/RFC-0025-file-encodings.md), RFC-0008, RFC-0017, RFC-0023, D-034,
+  D-042, D-056, D-064, D-065, F-008, DEP-ENCODING, #1292.
