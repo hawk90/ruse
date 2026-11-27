@@ -64,6 +64,9 @@ Draft early, keep the diff reviewable. **Split** a PR when it mixes any of:
 
 Land the split pieces behind a parent tracking issue (see issue dependencies in the workflow doc).
 
+New files follow the [module layout and test-file conventions](docs/contributing/module-layout.md)
+(`x.rs` + `x/`, not `x/mod.rs`; unit tests in `mod tests`, `tests.rs` or `<topic>_tests.rs`).
+
 ## Required checks
 
 Every PR:
