@@ -120,14 +120,8 @@ inserted or deleted above moves them, an edit inside their line leaves their col
 named mark, `` `^ `` and the Visual marks keep nvim's raw column beside the offset (#1304): an edit that
 shortens the line under one leaves its column, which a jump clamps; a `$` area's `'>` is one past its line's
 last char; a dot-repeat of a Visual operator leaves `'<`/`'>` and `gv` alone (nvim's `redo_VIsual`). The
-`[`/`]` change marks keep a raw column too (#1615): a linewise delete leaves both at the column the operator
-started at (`oap->start`), past the end of the line now in the deleted one's place or on the line past the
-buffer's end, which `getpos()` reports and a jump clamps. The same raw column carries `']` inside a
-multibyte char (#1613): an inclusive yank (`y$`, `ye`, `yiw`, a Visual or block area, `ygn`) and a shift
-leave it on the last char's LAST byte, as nvim's `mb_adjust_opend` and `op_shift` (`ml_get_len - 1`) do,
-while an exclusive yank (`decl` of its end), a put and `r` leave it on the char's first byte. No new
-position type: the offset stays on the char's first byte (so `` `] `` lands on the char) and the bytes into
-it are the raw column beyond the offset. The
+`[`/`]` change marks keep a raw column the same way; which command sets `'[` `']` `'.` `'<` `'>` and to what
+is in [§4.3.1](#change-marks). The
 View hands them to the Document per transaction (`EditorState::apply_txn`); a View at rest while another
 View edits its document pins them, with its cursor (`Workspace::lend`). The Emacs mark stays a snapped
 offset: Emacs keeps markers through an in-place replacement (casing), which the byte rule does not. Per-buffer (rather than per-View) marks and the `Selection` model stay deferred (#636).
@@ -395,15 +389,165 @@ Auto-maintained by event hooks into the NamedMap; most are read-only to the user
 | Mark | Set by | Notes |
 | --- | --- | --- |
 | `` `` `` , `` '' `` | any jump | position **before** the last jump; set by `push_jump` |
-| `` `. `` | each edit (`records_change`) | last change position = changelist head |
+| `` `. `` | each edit (`records_change`) | last change position = changelist head; per command in [§4.3.1](#change-marks) |
 | `` `^ `` | leaving Insert | last insert position (`gi` target) |
-| `` `[ `` `` `] `` | after any change/yank | bounds of last changed/yanked text (**plugin-critical**, VIM-MARK-1) |
-| `` `< `` `` `> `` | leaving Visual | last visual selection bounds — stored as the **full Selection**, not two points |
+| `` `[ `` `` `] `` | after any change/yank | bounds of last changed/yanked text (**plugin-critical**, VIM-MARK-1); per command in [§4.3.1](#change-marks) |
+| `` `< `` `` `> `` | leaving Visual; a Visual put | last visual selection bounds — stored as the **full Selection**, not two points; see [§4.3.1](#change-marks) |
 | `` `" `` | leaving buffer | last cursor position (restored on reopen; persisted with A-Z class) |
 | `` `( `) `{ `} `` | on demand | sentence/paragraph bounds, computed at read (not stored) |
 
 `` `< ``/`` `> `` storing a whole `Selection` (not a point pair) is what lets `gv` restore a **multi-caret**
 visual selection under NAT-5 with no change here (G5).
+
+#### 4.3.1 Change marks `'[` `']` `'.` and `'<` `'>`: the shipped rules {#change-marks}
+
+This section describes what the v0 code does now (nvim v0.12.6 is the oracle). It is not the deferred
+design above. Where ruse and nvim differ, the row says so and names the issue. Sources (issue → PR):
+#1302 → #1609-#1611, #1303 → #1604, #1612 → #1634, #1613 → #1680, #1614 → #1668, #1615 → #1655,
+#1618 → #1629, #1628 → #1660, #1631 → #1666, #1645 → #1679.
+
+**Storage.** The View (`crates/core/src/editor/mod.rs`) holds `change_start` (`'[`) and `change_end` (`']`)
+as a `Mark { at, past }`, the same type as `'<` `'>` `'a` `` `^ ``. `at` is an in-buffer byte offset. Every
+jump and operator reads `at`. `past` is how many bytes nvim's raw column lies beyond `at`: past the line's
+end, or into a multibyte char. Only `View::change_marks_raw` reads `past` (the `getpos()` view, which the
+parity comparator uses). `'.` is the newest change-list entry: a plain offset with no raw column. Next to it
+is the flag `View::dot_past_end`, set when that entry is the line past the buffer's end. Edits move
+`'[` `']` by the LINE-anchor rule with `Keep` gravity, so a deleted line does not remove them, and the
+Document carries `past` with them. Undo does not restore `'[` `']`: the undo step sets them itself (below).
+Every commit snaps `at` into the buffer.
+
+**How a command names them.** `commit` (`crates/core/src/editor/commit.rs`) takes one of two paths:
+
+- *Default* (`set_change_marks`, used when the plan has no `op_marks`):
+  - A Normal-mode edit: `'[` is the start of the edit span and `']` the first byte of the span's last
+    char (`'[` when the span is empty; a span that reaches the final newline ends on the last char before
+    it).
+  - A yank: the same rule, over the span carried in `RegWrite::Yank`.
+  - Leaving Insert or Replace: `'[` is where the session began and `']` is the caret at exit, one past the
+    last inserted char, which a jump clamps. Keys typed inside the session do not touch `'[` `']`.
+  - `'.` is the cursor the command leaves. For a change typed in Insert or Replace it is the start of the
+    typed edit, the char just typed.
+- *Operator marks* (`Plan.op_marks: Option<OpMarks>`, from the planners and `planner/op_marks.rs`). Each
+  mark is a line of the text after the command plus a `MarkCol`. `resolve_op_marks` turns it into a mark
+  once the edit is applied:
+
+| `MarkCol` | column | `'[`/`']` raw `past` |
+| --- | --- | --- |
+| `Byte(c)` | byte column `c` | yes: a `c` past the line's end clamps `at` to the newline and keeps the excess; a `c` inside a char puts `at` on that char's first byte and keeps the bytes into it |
+| `LineEnd` | the line's length (its newline), as `do_join`'s `sumsize` | none needed |
+| `LastByte` | `len - 1` (0 on an empty line), as `ml_get_len - 1` | yes: inside the last char when that char is multibyte |
+| `LastChar` | the first byte of the last char | no |
+
+  With `op_marks`, `'.` becomes the change-list entry in place of the cursor. An operator with `op_marks`
+  that changes nothing (a block `<` that moves no text) still records a change-list entry, because nvim's
+  operator ran `u_save` and `changed_lines`. A yank with `op_marks` records none. When the resolved `'.` is
+  the slot after a final newline, `dot_past_end` is set, except under `:keepjumps`. Any later change-list
+  push clears it.
+
+**Per command.** The row says what each mark is in the text after the command. `—` means the mark is not
+changed. The `'.` column assumes the command makes a change.
+
+| command | `'[` | `']` | `'.` | fixtures |
+| --- | --- | --- | --- | --- |
+| charwise delete/change/replace within a line (`x`, `dw`, `r`) | edit start | the edit span's last char, first byte (`'[` for a pure delete) | cursor left | — |
+| charwise delete over lines (`d}` charwise, `vjd`) | operator start (`oap->start`), raw | same as `'[` | (start line + 1, 0), possibly past the end → E19 | `cm_d_search_lines`, `cm_visual_d_three_lines` |
+| linewise delete (`dd`, `dj`, `Vd`) | (first deleted line's number, operator start's byte column), raw: past the end of the line now there, or on the line past the buffer's end | same as `'[` | (first deleted line's number, 0), possibly past the end → E19 | `i1615_*`, `cm_dd_*`, `cm_dk_from_column` |
+| inclusive charwise yank (`y$`, `ye`, `yf`, `yt`, `yiw`, `yi(`, `ygn`, `y/x/e`, `yw` pulled back to the line's end, `vy`) | yank start | the last char's **last** byte, raw (`mb_adjust_opend`) | — | `i1613_*` |
+| exclusive yank (`yl`, `y2l`, `yh`, `yve`), `v$y` | yank start | the last char's **first** byte; `v$y` and other charwise yanks that end in a newline end on the char before it (`decl`) | — | `i1613_*`, `cm_yank_to_newline`, `cm_yank_empty_line_newline` |
+| linewise yank (`yy`, `Vy`) | first line's start | default: the span's last byte, which is the last line's newline (its last char when the span reaches the buffer's end); a jump clamps it | — | — |
+| `:y` | first line's start | last line's last char (first byte; the line's start when empty) | — | `i1303_*` |
+| shift (`>>`, `>j`, `Vj>`, `<<`) | (first line, operator start's byte column), raw; a linewise Visual start is column 0, a dot-repeat uses the caret | last line `LastByte`, raw | (first line, 0), also for a no-op `<<` | `cm_shift_*`, `i1613_*` |
+| `J`, `gJ` | (line, the first line's original length) | `LineEnd` of the joined line | (line + 1, 0), past the end when the join took the last line → E19 | `cm_join_*` |
+| `gq`, `gw` | operator start | the cursor `gq` leaves | the last change `format_lines` made: a join's (next line, 0), a break's (line, col), an indent change's (line, 0) | `cm_gq_*`, `cm_gw_keeps_cursor` |
+| charwise/blockwise put (`p`, `P`, `gp`, `gP`) | put start | the last put char's **first** byte | `'[` | `i1613_*` |
+| linewise put (`yyjp`, `:put`) | (first put line, 0) | last put line `LastChar` | (first put line, 0) | `cm_put_*`, `i1303_*` |
+| Insert / Replace session (`i…<Esc>`, `R…<Esc>`) | where it began | exit caret (one past the last inserted char) | the char each typed change put in (`ins_char` → `changed_bytes`), so the last one typed | `cm_insert_one_char`, `cm_insert_cr` |
+| Insert `<Esc>` that drops an unused autoindent | where the blanks were | where the blanks were | — | — |
+| block shift (`<C-v>…>`/`<`) | (top line, the block's left-edge byte column before the shift), raw | bottom line `LastByte`, raw, whichever rows were changed or skipped | (top line, 0); a no-op `<` sets all three | `vb_shift_*` |
+| block `d` `D` `x` `X` | top-left | (bottom line, top-left's byte column) | cursor after `check_cursor_col` | `vb_mk_*` |
+| block `y`, `$y` | top-left | bottom-right char's last byte (the line's length when the line ends before the edge, or `$`) | — | `vb_mk_*`, `i1613_*` |
+| block `~` `u` `U` `g?` / `r` | top-left | bottom-right char's last byte | (top line, 0) / top-left | `vb_mk_*` |
+| block `I` / `A` that copy | Insert start | past the bottom row's copy | (second line, 0) | `vb_mk_*` |
+| block `c` that copies / `c<Esc>` with nothing typed | Insert start | Insert end on the top row / Insert start | (second line, 0) / `op_delete`'s cursor | `vb_mk_*` |
+| Visual put (`vp`, `vP`, `vgp`, `vgP`) | as the Normal put of that register; a linewise register over a charwise area: (first put line, 0) | as the Normal put; linewise into charwise: last put line `LastByte` | `'[`; a one-line charwise register over a block: the last row it put on | `v_put_marks_*` |
+| `:d`, `:g/…/d` | start of the line that took the deleted lines' place (past the last line when the range ran to the end) | same | same | `i1303_*` |
+| `:s` | start of the range's first line, where it is now | start of the range's last line, where it is now | start of the first substituted line in the range | `i1303_*` |
+| `:s///c` | as `:s`, over the whole range | as `:s`; with `l`, the line of that match | the line the last `y`/`l` replacement ends on, or the line the first `a` replacement starts on | `i1618_s_confirm_*`, `i1628_s_confirm_*` |
+| `:j`, `:s/\n//` | end of the first line (its original length) | end of the joined line | start of the next line | `i1303_*` |
+| `:>`, `:<` | start of the range's first line | last char of the range's last line | `'[` | `i1303_*` |
+| `:m`, `:t` | the block's first line where it is now | its last line | top of the touched lines: the copy; for a move, the range's first line, or the line after the destination when that is above it | `i1303_*` |
+| `:r`, `:!` | first line read / range's first line | last line read / last output line (the line above when there is none) | `'[` | `i1303_*` |
+| `:sort`, `:retab` | — | — | first line / first changed line | `i1303_*` |
+| `:mark [`, `:mark ]` | `:mark [` sets `'[`, a plain offset | `:mark ]` sets `']` | — | — |
+
+Ex edits set plain offsets (`set_ex_marks`). They never set `dot_past_end`, so E19 comes only from an
+operator's `op_marks`; this has not been checked against nvim.
+
+**Undo and redo** (`u`, `CTRL-R`, `g-`, `g+`; `undo_cursor::change_marks`, as nvim's `u_undoredo`). `'[` is
+column 0 of the first line the step re-applied and `']` column 0 of the last. `'.` moves to column 0 of the
+top line of the last entry re-applied, without starting a new change-list entry. `'[` starts at the old
+line count and only moves up, so undoing the delete of the last line leaves it one line above the restored
+line. A transaction's `UndoEntry` says how its edits map onto Vim undo entries:
+
+- `PerEdit` (the default): one entry per edit.
+- `One`: one entry for the whole block, from block shift, `d`, `~`, `r` and `I`/`A`. So `u` and `CTRL-R`
+  leave `'.` on the block's top line (#1612; `vb_shift_*_undo`, `vb_shift_right_redo`, `vb_C_cr_undo`).
+- `Covered`: no entry of its own. This is a block `c` copying its text down the block, or a change typed
+  in Insert after the session's first change that joins no lines (`InsertSave`, #1631; `i1631_*`). The
+  lines it adds or removes grow the entry that saved them, so after `lix<CR>y<Esc>u<C-r>` the `'.` is on
+  line 1 and `']` still reaches the last line opened.
+
+**`'<` `'>`.**
+
+- Leaving Visual or Select stores the anchor and the active end, in the area's kind. This happens before
+  the operator's edit, so the edit carries them.
+- A `$` area's `'>` is one past its line's last char, as raw `past` (#1304).
+- A dot-repeat of a Visual operator leaves them unchanged (`redo_VIsual`).
+- After a Visual put (not a dot-repeat), they are set to the put's `'[` `']` offsets in the selection's
+  kind (`nv_put_opt`, #1614; `v_put_marks_*`). Undo brings the replaced area back and redo the put's.
+- The uppercase line forms `D` `X` `Y` `C` `S` `R` over a charwise or blockwise area keep `'<` `'>` in the
+  area's kind, while `visualmode()` reports linewise (#1305).
+
+**Reading them.**
+
+- `` `[ `` and `` `] `` (`planner/marks.rs` `mark_char_target`) snap `at` to a char boundary. In Normal
+  mode, a mark on or past a non-empty line's newline rests on the last char. In Visual mode it may rest on
+  the newline. So `` `] `` after an Insert lands on the last inserted char, and a raw column past the line's
+  end clamps.
+- `'[` and `']` go to the first non-blank of the line.
+- `` `. `` snaps. `'.` goes to the first non-blank of the line.
+- A jump to `'.` while `dot_past_end` is set and `'.` is at or past the buffer's end fails with
+  `E19: Mark has invalid line number`, and the cursor stays. This applies to `` `. ``, `'.`, `g;`/`g,` onto
+  the newest entry, and an operator to `` `. ``.
+- An unset `'[`, `']`, context mark (`''`) or named mark, as a jump or an operator target, gives
+  `E20: Mark not set` (`apps/tui/src/app/dispatch.rs` `mark_error`).
+- An operator to `[`, `]`, `.` or the context mark (`` d`[ ``, `y']`, `` c`. ``, `d''`; #1645, `i1645_*`)
+  reads the mark as the jump does. `` ` `` is exclusive charwise to the clamped mark, `'` is linewise. The
+  operator sets the context mark where it starts, as `nv_cursormark` calls `setpcmark`.
+
+**Known divergences** (each one is in `tests/parity/vim/known-divergences.txt` or has an open issue):
+
+| what differs | fixtures | issue |
+| --- | --- | --- |
+| `']` after a case operator (`g~$`, `gU$`, `vU`, `g?$`, `3~`): nvim ends it on the last byte for an inclusive motion; ruse uses the first byte | — | #1665 |
+| `yi"`: nvim ends `']` on the first byte of the last char inside the quotes; ruse treats it as an inclusive text object | — | #1665 |
+| `'.` after a charwise `gp` at a line's end: nvim puts it at the put's start, ruse on the cursor past the end | `i1613_gp_char_wide` | #1665 |
+| `ygn` sets no `'<` `'>` or `visualmode()` in ruse | `i1613_ygn_wide` | #1665 |
+| a forced-blockwise operator (`d<C-v>j`) sets no `'<` `'>` in ruse | `vb_forced_d_undo`, `vb_forced_d_redo` | #1632 |
+| `']` after undoing a linewise Visual put of a line over a line: ruse marks only the restored line | `v_put_marks_line_line_undo` | #1654 |
+| `o` saves the empty gap below its line in nvim, so `'[` (and `'.` after `u`) are on the opened line; ruse is one line up | `i1631_o_undo`, `i1631_o_redo`, `i1631_o_cr_undo`, `i1631_o_cr_redo` | #1658 |
+| `']` after `CTRL-R` of `Ax<CR><BS>y`: nvim line 1, ruse line 2 | `i1631_A_cr_bs_redo` | #1659 |
+| `u`/`CTRL-R` drops `` `^ `` in nvim when its entry changes size; ruse keeps it (`'[` `']` `'.` verify) | `i1631_cr_undo` and seven more `i1631_*` | #1657 |
+| a mark on deleted lines goes to the first deleted line in nvim (`one_adjust_nodel`), past the end if need be; ruse moves it to the line above | `v_dollar_D_to_eol_column` (`'<`) | #1646 |
+| `gq` replaces the lines as one edit, so a mark on the joined line goes to the line's end instead of moving with its text | `v_gq_joins_short` (`'>`) | #1652 |
+| `` `. `` before any change (oracle: (1,0); ruse beeps); no E20 message for a bare unset `` `. ``/`'.` jump; the `(` `)` `{` `}` `"` marks; a context mark on a deleted line | — | #1661 |
+| `'.` / `'[` after `:normal ixy` and a Select-mode replace (`:normal` typeahead) | `i1307_normal_ixy`, `i1307_normal_ghl` | #1650 |
+| `'>` (and `']`) after `<C-v>jj$ge` / `$<BS>`: a Visual-block motion difference, not a mark one | `vb_dollar_ge_y`, `vb_dollar_bs_y` | #1649 |
+| `` `. `` past a shortened line rests on the newline | `sc_mark_last_change_exact` | #728 (closed; the entry remains) |
+| not a divergence: the oracle feeds `xyz` as one batch, so nvim puts `'.` on the run's first char, as it does for typeahead | `cm_insert_typed_run` | — |
+
+Unit tests: `crates/core/src/editor/tests/op_marks_tests.rs`; undo-entry shapes are tested in
+`crates/core/src/undo_cursor.rs`.
 
 #### 4.4 Emacs mark ring + global ring (EMACS-REGION-2)
 
