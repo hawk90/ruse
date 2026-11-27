@@ -138,7 +138,7 @@ pub(super) fn plan_join(
     Plan {
         op_marks: Some(OpMarks {
             start: MarkAt::new(top, MarkCol::Byte(first_len)),
-            end: MarkAt::new(top, MarkCol::Byte(usize::MAX)),
+            end: MarkAt::new(top, MarkCol::LineEnd),
             dot: MarkAt::new(top + 1, MarkCol::Byte(0)),
         }),
         ..edit(

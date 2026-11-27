@@ -9,7 +9,7 @@
 //! The corpus is `tests/parity/vim/fixtures/corpus.yaml` — JSON-in-YAML (a subset of YAML 1.2),
 //! captured by `tools/parity/oracle.py`. Run with `-- --nocapture` to see the tally.
 
-use ruse_core::{Command, Mode, SelectKind};
+use ruse_core::{BytePos, Command, Mode, SelectKind};
 use ruse_tui::headless::Headless;
 use serde_json::{json, Value};
 
@@ -132,17 +132,16 @@ fn line_col(bytes: &[u8], p: usize) -> Value {
 
 /// ruse's marks as the oracle records them (#900): the set ones of a-z, `<`, `>`, `[`, `]`, `.`, `^`, and
 /// the last Visual mode. A linewise area's `'<` is its first line's start and its `'>` its last line at
-/// column -1 (nvim's MAXCOL). A mark's column is its raw one (#1304), as `getpos()` reports it.
+/// column -1 (nvim's MAXCOL). A mark's column is its raw one (#1304, `[` `]` #1615), as `getpos()` reports it.
 fn ruse_marks(h: &Headless) -> (Value, String) {
     let ws = h.workspace();
     let (bytes, view) = (ws.focused().doc.bytes(), &ws.focused().view);
-    let raw = |c: char| {
-        view.mark_raw(c).map(|(p, past)| {
-            let mut lc = line_col(bytes, p.0);
-            lc[1] = json!(lc[1].as_u64().expect("col") as usize + past);
-            lc
-        })
+    let raw_col = |(p, past): (BytePos, usize)| {
+        let mut lc = line_col(bytes, p.0);
+        lc[1] = json!(lc[1].as_u64().expect("col") as usize + past);
+        lc
     };
+    let raw = |c: char| view.mark_raw(c).map(raw_col);
     let mut marks = serde_json::Map::new();
     for c in 'a'..='z' {
         if let Some(lc) = raw(c) {
@@ -163,15 +162,13 @@ fn ruse_marks(h: &Headless) -> (Value, String) {
     if let Some(lc) = raw('^') {
         marks.insert("^".into(), lc);
     }
-    let rest = [
-        ('[', view.change_mark_start()),
-        (']', view.change_mark_end()),
-        ('.', view.last_change()),
-    ];
-    for (c, p) in rest {
-        if let Some(p) = p {
-            marks.insert(c.to_string(), line_col(bytes, p.0));
+    for (c, m) in ['[', ']'].into_iter().zip(view.change_marks_raw()) {
+        if let Some(m) = m {
+            marks.insert(c.to_string(), raw_col(m));
         }
+    }
+    if let Some(p) = view.last_change() {
+        marks.insert(".".into(), line_col(bytes, p.0));
     }
     (Value::Object(marks), vmode)
 }

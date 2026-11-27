@@ -207,8 +207,12 @@ pub(super) struct MarkAt {
 /// The column of a [`MarkAt`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum MarkCol {
-    /// A byte column, clamped to the line's length (its newline) where it lies past it.
+    /// A raw byte column. Past the line's length it clamps onto the line's end (its newline), and inside a
+    /// multibyte char onto that char's first byte, for a jump; `'[` `']` keep it as their raw column
+    /// (#1615), as nvim's `getpos()` reports it.
     Byte(usize),
+    /// The line's length: the newline, as nvim's `do_join` puts `']` at `sumsize`.
+    LineEnd,
     /// The line's last byte, or column 0 on an empty line: nvim's `ml_get_len(lnum) - 1` (`op_shift`'s
     /// `']`). On a line ending in a multibyte char nvim's mark is that char's last byte; ruse's marks stay
     /// on char boundaries, so commit's offset snap moves it to the char's first byte.

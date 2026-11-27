@@ -37,13 +37,17 @@ impl View {
             a.at = snap(bytes, a.at.min(len));
             e.at = snap(bytes, e.at.min(len));
         }
-        // The `[`/`]` change marks, an in-flight Insert-session start, the Visual anchor and the Emacs mark
-        // snap into range too.
+        // The `[`/`]` change marks keep their raw columns, as the last Visual area's ends do.
+        for m in [&mut self.change_start, &mut self.change_end]
+            .into_iter()
+            .flatten()
+        {
+            m.at = snap(bytes, m.at.min(len));
+        }
+        // An in-flight Insert-session start, the Visual anchor and the Emacs mark snap into range too.
         for p in [
             &mut self.anchor,
             &mut self.mark,
-            &mut self.change_start,
-            &mut self.change_end,
             &mut self.insert_start,
             &mut self.insstart,
         ]
@@ -82,8 +86,8 @@ impl View {
         t.push(mark(ve, Keep).restored());
         t.extend(self.named_marks[26..52].iter().map(|&m| mark(m, Keep)));
         t.push(mark(self.last_insert, Drop));
-        t.push(Tracked::line(self.change_start.map(BytePos), Keep));
-        t.push(Tracked::line(self.change_end.map(BytePos), Keep));
+        t.push(mark(self.change_start, Keep));
+        t.push(mark(self.change_end, Keep));
         t.extend(self.named_marks[52..].iter().map(|&m| mark(m, Keep)));
         debug_assert_eq!(t.len(), TRACKED_FIXED);
         t.extend(
@@ -120,8 +124,8 @@ impl View {
             *m = mark(26 + i + 2);
         }
         self.last_insert = mark(54);
-        self.change_start = pos(55);
-        self.change_end = pos(56);
+        self.change_start = mark(55);
+        self.change_end = mark(56);
         for (i, m) in self.named_marks[52..62].iter_mut().enumerate() {
             *m = mark(52 + i + 5);
         }
@@ -287,8 +291,8 @@ impl View {
     pub(crate) fn set_mark(&mut self, c: char, pos: usize) -> bool {
         match c {
             '\'' | '`' => self.push_jump(pos),
-            '[' => self.change_start = Some(pos),
-            ']' => self.change_end = Some(pos),
+            '[' => self.change_start = Some(Mark::at(pos)),
+            ']' => self.change_end = Some(Mark::at(pos)),
             '<' | '>' => {
                 let start = c == '<';
                 let pos = Mark::at(pos);
@@ -331,12 +335,21 @@ impl View {
 
     /// Vim's `[` mark — the first char of the last changed/yanked text, or `None` before the first change.
     pub fn change_mark_start(&self) -> Option<BytePos> {
-        self.change_start.map(BytePos)
+        self.change_start.map(|m| BytePos(m.at))
     }
 
     /// Vim's `]` mark — the end of the last changed/yanked text (see [`View::change_end`]), or `None`.
     pub fn change_mark_end(&self) -> Option<BytePos> {
-        self.change_end.map(BytePos)
+        self.change_end.map(|m| BytePos(m.at))
+    }
+
+    /// The `[` and `]` change marks as [`View::change_mark_start`] / [`View::change_mark_end`] read them,
+    /// each with how many bytes its raw column lies past that offset (#1615), as [`View::mark_raw`] gives
+    /// the other marks: the column nvim's `getpos()` reports. A linewise delete leaves both at the column
+    /// the operator started at, which the line now in the deleted one's place may not reach.
+    #[must_use]
+    pub fn change_marks_raw(&self) -> [Option<(BytePos, usize)>; 2] {
+        [self.change_start, self.change_end].map(|m| m.map(|m| (BytePos(m.at), m.past)))
     }
 
     /// The last visual selection's bounds `(start, end, kind)` — the byte-min and byte-max of the remembered

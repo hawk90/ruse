@@ -4,7 +4,7 @@
 
 use super::{buffer_lines, join_buffer_lines, line_start_of};
 use crate::edit::{Edit, EditList};
-use crate::editor::{line_spans, resolve_line_range, EditorState, LineAddr, SubRange};
+use crate::editor::{line_spans, resolve_line_range, EditorState, LineAddr, Mark, SubRange};
 use crate::motion::{self, line_end, line_start};
 
 impl EditorState {
@@ -39,11 +39,11 @@ impl EditorState {
                 line_start(b, self.view.cursor),
                 line_end(b, self.view.cursor),
             );
-            self.view.change_end = Some(if le > ls {
+            self.view.change_end = Some(Mark::at(if le > ls {
                 motion::prev_grapheme(b, le)
             } else {
                 ls
-            });
+            }));
         }
         count
     }
@@ -184,7 +184,7 @@ impl EditorState {
         self.set_ex_marks((start, start), start, Some(group));
         self.view.change_end = (first + new_lines.len())
             .checked_sub(1)
-            .map(|end| self.line_pos(end));
+            .map(|end| Mark::at(self.line_pos(end)));
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();

@@ -9,7 +9,7 @@
 //! - `sort` — `:sort` and its key readers,
 //! - `batch` — the LSP/completion edit batch (`apply_edits`).
 
-use super::{line_count, line_span, range, resolve_lines};
+use super::{line_count, line_span, range, resolve_lines, Mark};
 use crate::motion::{self, line_end, line_start, snap};
 use crate::{apply_command, BytePos, Command, Edit, EditList, EditorState, Register, SubRange};
 
@@ -143,12 +143,12 @@ impl EditorState {
         self.view.registers.yank(reg, Register::linewise(text));
         // A linewise yank's `'[`/`']`: the range's first line and its last (nvim's `op_yank`, #1303).
         let last_ls = line_span(&self.doc, last).0;
-        self.view.change_start = Some(fs);
-        self.view.change_end = Some(if le > last_ls {
+        self.view.change_start = Some(Mark::at(fs));
+        self.view.change_end = Some(Mark::at(if le > last_ls {
             motion::prev_grapheme(bytes, le)
         } else {
             last_ls
-        });
+        }));
         last - first + 1
     }
 
@@ -269,8 +269,8 @@ impl EditorState {
         group_before: Option<u64>,
     ) {
         self.set_ex_dot(dot, group_before);
-        self.view.change_start = Some(start);
-        self.view.change_end = Some(end);
+        self.view.change_start = Some(Mark::at(start));
+        self.view.change_end = Some(Mark::at(end));
     }
 
     /// `'.` alone after an Ex edit (`:sort` and `:retab` leave `'[`/`']` as they were): the newest

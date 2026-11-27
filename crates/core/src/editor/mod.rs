@@ -249,12 +249,15 @@ pub struct View {
     /// [`commit`] after any committing edit (delete/replace/put), on leaving an Insert session, or on a
     /// yank; snapped every commit like the named marks. `None` before the first change/yank. Read by
     /// `` `[ `` (charwise) and `'[` (linewise, first non-blank of its line).
-    change_start: Option<usize>,
+    /// Carries its raw column (#1615): a linewise delete leaves it at the column the operator started at,
+    /// past the end of the line that takes the deleted one's place.
+    change_start: Option<Mark>,
     /// Vim's `]` mark: the byte offset bounding the END of the last changed/yanked text. For a
     /// delete/replace/put/yank it is the LAST char (inclusive); for an Insert session it is the insert
     /// END-caret (one past the last inserted char, matching Neovim), which the jump clamps onto the line's
     /// last char. Set/snapped alongside [`change_start`]. Read by `` `] `` / `']`.
-    change_end: Option<usize>,
+    /// Carries its raw column, as [`change_start`] does.
+    change_end: Option<Mark>,
     /// Transient: where the CURRENT Insert-like session began (the caret when Insert/Replace was entered).
     /// Combined with the caret when the session is left, it bounds the inserted run for `[`/`]`. `None`
     /// outside a session. Snapped like the marks so a buffer-resizing edit under it stays valid.

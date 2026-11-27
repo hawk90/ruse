@@ -152,6 +152,53 @@ mod change_mark_tests {
         assert_eq!(marks(&st), [(0, 1), (0, 1), (0, 1)]);
     }
 
+    /// `'[` `']` as nvim's `getpos()` columns `(line, raw col)`, 0-based: the offset's column plus how far
+    /// the raw column lies past it (#1615).
+    fn raw_change_marks(st: &EditorState) -> [(usize, usize); 2] {
+        let b = st.doc.bytes();
+        st.view.change_marks_raw().map(|m| {
+            let (p, past) = m.expect("mark set");
+            let ls = crate::motion::line_start(b, p.0);
+            (crate::pos::raw::line_of(b, p.0), p.0 - ls + past)
+        })
+    }
+
+    /// A linewise delete keeps `'[` `']` at the raw column it started at, past the end of the line now in
+    /// the deleted one's place or on the line past the buffer's end (#1615); a jump to them clamps.
+    #[test]
+    fn linewise_delete_keeps_the_raw_column() {
+        // `5ldd` over "abcdef": the marks are at column 5 of "gh", whose offsets end at column 2.
+        let mut st = run("abcdef\ngh\nij\n", 5, &[Command::Delete(1, Motion::Line)]);
+        assert_eq!(raw_change_marks(&st), [(0, 5), (0, 5)]);
+        assert_eq!(
+            st.view.change_mark_start(),
+            Some(BytePos(2)),
+            "the offset is on the line"
+        );
+        apply_command(&mut st, &Command::GotoChangeMarkStart);
+        assert_eq!(st.cursor().0, 1, "`[ rests on the line's last char");
+        // `j3ldd` on the last line: the marks are on the line past the buffer's end, column 3.
+        let st = run("ab\ncdef\n", 6, &[Command::Delete(1, Motion::Line)]);
+        assert_eq!(text(&st), "ab\n");
+        assert_eq!(raw_change_marks(&st), [(1, 3), (1, 3)]);
+        // `3ldd` onto "éé": column 3 is inside the second char; the offset is on its first byte.
+        let st = run(
+            "abcdef\n\u{e9}\u{e9}\n",
+            3,
+            &[Command::Delete(1, Motion::Line)],
+        );
+        assert_eq!(raw_change_marks(&st), [(0, 3), (0, 3)]);
+        assert_eq!(st.view.change_mark_start(), Some(BytePos(2)));
+        // `j5ldk`: the operator starts where `k` left the cursor, on the last char of "ab", not past it.
+        let st = run("ab\nabcdef\nij\n", 8, &[Command::Delete(1, Motion::Up)]);
+        assert_eq!(text(&st), "ij\n");
+        assert_eq!(raw_change_marks(&st), [(0, 1), (0, 1)]);
+        // A later change sets fresh marks with no raw column of their own.
+        let mut st = run("abcdef\ngh\n", 5, &[Command::Delete(1, Motion::Line)]);
+        apply_command(&mut st, &Command::DeleteUnder(1));
+        assert_eq!(raw_change_marks(&st), [(0, 1), (0, 1)]);
+    }
+
     /// A linewise put's `']` is on the last put line's last char; a charwise yank that takes a newline ends
     /// `']` on the char before it.
     #[test]
