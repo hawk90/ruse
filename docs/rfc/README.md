@@ -38,6 +38,7 @@ row says which decision did it. Each RFC is in exactly one row below.
 | RFC | Title | Decisions | Waiting on | Design detail |
 | --- | --- | --- | --- | --- |
 | [RFC-0006](proposed/RFC-0006-remote-runtime.md) | Remote Runtime & Agent | D-011/024/029/030/031/032 | D-024 (version skew) and D-032 (debug backend detail) are open; D-039 defers remote | [remote-runtime](../design/remote-runtime.md), [parity/remote](../parity/remote.md) |
+| [RFC-0025](proposed/RFC-0025-file-encodings.md) | File encodings at the persist boundary ('fileencoding', ++enc, C-x RET f) | D-066 | D-066 (maintainer approval) | [persistence-and-recovery](../design/persistence-and-recovery.md) |
 
 ## Accepted
 
