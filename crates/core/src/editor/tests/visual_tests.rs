@@ -742,6 +742,8 @@ fn visual_p_replaces_selection_and_swaps_the_register() {
             Command::PasteSelection {
                 swap: true,
                 count: 1,
+                after: true,
+                move_after: false,
             },
         ],
     );
@@ -749,6 +751,66 @@ fn visual_p_replaces_selection_and_swaps_the_register() {
     assert_eq!(st.mode(), Mode::Normal);
     // The swap put the replaced "bar" into the unnamed register — a following `p` pastes it.
     assert_eq!(st.register().text(), b"bar");
+}
+
+#[test]
+fn visual_gp_swaps_and_rests_just_after_the_put() {
+    // #1616 (nvim v0.12.6): `yiwwviwgp` on `ab cd ef gh` gives `ab ab ef gh`, the cursor on the space after
+    // the put `ab` ([1,5]) and `cd` in the unnamed register; `gP` does the same (it swaps too).
+    for after in [true, false] {
+        let st = run(
+            "ab cd ef gh",
+            &[
+                Command::Yank(1, Motion::InnerWord),
+                Command::Move(1, Motion::WordFwd),
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::InnerWord),
+                Command::PasteSelection {
+                    swap: true,
+                    count: 1,
+                    after,
+                    move_after: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "ab ab ef gh", "after {after}");
+        assert_eq!(st.cursor().0, 5, "after {after}");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.register().text(), b"cd", "after {after}");
+    }
+}
+
+#[test]
+fn visual_g_capital_p_puts_lines_above_a_block_and_rests_below_them() {
+    // #1616 (nvim v0.12.6): `yyl<C-v>jgP` on `abc def ghi jkl` gives `abc ac df ghi jkl` (the lines above
+    // the block, like `P`), the cursor on the line after the put ([2,0]); `gp` puts them below, cursor [4,0].
+    for (after, want, cursor) in [
+        (false, "abc\nac\ndf\nghi\njkl", 4),
+        (true, "ac\ndf\nabc\nghi\njkl", 10),
+    ] {
+        let st = run(
+            "abc\ndef\nghi\njkl",
+            &[
+                Command::Yank(1, Motion::Line),
+                Command::MoveRight,
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::PasteSelection {
+                    swap: true,
+                    count: 1,
+                    after,
+                    move_after: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), want, "after {after}");
+        assert_eq!(st.cursor().0, cursor, "after {after}");
+        assert_eq!(st.register().text(), b"b\ne", "after {after}");
+    }
 }
 
 #[test]
@@ -767,6 +829,8 @@ fn visual_capital_p_preserves_the_register() {
             Command::PasteSelection {
                 swap: false,
                 count: 1,
+                after: false,
+                move_after: false,
             },
         ],
     );
@@ -1240,6 +1304,8 @@ mod blockwise_tests {
                 Command::PasteSelection {
                     swap: true,
                     count: 1,
+                    after: true,
+                    move_after: false,
                 },
             ],
         );
@@ -1260,6 +1326,8 @@ mod blockwise_tests {
                 Command::PasteSelection {
                     swap: false,
                     count: 1,
+                    after: false,
+                    move_after: false,
                 },
             ],
         );
@@ -1283,6 +1351,8 @@ mod blockwise_tests {
                 Command::PasteSelection {
                     swap: true,
                     count: 1,
+                    after: true,
+                    move_after: false,
                 },
             ],
         );
@@ -1312,6 +1382,8 @@ mod blockwise_tests {
     const PUT_SWAP: Command = Command::PasteSelection {
         swap: true,
         count: 1,
+        after: true,
+        move_after: false,
     };
 
     #[test]
@@ -1339,7 +1411,15 @@ mod blockwise_tests {
         // `vp` / `vP` of the linewise unnamed register splits the line: nvim gives `["", "ab"]`.
         for swap in [true, false] {
             let mut st = emptied_in_visual(SelectKind::Charwise);
-            apply_command(&mut st, &Command::PasteSelection { swap, count: 1 });
+            apply_command(
+                &mut st,
+                &Command::PasteSelection {
+                    swap,
+                    count: 1,
+                    after: swap,
+                    move_after: false,
+                },
+            );
             assert_eq!(text(&st), "\nab\n", "swap {swap}");
             assert_eq!(st.cursor().0, 1, "swap {swap}");
             assert_eq!(st.view.registers.get(None).text(), b"ab\n");
@@ -1352,6 +1432,8 @@ mod blockwise_tests {
             &Command::PasteSelection {
                 swap: true,
                 count: 3,
+                after: true,
+                move_after: false,
             },
         );
         assert_eq!(text(&st), "ababab\n");
@@ -2243,6 +2325,52 @@ mod visual_op_tests {
         let st = block_shift("ab    cd\nef    gh", 1, 1, true, 1, true);
         assert_eq!(text(&st), "ab    cd\nef    gh");
         assert_eq!(shift_marks(&st), [(0, 1), (1, 7), (0, 0)]);
+    }
+
+    /// #1612: a block operator is ONE undo entry (nvim's `op_shift`/`op_delete`/`block_insert` save the
+    /// block's lines at once), so `u` and `CTRL-R` leave `'.` on the block's top line, not its bottom row's
+    /// (the `vb_shift_right_undo`/`_redo`, `vb_x_*_three`, `vb_c_*_three` and `vb_I_*_three` fixtures).
+    #[test]
+    fn a_block_operator_is_one_undo_entry() {
+        let dot_line = |st: &EditorState| {
+            let b = st.doc.bytes();
+            crate::pos::raw::line_of(b, st.view.last_change().expect("'. set").0)
+        };
+        let undo_redo = |mut st: EditorState| {
+            apply_command(&mut st, &Command::Undo);
+            let undone = dot_line(&st);
+            apply_command(&mut st, &Command::Redo);
+            (undone, dot_line(&st))
+        };
+        // `w<C-v>jj>u<C-r>`: '. on the top line both ways, and also when the shift skips a short row.
+        let st = block_shift("abc def\nghi jkl\nmno pqr", 4, 2, false, 1, true);
+        assert_eq!(undo_redo(st), (0, 0));
+        let st = block_shift("abcdefgh\n\nabcdefgh", 4, 2, false, 1, true);
+        assert_eq!(undo_redo(st), (0, 0));
+        // `l<C-v>jjx`, and a block change typed `zz`: its copy down the block is in the delete's entry.
+        // A block insert's copy is an entry of its own below the typed top row: redo leaves '. on line 2.
+        let block = |op: Command, typed: &str| {
+            let mut st = EditorState::new(b"abcd\nefgh\nijkl\n".to_vec());
+            let mut cmds = vec![Command::MoveRight, visual(BLOCK), Command::MoveDown];
+            cmds.extend([Command::MoveDown, op]);
+            cmds.extend(typed.chars().map(Command::InsertChar));
+            if !typed.is_empty() {
+                cmds.push(Command::EnterNormal);
+            }
+            for c in &cmds {
+                apply_command(&mut st, c);
+            }
+            st
+        };
+        let st = block(Command::DeleteSelection, "");
+        assert_eq!(text(&st), "acd\negh\nikl\n");
+        assert_eq!(undo_redo(st), (0, 0));
+        let st = block(Command::BlockInsert(BlockInsertKind::Change), "zz");
+        assert_eq!(text(&st), "azzcd\nezzgh\nizzkl\n");
+        assert_eq!(undo_redo(st), (0, 0));
+        let st = block(Command::BlockInsert(BlockInsertKind::Insert), "zz");
+        assert_eq!(text(&st), "azzbcd\nezzfgh\nizzjkl\n");
+        assert_eq!(undo_redo(st), (0, 1));
     }
 
     /// #1142: a block change broken by `<CR>` copies what the top row grew by into the lines below it by

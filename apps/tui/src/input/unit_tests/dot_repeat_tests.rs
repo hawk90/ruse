@@ -269,7 +269,9 @@ fn dot_after_a_visual_put_repeats_only_its_delete() {
             Command::SetRegister(Some('.')),
             Command::PasteSelection {
                 swap: true,
-                count: 1
+                count: 1,
+                after: true,
+                move_after: false,
             }
         ])
     );

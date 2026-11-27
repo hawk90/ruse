@@ -47,6 +47,13 @@ impl Default for DisplayGlobals {
     }
 }
 
+impl DisplayGlobals {
+    /// Whether `'display'` holds `uhex`: a control char shows as `<xx>`, not `^X` (#1181).
+    pub(crate) fn uhex(&self) -> bool {
+        self.display.split(',').any(|f| f == "uhex")
+    }
+}
+
 /// How the last line shows when it does not fit (`'display'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LastLine {

@@ -9,6 +9,7 @@ use crate::editor::{
     MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
 };
 use crate::motion::{self, line_end, line_start, next_boundary, next_grapheme, prev_boundary};
+use crate::undo_cursor::UndoEntry;
 use crate::{
     BytePos, CaretGravity, Command, Edit, EditList, EditorState, GroupHint, IndentStyle, Mode,
     Plan, RegKind, Register, SelectKind, Tabs,
@@ -115,23 +116,26 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Pla
 /// - a linewise selection puts any register as whole lines (a charwise or block register becomes lines);
 /// - a charwise selection with a linewise register splits the line and puts the lines between the halves;
 /// - a block selection with a one-line charwise register puts that text on every row of the block (rows
-///   shorter than the block's left edge are skipped); with a linewise register `p` puts the lines below the
-///   block and `P` above it;
+///   shorter than the block's left edge are skipped); with a linewise register `p`/`gp` (`after`) put the
+///   lines below the block and `P`/`gP` above it;
 /// - anything else is an ordinary put at the selection's start.
 ///
 /// The put goes before the cursor, or after it when the delete left the cursor on the last character of
 /// the line or file (Vim's "cursor at the end" test). The register is read before the delete, so `p` of the
-/// unnamed register still puts the old text; `p` then leaves the deleted text in the unnamed register, `P`
-/// leaves the registers as they were. A selection with nothing in it to delete (nvim's `op_delete` returns
-/// first) only puts and leaves the registers as they were too: any selection on the emptied buffer's line
-/// (`ML_EMPTY`), a charwise one on the empty last line, and a one-row block on an empty line (#1346). The
-/// whole replacement is one edit and one undo step.
+/// unnamed register still puts the old text; `p` (`gp`, `gP`: `swap`) then leaves the deleted text in the
+/// unnamed register, `P` leaves the registers as they were. `move_after` (`gp`/`gP`, nvim `PUT_CURSEND`)
+/// leaves the cursor just after the put text, as the Normal `gp` does (#1616). A selection with nothing in
+/// it to delete (nvim's `op_delete` returns first) only puts and leaves the registers as they were too: any
+/// selection on the emptied buffer's line (`ML_EMPTY`), a charwise one on the empty last line, and a
+/// one-row block on an empty line (#1346). The whole replacement is one edit and one undo step.
 pub(super) fn plan_paste_selection(
     st: &EditorState,
     b: &[u8],
     cur: usize,
     swap: bool,
     count: u32,
+    after: bool,
+    move_after: bool,
 ) -> Plan {
     let (Some(kind), Some(anchor)) = (st.view.mode.selection(), st.view.anchor) else {
         return nop(cur, Mode::Normal);
@@ -157,9 +161,10 @@ pub(super) fn plan_paste_selection(
         forward,
         count,
         caret: st.view.caret,
+        move_after,
         ts,
     };
-    let (mut b3, cursor) = put.place(kind, &reg, swap, del.block_lines);
+    let (mut b3, cursor) = put.place(kind, &reg, after, del.block_lines);
     // Putting lines into a buffer the delete emptied leaves no extra empty line behind (Vim deletes it).
     if kind == SelectKind::Linewise
         && b2.is_empty()
@@ -295,16 +300,19 @@ struct SelectionPut<'a> {
     forward: bool,
     count: u32,
     caret: CaretGravity,
+    /// `gp`/`gP`: the cursor rests just after the put text.
+    move_after: bool,
     ts: Tabs,
 }
 
 impl SelectionPut<'_> {
-    /// The text after the put and the cursor, shaped by the selection and register kinds.
+    /// The text after the put and the cursor, shaped by the selection and register kinds; `after` puts a
+    /// linewise register below a block selection rather than above it.
     fn place(
         &self,
         kind: SelectKind,
         reg: &Register,
-        swap: bool,
+        after: bool,
         block_lines: Option<(usize, usize)>,
     ) -> (Vec<u8>, usize) {
         let (b2, c2, forward) = (self.b2, self.c2, self.forward);
@@ -317,7 +325,7 @@ impl SelectionPut<'_> {
                 self.put(&Register::linewise(reg.text().to_vec()), c2, forward)
             }
             (SelectKind::Charwise, RegKind::Linewise) => self.lines_into_line(reg),
-            (SelectKind::Blockwise, RegKind::Linewise) if swap => {
+            (SelectKind::Blockwise, RegKind::Linewise) if after => {
                 let (_, last) = block_lines.expect("a block selection records its lines");
                 let at = crate::pos::raw::nth_line_start(b2, last).min(b2.len());
                 self.put(reg, at, true)
@@ -340,7 +348,7 @@ impl SelectionPut<'_> {
             after,
             self.count.max(1),
             self.caret,
-            false,
+            self.move_after,
             true,
             self.ts,
         );
@@ -366,7 +374,12 @@ impl SelectionPut<'_> {
         for _ in 0..reps {
             out.extend_from_slice(reg.text());
         }
+        // `gp`/`gP` rest at the start of the line after the put lines: the line's second half.
+        let after_put = out.len();
         out.extend_from_slice(&b2[sp..]);
+        if self.move_after {
+            return (out, after_put);
+        }
         let fnb = reg
             .text()
             .iter()
@@ -375,14 +388,21 @@ impl SelectionPut<'_> {
         (out, sp + 1 + fnb)
     }
 
-    /// A one-line charwise register over a block selection: put the text on every row of the block's lines
-    /// `first..=last`, skipping rows shorter than the block's left edge.
+    /// A one-line charwise register over a block selection: put the text (`count` times) on every row of
+    /// the block's lines `first..=last`, skipping rows shorter than the block's left edge. The cursor rests
+    /// on the first row's last put char, or just after it for `gp`/`gP` (on it when nothing follows).
     fn text_on_block_rows(&self, reg: &Register, first: usize, last: usize) -> (Vec<u8>, usize) {
         let (b2, c2, ts) = (self.b2, self.c2, self.ts);
         let (v0, v1) = vcols_at(b2, c2, ts);
         let vcol = if self.forward { v1 + 1 } else { v0 };
+        // Bounded like every other put ([`MAX_PUT_BYTES`], over all the rows), so a hostile count cannot
+        // exhaust memory.
+        let rows = last.saturating_sub(first) + 1;
+        let reps = (self.count.max(1) as usize)
+            .min((MAX_PUT_BYTES / (reg.text().len().max(1) * rows)).max(1));
+        let text = reg.text().repeat(reps);
         let mut edits = Vec::new();
-        let mut cursor = c2;
+        let mut first_put = None;
         for line in first..=last {
             let ls = crate::pos::raw::nth_line_start(b2, line);
             if ls > b2.len() || line_cells(b2, ls, ts) < vcol {
@@ -395,12 +415,19 @@ impl SelectionPut<'_> {
                 at_vcol(b2, ls, vcol, ts)
             };
             if line == first {
-                cursor = at + reg.text().len() - 1;
+                first_put = Some((at + text.len(), at == le));
             }
-            edits.push(Edit::insert(BytePos(at), reg.text().to_vec()));
+            edits.push(Edit::insert(BytePos(at), text.clone()));
         }
         let list = EditList::new(edits).expect("one insert per line");
-        (list.apply_to(b2), cursor)
+        let out = list.apply_to(b2);
+        // The first row's insert is the lowest edit, so its end is the same offset in the new text.
+        let cursor = match first_put {
+            Some((end, at_eol)) if self.move_after && !at_eol => end,
+            Some((end, _)) => prev_boundary(&out, end),
+            None => c2,
+        };
+        (out, cursor)
     }
 }
 
@@ -450,6 +477,7 @@ fn replacement_plan(b: &[u8], b3: &[u8], cursor: usize, set_register: Option<Reg
         set_anchor: None,
         set_mark: None,
         op_marks: None,
+        undo_entry: UndoEntry::PerEdit,
     }
 }
 
@@ -457,10 +485,13 @@ fn replacement_plan(b: &[u8], b3: &[u8], cursor: usize, set_register: Option<Reg
 /// rectangle. Row `i` lands on the line `i` rows below the cursor's, at the virtual column of the cursor's
 /// first cell for `P` and one past its last cell for `p`. A line shorter than that column is padded with
 /// spaces; a `<Tab>` crossing it is split into spaces around the block (another wide character crossing it
-/// moves right, as in Vim); rows past the last line open new lines. The cursor ends at the block's top-left.
+/// moves right, as in Vim); rows past the last line open new lines. The cursor ends at the block's top-left,
+/// or for `gp`/`gP` (`move_after`, nvim `PUT_CURSEND`) just after the block's last row (on that row's
+/// last char when nothing follows it).
 /// `{count}p` repeats each row `count` times horizontally. With `pad`, a row narrower than the block is
 /// filled with spaces to the block's width between copies and before any text that follows it, so that text
 /// stays in one column; `zp`/`zP` paste without (`pad` false).
+#[allow(clippy::too_many_arguments)] // the block put needs `paste`'s count, padding and `gp` context
 fn paste_block(
     b: &[u8],
     cur: usize,
@@ -468,6 +499,7 @@ fn paste_block(
     after: bool,
     count: usize,
     pad: bool,
+    move_after: bool,
     ts: Tabs,
 ) -> Plan {
     let units: Vec<&[u8]> = reg.text().split(|&c| c == b'\n').collect();
@@ -487,6 +519,8 @@ fn paste_block(
     let mut edits: Vec<Edit> = Vec::new();
     let mut tail: Vec<u8> = Vec::new();
     let mut cursor = cur;
+    // `gp`: the last row's line (counted from the cursor's) and the byte column just after its put text.
+    let mut end_col = 0;
     let mut line = Some(cls);
     for (i, unit) in units.iter().enumerate() {
         let fill = if pad {
@@ -509,6 +543,7 @@ fn paste_block(
         let Some(ls) = line else {
             let mut row = vec![b' '; col];
             row.extend(build(true));
+            end_col = row.len();
             if terminated {
                 tail.extend(row);
                 tail.push(b'\n');
@@ -549,6 +584,7 @@ fn paste_block(
         if i == 0 {
             cursor = at + pre;
         }
+        end_col = at - ls + ins.len();
         if del > 0 || !ins.is_empty() {
             edits.push(Edit::replace(BytePos(at), del, ins));
         }
@@ -566,6 +602,18 @@ fn paste_block(
         return nop(cursor.min(b.len()), Mode::Normal);
     }
     let list = EditList::new(edits).expect("block paste edits are disjoint (one per line)");
+    if move_after {
+        let out = list.apply_to(b);
+        let ls = crate::pos::raw::nth_line_start(
+            &out,
+            crate::pos::raw::line_of(b, cls) + units.len() - 1,
+        );
+        let le = line_end(&out, ls);
+        cursor = (ls + end_col).min(le);
+        if cursor == le && cursor > ls {
+            cursor = prev_boundary(&out, cursor);
+        }
+    }
     Plan {
         action: Action::Txn {
             edits: list,
@@ -598,7 +646,7 @@ pub(super) fn paste(
     let unit_len = reg.text().len().max(1);
     let count = (count.max(1) as usize).min((MAX_PUT_BYTES / unit_len).max(1));
     if reg.is_blockwise() {
-        return paste_block(b, cur, reg, after, count, pad_block, ts);
+        return paste_block(b, cur, reg, after, count, pad_block, move_after, ts);
     }
     // `{count}p` pastes the register `count` times (Vim); the register itself is unchanged. The repeated
     // bytes are one contiguous insert, so the cursor math below (last pasted byte) still holds.
@@ -646,7 +694,10 @@ pub(super) fn paste(
             let le = line_end(b, cur);
             if le < b.len() {
                 // Insert after the current line's newline: the stored "...\n" becomes a fresh line below.
-                let c = if move_after {
+                // `gp` with no line after the put rests at the start of the last put line (nvim).
+                let c = if move_after && le + 1 == b.len() {
+                    le + 1 + last_line_start(&text[..tlen - 1])
+                } else if move_after {
                     le + 1 + tlen
                 } else {
                     le + 1 + fnb
@@ -654,11 +705,16 @@ pub(super) fn paste(
                 mk(le + 1, text, c)
             } else {
                 // Last line has no trailing newline: prepend one and drop the stored trailing newline so no
-                // dangling blank line is created. Cursor lands on the first non-blank of the pasted line.
+                // dangling blank line is created. Cursor lands on the first non-blank of the pasted line;
+                // `gp` on the start of the last put line, as no line follows it (nvim).
                 let mut bytes = vec![b'\n'];
                 bytes.extend_from_slice(text.strip_suffix(b"\n").unwrap_or(&text));
-                let end = le + bytes.len();
-                mk(le, bytes, if move_after { end } else { le + 1 + fnb })
+                let c = if move_after {
+                    le + last_line_start(&bytes)
+                } else {
+                    le + 1 + fnb
+                };
+                mk(le, bytes, c)
             }
         } else {
             let ls = line_start(b, cur);
@@ -717,6 +773,11 @@ pub(super) fn paste(
             mk(cur, text, cursor)
         }
     }
+}
+
+/// The offset of the start of `text`'s last line (just after its last newline; 0 without one).
+fn last_line_start(text: &[u8]) -> usize {
+    text.iter().rposition(|&c| c == b'\n').map_or(0, |i| i + 1)
 }
 
 /// Re-indent a linewise register's bytes for `]p`/`[p`: the first line takes `target_cols` of indent and

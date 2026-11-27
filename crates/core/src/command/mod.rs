@@ -602,13 +602,17 @@ pub enum Command {
         /// `gp`/`gP` (Vim): leave the cursor JUST AFTER the pasted text instead of on/before it.
         move_after: bool,
     },
-    /// Visual `p` / `P` — replace the current selection with the register's contents. `swap` (Vim `p`) puts
-    /// the deleted selection into the unnamed register; `P` (`swap: false`) preserves the register so it can
-    /// be pasted over successive selections. `count` puts the register that many times (`v2p`, #1093). A
-    /// no-op outside a selection.
+    /// Visual `p` / `P` / `gp` / `gP` — replace the current selection with the register's contents. `swap`
+    /// (Vim `p`, `gp`, `gP`) puts the deleted selection into the unnamed register; `P` (`swap: false`)
+    /// preserves the register so it can be pasted over successive selections. `count` puts the register
+    /// that many times (`v2p`, #1093). `after` is the put's direction, which only places a linewise
+    /// register over a block (below it for `p`/`gp`, above it for `P`/`gP`). `move_after` (`gp`/`gP`)
+    /// leaves the cursor just after the put text (#1616). A no-op outside a selection.
     PasteSelection {
         swap: bool,
         count: u32,
+        after: bool,
+        move_after: bool,
     },
     /// `]p` / `[p` (and `]P`/`[P`) — paste like `p`/`P` but ADJUST the indent of a linewise register to the
     /// current line: the first pasted line takes the current line's indent, the rest shift by the same

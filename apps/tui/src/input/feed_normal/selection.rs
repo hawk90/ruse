@@ -130,6 +130,8 @@ impl InputEngine {
                 self.action(Command::PasteSelection {
                     swap: c == 'p',
                     count,
+                    after: c == 'p',
+                    move_after: false,
                 })
             }
             // `o` swaps the selection's ends (cursor <-> anchor); the SAME text stays selected but a

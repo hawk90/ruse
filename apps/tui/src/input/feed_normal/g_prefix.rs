@@ -211,14 +211,19 @@ impl InputEngine {
             // default, but those are keymaps, not a built-in; ruse installs no such map and targets the
             // classic-Vim built-in. Arm the char expectation; the count carries through untouched.
             'r' => self.arm_awaiting(Awaiting::VirtualReplaceChar),
-            // `gp` / `gP` — paste like `p`/`P` but leave the cursor JUST AFTER the pasted text.
-            'p' => self.action(Command::Paste {
-                after: true,
-                count: self.mcount(),
-                move_after: true,
-            }),
-            'P' => self.action(Command::Paste {
-                after: false,
+            // `gp` / `gP` — paste like `p`/`P` but leave the cursor JUST AFTER the pasted text. In Visual they
+            // replace the selection like Visual `p`: both swap the deleted text into the unnamed register
+            // (nvim keeps the registers only for `P`), and `gP` puts a linewise register above a block (#1616).
+            'p' | 'P' if matches!(mode, Mode::Visual { .. } | Mode::Select { .. }) => {
+                self.action(Command::PasteSelection {
+                    swap: true,
+                    count: self.mcount(),
+                    after: c == 'p',
+                    move_after: true,
+                })
+            }
+            'p' | 'P' => self.action(Command::Paste {
+                after: c == 'p',
                 count: self.mcount(),
                 move_after: true,
             }),

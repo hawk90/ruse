@@ -90,7 +90,7 @@ reviews are separate folders.
 | Area | Location |
 | --- | --- |
 | **Vision / hub** | this file · [`spec/PROJECT.md`](../spec/PROJECT.md) |
-| **Architecture & governance** | [architecture/](architecture/architecture.md) — `architecture.md` (deep map), `design-requirements.md` (20 long-horizon domains; DR-* status in [../spec/design-requirements.yaml](../spec/design-requirements.yaml)), `design-charter.md` (governance) |
+| **Architecture & governance** | [architecture/](architecture/architecture.md) — `architecture.md` (deep map), `design-requirements.md` (20 long-horizon domains; DR-* status in [../spec/design-requirements.yaml](../spec/design-requirements.yaml)), `design-charter.md` (governance), `boundaries.md` (state / authority / process / trust boundaries and what survives a restart, one table each) |
 | **Subsystem design specs** | [design/](design/editing-language.md): one document per subsystem; the folder is the list |
 | **Invariants** | [invariants/reference-invariants.md](invariants/reference-invariants.md) |
 | **Protocols** | [protocols/versioning-and-evolution.md](protocols/versioning-and-evolution.md) |

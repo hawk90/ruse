@@ -12,11 +12,7 @@ v_dollar_D_to_eol_column # '< '> differ: nvim leaves them on line 2 after the ar
 v_gq_joins_short # '> differs: ruse's gq replaces the lines as one edit, so a mark on the joined line goes to its end, where nvim's join moves it with the text; the change marks verify
 vb_shift_right_skips_a_short_line # #900: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
 vb_shift_right_ragged_middle # #1302: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
-vb_shift_right_undo # #1302: u/CTRL-R of a block shift put '. on the bottom row's line; nvim saves the block as one undo entry (op_shift's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
-vb_shift_right_redo # #1302: u/CTRL-R of a block shift put '. on the bottom row's line; nvim saves the block as one undo entry (op_shift's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
-vb_shift_left_undo # #1302: u/CTRL-R of a block shift put '. on the bottom row's line; nvim saves the block as one undo entry (op_shift's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
 vb_shift_right_wide_last_char # #1302: '] after a block shift onto a line ending in a multibyte char: nvim's op_shift puts it on the line's last BYTE (ml_get_len - 1, inside the char), ruse keeps marks on a char's first byte
-vb_C_cr_undo # #1302: u of a block change puts '. on a lower row's line; nvim saves the block as one undo entry (op_delete's u_save over all its lines), so '. is on its top line, but ruse derives one entry per edited row (undo_cursor::entries)
 vb_dollar_ge_y # #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
 vb_dollar_bs_y # #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
 vb_dollar_h_x_wide # #1302: '] after a block yank whose bottom-right is a multibyte char: nvim puts it on the char's last BYTE (mb_adjust_opend), ruse keeps marks on a char's first byte
@@ -47,3 +43,11 @@ i1618_s_confirm_one_yes # cursor: nvim on the last prompted match's line, ruse o
 i1618_s_confirm_global_one_line # cursor: nvim on the last prompted match's line, ruse on the accepted line (marks verify)
 i1618_s_confirm_quit # cursor: nvim on the line `q` was typed at, ruse on the accepted line (marks verify)
 i1618_s_confirm_sub_range # cursor: nvim on the line `q` was typed at, ruse on the accepted line (marks verify)
+vb_C_cr_redo # #1612: CTRL-R of a block change whose Insert took a <CR> puts '. on the line the <CR> opened; nvim types onto that line under open_line's save, so it makes no entry of its own and '. is on the top line. A plain ix<CR>y<Esc>u<C-r> differs the same way: an Insert-mode entry difference, not a block one
+vb_forced_d_undo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on the block and visualmode() empty in nvim (do_pending_operator's temporary Visual sets b_visual); ruse leaves '< '> unset. Not an undo difference: '. after u/CTRL-R matches
+vb_forced_d_redo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on the block and visualmode() empty in nvim (do_pending_operator's temporary Visual sets b_visual); ruse leaves '< '> unset. Not an undo difference: '. after u/CTRL-R matches
+
+# #1269: display-width leftovers ruse does not match yet (split out of #1269).
+i1269_block_A_cut_invalid # blockwise A whose edge cuts <ff>: nvim's op_insert copies the cut byte with the typed text into the rows below; ruse copies only the typed text (as for a split char, #1149)
+i1269_block_A_cut_wide # blockwise A whose edge cuts a wide char: nvim copies the char's bytes after the cut (invalid UTF-8) into the rows below; ruse copies only the typed text
+i1269_cword_invalid # c_CTRL-R_CTRL-W on a <cword> holding a byte that is not UTF-8: the command line is a String, so ruse splices nothing (then E476 on the empty :s pattern)

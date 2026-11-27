@@ -14,6 +14,7 @@ use crate::editor::{
     Action, Block, BlockInsert, MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
 };
 use crate::motion::{self, at_col, col_of, line_end, line_start, prev_grapheme};
+use crate::undo_cursor::UndoEntry;
 use crate::{
     BlockInsertKind, BytePos, CaretGravity, Command, Edit, EditList, EditorState, GroupHint,
     IndentStyle, Mode, OpKind, Plan, Register, SelectKind, VisualOp,
@@ -135,9 +136,15 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 hint,
             )
         }
-        // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
-        // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
-        Command::PasteSelection { swap, count } => plan_paste_selection(st, b, cur, *swap, *count),
+        // Visual `p`/`P`/`gp`/`gP` — replace the selection with the register; `swap` puts the deleted text
+        // into the unnamed register (Vim `p`, `gp`, `gP`), `P` preserves the register (so it can overwrite
+        // successive selections); `move_after` (`gp`/`gP`) rests the cursor just after the put text.
+        Command::PasteSelection {
+            swap,
+            count,
+            after,
+            move_after,
+        } => plan_paste_selection(st, b, cur, *swap, *count, *after, *move_after),
         _ => unreachable!("planner::visual plans only its own commands"),
     }
 }
@@ -247,6 +254,7 @@ fn plan_block_insert(
         set_register: reg.map(RegWrite::Edit),
         // A change's delete marks the block as nvim's `op_delete` (#1302); a seeded one has typed already.
         op_marks: (change && seed.is_empty()).then(|| block_delete_marks(b, &block)),
+        undo_entry: UndoEntry::One,
         ..nop(insert_start + seed.len(), Mode::Insert)
     }
 }
@@ -557,6 +565,7 @@ fn block_replace(b: &[u8], block: &Block, c: char, hint: GroupHint) -> Plan {
     match EditList::new(edits) {
         Ok(list) if !list.is_empty() => Plan {
             op_marks,
+            undo_entry: UndoEntry::One,
             ..edit(list, at, Mode::Normal, hint)
         },
         _ => nop(at, Mode::Normal),
@@ -674,6 +683,7 @@ fn plan_block_shift(
     let edits = EditList::new(edits).expect("one edit per block row, top to bottom: disjoint");
     Plan {
         op_marks,
+        undo_entry: UndoEntry::One,
         ..edit(edits, cursor, st.mode(), hint)
     }
 }
