@@ -3,6 +3,7 @@ use super::{
     cindent, cluster_cells, lisp, range, selection_range, want_col, Action, OpSpan, RegWrite,
 };
 use crate::motion::{self, line_end, line_start, next_grapheme, prev_grapheme};
+use crate::undo_cursor::UndoEntry;
 use crate::{
     BytePos, CaretGravity, Command, Edit, EditList, EditorState, Effect, GroupHint, MarkOp, Mode,
     Motion, Plan, Register, SelectKind,
@@ -426,6 +427,7 @@ fn nop(cursor: usize, mode: Mode) -> Plan {
         set_anchor: None,
         set_mark: None,
         op_marks: None,
+        undo_entry: UndoEntry::PerEdit,
     }
 }
 
@@ -440,6 +442,7 @@ fn edit(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint) -> Plan {
         set_anchor: None,
         set_mark: None,
         op_marks: None,
+        undo_entry: UndoEntry::PerEdit,
     }
 }
 
@@ -455,6 +458,7 @@ fn edit_yank(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: R
         set_anchor: None,
         set_mark: None,
         op_marks: None,
+        undo_entry: UndoEntry::PerEdit,
     }
 }
 

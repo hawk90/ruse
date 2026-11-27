@@ -7,6 +7,7 @@ use crate::editor::{
     cluster_cells, Action, Block, BlockInsert, BlockRow, MarkAt, MarkCol, OpMarks, RegWrite, MAXCOL,
 };
 use crate::motion::{line_end, prev_grapheme};
+use crate::undo_cursor::UndoEntry;
 use crate::{BytePos, Edit, EditList, GroupHint, Mode, OpKind, Plan, Register, Tabs, WordCase};
 
 /// Blockwise recase (Vim `op_tilde` over `block_prep`): each row's characters wholly inside the block take
@@ -32,6 +33,7 @@ pub(super) fn block_recase(b: &[u8], block: &Block, case: WordCase, hint: GroupH
                     end,
                     dot: MarkAt::new(start.line, MarkCol::Byte(0)),
                 }),
+                undo_entry: UndoEntry::One,
                 ..edit(list, at, Mode::Normal, hint)
             }
         }
@@ -155,6 +157,7 @@ pub(super) fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> 
             let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
             Plan {
                 op_marks,
+                undo_entry: UndoEntry::One,
                 ..edit_yank(list, top_left, Mode::Normal, hint, reg)
             }
         }
@@ -189,6 +192,7 @@ pub(super) fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> 
                 is_edit,
                 set_register: Some(RegWrite::Edit(reg)),
                 op_marks: Some(block_delete_marks(b, block)),
+                undo_entry: UndoEntry::One,
                 ..self::nop(top_left, Mode::Insert)
             }
         }

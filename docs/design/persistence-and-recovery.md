@@ -873,6 +873,9 @@ loss.
 
 This doc depends on / enforces (registry: [reference-invariants.md](../invariants/reference-invariants.md)):
 
+> **Code status (#891):** INV-BUFFER-KIND and INV-STATUS are not yet enforced in code; INV-ERR-CLASS is only
+> partly enforced. See their markers in [reference-invariants.md](../invariants/reference-invariants.md).
+
 - **INV-TXN** — every editable-Document mutation is a Transaction carrying `base_revision`; revision strictly
   increases. The journal is its durable projection (§1, §2).
 - **INV-UNDO** — every such Transaction is undoable by logical unit; history has no orphaned parents. The
