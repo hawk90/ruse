@@ -401,7 +401,23 @@ pub(super) fn decode_paste_register(
                 Some(n) => arg_u32(Some(n), line)?,
                 None => 1,
             };
-            Command::PasteSelection { swap, count }
+            // Optional flags after the count (#1616): `before`/`after` (the direction, by default the
+            // register mode's) and `move` (`gp`/`gP`).
+            let (mut after, mut move_after) = (swap, false);
+            for w in words {
+                match w {
+                    "after" => after = true,
+                    "before" => after = false,
+                    "move" => move_after = true,
+                    _ => return Err(CommandParseError::BadArgument(line.to_string())),
+                }
+            }
+            Command::PasteSelection {
+                swap,
+                count,
+                after,
+                move_after,
+            }
         }
         "select_register" => {
             // No arg → the unnamed register; otherwise a decimal Unicode scalar for the register name.

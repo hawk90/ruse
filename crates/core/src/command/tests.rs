@@ -509,10 +509,26 @@ fn samples() -> Vec<Command> {
         Command::PasteSelection {
             swap: true,
             count: 1,
+            after: true,
+            move_after: false,
         },
         Command::PasteSelection {
             swap: false,
             count: 3,
+            after: false,
+            move_after: false,
+        },
+        Command::PasteSelection {
+            swap: true,
+            count: 1,
+            after: true,
+            move_after: true,
+        },
+        Command::PasteSelection {
+            swap: true,
+            count: 2,
+            after: false,
+            move_after: true,
         },
         Command::SetRegister(None),
         Command::SetRegister(Some('a')),

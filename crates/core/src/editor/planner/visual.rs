@@ -136,9 +136,15 @@ pub(super) fn plan(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd:
                 hint,
             )
         }
-        // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
-        // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
-        Command::PasteSelection { swap, count } => plan_paste_selection(st, b, cur, *swap, *count),
+        // Visual `p`/`P`/`gp`/`gP` — replace the selection with the register; `swap` puts the deleted text
+        // into the unnamed register (Vim `p`, `gp`, `gP`), `P` preserves the register (so it can overwrite
+        // successive selections); `move_after` (`gp`/`gP`) rests the cursor just after the put text.
+        Command::PasteSelection {
+            swap,
+            count,
+            after,
+            move_after,
+        } => plan_paste_selection(st, b, cur, *swap, *count, *after, *move_after),
         _ => unreachable!("planner::visual plans only its own commands"),
     }
 }

@@ -6341,6 +6341,38 @@ FIXTURES: list[dict] = [
     {"name": "vb_forced_d_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "ld<C-v>jju", "setup": UNDO_SETUP},
     {"name": "vb_forced_d_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "ld<C-v>jju<C-r>",
      "setup": UNDO_SETUP},
+    # #1616: Visual gp / gP replace the selection like Visual p (both swap the register), leaving the cursor
+    # just after the put text; gP puts a linewise register above a block, like P.
+    {"name": "vput_gp_char_dot", "lines": ["ab cd ef gh"], "keys": "yiwwviwgpw."},
+    {"name": "vput_gp_char", "lines": ["ab cd ef gh"], "keys": "yiwwviwgp"},
+    {"name": "vput_gP_char_swaps", "lines": ["ab cd ef gh"], "keys": "yiwwviwgP"},
+    {"name": "vput_gP_char_then_P", "lines": ["ab cd ef gh"], "keys": "yiwwviwgP0P"},
+    {"name": "vput_gp_char_count", "lines": ["ab cd ef gh"], "keys": "yiwwviw2gp"},
+    {"name": "vput_gp_char_line_end", "lines": ["ab cd ef gh"], "keys": "yiw$viwgp"},
+    {"name": "vput_gp_line", "lines": ["ab cd", "ef", "gh"], "keys": "yyjVgp"},
+    {"name": "vput_gP_line", "lines": ["ab cd", "ef", "gh"], "keys": "yyjVgP"},
+    {"name": "vput_gp_line_count", "lines": ["ab cd", "ef", "gh"], "keys": "yyjV2gp"},
+    {"name": "vput_gp_line_last", "lines": ["ab cd", "ef", "gh"], "keys": "yyGVgp"},
+    {"name": "vput_gp_line_char_reg", "lines": ["ab cd", "ef", "gh"], "keys": "yiwjVgp"},
+    {"name": "vput_gp_line_dot", "lines": ["ab", "cd", "ef", "gh"], "keys": "yyjVgpj."},
+    {"name": "vput_gp_char_line_reg", "lines": ["ab cd", "ef gh"], "keys": "yywviwgp"},
+    {"name": "vput_gp_char_line_reg_end", "lines": ["ab cd", "ef gh"], "keys": "yy$viwgp"},
+    {"name": "vput_gp_block_char_reg", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jgp"},
+    {"name": "vput_gP_block_char_reg", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jgP"},
+    {"name": "vput_gp_block_char_reg_count", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jl2gp"},
+    {"name": "vput_gp_block_line_reg", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yyl<C-v>jgp"},
+    {"name": "vput_gP_block_line_reg", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yyl<C-v>jgP"},
+    {"name": "vput_gp_block_block_reg", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jlyjj0<C-v>jlgp"},
+    {"name": "vput_gP_block_block_reg", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlyj0<C-v>jgP"},
+    {"name": "vput_gp_block_dot", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yiwl<C-v>jgpjj0."},
+    {"name": "vput_block_char_reg_count", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jl2p"},
+    # #1616: the Normal gp / gP cursor that the Visual forms share: past the last line, and after a block.
+    {"name": "gp_line_last", "lines": ["ab", "cd"], "keys": "yyGgp"},
+    {"name": "gp_line_last_terminated", "lines": ["ab", "cd", ""], "keys": "yyjgp"},
+    {"name": "gP_line_last", "lines": ["ab", "cd"], "keys": "yyGgP"},
+    {"name": "gp_block_past_eof", "lines": ["abcd", "efgh", "ij"], "keys": "l<C-v>jlyGgp"},
+    {"name": "gP_block_mid", "lines": ["abcd", "efgh", "ij", "kl"], "keys": "l<C-v>jlyjjgP"},
+    {"name": "gp_block_line_end", "lines": ["abcd", "efgh", "ij", "kl"], "keys": "l<C-v>jlyjj$gp"},
 ]
 
 
