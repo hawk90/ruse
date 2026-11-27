@@ -1080,3 +1080,36 @@ related:
   a second frontend or remote peer reads files itself; measured decode cost on large files is material.
 - Refs: [RFC-0025](../docs/rfc/proposed/RFC-0025-file-encodings.md), RFC-0008, RFC-0017, RFC-0023, D-034,
   D-042, D-056, D-064, D-065, F-008, DEP-ENCODING, #1292.
+
+## D-068 — The message area is a bar row plus 'cmdheight' rows; listing output goes through one pager · open
+- **Decision (proposed):** The bottom of the screen is the bar (ruse's one global status line) plus
+  `'cmdheight'` message rows, each value meaning what it means in nvim v0.12.6. At N ≥ 1 the bar has its own
+  row above N rows of messages and command line, and the windows get rows − 1 − N. At 0 the bar is the last
+  row and shows the message after its prefix. That is today's layout, not nvim's `ch=0` policy of a hit-enter
+  prompt for every message. A negative value gives E487, and a value that leaves no window row is clamped to
+  rows − 2. `'shortmess'` (default `ltToOCF`, E539 on an unknown flag) accepts every nvim flag. A flag takes
+  effect on every message ruse gives that it names (`l m r w a W F t`, and `I` for the startup line). The
+  others are listed as having no effect until a feature adds their message, and that feature honours them.
+  Multi-row output (`:!`, `:w !`, `:ls`, every view-only `show_rows` listing, `:messages`) goes through the
+  #1274 `-- More --` pager, with the typed command as its first row, `g<` (the last output, once) and
+  `'more'`. Interactive pickers (`:reg :marks :jumps :changes :dig`) stay. The Emacs profile's growing echo
+  area is a separate design. Full design: [RFC-0027](../docs/rfc/proposed/RFC-0027-cmdheight-shortmess-pager.md).
+- **Open for the maintainer:**
+  - The default `'cmdheight'`: 1, nvim's and Emacs's layout (recommended), or 0, today's look.
+  - The `F` default: follow nvim and drop the `:e` file message (recommended).
+  - `:reg :marks :jumps :changes :dig`: keep the pickers (recommended) or print through the pager.
+  - `'messagesopt'` `wait:`: implement it (recommended), or document it as having no effect.
+  - Config keys `render.cmdheight`, `render.shortmess` and `render.more` (recommended).
+  - Splitting the pager slices (3–4) off #1275 into their own issue (recommended).
+- **Reason:** #1275. The shared last row costs every message the cells of the bar's prefix and needs the
+  `CutRow` special case (#1235). `:!` output is joined with ` | `, `:ls` is one row, and view-only listings
+  open an overlay instead of the pager. `'cmdheight'`, `'shortmess'` and `'more'` are only names. Probed
+  against nvim v0.12.6 (`--clean`, headless and in an 80x24 PTY) and Emacs 31.1 (`-Q`). The evidence table is
+  in RFC-0027.
+- **Re-evaluate if:**
+  - ruse gains tabpages: `'cmdheight'` becomes tabpage-local.
+  - ruse gains `'showcmd'`: the last-row width becomes `v:echospace`.
+  - nvim's ui2 replaces the legacy message grid upstream.
+  - The Emacs-profile echo-area design needs the layout per profile.
+- Refs: [RFC-0027](../docs/rfc/proposed/RFC-0027-cmdheight-shortmess-pager.md), RFC-0009, RFC-0017, D-056,
+  F-006, INV-DOC-VIEW, INV-CMD-SEMANTIC, #1275, #1274, #1235, #1222.
