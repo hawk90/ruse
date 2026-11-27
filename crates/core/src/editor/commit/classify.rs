@@ -35,6 +35,9 @@ pub(super) fn is_jump(cmd: &Command) -> bool {
         | Command::GotoNamedMarkLine(_)
         | Command::GotoContextMark
         | Command::GotoContextMarkLine => true,
+        // An operator to a mark sets the context mark where it starts, as the jump does (nvim's
+        // `nv_cursormark` calls `setpcmark` under an operator too, #1645): after `` y`a ``, `` `` `` returns.
+        Command::OpToMark { .. } => true,
         Command::Move(_, m) => matches!(
             m,
             M::GotoLine

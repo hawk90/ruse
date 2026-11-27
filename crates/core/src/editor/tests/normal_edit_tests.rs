@@ -778,6 +778,64 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn operator_to_change_and_context_marks() {
+        use crate::command::MarkOp;
+        let op = |op, name, linewise| Command::OpToMark { op, name, linewise };
+        // `5lddjd`[`: `'[` is left past the end of the shorter line now first; the operator takes it
+        // clamped onto that line's last char, as the jump does (nvim v0.12.6, fixture
+        // i1645_d_to_change_start_clamped).
+        let st = run(
+            "abcdef\ngh\nij",
+            &[
+                Command::Move(5, Motion::Right),
+                Command::Delete(1, Motion::Line),
+                Command::Move(1, Motion::Down),
+                op(MarkOp::Delete, '[', false),
+            ],
+        );
+        assert_eq!(text(&st), "gj");
+        assert_eq!(st.register().text(), b"h\ni");
+        assert!(!st.register().is_linewise());
+        // `wGd''`: linewise from the last line to the context mark `G` left on line 1.
+        let st = run(
+            "abc def\nghi\njkl",
+            &[
+                Command::Move(1, Motion::WordFwd),
+                Command::Move(0, Motion::LastLine),
+                op(MarkOp::Delete, '\'', true),
+            ],
+        );
+        assert_eq!(text(&st), "");
+        assert!(st.register().is_linewise());
+        // `` d`` `` before any jump: the context mark is unset, so nothing runs.
+        let st = run("abc", &[op(MarkOp::Delete, '`', false)]);
+        assert_eq!(text(&st), "abc");
+    }
+
+    #[test]
+    fn operator_to_mark_sets_the_context_mark() {
+        use crate::command::MarkOp;
+        // `jmaGy`a```: the yank to `a` sets the context mark where it starts (line 3), so `` `` `` returns
+        // there (nvim's `nv_cursormark` calls `setpcmark` under an operator, fixture
+        // i1645_y_to_named_sets_context).
+        let st = run(
+            "abc def\nghi\njkl",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::SetNamedMark('a'),
+                Command::Move(0, Motion::LastLine),
+                Command::OpToMark {
+                    op: MarkOp::Yank,
+                    name: 'a',
+                    linewise: false,
+                },
+                Command::GotoContextMark,
+            ],
+        );
+        assert_eq!(st.cursor().0, 12, "`` returns to where y`a started");
+    }
+
+    #[test]
     fn case_to_mark() {
         use crate::command::{MarkOp, WordCase};
         // `` gU`a ``: charwise upcase [cursor, mark). Mark at byte 4, cursor to byte 8 → upcase [4,8).

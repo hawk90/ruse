@@ -1391,6 +1391,38 @@ fn reindent_operator() {
 }
 
 #[test]
+fn operator_to_special_mark_routing() {
+    // `[ ] . ' `` ` `` compose with an operator as a named mark does (#1645); unarmed they still jump.
+    for (keys, name, linewise) in [
+        ("d`[", '[', false),
+        ("y`]", ']', false),
+        ("c`.", '.', false),
+        ("d``", '`', false),
+        ("d`'", '\'', false),
+        ("d'[", '[', true),
+        ("y']", ']', true),
+        ("d'.", '.', true),
+        ("d''", '\'', true),
+        ("d'`", '`', true),
+    ] {
+        let op = match keys.as_bytes()[0] {
+            b'd' => MarkOp::Delete,
+            b'c' => MarkOp::Change,
+            _ => MarkOp::Yank,
+        };
+        assert_eq!(
+            feed(keys),
+            Feed::Cmd(Command::OpToMark { op, name, linewise }),
+            "{keys}"
+        );
+    }
+    assert_eq!(feed("`["), Feed::Cmd(Command::GotoChangeMarkStart));
+    assert_eq!(feed("''"), Feed::Cmd(Command::GotoContextMarkLine));
+    // A mark ruse has no store for still aborts the operator.
+    assert!(!matches!(feed("d`("), Feed::Cmd(Command::OpToMark { .. })));
+}
+
+#[test]
 fn operator_to_mark_routing() {
     // d/c/y to a mark still route exactly as before (regression): `` ` `` charwise, `'` linewise.
     assert_eq!(

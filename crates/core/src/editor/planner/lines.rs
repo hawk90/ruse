@@ -467,7 +467,7 @@ pub(in crate::editor) fn refused_linewise_cursor(
                 name,
                 linewise: true,
                 ..
-            } => mark_line_target(b, st.view.named_mark(name)?.0),
+            } => mark_line_target(b, st.view.op_mark(name)?.0),
             _ => return None,
         };
         cur.min(landing)

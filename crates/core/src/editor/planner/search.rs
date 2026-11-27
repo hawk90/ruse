@@ -610,7 +610,7 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
             ))
         }
         Command::OpToMark { name, linewise, .. } => {
-            let mark = st.view.named_mark(*name)?.0.min(b.len());
+            let mark = st.view.op_mark(*name)?.0.min(b.len());
             let (lo, hi) = (cur.min(mark), cur.max(mark));
             let lines = if *linewise {
                 (

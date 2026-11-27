@@ -42,7 +42,6 @@ vb_forced_d_redo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on 
 i1269_block_A_cut_invalid # blockwise A whose edge cuts <ff>: nvim's op_insert copies the cut byte with the typed text into the rows below; ruse copies only the typed text (as for a split char, #1149)
 i1269_block_A_cut_wide # blockwise A whose edge cuts a wide char: nvim copies the char's bytes after the cut (invalid UTF-8) into the rows below; ruse copies only the typed text
 i1269_cword_invalid # c_CTRL-R_CTRL-W on a <cword> holding a byte that is not UTF-8: the command line is a String, so ruse splices nothing (then E476 on the empty :s pattern)
-i1615_dd_d_to_mark # an operator to `[ or `] (d`[, y`]) beeps: OpToMark resolves only a-z A-Z 0-9 ^ < > through named_mark, not the change marks; the raw-column marks of the dd before it verify
 
 # #1631: text typed after an Insert <CR> makes no undo entry of its own; these fixtures lock that in except for
 # the mark each line names, a difference of its own.
