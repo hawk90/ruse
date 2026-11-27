@@ -18,6 +18,7 @@ use std::collections::HashSet;
 use crate::edit::EditList;
 use crate::pos::{BytePos, Revision};
 use crate::transaction::{GroupHint, TransactionOrigin};
+use crate::undo_cursor::UndoEntry;
 
 /// Monotonic creation-order key over undo nodes — the chronological index key, and the identity behind
 /// `saved_node` dirty-tracking (persistence §1). Never renumbered, so history is immutable under new branches.
@@ -47,12 +48,16 @@ struct UndoNode {
     /// Vim's `uh_cursor`: where the cursor stood when this change began, as a byte offset into the
     /// PARENT's text. Read off the first node of a group when `u`/`C-r` place the cursor.
     cursor: usize,
+    /// How this node's edits map onto Vim undo entries (#1612); only `u`/`C-r` placement reads it.
+    undo_entry: UndoEntry,
 }
 
 /// What one `u`/`C-r`/`g-`/`g+` step re-applies, and what the cursor placement needs to know about it.
 pub struct UndoStep {
     /// The edit lists to apply, in order.
     pub edits: Vec<EditList>,
+    /// How each of `edits` maps onto Vim undo entries (see `UndoNode::undo_entry`).
+    pub(crate) undo_entry: Vec<UndoEntry>,
     /// The undo group each of `edits` belongs to — a step can cross several (`g-`/`g+`), and the marks a
     /// group saved are restored after its last list (Vim's `uh_namedm`, #686).
     pub groups: Vec<u64>,
@@ -108,6 +113,7 @@ impl UndoHistory {
             result_revision: base_revision,
             redo_child: None,
             cursor: 0,
+            undo_entry: UndoEntry::PerEdit,
         };
         UndoHistory {
             nodes: vec![root],
@@ -191,6 +197,7 @@ impl UndoHistory {
             result_revision,
             redo_child: None,
             cursor,
+            undo_entry: UndoEntry::PerEdit,
         });
         let parent = &mut self.nodes[self.current.0];
         self.last_record = Some((id, parent.redo_child, self.last_was_nav, self.synced));
@@ -201,6 +208,12 @@ impl UndoHistory {
         self.last_was_nav = false;
         self.synced = false;
         id
+    }
+
+    /// Map node `id`'s edits onto Vim undo entries as `shape` says (#1612), for where `u`/`C-r` put the
+    /// cursor and the `'.` mark.
+    pub(crate) fn set_undo_entry(&mut self, id: UndoNodeId, shape: UndoEntry) {
+        self.nodes[id.0].undo_entry = shape;
     }
 
     /// Take back the newest recorded change as though it was never made: `current` returns to its parent,
@@ -245,6 +258,7 @@ impl UndoHistory {
     pub fn undo(&mut self) -> Option<UndoStep> {
         self.nodes[self.current.0].parent?;
         let mut out = Vec::new();
+        let mut undo_entry = Vec::new();
         let mut groups = Vec::new();
         let mut nodes = Vec::new();
         let group = self.nodes[self.current.0].group;
@@ -260,6 +274,7 @@ impl UndoHistory {
                     .clone()
                     .expect("non-root node carries an inverse"),
             );
+            undo_entry.push(node.undo_entry);
             groups.push(group);
             nodes.push((self.nodes[parent.0].seq, node.origin));
             cursor = node.cursor;
@@ -270,6 +285,7 @@ impl UndoHistory {
         self.last_was_nav = true;
         Some(UndoStep {
             edits: out,
+            undo_entry,
             groups,
             nodes,
             tail: 0,
@@ -289,6 +305,7 @@ impl UndoHistory {
     /// node chain, in application order. Moves `current` to the group's tip. `None` if nothing to redo.
     pub fn redo(&mut self) -> Option<UndoStep> {
         let mut out = Vec::new();
+        let mut undo_entry = Vec::new();
         let first = self.redo_target(self.current)?;
         let group = self.nodes[first.0].group;
         let mut groups = Vec::new();
@@ -301,6 +318,7 @@ impl UndoHistory {
                     .clone()
                     .expect("non-root node carries a forward"),
             );
+            undo_entry.push(self.nodes[node.0].undo_entry);
             groups.push(group);
             nodes.push((self.nodes[node.0].seq, self.nodes[node.0].origin));
             self.current = node;
@@ -312,6 +330,7 @@ impl UndoHistory {
         self.last_was_nav = true;
         Some(UndoStep {
             edits: out,
+            undo_entry,
             groups,
             nodes,
             tail: 0,
@@ -345,6 +364,7 @@ impl UndoHistory {
             }
         };
         let mut out = Vec::new();
+        let mut undo_entry = Vec::new();
         let mut groups = Vec::new();
         let mut nodes = Vec::new();
         // The last group crossed: the tail of the forwards when the walk ends going down, else the tail of
@@ -361,6 +381,7 @@ impl UndoHistory {
                 tail = out.len();
             }
             cursor = node.cursor;
+            undo_entry.push(node.undo_entry);
             groups.push(node.group);
             out.push(
                 self.nodes[c.0]
@@ -388,6 +409,7 @@ impl UndoHistory {
                 tail = out.len();
                 cursor = node.cursor;
             }
+            undo_entry.push(node.undo_entry);
             groups.push(node.group);
             nodes.push((node.seq, node.origin));
             out.push(
@@ -401,6 +423,7 @@ impl UndoHistory {
         self.last_was_nav = true;
         Some(UndoStep {
             edits: out,
+            undo_entry,
             groups,
             nodes,
             tail,

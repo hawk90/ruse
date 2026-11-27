@@ -176,6 +176,10 @@ pub struct Plan {
     /// the default. Set even on a no-op when nvim's operator still marks it (a block `<` that moves no
     /// text: nvim's `op_shift` sets the marks and calls `changed_lines` whatever it changed).
     pub(super) op_marks: Option<OpMarks>,
+    /// How the plan's edits map onto Vim undo entries — one per edit, or one over all the lines a blockwise
+    /// operator touches (nvim's `op_shift`/`op_delete`/`op_tilde`/`op_replace` `u_save` the block's lines at
+    /// once): where `u`/`CTRL-R` put the cursor and the `'.` mark (#1612).
+    pub(super) undo_entry: crate::undo_cursor::UndoEntry,
 }
 
 /// The change marks an operator leaves, as nvim's `b_op_start` / `b_op_end` / `b_last_change` (#1302). Each
