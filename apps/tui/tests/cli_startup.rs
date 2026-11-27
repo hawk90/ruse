@@ -9,7 +9,7 @@ mod support;
 use std::path::Path;
 use std::process::Stdio;
 
-use support::{open_pty, run_detached, Editor, Scratch};
+use support::{open_pty, run_detached, run_detached_env, Editor, Scratch};
 
 #[test]
 fn help_prints_usage_and_succeeds() {
@@ -32,6 +32,39 @@ fn version_prints_the_package_version() {
             format!("ruse {}\n", env!("CARGO_PKG_VERSION"))
         );
     }
+}
+
+/// #1324: a `RUSE_LOG` file that cannot be opened is said once on stderr, by its reason and not its path,
+/// and startup goes on with logging off. An empty `RUSE_LOG` is unset and says nothing.
+#[test]
+fn an_unopenable_log_file_is_said_once_and_startup_goes_on() {
+    let out = run_detached_env(
+        &["--version"],
+        &[("RUSE_LOG", "no-such-dir/secret-name.log")],
+        Stdio::null(),
+        Stdio::piped(),
+    );
+    assert_eq!(out.status, 0);
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        format!("ruse {}\n", env!("CARGO_PKG_VERSION"))
+    );
+    assert_eq!(
+        out.stderr,
+        format!(
+            "ruse: RUSE_LOG: cannot open the log file: {}; logging is off\n",
+            std::io::Error::from_raw_os_error(libc::ENOENT)
+        )
+    );
+    assert!(!out.stderr.contains("secret-name"), "{}", out.stderr);
+    let out = run_detached_env(
+        &["--version"],
+        &[("RUSE_LOG", "")],
+        Stdio::null(),
+        Stdio::piped(),
+    );
+    assert_eq!(out.status, 0);
+    assert!(out.stderr.is_empty(), "{:?}", out.stderr);
 }
 
 #[test]

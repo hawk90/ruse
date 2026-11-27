@@ -134,7 +134,10 @@ fn parse(args: &[OsString]) -> Invocation {
 // Headless CLI: stderr is the correct channel here (no TUI, no tracing sink yet). D-041 scoped allow.
 #[allow(clippy::print_stderr)]
 pub fn run() -> ExitCode {
-    crate::log::init();
+    // Said here, before the UI starts, so the one line stays on the screen the editor returns to (#1324).
+    if let Err(e) = crate::log::init() {
+        eprintln!("{}", crate::log::open_error_message(&e));
+    }
     crate::recover::install_hook();
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let (path, flags) = match parse(&args) {

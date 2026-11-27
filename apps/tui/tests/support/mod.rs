@@ -607,6 +607,16 @@ pub fn run_detached(
     stdin: std::process::Stdio,
     stdout: std::process::Stdio,
 ) -> Detached {
+    run_detached_env(args, &[], stdin, stdout)
+}
+
+/// [`run_detached`] with extra `KEY=value` environment entries (relative paths resolve in its scratch).
+pub fn run_detached_env(
+    args: &[&str],
+    env: &[(&str, &str)],
+    stdin: std::process::Stdio,
+    stdout: std::process::Stdio,
+) -> Detached {
     use std::process::{Command, Stdio};
     let scratch = Scratch::new();
     let mut child = Command::new(env!("CARGO_BIN_EXE_ruse"))
@@ -616,6 +626,7 @@ pub fn run_detached(
         .env("TERM", "xterm-256color")
         .env("HOME", scratch.0.join("home"))
         .env("XDG_STATE_HOME", scratch.0.join("home"))
+        .envs(env.iter().copied())
         .stdin(stdin)
         .stdout(stdout)
         .stderr(Stdio::piped())
