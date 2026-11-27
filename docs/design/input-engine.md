@@ -113,6 +113,9 @@ Uses the glossary in [spec/PROJECT.md] and the invariants registry. Local terms:
 
 C-INPUT depends on and enforces:
 
+> **Code status (#891):** INV-PRIORITY is only partly enforced. See its marker in
+> [reference-invariants.md](../invariants/reference-invariants.md).
+
 - **INV-PROFILE-ISOLATION** — bindings from different profiles never share a key space; a real conflict is
   `same profile + same sequence + overlapping context + same priority`, detected **statically**.
 - **INV-PRIORITY** — resolution follows the fixed priority ABI; plugins cannot force global keys. (Tiers

@@ -136,6 +136,10 @@ local terms:
 Depends on and enforces (registry: [reference-invariants.md](../invariants/reference-invariants.md);
 not redefined here):
 
+> **Code status (#891):** INV-BUFFER-KIND, INV-STATUS, INV-RENDER-IR, INV-SCHED-1 and INV-PROTOCOL-VERSIONED
+> are not yet enforced in code; INV-HANDLE and INV-ERR-CLASS are only partly enforced. See their markers in
+> [reference-invariants.md](../invariants/reference-invariants.md).
+
 - **INV-DOC-VIEW** — the spine: Document ≠ View ≠ Window ≠ File; a Document never references a View;
   view-local state is never on the Document; one Document, many Views. Governs VW-VIEWSTATE, VW-MULTI,
   and the narrowing reconciliation (VW-NARROW).
@@ -358,11 +362,13 @@ Guarantees this closes:
 
 - **No leaked background tasks.** Closing the last View of a buffer cancels its scheduler-owned work
   (parse, index, decoration providers, LSP `didClose`) — the dangling-view failure RFC-0002 names,
-  enforced by INV-SCHED-1. A buffer kept *hidden* keeps only the work a hidden buffer legitimately needs
-  (e.g. it stops per-frame decoration but keeps its journal open).
+  required by INV-SCHED-1 (not yet enforced: there is no central scheduler; see
+  [reference-invariants.md](../invariants/reference-invariants.md)). A buffer kept *hidden* keeps only the
+  work a hidden buffer legitimately needs (e.g. it stops per-frame decoration but keeps its journal open).
 - **No dead-document leak.** A View cannot outlive its Document silently: a `DocumentId` in a `View`
   whose generation was freed is an **assert** (INV-HANDLE), meaning a lifetime bug, not a runtime error —
-  so "view holding a dead document" is caught, not tolerated (see Failure modes).
+  so "view holding a dead document" is caught, not tolerated (see Failure modes). Not yet in code:
+  `DocumentId` carries no generation (INV-HANDLE is only partly enforced; see [reference-invariants.md](../invariants/reference-invariants.md)).
 - **No lost work on close.** Closing a *modified* buffer's last window does **not** unload it; it becomes
   a hidden buffer (Vim `hidden`) so its journal ([persistence](persistence-and-recovery.md)) stays live;
   an explicit `:bdelete`/`kill-buffer` on a modified buffer goes through save-preflight (stability §13),
@@ -943,6 +949,10 @@ multi-client render pinning. None require re-opening the model above.
 
 This doc depends on / enforces (registry: [reference-invariants.md](../invariants/reference-invariants.md);
 not redefined here):
+
+> **Code status (#891):** INV-BUFFER-KIND, INV-STATUS, INV-RENDER-IR, INV-SCHED-1 and INV-PROTOCOL-VERSIONED
+> are not yet enforced in code; INV-HANDLE, INV-ERR-CLASS and INV-PRIORITY are only partly enforced. See
+> their markers in [reference-invariants.md](../invariants/reference-invariants.md).
 
 - **INV-DOC-VIEW** — Document ≠ View ≠ Window ≠ File; view-local state (cursor/selection/viewport/folds)
   lives only on the View; the Document never knows a View; one Document, many Views. Narrowing is a

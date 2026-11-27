@@ -44,6 +44,9 @@ render always win, collapse only-latest-matters duplicates, bound every queue, s
 workspaces and plugins, degrade feature quality (not availability) under load, and hand results back to the
 single-threaded deterministic executor (D-002) without any worker ever touching editor state.
 
+> **Code status (#891):** `C-SCHEDULER` is not built yet, so INV-SCHED-1 is not yet enforced: background
+> work runs on ad-hoc threads today. See its marker in [reference-invariants.md](../invariants/reference-invariants.md).
+
 ## Goals
 
 - **Total ownership.** No background work exists outside the scheduler — no per-plugin thread pools, no ad
@@ -613,6 +616,10 @@ Submitted ─▶ Queued ─▶ Running ─▶ Completed
 
 This doc depends on (defined in [reference-invariants.md](../invariants/reference-invariants.md); not
 redefined here):
+
+> **Code status (#891):** INV-SCHED-1, INV-PLUGIN-NO-CORE, INV-PLUGIN-ISOLATED and INV-STATUS are not yet
+> enforced in code; INV-ERR-CLASS is only partly enforced. See their markers in
+> [reference-invariants.md](../invariants/reference-invariants.md).
 
 - **INV-SCHED-1** — all background work is centrally owned; input/render outrank background; duplicate
   per-document parse/index coalesced and superseded requests cancelled. (§1, §4, §6) — budget *specifics*
