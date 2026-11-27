@@ -28,7 +28,13 @@ mod parity_ratchet;
 ///
 /// A `bytes` fixture (#1232) spells each byte of its lines as one Latin-1 char, so a line can hold bytes
 /// that are not UTF-8 ([`latin1_bytes`]); its text and registers are read back the same way.
-fn drive_ruse(lines: &[String], keys: &str, file: Option<&str>, raw: bool) -> Headless {
+fn drive_ruse(
+    lines: &[String],
+    keys: &str,
+    file: Option<&str>,
+    raw: bool,
+    setup: &str,
+) -> Headless {
     let text = ruse_input(lines);
     let h = match file {
         _ if raw => Headless::vim_bytes(&latin1_bytes(&text)),
@@ -36,6 +42,11 @@ fn drive_ruse(lines: &[String], keys: &str, file: Option<&str>, raw: bool) -> He
         None => Headless::vim(&text),
     };
     let mut h = h.vanilla_search_case();
+    // A page fixture captured with `laststatus=0` has nvim's 23-row window: ruse's `'cmdheight'` 0 has the
+    // same rows (RFC-0027 §1.1), where its default 1 has nvim's default 22.
+    if setup.contains("laststatus=0") {
+        h = h.with_cmdheight(0);
+    }
     h.keys(keys);
     h
 }
@@ -212,7 +223,8 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     let expect = &fx["expect"];
 
     let raw = fx["bytes"].as_bool().unwrap_or(false);
-    let mut h = drive_ruse(&lines, keys, fx["file"].as_str(), raw);
+    let setup = fx["setup"].as_str().unwrap_or_default();
+    let mut h = drive_ruse(&lines, keys, fx["file"].as_str(), raw, setup);
 
     // ruse observables.
     let r_text = ruse_text(&h, terminated(&lines), raw);

@@ -209,13 +209,19 @@ fn a_failing_journal_shows_journal_bang_until_a_sync_works() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     // 200 changes trigger a sync; the first failure is shown whole above the hit-enter prompt (#1222),
     // the journal path after the error (the unit test `journal_outcome_names_the_journal` reads it).
-    ed.keys_then_wait_for(
-        &format!("i{}{ESC}", "x".repeat(200)),
-        "E303: unable to write the recovery journal for",
+    ed.keys(&format!("i{}", "x".repeat(200)));
+    let rows = ed.wait_for_row("Press ENTER or type command to continue");
+    assert!(
+        rows.iter()
+            .any(|r| r.starts_with("E303: unable to write the recovery journal for")),
+        "{rows:#?}"
     );
-    ed.wait_for("Press ENTER or type command to continue");
-    // A command line gives the status line back whole.
-    ed.keys_then_wait_for(":set ts?\r", "f.txt [+][journal!]    tabstop=4");
+    // `<Esc>` answers the prompt and then runs: Insert mode ends.
+    ed.keys(ESC);
+    // The bar keeps its own row, and the flag shows there.
+    ed.keys_then_wait_for(":set ts?\r", "  tabstop=4");
+    let rows = ed.rows();
+    assert_eq!(rows[22..], ["NORMAL  f.txt [+][journal!]", "  tabstop=4"]);
     ed.keys_then_wait_for(":checkhealth\r", "WARN journal: f.txt: last write failed");
     ed.keys(ESC);
     drop(unlock);
@@ -231,7 +237,8 @@ fn a_failing_journal_shows_journal_bang_until_a_sync_works() {
         &after[after.len().saturating_sub(1500)..]
     );
     ed.keys(ESC);
-    ed.keys_then_wait_for(":set ts?\r", "f.txt [+]    tabstop=4");
+    ed.keys_then_wait_for(":set ts?\r", "  tabstop=4");
+    assert_eq!(ed.rows()[22], "NORMAL  f.txt [+]", "the flag is gone");
     ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
 }

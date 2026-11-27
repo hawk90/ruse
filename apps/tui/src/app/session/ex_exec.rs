@@ -120,9 +120,9 @@ impl Session {
         };
         let win_h = usize::from(rects.get(ws.focus()).map_or(text_rows, |r| r.h));
         // Twice `'scroll'` (half the window) with one window, the window less 3 with more, and the
-        // screen less the command line under `!`.
+        // screen less one row under `!` (nvim's `Rows - 1`, whatever `'cmdheight'` is).
         let window = if spec.bang {
-            usize::from(text_rows)
+            usize::from(frame.rows.saturating_sub(1))
         } else if ws.window_count() == 1 {
             win_h / 2 * 2
         } else {
@@ -210,6 +210,7 @@ impl Session {
             files,
             readonly,
             win_height,
+            screen_rows: frame.rows,
         };
         let out = crate::app::set_exec::run_set(&line, &mut host, cols as usize, *ex_verbose);
         status.history_mut().set_cap(ui_opts.message_history());

@@ -195,11 +195,12 @@ fn bare_set_lists_what_differs_from_the_default() {
 #[test]
 fn scrolloff_is_settable() {
     let text: String = (1..=50).map(|i| format!("{i}\n")).collect();
-    // 11 text rows (the status line is extra): `L` keeps 'scrolloff' rows of context above the window's bottom.
-    let mut h = Headless::with_size(Profile::Vim, &text, 80, 11);
+    // 10 text rows (the bar and the message row are extra): `L` keeps 'scrolloff' rows of context
+    // above the window's bottom.
+    let mut h = Headless::with_size(Profile::Vim, &text, 80, 12);
     h.keys("L");
     assert_eq!(h.cursor_row_col().0, 7);
-    let mut h = Headless::with_size(Profile::Vim, &text, 80, 11);
+    let mut h = Headless::with_size(Profile::Vim, &text, 80, 12);
     h.keys(":set so=0<CR>L");
     assert_eq!(h.cursor_row_col().0, 10);
 }

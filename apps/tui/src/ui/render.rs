@@ -99,11 +99,13 @@ pub(crate) fn render(
     status_serial: u64,
     question: bool,
     pager: &mut crate::ui::message::Pager,
+    cmdheight: i64,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
-    use crossterm::style::Color;
-
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
-    let text_rows = rows.saturating_sub(1);
+    // The windows, the bar and the `'cmdheight'` message rows (RFC-0027 §1.1).
+    let bottom = crate::ui::layout::BottomLayout::new(rows, cmdheight);
+    let text_rows = bottom.text_rows;
+    let cmd_row = bottom.cmd_row();
     // Paint the whole frame into a fresh cell grid; the diff against `prev` emits only what changed.
     let mut cur = screen::Screen::new(cols, rows);
     // The focused pane's visible image blocks (path + screen placement), returned for the graphics pass
@@ -153,7 +155,20 @@ pub(crate) fn render(
     paint_windows(&mut cur, rects, &f, &mut images);
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows, wins);
 
-    paint_palette(&mut cur, palette_rows, cols, text_rows);
+    let input = StatusInput {
+        status,
+        flags,
+        diagnostics,
+        showmode,
+        question,
+        status_serial,
+    };
+    let prefix = bar_prefix(ws, &input);
+    paint_bar(&mut cur, &prefix, bottom);
+
+    // The palette and the command line's menus sit just above the row their prompt is on, as nvim's
+    // wildmenu popup and `c_CTRL-D` listing do (over the status line at `ch=1`).
+    paint_palette(&mut cur, palette_rows, cols, cmd_row);
     if let Some((items, selected)) = completion.filter(|(items, _)| !items.is_empty()) {
         // Anchor at the focused cursor's screen cell (same math the terminal cursor uses below).
         paint_completion(
@@ -166,7 +181,7 @@ pub(crate) fn render(
             text_rows,
         );
     }
-    paint_cmd_menus(&mut cur, cmd_menu, cmd_line, cols, text_rows);
+    paint_cmd_menus(&mut cur, cmd_menu, cmd_line, cols, cmd_row);
 
     // The command line shows control chars as `^X` (a literal `<CR>` typed with `c_CTRL-V` is `^M`) and
     // puts the terminal caret on its own caret, not at the end (F-026 line editor).
@@ -174,34 +189,22 @@ pub(crate) fn render(
         let (shown, col) = crate::input::display_with_caret(text, caret.unwrap_or(usize::MAX));
         (format!("{prefix}{shown}"), col)
     });
-    pager.prompt = crate::ui::message::Prompt::None;
-    let bar = match &cmd_shown {
-        Some((shown, _)) => shown.clone(),
-        None => status_text(
-            &mut cur,
-            ws,
-            &StatusInput {
-                status,
-                flags,
-                diagnostics,
-                showmode,
-                question,
-                status_serial,
-            },
-            pager,
-            cols,
-            text_rows,
-        ),
-    };
-    // Paint the status / command line into the last row (put_str truncates at the right edge).
-    cur.put_str(rows.saturating_sub(1), 0, &bar, Color::Reset, false);
+    let last = paint_bottom(
+        &mut cur,
+        cmd_shown.as_ref().map(|(shown, _)| shown.as_str()),
+        &prefix,
+        &input,
+        pager,
+        bottom,
+        (cols, rows),
+    );
 
     // Diff the finished grid against the previous frame and emit ONLY the changed runs (F-006 #1),
     // wrapped in synchronized output when supported so a big repaint lands atomically (#3).
     flush_diff(out, &cur, prev, sync)?;
     *prev = cur;
 
-    let at_prompt = (pager.prompt != crate::ui::message::Prompt::None).then_some(bar.as_str());
+    let at_prompt = (pager.prompt != crate::ui::message::Prompt::None).then_some(last.as_str());
     place_terminal_cursor(
         out,
         ws,
@@ -210,7 +213,7 @@ pub(crate) fn render(
         at_prompt,
         cmd_shown.map(|(_, col)| col),
         focus_cursor,
-        (cols, rows, text_rows),
+        (cols, rows, text_rows, cmd_row),
     )?;
     out.flush()?;
     Ok(images)

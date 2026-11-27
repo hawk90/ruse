@@ -85,6 +85,7 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::FoldColumn => "render.foldcolumn",
         Opt::FillChars => "render.fillchars",
         Opt::SmoothScroll => "render.smoothscroll",
+        Opt::CmdHeight => "render.cmdheight",
         _ => return None,
     })
 }

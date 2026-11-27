@@ -47,11 +47,15 @@ fn user_config_sets_options_and_a_bad_key_only_warns() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.wait_for("unknown key editor.tabwidth");
     // `~/ruse/…` or `home/ruse/…`: the scratch HOME lies inside the working directory.
-    let shown = ed.keys_then_wait_for(
+    ed.keys_then_wait_for(
         ":verbose set sw?\r",
         "ruse/config.toml line 2 (user config)",
     );
-    assert!(shown.contains("Last set from"), "{shown}");
+    let rows = ed.rows();
+    assert!(
+        rows.iter().any(|r| r.contains("Last set from")),
+        "{rows:#?}"
+    );
     ed.keys(&format!("{ESC}:q\r"));
     assert_eq!(ed.exit_status(), 0);
 }

@@ -204,7 +204,8 @@ impl Session {
             scroll_valid,
             ..
         } = self;
-        let text_rows = term_rows.saturating_sub(1);
+        let text_rows =
+            crate::ui::layout::BottomLayout::new(term_rows, ui_opts.cmdheight).text_rows;
         let rects = window_rects(cols, text_rows, ws.window_count(), ws.split_dir());
         let has_signs = !lsp.diagnostics_for(ws.focused_buffer()).is_empty();
         let focus_buf = ws.focused_buffer();
@@ -439,6 +440,7 @@ impl Session {
             wins,
             cols,
             text_rows,
+            rows: term_rows,
         }
     }
 

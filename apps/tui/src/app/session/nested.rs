@@ -93,6 +93,7 @@ impl Session {
             wins,
             cols: frame.cols,
             text_rows: frame.text_rows,
+            rows: frame.rows,
         }
     }
 

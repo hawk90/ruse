@@ -82,6 +82,8 @@ pub enum Opt {
     FoldOpen,
     /// `'report'`: a command that changes, yanks or moves more lines than this says how many (#1276).
     Report,
+    /// `'cmdheight'`: the message rows below the bar (RFC-0027 §1); 0 shares the bar's row.
+    CmdHeight,
     /// The write options (#619): `app/write_opts.rs` holds their values.
     Backup,
     BackupCopy,
@@ -590,6 +592,15 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::text("if,else,while,do,for,switch"),
         OptVal::text("if,else,while,do,for,switch"),
         Locality::Local,
+    ),
+    def(
+        Opt::CmdHeight,
+        "cmdheight",
+        "ch",
+        NUM0,
+        OptVal::Num(1),
+        OptVal::Num(1),
+        Locality::Global,
     ),
     def(
         Opt::ColorColumn,

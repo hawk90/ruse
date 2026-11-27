@@ -15,6 +15,7 @@ impl OptionHost<'_> {
             Opt::MessageOptions => OptVal::Text(self.ui.messagesopt.clone().into()),
             Opt::FoldOpen => OptVal::Text(self.ui.foldopen.clone().into()),
             Opt::Report => OptVal::Num(self.ui.report),
+            Opt::CmdHeight => OptVal::Num(self.ui.cmdheight),
             Opt::History => {
                 OptVal::Num(i64::try_from(self.engine.history_len()).unwrap_or(i64::MAX))
             }
@@ -41,6 +42,11 @@ impl OptionHost<'_> {
             (Opt::MessageOptions, _) => self.ui.messagesopt = text,
             (Opt::FoldOpen, _) => self.ui.foldopen = text,
             (Opt::Report, OptVal::Num(n)) => self.ui.report = n,
+            // nvim clamps a height that leaves the windows no row to `rows − 2` (`:set ch=30` reads 22).
+            (Opt::CmdHeight, OptVal::Num(n)) if self.screen_rows >= 3 => {
+                self.ui.cmdheight = n.min(i64::from(self.screen_rows - 2));
+            }
+            (Opt::CmdHeight, OptVal::Num(n)) => self.ui.cmdheight = n,
             (Opt::History, OptVal::Num(n)) => {
                 self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
             }

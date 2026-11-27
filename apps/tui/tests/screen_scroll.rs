@@ -1,8 +1,8 @@
 //! The scroll commands over wrapped lines (#615): `CTRL-E` / `CTRL-Y` / `CTRL-D` / `CTRL-U` / `CTRL-F` /
 //! `CTRL-B` count screen rows as nvim v0.12.6 does, with and without `'smoothscroll'`, through the real
 //! key path. Ground truth captured headless (`nvim --headless -u NONE`, a 20x10 terminal: 8 text rows),
-//! the cursor, top line, skipped columns and wanted column read after each key; ruse's terminal is one
-//! row taller for the same 8 text rows.
+//! the cursor, top line, skipped columns and wanted column read after each key; ruse's terminal is the
+//! same size, its bar and one `'cmdheight'` row leaving the same 8 text rows.
 
 use ruse_tui::headless::{Headless, Profile};
 
@@ -411,7 +411,7 @@ fn scroll_keys_count_screen_rows_like_nvim() {
     let text = probe();
     let mut bad = Vec::new();
     for (setup, steps) in CASES {
-        let mut h = Headless::with_size(Profile::Vim, &text, 20, 9);
+        let mut h = Headless::with_size(Profile::Vim, &text, 20, 10);
         h.keys(setup);
         let mut done = String::new();
         for &(keys, at, top, skipcol, _want) in *steps {
@@ -435,7 +435,7 @@ fn scroll_keys_count_screen_rows_like_nvim() {
 
 /// The status line after `keys` in an 8-row window.
 fn status(keys: &str) -> String {
-    let mut h = Headless::with_size(Profile::Vim, &probe(), 20, 9);
+    let mut h = Headless::with_size(Profile::Vim, &probe(), 20, 10);
     h.keys(keys);
     h.status().to_string()
 }
@@ -528,7 +528,7 @@ fn a_line_taller_than_the_window_shows_the_cursors_rows_like_nvim() {
         ("k", (2, 299), 2, [140, 140]),
     ];
     for (i, so) in ["0", "3"].iter().enumerate() {
-        let mut h = Headless::with_size(Profile::Vim, &text, 20, 9);
+        let mut h = Headless::with_size(Profile::Vim, &text, 20, 10);
         h.keys(&format!(":set so={so}<CR>"));
         for (keys, at, top, skip) in steps {
             h.keys(keys);

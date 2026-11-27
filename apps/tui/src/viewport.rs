@@ -531,7 +531,8 @@ pub enum RecenterTo {
 pub fn recenter(cursor_row: usize, height: usize, to: RecenterTo) -> usize {
     match to {
         RecenterTo::Top => cursor_row,
-        RecenterTo::Center => cursor_row.saturating_sub(height / 2),
+        // nvim adds a row below the cursor before each one above it: an even height has one more below.
+        RecenterTo::Center => cursor_row.saturating_sub(height.saturating_sub(1) / 2),
         RecenterTo::Bottom => cursor_row.saturating_sub(height.saturating_sub(1)),
     }
 }
@@ -759,7 +760,7 @@ mod tests {
     fn recenter_positions_the_cursor_line() {
         // A 20-row window, cursor at row 50.
         assert_eq!(recenter(50, 20, RecenterTo::Top), 50);
-        assert_eq!(recenter(50, 20, RecenterTo::Center), 40); // 50 - 20/2
+        assert_eq!(recenter(50, 20, RecenterTo::Center), 41); // 50 - 19/2, nvim's `51Gzz` at 20 rows
         assert_eq!(recenter(50, 20, RecenterTo::Bottom), 31); // 50 - (20-1)
                                                               // Near the top of the buffer, everything saturates at 0 (no negative scroll).
         assert_eq!(recenter(2, 20, RecenterTo::Center), 0);

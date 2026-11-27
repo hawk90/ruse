@@ -462,6 +462,7 @@ impl Painter {
             s.ed.status.serial(),
             s.emacs_prompt.is_some() || s.changed_prompt.is_some(),
             &mut s.pager,
+            s.ui_opts.cmdheight,
         )?;
         // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
         // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).

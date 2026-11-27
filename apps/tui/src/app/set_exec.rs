@@ -69,7 +69,12 @@ pub(crate) struct OptionHost<'a> {
     pub readonly: &'a mut crate::app::dispatch::ReadOnly,
     /// The focused window's text rows: `'scroll'` reads and checks against it (0 when unknown).
     pub win_height: usize,
+    /// The screen's rows: `'cmdheight'` is clamped to leave the windows one (0 when unknown).
+    pub screen_rows: u16,
 }
+
+/// ruse's default `'cmdheight'` (D-068): nvim's 1, the bar on its own row above one message row.
+pub(crate) const CMDHEIGHT_DEFAULT: i64 = 1;
 
 /// The session's own option values that no other owner holds (#1151).
 #[derive(Clone, Debug)]
@@ -89,6 +94,8 @@ pub(crate) struct UiOptions {
     pub conceal: bool,
     /// `'report'`: the line count a command's report needs to pass (#1276).
     pub report: i64,
+    /// `'cmdheight'`: the message rows below the bar (RFC-0027 §1); 0 shares the bar's row.
+    pub cmdheight: i64,
     /// `'hidden'`, `'confirm'`, `'autowrite'`, `'autowriteall'`, `'autoread'` (#619).
     pub buffers: crate::app::abandon::BufferOptions,
 }
@@ -111,6 +118,7 @@ impl Default for UiOptions {
             foldopen: crate::input::set_cmd::FOLDOPEN.to_string(),
             conceal: true,
             report: crate::app::report::REPORT_DEFAULT,
+            cmdheight: CMDHEIGHT_DEFAULT,
             buffers: crate::app::abandon::BufferOptions::default(),
         }
     }
@@ -163,6 +171,7 @@ impl OptionHost<'_> {
             | Opt::MessageOptions
             | Opt::FoldOpen
             | Opt::Report
+            | Opt::CmdHeight
             | Opt::History
             | Opt::CpOptions
             | Opt::VerboseFile => self.get_session_ui(opt),
@@ -255,6 +264,7 @@ impl OptionHost<'_> {
             | Opt::MessageOptions
             | Opt::FoldOpen
             | Opt::Report
+            | Opt::CmdHeight
             | Opt::History => self.put_session_ui(opt, val, on, text),
             Opt::FoldMethod | Opt::FoldLevel | Opt::FoldEnable => {
                 self.put_fold(opt, val, on, buf);

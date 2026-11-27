@@ -2,7 +2,8 @@
 //! the same `Session::on_key` the binary runs, without a PTY, so each case takes microseconds instead of a
 //! process start. `pty_intercepts.rs` stays as the end-to-end check that the binary wires the same path.
 //!
-//! The terminal is 80x24 as in the PTY harness (a 23-row text area; ruse hardcodes `scrolloff=3`). Expected
+//! The terminal is 80x24 as in the PTY harness (a 22-row text area above the bar and the message row, as
+//! nvim's default; ruse hardcodes `scrolloff=3`). Expected
 //! results match Neovim 0.12.6 unless a comment pins a known divergence by its issue.
 
 use ruse_core::{Mode, SelectKind};
@@ -142,7 +143,7 @@ fn zt_then_h_lands_on_the_cursor_line() {
 
 #[test]
 fn zb_then_h_and_l() {
-    assert_eq!(edit(&numbered(100), "50GzbHdd"), without(100, &[34]));
+    assert_eq!(edit(&numbered(100), "50GzbHdd"), without(100, &[35]));
     assert_eq!(edit(&numbered(100), "50GzbLdd"), without(100, &[50]));
 }
 
@@ -171,13 +172,13 @@ fn counted_h_counts_from_the_top() {
 
 #[test]
 fn d_l_deletes_through_the_true_bottom_line_ignoring_scrolloff() {
-    let gone: Vec<usize> = (50..=69).collect();
+    let gone: Vec<usize> = (50..=68).collect();
     assert_eq!(edit(&numbered(100), "50GztdL"), without(100, &gone));
 }
 
 #[test]
 fn d_h_deletes_through_the_true_top_line_ignoring_scrolloff() {
-    let gone: Vec<usize> = (31..=50).collect();
+    let gone: Vec<usize> = (32..=50).collect();
     assert_eq!(edit(&numbered(100), "50GzbdH"), without(100, &gone));
 }
 

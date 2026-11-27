@@ -171,6 +171,15 @@ impl Headless {
         self
     }
 
+    /// Lay the screen out with `'cmdheight'` `rows` (RFC-0027 §1.1) before any key: 0 gives the windows
+    /// nvim's `'laststatus'` 0 rows (all but the last), for an oracle captured that way.
+    #[must_use]
+    pub fn with_cmdheight(mut self, rows: i64) -> Headless {
+        self.s.ui_opts.cmdheight = rows;
+        self.frame = Headless::settle(&mut self.s, self.cols, self.rows);
+        self
+    }
+
     /// Install `clipboard` as the system clipboard behind `"+`/`"*` (the binary installs the OS one).
     #[must_use]
     pub fn with_clipboard(mut self, clipboard: ruse_core::MemClipboard) -> Headless {

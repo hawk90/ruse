@@ -25,8 +25,9 @@ fn dash_r_opens_read_only_and_w_bang_resets_it() {
     assert!(out[mark..].contains("+][RO]"), "{:?}", &out[mark..]);
     ed.keys_then_wait_for(":w\r", "E45");
     assert_eq!(std::fs::read(&file).unwrap(), b"one\n");
-    // The command line gives the status line back whole: no `[RO]` after the name.
-    ed.keys_then_wait_for(":w!\r", "f.txt  \"f.txt\"");
+    // No `[RO]` after the name once written.
+    ed.keys_then_wait_for(":w!\r", "\"f.txt\"");
+    assert_eq!(ed.rows()[22], "NORMAL  f.txt");
     support::wait_for_file(&file, b"ne\n");
     // `:set ro` puts it back.
     ed.keys_then_wait_for(":set ro\r", "f.txt [RO]");
@@ -42,15 +43,17 @@ fn readonly_mode_covers_files_opened_later() {
     dir.file("f.txt", b"one\n");
     dir.file("g.txt", b"two\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
-    // `:set ts?` redraws the whole status line: no flag after the name.
-    ed.keys_then_wait_for(":set ts?\r", "f.txt    tabstop=4");
+    // No flag after the name.
+    ed.keys_then_wait_for(":set ts?\r", "  tabstop=4");
+    assert_eq!(ed.rows()[22], "NORMAL  f.txt");
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
     let mut ed = Editor::start(&dir, &[Path::new("-R"), Path::new("f.txt")]);
     ed.keys_then_wait_for(":e g.txt\r", "g.txt [RO]");
     // `:set noro` resets the focused g.txt and ends the readonly mode.
     ed.keys(":set noro\r:e! f.txt\r");
-    ed.keys_then_wait_for(":e g.txt\r", "g.txt  \"g.txt\"");
+    ed.keys_then_wait_for(":e g.txt\r", "\"g.txt\"");
+    assert_eq!(ed.rows()[22], "NORMAL  g.txt");
     ed.keys(":qa\r");
     assert_eq!(ed.exit_status(), 0);
 }
