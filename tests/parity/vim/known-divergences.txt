@@ -33,7 +33,9 @@ i1259_chain_undo_inside # #639: ruse has no :undo Ex command yet (E492); the cha
 # char, as ruse does.
 cm_insert_typed_run # oracle typeahead batching (interactive nvim puts '. on the last inserted char)
 
-vb_C_cr_redo # #1612: CTRL-R of a block change whose Insert took a <CR> puts '. on the line the <CR> opened; nvim types onto that line under open_line's save, so it makes no entry of its own and '. is on the top line. A plain ix<CR>y<Esc>u<C-r> differs the same way: an Insert-mode entry difference, not a block one
+# #1618: a confirmed `:s///c`. The text and the change marks verify; the cursor differs. nvim's do_sub leaves the
+# cursor at column 0 of the line of the last match it prompted for (where `q` was typed, or the last match in the
+# range); ruse puts it on the first non-blank of the last ACCEPTED substitution's line, as for a plain `:s`.
 vb_forced_d_undo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on the block and visualmode() empty in nvim (do_pending_operator's temporary Visual sets b_visual); ruse leaves '< '> unset. Not an undo difference: '. after u/CTRL-R matches
 vb_forced_d_redo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on the block and visualmode() empty in nvim (do_pending_operator's temporary Visual sets b_visual); ruse leaves '< '> unset. Not an undo difference: '. after u/CTRL-R matches
 
@@ -42,3 +44,19 @@ i1269_block_A_cut_invalid # blockwise A whose edge cuts <ff>: nvim's op_insert c
 i1269_block_A_cut_wide # blockwise A whose edge cuts a wide char: nvim copies the char's bytes after the cut (invalid UTF-8) into the rows below; ruse copies only the typed text
 i1269_cword_invalid # c_CTRL-R_CTRL-W on a <cword> holding a byte that is not UTF-8: the command line is a String, so ruse splices nothing (then E476 on the empty :s pattern)
 i1615_dd_d_to_mark # an operator to `[ or `] (d`[, y`]) beeps: OpToMark resolves only a-z A-Z 0-9 ^ < > through named_mark, not the change marks; the raw-column marks of the dd before it verify
+
+# #1631: text typed after an Insert <CR> makes no undo entry of its own; these fixtures lock that in except for
+# the mark each line names, a difference of its own.
+i1631_cr_undo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_cr_redo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_two_cr_redo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_cr_first_redo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_cr_only_redo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_count_cr_redo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_line_start_redo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_dot_redo # '^ after u/CTRL-R: nvim's u_undoredo drops '^ when its line is in an entry that changes size (mark_adjust with MAXLNUM); ruse carries it through the per-edit inverses onto the joined line. The cursor and '[ '] '. verify
+i1631_o_undo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
+i1631_o_redo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
+i1631_o_cr_undo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
+i1631_o_cr_redo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
+i1631_A_cr_bs_redo # '] after CTRL-R of an Insert whose <BS> joined the line its <CR> opened: nvim leaves it on line 1, ruse on line 2 (not yet traced); the same keys after `li` (i1631_cr_bs_redo) verify, and '. and the cursor verify

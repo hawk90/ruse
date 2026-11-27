@@ -43,8 +43,91 @@ pub(crate) enum UndoEntry {
     One,
     /// No entry: the lines are in an earlier change of the same undo step, which saved them already. A
     /// block change copying its text down the block (nvim's `op_change` saves nothing for that copy; its
-    /// `op_delete` saved the block's lines).
+    /// `op_delete` saved the block's lines), or what an Insert types after its first change ([`InsertSave`]).
+    /// The lines it adds or removes grow or shrink that earlier entry, as nvim's `u_getbot` finds the bottom
+    /// of an entry only when the next save comes ([`Entries::push`]).
     Covered,
+}
+
+/// Which changes of a text-entry session (Insert, Replace) make an undo entry of their own (#1631). nvim's
+/// `edit()` saves the cursor line on the session's first change (`ins_need_undo`, again after a caret key
+/// restarts it) and then only to join lines (`ins_bs`); the rest of what is typed, the text after a `<CR>`
+/// and the `{count}` repeats at `<Esc>` included, is inside that save. Without this, a change typed on the
+/// line a `<CR>` opened would make its own entry and move `'.` and the redo cursor down to it.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct InsertSave {
+    /// The next change is made in a text-entry session (the editor says so before it).
+    typed: bool,
+    /// The current undo group already holds a text-entry session's save.
+    saved: bool,
+}
+
+impl InsertSave {
+    /// Before a change: whether it is made in a text-entry session.
+    pub(crate) fn prime(&mut self, typed: bool) {
+        self.typed = typed;
+    }
+
+    /// The entry shape of a change declared `shape`: `joins` is whether it joins lines ([`joins_lines`]),
+    /// `new_group` whether it starts an undo group. Every change takes back what [`InsertSave::prime`] said.
+    pub(crate) fn shape(&mut self, joins: bool, new_group: bool, shape: UndoEntry) -> UndoEntry {
+        let typed = std::mem::take(&mut self.typed);
+        let saved = std::mem::replace(&mut self.saved, typed) && !new_group;
+        if typed && saved && shape == UndoEntry::PerEdit && !joins {
+            UndoEntry::Covered
+        } else {
+            shape
+        }
+    }
+}
+
+/// The entries of one undo group's lists as they are re-applied, in that order ([`entries`]), with the lines
+/// a [`UndoEntry::Covered`] list adds or removes put into the entry that saved them: on a redo the entry
+/// re-applied before it, on an undo (the lists run backwards) the one after it.
+pub(crate) struct Entries {
+    /// Whether the lists are re-applied forwards (a redo).
+    forward: bool,
+    /// On an undo, the lines the covered lists re-applied since the last entry added (negative: removed).
+    pending: isize,
+    pub(crate) list: Vec<Entry>,
+}
+
+impl Entries {
+    pub(crate) fn new(forward: bool) -> Entries {
+        Entries {
+            forward,
+            pending: 0,
+            list: Vec::new(),
+        }
+    }
+
+    /// Append what `list`, which turned `old` into `new`, contributes as `shape` says.
+    pub(crate) fn push(&mut self, old: &[u8], new: &[u8], list: &EditList, shape: UndoEntry) {
+        if shape != UndoEntry::Covered {
+            let first = self.list.len();
+            entries(old, new, list, shape, &mut self.list);
+            if let Some(e) = self.list.get_mut(first) {
+                // The covered lists undone before this entry had changed its lines already.
+                e.oldsize = e
+                    .oldsize
+                    .saturating_add_signed(-std::mem::take(&mut self.pending));
+            }
+            return;
+        }
+        let grown = count_newlines(new) as isize - count_newlines(old) as isize;
+        if !self.forward {
+            self.pending += grown;
+        } else if let Some(e) = self.list.last_mut() {
+            e.newsize = e.newsize.saturating_add_signed(grown);
+        }
+    }
+}
+
+/// Whether `list` deletes a newline of `old`: it joins lines, which nvim's `ins_bs` saves anew.
+pub(crate) fn joins_lines(old: &[u8], list: &EditList) -> bool {
+    list.edits()
+        .iter()
+        .any(|e| old[e.pos.0..e.end().0].contains(&b'\n'))
 }
 
 /// Append the entries one applied list contributes: `list` turned `old` into `new`, its edits making
@@ -375,6 +458,92 @@ mod tests {
             run("ab\ncd", vec![Edit::replace(BytePos(2), 1, b" ".to_vec())]),
             [(0, 1, 0)]
         );
+    }
+
+    #[test]
+    fn an_insert_saves_on_its_first_change_and_to_join_lines() {
+        // #1631: `x`, `<CR>`, `y` typed in one Insert: only `x` saves (nvim's `ins_need_undo`).
+        let mut s = InsertSave::default();
+        let typed = |s: &mut InsertSave, joins, new_group| {
+            s.prime(true);
+            s.shape(joins, new_group, UndoEntry::PerEdit)
+        };
+        assert_eq!(typed(&mut s, false, true), UndoEntry::PerEdit);
+        assert_eq!(typed(&mut s, false, false), UndoEntry::Covered);
+        assert_eq!(typed(&mut s, false, false), UndoEntry::Covered);
+        // A `<BS>` that joins lines saves them (nvim's `ins_bs`), and what follows is inside that save.
+        assert_eq!(typed(&mut s, true, false), UndoEntry::PerEdit);
+        assert_eq!(typed(&mut s, false, false), UndoEntry::Covered);
+        // A Normal-mode command (`o`) saves its own lines; the first change typed after it saves again.
+        s.prime(false);
+        assert_eq!(s.shape(false, true, UndoEntry::PerEdit), UndoEntry::PerEdit);
+        assert_eq!(typed(&mut s, false, false), UndoEntry::PerEdit);
+        assert_eq!(typed(&mut s, false, false), UndoEntry::Covered);
+        // A change nothing primed (an edit made outside the editor's commands) is not typed.
+        assert_eq!(
+            s.shape(false, false, UndoEntry::PerEdit),
+            UndoEntry::PerEdit
+        );
+        assert_eq!(typed(&mut s, false, false), UndoEntry::PerEdit);
+        // A declared shape is kept.
+        assert_eq!(typed(&mut s, false, false), UndoEntry::Covered);
+        s.prime(true);
+        assert_eq!(s.shape(false, false, UndoEntry::One), UndoEntry::One);
+    }
+
+    #[test]
+    fn a_covered_list_grows_the_entry_that_saved_its_lines() {
+        // `lix<CR>y` on `abcd`: `x` saves line 1; the `<CR>` and the `y` are covered (#1631).
+        let lists = [
+            (
+                "abcd\n",
+                Edit::insert(BytePos(1), b"x".to_vec()),
+                UndoEntry::PerEdit,
+            ),
+            (
+                "axbcd\n",
+                Edit::insert(BytePos(2), b"\n".to_vec()),
+                UndoEntry::Covered,
+            ),
+            (
+                "ax\nbcd\n",
+                Edit::insert(BytePos(3), b"y".to_vec()),
+                UndoEntry::Covered,
+            ),
+        ];
+        // A redo re-applies them in order: the entry grows from one line to two.
+        let mut redo = Entries::new(true);
+        for (old, e, shape) in &lists {
+            let list = EditList::new(vec![e.clone()]).expect("one edit");
+            let new = list.apply_to(old.as_bytes());
+            redo.push(old.as_bytes(), &new, &list, *shape);
+        }
+        let got: Vec<_> = redo
+            .list
+            .iter()
+            .map(|e| (e.top, e.oldsize, e.newsize))
+            .collect();
+        assert_eq!(got, [(0, 1, 2)]);
+        let marks = change_marks(&redo.list, 1, 2);
+        assert_eq!((marks.start_line, marks.end_line), (0, 1));
+        assert_eq!(marks.last_change_line, Some(0));
+        // An undo re-applies the inverses backwards: the entry undone last held the two lines.
+        let mut undo = Entries::new(false);
+        let mut text = b"ax\nybcd\n".to_vec();
+        for (old, e, shape) in lists.iter().rev() {
+            let list = EditList::new(vec![e.clone()]).expect("one edit");
+            let inverse = list.inverse(old.as_bytes());
+            let new = inverse.apply_to(&text);
+            undo.push(&text, &new, &inverse, *shape);
+            text = new;
+        }
+        assert_eq!(text, b"abcd\n");
+        let got: Vec<_> = undo
+            .list
+            .iter()
+            .map(|e| (e.top, e.oldsize, e.newsize))
+            .collect();
+        assert_eq!(got, [(0, 2, 1)]);
     }
 
     #[test]
