@@ -202,6 +202,17 @@ impl EditList {
         &self.edits
     }
 
+    /// The memory the list's edits hold, the cost model the undo bound and the change log share
+    /// (RFC-0026 §1): per edit its struct ([`Edit`]: a position, a deleted length and the inserted `Vec`'s
+    /// header) plus its inserted bytes. The `Vec` of edits itself is not counted.
+    #[must_use]
+    pub fn payload_bytes(&self) -> usize {
+        self.edits
+            .iter()
+            .map(|e| std::mem::size_of::<Edit>() + e.ins.len())
+            .sum()
+    }
+
     /// Whether the list has no edits (a no-op transaction).
     #[must_use]
     pub fn is_empty(&self) -> bool {

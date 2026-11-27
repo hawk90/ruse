@@ -213739,6 +213739,398 @@
         },
         "vmode": "blockwise"
       }
+    },
+    {
+      "name": "i1290_ul3_keeps_four_levels",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=3<CR>xxxxx",
+      "expect": {
+        "text": [
+          "fgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "undo": [
+          [
+            "efgh"
+          ],
+          [
+            "defgh"
+          ],
+          [
+            "cdefgh"
+          ],
+          [
+            "bcdefgh"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "i1290_ul3_u_past_the_oldest",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=3<CR>xxxxxuuuuu",
+      "expect": {
+        "text": [
+          "bcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul3_u_past_the_oldest_then_x",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=3<CR>xxxxxuuuuux",
+      "expect": {
+        "text": [
+          "cdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul3_g_minus_stops_at_the_root",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=3<CR>xxxxxg-g-g-g-g-g-",
+      "expect": {
+        "text": [
+          "bcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul1_drops_the_undone_branch_first",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=1<CR>xu$xxg-g-g-",
+      "expect": {
+        "text": [
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_lowered_ul_trims_at_the_next_change",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": "xxxxx:set ul=1<CR>xuuuu",
+      "expect": {
+        "text": [
+          "efgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_lowered_ul_keeps_until_a_change",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": "xxx:set ul=0<CR>uuu",
+      "expect": {
+        "text": [
+          "cdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul0_u_undoes_the_undo",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=0<CR>xxuu",
+      "expect": {
+        "text": [
+          "cdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul0_u_toggles_back",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=0<CR>xxuuu",
+      "expect": {
+        "text": [
+          "bcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul0_ctrl_r_fails",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=0<CR>xxu<C-r>",
+      "expect": {
+        "text": [
+          "bcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul0_insert_toggles",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=0<CR>iXY<Esc>uu",
+      "expect": {
+        "text": [
+          "XYabcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul_negative_no_undo",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": ":set ul=-1<CR>xxu",
+      "expect": {
+        "text": [
+          "cdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul_negative_frees_the_history",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": "xx:set ul=-1<CR>x:set ul=1000<CR>uu",
+      "expect": {
+        "text": [
+          "defgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1290_ul_negative_keeps_until_a_change",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": "xx:set ul=-5<CR>u:set ul=1000<CR>u",
+      "expect": {
+        "text": [
+          "abcdefgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
     }
   ]
 }

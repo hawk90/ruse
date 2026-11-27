@@ -15,6 +15,7 @@ impl OptionHost<'_> {
             Opt::MessageOptions => OptVal::Text(self.ui.messagesopt.clone().into()),
             Opt::FoldOpen => OptVal::Text(self.ui.foldopen.clone().into()),
             Opt::Report => OptVal::Num(self.ui.report),
+            Opt::UndoLevels => OptVal::Num(self.ui.undolevels),
             Opt::History => {
                 OptVal::Num(i64::try_from(self.engine.history_len()).unwrap_or(i64::MAX))
             }
@@ -41,6 +42,11 @@ impl OptionHost<'_> {
             (Opt::MessageOptions, _) => self.ui.messagesopt = text,
             (Opt::FoldOpen, _) => self.ui.foldopen = text,
             (Opt::Report, OptVal::Num(n)) => self.ui.report = n,
+            // Every buffer's undo bound; the states past it go at each buffer's next change (nvim).
+            (Opt::UndoLevels, OptVal::Num(n)) => {
+                self.ui.undolevels = n;
+                self.ws.set_undo_limits(self.ui.undo_limits());
+            }
             (Opt::History, OptVal::Num(n)) => {
                 self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
             }

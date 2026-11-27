@@ -90,6 +90,7 @@ impl Workspace {
             .map_or(crate::pos::Revision::ZERO, Document::revision);
         let modifiable = self.docs[slot].as_ref().is_none_or(Document::is_modifiable);
         let mut doc = Document::replacing(id, bytes, last);
+        doc.set_undo_limits(self.undo_limits);
         doc.mark_saved();
         doc.set_modifiable(modifiable);
         // Every other view of the buffer keeps its place, clamped into the new text (#686, #687).
@@ -146,6 +147,7 @@ impl Workspace {
             "duplicate {id:?}"
         );
         let mut doc = Document::new(id, bytes);
+        doc.set_undo_limits(self.undo_limits);
         doc.mark_saved();
         self.docs.push(Some(doc));
         self.names.push(name);

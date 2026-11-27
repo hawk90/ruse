@@ -39,6 +39,7 @@ use crate::effect::Effect;
 use crate::pos::BytePos;
 use crate::register::RegisterStore;
 use crate::transaction::TransactionOrigin;
+use crate::undo::UndoLimits;
 
 /// A handle to a [`View`] in the workspace arena (INV-HANDLE). Distinct from [`DocumentId`] (a buffer)
 /// so the type system keeps Buffer ≠ View (F-007 acceptance #4). The inner index is the arena slot;
@@ -149,6 +150,9 @@ pub struct Workspace {
     /// Who causes the edits commands make (INV-ORIGIN): [`TransactionOrigin::UserInput`] unless the
     /// frontend says otherwise ([`Workspace::set_origin`], #880).
     origin: TransactionOrigin,
+    /// The undo bound every buffer keeps (`'undolevels'` and the byte budget, RFC-0026 §1), given to each
+    /// Document the workspace creates.
+    undo_limits: UndoLimits,
 }
 
 mod buffers;
@@ -189,6 +193,7 @@ impl Workspace {
             registers: RegisterStore::new(),
             pins: Vec::new(),
             origin: TransactionOrigin::UserInput,
+            undo_limits: UndoLimits::default(),
         }
     }
 
@@ -218,6 +223,21 @@ impl Workspace {
     /// [`TransactionOrigin::UserInput`] back after. [`Workspace::apply_edits`] takes its origin directly.
     pub fn set_origin(&mut self, origin: TransactionOrigin) {
         self.origin = origin;
+    }
+
+    /// Bound the undo history of every buffer, and of each one made later (RFC-0026 §1). The states past
+    /// it are dropped at a buffer's next change.
+    pub fn set_undo_limits(&mut self, limits: UndoLimits) {
+        self.undo_limits = limits;
+        for d in self.docs.iter_mut().flatten() {
+            d.set_undo_limits(limits);
+        }
+    }
+
+    /// The undo bound the buffers keep ([`Workspace::set_undo_limits`]).
+    #[must_use]
+    pub fn undo_limits(&self) -> UndoLimits {
+        self.undo_limits
     }
 
     /// The origin the commands applied now are recorded under ([`Workspace::set_origin`]).
