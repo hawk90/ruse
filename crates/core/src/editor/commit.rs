@@ -359,8 +359,8 @@ fn set_change_marks(
     // re-applied: nvim's `u_undoredo` and `changed_lines` (#1168).
     if let Some(m) = undo_marks {
         let b = st.doc.bytes();
-        st.view.change_start = Some(crate::pos::raw::nth_line_start(b, m.start_line));
-        st.view.change_end = Some(crate::pos::raw::nth_line_start(b, m.end_line));
+        st.view.change_start = Some(Mark::at(crate::pos::raw::nth_line_start(b, m.start_line)));
+        st.view.change_end = Some(Mark::at(crate::pos::raw::nth_line_start(b, m.end_line)));
         if let Some(line) = m.last_change_line {
             let pos = crate::pos::raw::nth_line_start(b, line);
             st.view.push_change(b, pos, false);
@@ -379,8 +379,8 @@ fn set_change_marks(
     }
     if leaving_entry {
         let start = st.view.insert_start.unwrap_or(entry_cursor);
-        st.view.change_start = Some(start.min(entry_cursor));
-        st.view.change_end = Some(start.max(entry_cursor));
+        st.view.change_start = Some(Mark::at(start.min(entry_cursor)));
+        st.view.change_end = Some(Mark::at(start.max(entry_cursor)));
         st.view.insert_start = None;
     } else if !is_text_entry(plan_mode) {
         // A completed Normal-mode edit, or a yank (which carries its own span since it makes no edits).
@@ -391,27 +391,40 @@ fn set_change_marks(
         if let Some((s, e)) = edit_span.or(yank_span) {
             let b = st.doc.bytes();
             let s = s.min(b.len());
-            st.view.change_start = Some(s);
+            st.view.change_start = Some(Mark::at(s));
             // A change that reaches the buffer's end ends on its last char: the final newline is no
             // position (`yyjp` on the last line: `']` on the put line's last char, RFC-0024).
             let e = e.min(crate::motion::content_end(b)).max(s);
-            st.view.change_end = Some(if e > s { prev_grapheme(b, e) } else { s });
+            st.view.change_end = Some(Mark::at(if e > s { prev_grapheme(b, e) } else { s }));
         }
     }
     leaving_entry
 }
 
-/// An operator's [`OpMarks`] as byte offsets of the text after it: `('[, '], '.)`.
-fn resolve_op_marks(b: &[u8], m: OpMarks) -> (usize, usize, usize) {
+/// An operator's [`OpMarks`] on the text after it: `('[, '], '.)`. `'[` and `']` keep a byte column past
+/// their line's end, or inside a multibyte char, as their raw column beyond the offset (#1615); `'.` is a
+/// change-list offset, clamped onto its line.
+fn resolve_op_marks(b: &[u8], m: OpMarks) -> (Mark, Mark, usize) {
     let at = |m: MarkAt| {
         let ls = crate::pos::raw::nth_line_start(b, m.line);
         let len = line_end(b, ls) - ls;
-        ls + match m.col {
-            MarkCol::Byte(c) => c.min(len),
-            MarkCol::LastByte => len.saturating_sub(1),
+        let (col, raw) = match m.col {
+            MarkCol::Byte(c) => (c, true),
+            MarkCol::LineEnd => (len, true),
+            MarkCol::LastByte => (len.saturating_sub(1), false),
+        };
+        let on = ls + col.min(len);
+        let at = snap(b, on);
+        Mark {
+            at,
+            past: if raw {
+                on - at + col.saturating_sub(len)
+            } else {
+                0
+            },
         }
     };
-    (at(m.start), at(m.end), at(m.dot))
+    (at(m.start), at(m.end), at(m.dot).at)
 }
 
 /// Where an edit leaves the on-char cursor: never on the newline, never inside a cluster, never on the
