@@ -16,7 +16,6 @@ vb_shift_right_wide_last_char # #1302: '] after a block shift onto a line ending
 vb_dollar_ge_y # #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
 vb_dollar_bs_y # #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
 vb_dollar_h_x_wide # #1302: '] after a block yank whose bottom-right is a multibyte char: nvim puts it on the char's last BYTE (mb_adjust_opend), ruse keeps marks on a char's first byte
-vb_dollar_p # #1302: a Visual-block put of a one-line charwise register: nvim's do_put leaves '[ '] on the top row's put text and '. on the last row it put on, and '< '> become '[ ']; ruse takes the marks from its one replacing edit and keeps the old area
 
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
@@ -60,3 +59,6 @@ i1631_o_redo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), 
 i1631_o_cr_undo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
 i1631_o_cr_redo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
 i1631_A_cr_bs_redo # '] after CTRL-R of an Insert whose <BS> joined the line its <CR> opened: nvim leaves it on line 1, ruse on line 2 (not yet traced); the same keys after `li` (i1631_cr_bs_redo) verify, and '. and the cursor verify
+
+# #1614: a Visual put's '< '> verify; the change marks after its undo differ.
+v_put_marks_line_line_undo # '] after undoing a linewise Visual put of a line over a line: nvim puts it on the line below the restored one ([3,0]), as its delete and put are separate undo entries; ruse's one replacing edit trims the unchanged line ends, so its undo marks only the restored line ([2,0]); '< '> verify

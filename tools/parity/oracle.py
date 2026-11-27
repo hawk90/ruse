@@ -6503,6 +6503,35 @@ FIXTURES: list[dict] = [
      "observe": ["marks"]},
     {"name": "i1631_o_redo", "lines": ["abc", "def"], "keys": "ox<Esc>u<C-r>", "setup": UNDO_SETUP,
      "observe": ["marks"]},
+    # #1614: a Visual put leaves '< '> on the put's '[ '] (nv_put_opt copies b_op_start/b_op_end into
+    # b_visual), keeping the Visual mode; undo brings back the replaced area and redo the put's again
+    # (uh_visual); a dot-repeat's rebuilt area is not remembered. The `v_` prefix records the marks.
+    {"name": "v_put_marks_char_char_p", "lines": ["ab cdef gh"], "keys": "yiwwviwp"},
+    {"name": "v_put_marks_char_char_P", "lines": ["ab cdef gh"], "keys": "yiwwviwP"},
+    {"name": "v_put_marks_char_char_gp", "lines": ["ab cdef gh"], "keys": "yiwwviwgp"},
+    {"name": "v_put_marks_char_char_gP", "lines": ["ab cdef gh"], "keys": "yiwwviwgP"},
+    {"name": "v_put_marks_char_char_count", "lines": ["ab cdef gh"], "keys": "yiwwviw2p"},
+    {"name": "v_put_marks_char_char_undo", "lines": ["ab cdef gh"], "keys": "yiwwviwpu"},
+    {"name": "v_put_marks_char_char_redo", "lines": ["ab cdef gh"], "keys": "yiwwviwpu<C-r>"},
+    {"name": "v_put_marks_char_char_gv", "lines": ["ab cdef gh"], "keys": "yiwwviwpgvy"},
+    {"name": "v_put_marks_char_char_dot", "lines": ["ab cdef gh ij"], "keys": "yiwwviwpw."},
+    {"name": "v_put_marks_char_dollar", "lines": ["ab cdef", "gh"], "keys": "yiwwv$p"},
+    {"name": "v_put_marks_char_multiline", "lines": ["ab cd", "ef gh"], "keys": "yiwwvjp"},
+    {"name": "v_put_marks_char_line_reg", "lines": ["ab cd", "ef gh"], "keys": "yyjwviwp"},
+    {"name": "v_put_marks_char_block_reg", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlyjjwhviwp"},
+    {"name": "v_put_marks_line_char_reg", "lines": ["ab", "cd", "ef"], "keys": "yiwjVp"},
+    {"name": "v_put_marks_line_line_p", "lines": ["ab", "cd", "ef"], "keys": "yyjVp"},
+    {"name": "v_put_marks_line_line_count", "lines": ["ab", "cd", "ef"], "keys": "yyjV2p"},
+    {"name": "v_put_marks_line_line_gp", "lines": ["ab", "cd", "ef"], "keys": "yyjVgp"},
+    {"name": "v_put_marks_line_line_undo", "lines": ["ab", "cd", "ef"], "keys": "yyjVpu"},
+    {"name": "v_put_marks_line_block_reg", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jlyjjVp"},
+    {"name": "v_put_marks_block_char_p", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jp"},
+    {"name": "v_put_marks_block_char_P", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jP"},
+    {"name": "v_put_marks_block_char_gp", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jgp"},
+    {"name": "v_put_marks_block_char_count", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jl2p"},
+    {"name": "v_put_marks_block_char_undo", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jpu"},
+    {"name": "v_put_marks_block_line_reg", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yyl<C-v>jp"},
+    {"name": "v_put_marks_block_block_reg", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jlyjj0<C-v>jlp"},
 ]
 
 
