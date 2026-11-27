@@ -6290,6 +6290,15 @@ FIXTURES: list[dict] = [
     {"name": "cm_join_dot_line_jump_past_end", "lines": ["a", "b"], "keys": "J'.x", "observe": ["marks"]},
     {"name": "cm_join_change_list_past_end", "lines": ["a", "b"], "keys": "Jg;x", "observe": ["marks"]},
     {"name": "cm_dd_dot_jump_past_end", "lines": ["abc", "d", "efg"], "keys": "Gdd`.x", "observe": ["marks"]},
+    # --- #1618 a confirmed :s///c sets '[ '] over the whole range, not the accepted lines ---
+    {"name": "i1618_s_confirm_one_yes", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"],
+     "keys": "G:1,5s/a/x/c<CR>nynnn", "observe": ["marks"]},
+    {"name": "i1618_s_confirm_global_one_line", "lines": ["a1", "  a2", "a3a", "a4", "a5", "a6"],
+     "keys": "G:1,5s/a/x/gc<CR>nnyynn", "observe": ["marks"]},
+    {"name": "i1618_s_confirm_quit", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"],
+     "keys": "G:1,5s/a/x/c<CR>nyq", "observe": ["marks"]},
+    {"name": "i1618_s_confirm_sub_range", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"],
+     "keys": "G:2,4s/a/x/c<CR>yq", "observe": ["marks"]},
 ]
 
 

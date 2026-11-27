@@ -239,6 +239,85 @@ mod substitute_confirm_tests {
         assert_eq!((out.replacements, out.lines), (0, 0));
         assert_eq!(st.as_str().unwrap(), "a a");
     }
+
+    /// The change marks `'[` `']` `'.` as 0-based `(line, byte col)`.
+    fn change_marks(st: &EditorState) -> [Option<(usize, usize)>; 3] {
+        let b = st.doc.bytes();
+        let lc = |p: Option<crate::pos::BytePos>| {
+            p.map(|p| {
+                let ls = crate::motion::line_start(b, p.0);
+                (crate::pos::raw::line_of(b, p.0), p.0 - ls)
+            })
+        };
+        [
+            lc(st.view.change_mark_start()),
+            lc(st.view.change_mark_end()),
+            lc(st.view.last_change()),
+        ]
+    }
+
+    fn confirmed(
+        text: &str,
+        first: usize,
+        last: usize,
+        global: bool,
+        answers: &[bool],
+    ) -> EditorState {
+        let mut st = EditorState::new(text.as_bytes().to_vec());
+        let ex = ExCmd::Substitute {
+            first,
+            last,
+            pattern: "a".into(),
+            replacement: "x".into(),
+            flags: SubFlags {
+                global,
+                ignore_case: None,
+            },
+            answers: Some(answers.to_vec()),
+        };
+        assert!(matches!(st.apply_ex(&ex), ExOutcome::Substituted(_)));
+        st
+    }
+
+    /// #1618: a `:s///c` sets `'[` `']` at the starts of the range's first and last lines, whichever
+    /// matches were accepted (nvim v0.12.6's `do_sub` takes them from `line1`/`line2`), and `'.` on the
+    /// line of the accepted substitution (fixtures `i1618_s_confirm_*`).
+    #[test]
+    fn confirmed_substitute_marks_span_the_whole_range() {
+        let text = "a1\n  a2\na3\na4\na5\na6";
+        // `:1,5s/a/x/c` answered `nynnn`.
+        let st = confirmed(text, 1, 5, false, &[false, true, false, false, false]);
+        assert_eq!(st.as_str().unwrap(), "a1\n  x2\na3\na4\na5\na6");
+        assert_eq!(
+            change_marks(&st),
+            [Some((0, 0)), Some((4, 0)), Some((1, 0))]
+        );
+        // `nyq`: the quit leaves the rest unanswered, which the loop records as `n`.
+        let st = confirmed(text, 1, 5, false, &[false, true]);
+        assert_eq!(
+            change_marks(&st),
+            [Some((0, 0)), Some((4, 0)), Some((1, 0))]
+        );
+        // `:2,4s/a/x/c` answered `yq`.
+        let st = confirmed(text, 2, 4, false, &[true]);
+        assert_eq!(
+            change_marks(&st),
+            [Some((1, 0)), Some((3, 0)), Some((1, 0))]
+        );
+        // `:1,5s/a/x/gc` answered `nnyynn`: both matches on line 3.
+        let st = confirmed(
+            "a1\n  a2\na3a\na4\na5\na6",
+            1,
+            5,
+            true,
+            &[false, false, true, true, false, false],
+        );
+        assert_eq!(st.as_str().unwrap(), "a1\n  a2\nx3x\na4\na5\na6");
+        assert_eq!(
+            change_marks(&st),
+            [Some((0, 0)), Some((4, 0)), Some((2, 0))]
+        );
+    }
 }
 
 #[cfg(test)]

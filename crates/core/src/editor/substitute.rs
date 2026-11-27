@@ -442,10 +442,21 @@ impl EditorState {
             return Ok(self.substitute_join(range));
         }
         let subs = self.substitute_preview(range, pattern, replacement, flags)?;
+        Ok(self.apply_substitutions_in(&subs, range))
+    }
+
+    /// [`EditorState::apply_substitutions`] for the `:s` over `range` that found `subs` (the whole set,
+    /// or the subset a `c` confirm accepted): the range, resolved against the buffer `subs` were found
+    /// in, bounds the `'[`/`']` marks, as nvim's `do_sub` sets them from `line1`/`line2` (#1618).
+    pub(crate) fn apply_substitutions_in(
+        &mut self,
+        subs: &[Substitution],
+        range: SubRange,
+    ) -> SubOutcome {
         let bytes = self.doc.bytes();
         let cursor_line = crate::pos::raw::line_of(bytes, self.view.cursor);
         let lines = resolve_line_range(range, &line_spans(bytes), cursor_line);
-        Ok(self.apply_substitutions_over(&subs, Some(lines)))
+        self.apply_substitutions_over(subs, Some(lines))
     }
 
     /// `:[range]s/\n//` (with no flag but `g`), which Vim runs as a join (`sub_joining_lines`, nvim
