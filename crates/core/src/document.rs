@@ -55,6 +55,8 @@ pub struct Document {
     saved_node: Option<MonotonicSeq>,
     /// The line Vim's `U` restores ([`Document::line_undo`]).
     line_undo: LineUndo,
+    /// Which text-entry changes make an undo entry of their own (#1631).
+    insert_save: undo_cursor::InsertSave,
     /// An open undo block ([`Document::begin_undo_block`]): `Some(joining)`, where `joining` turns true once
     /// the block's first change is recorded and every later change then joins its undo group.
     undo_block: Option<bool>,
@@ -106,6 +108,7 @@ impl Document {
             line_starts_before: None,
             saved_node: None,
             line_undo: LineUndo::default(),
+            insert_save: undo_cursor::InsertSave::default(),
             undo_block: None,
             keep_final_newline: false,
             mark_undo: HashMap::new(),
@@ -401,6 +404,7 @@ impl Document {
                 .first()
                 .map_or(BytePos(0), |e| crate::pos::line_start(&self.text, e.pos))
         });
+        let joins = undo_cursor::joins_lines(&old, &txn.edits);
         let group_before = self.undo.current_group();
         let parent = self.undo.current_seq();
         let logged = self
@@ -410,7 +414,9 @@ impl Document {
         let node = self
             .undo
             .record(txn.edits, inverse, origin, hint, self.revision, cursor);
-        self.undo.set_undo_entry(node, txn.undo_entry);
+        let new_group = self.undo.current_group() != group_before;
+        let shape = self.insert_save.shape(joins, new_group, txn.undo_entry);
+        self.undo.set_undo_entry(node, shape);
         if let Some((forward, inverse)) = logged {
             self.changes.push(ChangeEntry {
                 base_revision: prev,
@@ -582,7 +588,7 @@ impl Document {
     /// and the group keeps the ones they replace for the way back (Vim swaps `uh_namedm`, #686).
     fn replay(&mut self, step: UndoStep, cursor: usize, tracked: &mut [Tracked]) -> UndoCursor {
         let cur_line = crate::pos::raw::line_of(&self.text, cursor);
-        let mut entries = Vec::new();
+        let mut entries = undo_cursor::Entries::new(step.forward);
         let mut uh = (0, 0);
         let mut lines_before = undo_cursor::line_count(&self.text);
         let mut before: Vec<Option<(usize, usize)>> = Vec::new();
@@ -606,7 +612,7 @@ impl Document {
             self.reapply(edits, step.nodes[i], tracked);
             if i >= step.tail {
                 let shape = step.undo_entry.get(i).copied().unwrap_or_default();
-                undo_cursor::entries(&old, &self.text, edits, shape, &mut entries);
+                entries.push(&old, &self.text, edits, shape);
             }
             if let Some(g) = group {
                 if step.groups.get(i + 1).copied() != Some(g) {
@@ -619,8 +625,8 @@ impl Document {
             uh = undo_cursor::line_col(&self.text, step.cursor.0);
         }
         let lines = undo_cursor::line_count(&self.text);
-        let mut placed = undo_cursor::place(&entries, uh, cur_line, lines);
-        placed.marks = undo_cursor::change_marks(&entries, lines_before, lines);
+        let mut placed = undo_cursor::place(&entries.list, uh, cur_line, lines);
+        placed.marks = undo_cursor::change_marks(&entries.list, lines_before, lines);
         placed
     }
 
@@ -647,9 +653,11 @@ impl Document {
     }
 
     /// Before a change: the caret it starts from (the column `U` returns to) and whether it begins a new
-    /// command, which lets it save its line for `U`. See [`crate::line_undo`].
+    /// command, which lets it save its line for `U` (see [`crate::line_undo`]); a change that does not is
+    /// typed in a text-entry session, which saves its lines for `u` only once (#1631).
     pub(crate) fn prime_line_undo(&mut self, cursor: usize, new_command: bool) {
         self.line_undo.prime(cursor, new_command);
+        self.insert_save.prime(!new_command);
     }
 
     /// Drop the line `U` would restore (`o`, `O`, `<CR>`); `disarm` keeps the rest of the command from
