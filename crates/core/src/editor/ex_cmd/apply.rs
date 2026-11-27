@@ -81,7 +81,7 @@ impl EditorState {
                                 .zip(answers.iter().copied().chain(std::iter::repeat(false)))
                                 .filter_map(|(s, yes)| yes.then_some(s))
                                 .collect();
-                            self.apply_substitutions(&accepted)
+                            self.apply_substitutions_in(&accepted, range)
                         }),
                 };
                 match result {

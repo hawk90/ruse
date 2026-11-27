@@ -204226,6 +204226,214 @@
         },
         "vmode": ""
       }
+    },
+    {
+      "name": "i1618_s_confirm_one_yes",
+      "lines": [
+        "a1",
+        "  a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6"
+      ],
+      "keys": "G:1,5s/a/x/c<CR>nynnn",
+      "expect": {
+        "text": [
+          "a1",
+          "  x2",
+          "a3",
+          "a4",
+          "a5",
+          "a6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            5,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1618_s_confirm_global_one_line",
+      "lines": [
+        "a1",
+        "  a2",
+        "a3a",
+        "a4",
+        "a5",
+        "a6"
+      ],
+      "keys": "G:1,5s/a/x/gc<CR>nnyynn",
+      "expect": {
+        "text": [
+          "a1",
+          "  a2",
+          "x3x",
+          "a4",
+          "a5",
+          "a6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            5,
+            0
+          ],
+          ".": [
+            3,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1618_s_confirm_quit",
+      "lines": [
+        "a1",
+        "  a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6"
+      ],
+      "keys": "G:1,5s/a/x/c<CR>nyq",
+      "expect": {
+        "text": [
+          "a1",
+          "  x2",
+          "a3",
+          "a4",
+          "a5",
+          "a6"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            1,
+            0
+          ],
+          "]": [
+            5,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
+    },
+    {
+      "name": "i1618_s_confirm_sub_range",
+      "lines": [
+        "a1",
+        "  a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6"
+      ],
+      "keys": "G:2,4s/a/x/c<CR>yq",
+      "expect": {
+        "text": [
+          "a1",
+          "  x2",
+          "a3",
+          "a4",
+          "a5",
+          "a6"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n",
+        "marks": {
+          "[": [
+            2,
+            0
+          ],
+          "]": [
+            4,
+            0
+          ],
+          ".": [
+            2,
+            0
+          ]
+        },
+        "vmode": ""
+      }
     }
   ]
 }

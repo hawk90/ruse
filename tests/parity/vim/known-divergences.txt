@@ -39,3 +39,11 @@ i1306_caret_line_deleted # '[ '] after a dd keep the raw column the operator sta
 # puts '. on its first char; typed one key at a time (as a user types), nvim puts it on the last inserted
 # char, as ruse does.
 cm_insert_typed_run # oracle typeahead batching (interactive nvim puts '. on the last inserted char)
+
+# #1618: a confirmed `:s///c`. The text and the change marks verify; the cursor differs. nvim's do_sub leaves the
+# cursor at column 0 of the line of the last match it prompted for (where `q` was typed, or the last match in the
+# range); ruse puts it on the first non-blank of the last ACCEPTED substitution's line, as for a plain `:s`.
+i1618_s_confirm_one_yes # cursor: nvim on the last prompted match's line, ruse on the accepted line (marks verify)
+i1618_s_confirm_global_one_line # cursor: nvim on the last prompted match's line, ruse on the accepted line (marks verify)
+i1618_s_confirm_quit # cursor: nvim on the line `q` was typed at, ruse on the accepted line (marks verify)
+i1618_s_confirm_sub_range # cursor: nvim on the line `q` was typed at, ruse on the accepted line (marks verify)
