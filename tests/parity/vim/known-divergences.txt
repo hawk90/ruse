@@ -8,19 +8,19 @@ ik_js_brace_object_value # nvim's JavaScript indent script (GetJavascriptIndent,
 
 # #900: the observables the oracle records since #900 (mode, marks, visualmode). Each line names
 # what differs; the follow-up issues are proposed in the #900 PR.
-v_dollar_D_to_eol_column # '< '> differ: nvim leaves them on line 2 after the area's lines are deleted to one line, past the buffer's end, which a byte offset cannot hold; the change marks verify
-v_gq_joins_short # '> differs: ruse's gq replaces the lines as one edit, so a mark on the joined line goes to its end, where nvim's join moves it with the text; the change marks verify
+v_dollar_D_to_eol_column # #1646: '< '> differ: nvim leaves them on line 2 after the area's lines are deleted to one line, past the buffer's end, which a byte offset cannot hold; the change marks verify
+v_gq_joins_short # #1652: '> differs: ruse's gq replaces the lines as one edit, so a mark on the joined line goes to its end, where nvim's join moves it with the text; the change marks verify
 vb_shift_right_skips_a_short_line # #900: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
 vb_shift_right_ragged_middle # #1302: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
-vb_dollar_ge_y # #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
-vb_dollar_bs_y # #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
+vb_dollar_ge_y # #1649: #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
+vb_dollar_bs_y # #1649: #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
 
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
 # is unchanged by #1307.
-i1307_normal_ixy # '. after Insert: :normal feeds `ixy` as typeahead, which nvim inserts as one run with '. on its first char (col 0); ruse puts '. on the last char typed, as nvim does for keys typed one by one
-i1307_normal_ghl # '. '[ after a Select-mode replace: nvim at col 0, ruse after the typed char
-i1307_normal_R # '^ after an empty Replace: nvim sets it where Replace ended, ruse leaves it unset
+i1307_normal_ixy # #1650: '. after Insert: :normal feeds `ixy` as typeahead, which nvim inserts as one run with '. on its first char (col 0); ruse puts '. on the last char typed, as nvim does for keys typed one by one
+i1307_normal_ghl # #1650: '. '[ after a Select-mode replace: nvim at col 0, ruse after the typed char
+i1307_normal_R # #1651: '^ after an empty Replace: nvim sets it where Replace ended, ruse leaves it unset
 i1259_chain_undo_inside # #639: ruse has no :undo Ex command yet (E492); the chained undo grouping itself verifies
 
 # #1304/#1306: '< '> 'a '^ keep their raw columns through edits; these verify except for the change marks.

@@ -25,6 +25,7 @@ related:
 
 <!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
 <!-- design-code-ack: UndoNode — design ahead of code: the first vertical slice stores forward/inverse/origin per undo node (in-memory undo/redo) and tracks the saved point via Document.saved_node, with the node id being its slot index; the persistent-undo `id`/`saved_here` fields land with persistent undo (#639). -->
+<!-- design-code-ack: UndoHistory — the code has no separate `chronological` index: its node slots stay in creation order (a dropped node leaves an empty slot until compaction); it also carries the undo bound (RFC-0026 §1: `root`, `limits`, the level and byte counts) and the grouping state the illustration leaves out. -->
 
 # ruse Persistence, Crash Recovery & the Undo Journal
 
@@ -292,8 +293,9 @@ the long-line guard — tuned on real workloads, see Open questions). In this mo
 
 - No periodic full **Checkpoint**; instead one *base* Checkpoint at open (or a reference to the on-disk file as
   the base) plus a pure stream of incremental **Edit** records. Recovery = base + replay deltas.
-- Undo is **bounded** (a capped in-memory window, INV-BUFFER-KIND large-file/degraded clause); records older
-  than the window are still in the journal for crash recovery but are not individually undoable in-session.
+- Undo is **bounded** by the same bound as every buffer (`'undolevels'` and the undo payload budget,
+  [RFC-0026](../rfc/accepted/RFC-0026-large-file-safety.md) §1, D-067), not by a window of its own; records
+  older than the kept states are still in the journal for crash recovery but are not undoable in-session.
 - Compaction rewrites the journal as `new base Checkpoint (= current text) + empty tail` via the same atomic
   temp+rename discipline as §3, never in place.
 
@@ -430,8 +432,11 @@ CTRL-Z, the final newline only as `'endofline'` says, whatever `'fixeol'`), and 
 
 A file read past the large-file threshold (32 MiB, `rj01::LARGE_FILE`, the incremental-journal one) enters
 the **degraded profile** (RFC-0008 §7): no syntax highlighting, and `[large]` on the status line. Still to
-come for the profile: bounded undo, streaming search and the long-line guard (the core has no undo-window
-bound yet). Since RJ01 schema 1.1 (#1286) the journal keeps `mac`, `'binary'` and `'endoffile'`, so a recovered
+come for the profile: streaming search and the long-line guard (RFC-0026 slices 2 and 3). Undo has no bound
+of its own here: every buffer keeps at most `'undolevels'` + 1 undo groups (`editor.undolevels`, 1000 as nvim)
+and at most `editor.undo_max_bytes` of edit payload (256 MiB); past either the oldest states are dropped by
+re-rooting the undo tree, never the newest change (RFC-0026 §1, D-067). RJ01 replay never reads the tree, so
+the bound does not touch recovery. Since RJ01 schema 1.1 (#1286) the journal keeps `mac`, `'binary'` and `'endoffile'`, so a recovered
 buffer of such a file comes back with its format; a journal a 1.0 build wrote still recovers as unix. Schema
 1.2 (RFC-0025 §7, RFC-0023 Amendment 2) adds the file's encoding to the same records; a 1.0 or 1.1 journal
 recovers with the default encoding (UTF-8, invalid bytes kept), which is what those builds wrote. The startup file is not asked about with the Emacs
@@ -725,7 +730,7 @@ differ accordingly:
 | **Streaming Document** (logs, build output) | **no** transaction journal; an optional **bounded ring** append log for scrollback only; content is not "recoverable work" | none / bounded — appends are not transactions | n/a |
 | **Interactive View** (git status, file tree, debugger) | none — edits are **domain CommandRequests** (V-14), not text transactions, each preflighted through its own service | the *domain* action is undoable via its service (e.g. `git reset`), not via text-undo | n/a |
 | **Terminal / PTY** (WS-5) | none; scrollback is a bounded ring; input goes to the PTY, not a Document | none | n/a |
-| **Large-file / degraded** | incremental journal (§2), **bounded** undo window | capped ring, older states recoverable-only, not undoable | yes (careful/streamed write; still atomic where possible) |
+| **Large-file / degraded** | incremental journal (§2), the same undo bound as every buffer (RFC-0026 §1) | the undo bound of every buffer; older states recoverable-only, not undoable | yes (careful/streamed write; still atomic where possible) |
 
 The append path for streaming/terminal buffers is explicitly **not** a full Transaction (INV-BUFFER-KIND): no
 inverse-edit is generated, no undo node is created, and nothing is journaled for crash recovery (a terminal's
