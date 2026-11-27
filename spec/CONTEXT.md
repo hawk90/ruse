@@ -36,7 +36,7 @@ implementation. Remote, GUI and a plugin protocol are deferred capabilities (D-0
 
 ## Current stage
 **MVP features marked done; post-MVP feature growth.** All 18 MVP features (phases `core-editing` v0.1.0 +
-`usable-vim-tui` v0.2.0 in [phases.yaml](phases.yaml)) are marked `done` (#1028 tracks where the code disagrees). GitHub Milestones are named by release version
+`usable-vim-tui` v0.2.0 in [phases.yaml](phases.yaml)) are marked `done` (#1028 settled where the code disagreed). GitHub Milestones are named by release version
 and mirror the phases one-way (D-037, D-059). Two crates per D-039: `crates/core`
 (kernel: document, transactions, undo, anchors, registers, editing grammar) and `apps/tui` (the `ruse`
 binary: input profiles, rendering, terminal, LSP, remote, PTY). Behavior parity is checked against pinned
@@ -49,13 +49,28 @@ F-031 rich Markdown/Org rendering. Not started: F-016 plugins, F-018 GUI (parked
 F-020 AI agent, F-021 debugger, F-032 buffer arena (design decided, D-057). Exact state: [PRD.yaml](PRD.yaml) + `git log --grep F-0NN`.
 
 ## Core invariants (must hold)
-- Document does not depend on View. (INV-DOC-VIEW)
-- All document mutations go through Transactions with revision + origin. (INV-TXN)
+Registry: [reference-invariants.md](../docs/invariants/reference-invariants.md).
+- Document does not depend on View; no single global mutable state; long-lived references are typed handles.
+  (INV-DOC-VIEW, INV-NO-GLOBAL-STATE, INV-HANDLE)
+- A Document's text is empty or ends in `\n`; the file's final newline is `'endofline'`. (INV-TEXT-TERMINATED)
+- All document mutations go through Transactions with revision + origin, each undoable by logical unit;
+  ephemeral/streaming buffers are the stated exception. (INV-TXN, INV-ORIGIN, INV-UNDO, INV-BUFFER-KIND)
 - Positions are typed; long-lived positions are anchors. (INV-POS-TYPED, INV-ANCHOR)
-- Plugins are isolated over a versioned protocol; never touch core types. (INV-PLUGIN-*)
-- Core is a single-threaded deterministic executor; stale async results dropped. (INV-ASYNC-ORDER)
-- Expected failures = typed errors; impossible states = asserts; log once at boundaries. (INV-ERR-CLASS)
+- Commands are semantic IDs decoupled from keys; profiles never share a key space; key resolution is two axes
+  (scope, provenance). (INV-CMD-SEMANTIC, INV-PROFILE-ISOLATION, INV-PRIORITY)
+- Plugins are isolated over a versioned protocol; never touch core types. (INV-PLUGIN-NO-CORE,
+  INV-PLUGIN-ISOLATED, INV-PROTOCOL-VERSIONED)
+- Core is a single-threaded deterministic executor; stale async results dropped; one scheduler owns background
+  work. (INV-ASYNC-ORDER, INV-SCHED-1)
+- Expected failures = typed errors; impossible states = asserts; log once at boundaries; blast radius is
+  bounded; status is a per-component state machine. (INV-ERR-CLASS, INV-FAIL-BOUNDED, INV-STATUS)
 - Capabilities/features degrade, they do not disappear. (INV-CAP-DEGRADE)
+- Contracts are independent of implementation types; evolution is additive; Stable needs ≥2 independent users.
+  (INV-CONTRACT-FIRST, INV-ADDITIVE, INV-PROMOTION)
+- Render target: one semantic Render Tree, a render profile pinned per client-view, queries return snapshots.
+  (INV-RENDER-IR, INV-RENDER-PROFILE, INV-QUERY-SNAPSHOT; the render IR itself is deferred, D-039)
+- No code executes before a workspace-trust decision. (INV-TRUST-1)
+- Deferred by D-039, kept for when it is re-earned: the client/remote type boundary. (INV-REMOTE-FIRST)
 - One fact, one home: state in spec/ YAML, prose in docs/, generated files not hand-edited. (ENG-DOC-001)
 
 ## Primary flow
@@ -71,7 +86,7 @@ F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 - Rust workspace, TUI-first. (D-020)
 - Transaction-only mutation; deterministic single-thread core. (D-001, D-002)
 - Plugins: WASM/process protocol, not Rust dylib; **no WASM host in MVP**; paused by D-039. (D-004, D-009)
-- spec/ (state) + docs/ (reference); generator is future work. (D-021, D-022)
+- spec/ (state) + docs/ (reference). (D-021)
 - Two-crate editor; remote/plugin/render boundaries deferred until needed. (D-039)
 - Parity = machine census of SHA-pinned upstreams; humans classify, never enumerate. (D-043)
 - Engine keeps Vim factory defaults; better-than-Vim defaults live at the frontend layer. (D-056)
@@ -84,11 +99,36 @@ F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 - Keymaps are user-only; `.ruse/` is product-owned; workspace trust is bound to content. (D-062)
 - Byte positions crossing the `crates/core` API are typed `BytePos`. (D-063)
 - The recovery journal is per-transaction RJ01 records in the state dir. (D-064)
+- Buffer text is line-terminated; the final newline is `'endofline'`. (D-065)
+- Document ≠ View ownership; positions are anchor-based; one positions-history model. (D-003, D-023, D-027)
+- Command IDs are stable, namespaced contracts; Stable API needs 2 independent users. (D-006, D-010)
+- Parity levels are graded and weighted; the Emacs census baseline is its scope list. (D-007, D-044)
+- Keymaps: profile > plugin, one ordered layer stack, priority is two axes (scope, provenance); Lang-Arg is a
+  pre-dispatch stage. (D-008, D-045, D-046, D-048)
+- Editing grammar: a composition engine over the (selection-set, operation) primitive; one register/kill-ring
+  model; a Vim regex dialect strategy. (D-025, D-047, D-026, D-028)
+- Emacs profile: profile-scoped prefix-arg, mark-ring as a C-POSHIST container, between-character caret,
+  divergent operations are distinct Commands. (D-049, D-050, D-051)
+- Terminal: capability fallback + pinned render profile; conceal is presentation-only; inline graphics is a
+  ladder; a second render tier reactivates only the TUI layout pass. (D-015, D-052, D-053, D-054)
+- Stability: status / error / panic are separate; v0 scope is assert-vs-error + panic recovery + tracing; the
+  discipline is a merge gate. (D-016, D-040, D-041)
+- Performance: one scheduler owns background work; latency budgets gate CI; measure first. (D-018, D-019, D-042)
+- Remote is built in: a headless no-sudo agent over SSH stdio; its client/runtime and render-IR boundaries are
+  deferred. (D-029, D-030, D-031, D-011, D-014)
+- Process: two classification axes; dependency policy; repo docs over a wiki; layer axes disambiguated;
+  phases are spec-owned and synced to GitHub; design-doc code is non-normative. (D-033, D-034, D-035, D-036,
+  D-037, D-038)
 
 ## Open questions
 - Save/recovery tuning (design decided; RJ01 journal shipped, D-064). (D-005)
 - Multi-client workspace + offline/reconnect policy. (D-012, D-013)
 - Log PII/redaction field list. (D-017)
+- The spec-context generator that will replace this digest. (D-022, #982)
+- Remote protocol version-skew policy. (D-024)
+- Debugger backend detail. (D-032)
+- Open details inside decided records: keymap provenance order (D-008), scheduler budgets (D-018), editing
+  grammar details (D-025).
 
 ## Where things live
 `spec/`: PROJECT (vision/glossary), PRD.yaml (features), phases.yaml (releases), ARCHITECTURE.md (map), POLICY.yaml
