@@ -249,13 +249,16 @@ truncated journal**. This validates the stability model ([../design/stability-an
 ## 13. Branch / Release Model
 
 ```
-main       always releasable; stable API
-next       next minor; experimental integration
-feature/*  short-lived
-release/x.y  stabilization + security fixes only
+main                                       the only long-lived branch
+feat|fix|spec|rfc|spike/<issue>-<name>     short-lived; squash-merged into main, deleted on merge
 ```
 
-Avoid a long-lived `develop`; for a small team, `main + short-lived branches + release branches` is simpler.
+- There is no `next` branch (dropped in #551), no `develop`, and no `release/x.y` branch. Branch naming
+  rules: [CONTRIBUTING.md](../../CONTRIBUTING.md) "Branches".
+- Releases are planned as GitHub Milestones named by version (D-037, D-059), with intermediate version
+  milestones between phases (D-060). A milestone is a planning unit, not a branch.
+- Before the first public release there are no tags and the version stays `0.0.0` (§6.1).
+
 Verify combined changes before they land. A GitHub **merge queue** would do this, but merge queues are only
 available to organization-owned repositories, and ruse lives under a personal account (`hawk90/ruse`). Instead,
 branch protection on `main` requires the `gate`, `rust` and `spec-validate` checks and **requires the branch to
