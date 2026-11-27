@@ -8,6 +8,7 @@ fn truncated_extra_or_out_of_bound_tokens_are_errors() {
         "ex_substitute 1 2 q 61 62",
         "ex_substitute 1 2 g 6 62",
         "ex_substitute 1 2 g 61 62 yn",
+        "ex_substitute 1 2 g 61 62 c:yx",
         "ex_global x 1",
         "ex_global d 1,,2",
         "ex_shift 1 1 > 1001",
@@ -40,4 +41,18 @@ fn truncated_extra_or_out_of_bound_tokens_are_errors() {
     ] {
         assert!(Command::from_line(bad).is_err(), "{bad:?} parsed");
     }
+}
+
+/// A trace written before #1628 records one `y`/`n` per match, padded with `n`; it still decodes, each
+/// answer as it was given.
+#[test]
+fn a_padded_yes_no_answer_list_still_decodes() {
+    use crate::editor::{ExCmd, SubAnswer};
+    let Ok(Command::Ex(ExCmd::Substitute { answers, .. })) =
+        Command::from_line("ex_substitute 1 5 - 61 78 c:nynnn")
+    else {
+        panic!("the pre-#1628 form did not decode");
+    };
+    let (y, n) = (SubAnswer::Yes, SubAnswer::No);
+    assert_eq!(answers, Some(vec![n, y, n, n, n]));
 }

@@ -97,7 +97,7 @@ pub use edit::{Edit, EditError, EditList};
 pub use editor::{
     apply_command, commit, plan, CaretGravity, CinKey, CinOptions, EditorOption, EditorState,
     ExCmd, ExOutcome, GlobalCmd, GroupKind, IndentStyle, LineAddr, Mode, Plan, SortKind,
-    SortOptions, SubFlags, SubOutcome, SubRange, Substitution, View, DEFAULT_CINKEYS,
+    SortOptions, SubAnswer, SubFlags, SubOutcome, SubRange, Substitution, View, DEFAULT_CINKEYS,
     DEFAULT_CINSCOPEDECLS, DEFAULT_LISPWORDS, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES,
     MAX_SHIFT_LEVELS,
 };

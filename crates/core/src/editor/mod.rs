@@ -550,7 +550,7 @@ mod ex_cmd;
 #[cfg(test)]
 pub(crate) use ex_cmd::samples as ex_cmd_samples;
 pub use ex_cmd::{
-    ExCmd, ExOutcome, GroupKind, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES, MAX_SHIFT_LEVELS,
+    ExCmd, ExOutcome, GroupKind, SubAnswer, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES, MAX_SHIFT_LEVELS,
 };
 
 mod format;

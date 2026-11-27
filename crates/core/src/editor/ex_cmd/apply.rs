@@ -76,12 +76,7 @@ impl EditorState {
                             if !subs.is_empty() {
                                 self.view.push_jump(from);
                             }
-                            let accepted: Vec<_> = subs
-                                .into_iter()
-                                .zip(answers.iter().copied().chain(std::iter::repeat(false)))
-                                .filter_map(|(s, yes)| yes.then_some(s))
-                                .collect();
-                            self.apply_substitutions_in(&accepted, range)
+                            self.apply_confirmed(&subs, answers, range)
                         }),
                 };
                 match result {
