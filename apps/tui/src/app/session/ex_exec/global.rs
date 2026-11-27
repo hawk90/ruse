@@ -182,6 +182,7 @@ impl Session {
                 },
             overlay,
             ex_filter,
+            ui_opts,
             ..
         } = self;
         let keep = match crate::app::ex_more::filter_keep(ws, ex_filter.as_ref()) {
@@ -194,9 +195,10 @@ impl Session {
         let pane = ws.focused();
         let b = pane.doc.bytes();
         let ts = pane.view.tabs();
+        let uhex = ui_opts.display.uhex();
         let rows: Vec<String> = marked
             .iter()
-            .flat_map(|&n| crate::app::ex_print::rows(b, n, n, flags, ts, &*keep))
+            .flat_map(|&n| crate::app::ex_print::rows(b, n, n, flags, ts, uhex, &*keep))
             .collect();
         let at = crate::app::ex_more::line_start(b, last_marked);
         place_cursor(ws, recorded, at);

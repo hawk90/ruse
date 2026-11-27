@@ -5,8 +5,9 @@ use super::{
     auto_indents, edit, motion, next_boundary, nop, one, prev_boundary, prev_grapheme, BytePos,
     Command, Edit, EditorState, GroupHint, Mode, Plan,
 };
+use crate::cells::Tabs;
 use crate::editor::planner::MAX_PUT_BYTES;
-use crate::editor::Action;
+use crate::editor::{cluster_cells, Action};
 use crate::motion::{line_end, line_start};
 
 /// What is typed (or backspaced) in Replace and Virtual Replace mode.
@@ -158,9 +159,14 @@ fn replace_backspace(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) ->
             None => restored.extend_from_slice(&b[span.clone()]),
         }
     }
+    let to = if st.view.mode == Mode::VirtualReplace {
+        vreplace_unpad(b, ls, from, cur, &restored, st.view.indent.tabs())
+    } else {
+        cur
+    };
     Plan {
         action: Action::ReplaceTxn {
-            edits: one(Edit::replace(BytePos(from), cur - from, restored)),
+            edits: one(Edit::replace(BytePos(from), to - from, restored)),
             hint,
             push: Vec::new(),
             pop,
@@ -170,9 +176,74 @@ fn replace_backspace(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint) ->
     }
 }
 
-/// `gR`-mode typing (Virtual Replace): tab-aware overwrite — over a multi-column tab, insert before it
-/// (it shrinks) until its last column, then replace it; at end-of-line, append; else overwrite one char,
-/// remembering the original for `<BS>`.
+/// The cells `text` takes when it starts at virtual column `v`.
+fn cells_from(text: &[u8], v: usize, ts: Tabs) -> usize {
+    let (mut i, mut at) = (0, v);
+    while i < text.len() {
+        let (j, w) = cluster_cells(text, i, text.len(), at, ts);
+        at += w;
+        i = j;
+    }
+    at - v
+}
+
+/// Where the Virtual Replace `<BS>` that puts `restored` back in place of `[from, cur)` ends: past the
+/// spaces after `cur` that the typed text added to fill the cells of the wider text it took, so the text
+/// after it keeps its column (nvim's `replace_do_bs`, #1269).
+fn vreplace_unpad(
+    b: &[u8],
+    ls: usize,
+    from: usize,
+    cur: usize,
+    restored: &[u8],
+    ts: Tabs,
+) -> usize {
+    let tab = b[from..cur].contains(&b'\t') || restored.contains(&b'\t');
+    let v = if tab {
+        motion::vcol_of(b, ls, from, ts)
+    } else {
+        0
+    };
+    let mut typed = cells_from(&b[from..cur], v, ts);
+    let put_back = cells_from(restored, v, ts);
+    let le = line_end(b, cur);
+    let mut to = cur;
+    while put_back > typed && to < le && b[to] == b' ' {
+        to += 1;
+        typed += 1;
+    }
+    to
+}
+
+/// What Virtual Replace takes for `typed`, typed at `p` (virtual column `v`) of a line ending at `le`
+/// (nvim's `ins_char_bytes` under VREPLACE, #1269): the end of the chars whose cells it covers, and the
+/// spaces that fill the cells the last of them leaves. A `<Tab>` that reaches past the typed char stays (it
+/// shrinks), so typing over a tab inserts before it until its last cell.
+fn vreplace_span(
+    line: &[u8],
+    p: usize,
+    le: usize,
+    v: usize,
+    typed: &[u8],
+    ts: Tabs,
+) -> (usize, usize) {
+    let want = v + cells_from(typed, v, ts);
+    let (mut end, mut at, mut pad) = (p, v, 0);
+    while end < le && at < want {
+        let (j, w) = cluster_cells(line, end, le, at, ts);
+        at += w;
+        if at > want && line[end] == b'\t' {
+            break;
+        }
+        end = j;
+        pad += at.saturating_sub(want);
+    }
+    (end, pad)
+}
+
+/// `gR`-mode typing (Virtual Replace): the typed char takes the chars its cells cover, spaces filling what
+/// a wider char leaves; over a multi-column tab it goes in before the tab (which shrinks) until the tab's
+/// last column; at end-of-line it is appended. What it took is remembered for `<BS>` ([`vreplace_span`]).
 fn plan_virtual_replace_type(
     st: &EditorState,
     b: &[u8],
@@ -181,46 +252,30 @@ fn plan_virtual_replace_type(
     hint: GroupHint,
 ) -> Plan {
     let mut buf = [0u8; 4];
-    let typed = c.encode_utf8(&mut buf).as_bytes().to_vec();
+    let typed = c.encode_utf8(&mut buf).as_bytes();
     let tn = typed.len();
-    let le = line_end(b, cur);
-    let (edits, push, cursor) = if cur >= le {
-        // End-of-line: nothing to overwrite — append (backspace deletes it).
-        (one(Edit::insert(BytePos(cur), typed)), vec![None], cur + tn)
-    } else if b[cur] == b'\t' {
-        // Over a TAB: it spans `w` virtual columns to the next tabstop. While more than one column
-        // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column, replace
-        // the tab with the typed char (backspace restores the tab).
-        let ls = line_start(b, cur);
-        let vcol = motion::vcol_of(b, ls, cur, st.view.indent.tabs());
-        let w = st.view.indent.tabs().padding(vcol);
-        if w > 1 {
-            (one(Edit::insert(BytePos(cur), typed)), vec![None], cur + tn)
-        } else {
-            (
-                one(Edit::replace(BytePos(cur), 1, typed)),
-                vec![Some(vec![b'\t'])],
-                cur + tn,
-            )
-        }
-    } else {
-        // Over a normal char: overwrite it (remember the original for `<BS>`), like Replace.
-        let nb = next_boundary(b, cur);
-        (
-            one(Edit::replace(BytePos(cur), nb - cur, typed)),
-            vec![Some(b[cur..nb].to_vec())],
-            cur + tn,
-        )
-    };
+    let (ls, le) = (line_start(b, cur), line_end(b, cur));
+    let ts = st.view.indent.tabs();
+    // The virtual column matters only to a tab, typed or taken: skip the scan from the line start without
+    // one (a keystroke on a long line stays cheap).
+    let (mut end, mut pad) = vreplace_span(b, cur, le, 0, typed, ts);
+    if typed == b"\t" || b[cur..(end + 1).min(le)].contains(&b'\t') {
+        let v = motion::vcol_of(b, ls, cur, ts);
+        (end, pad) = vreplace_span(b, cur, le, v, typed, ts);
+    }
+    let mut ins = typed.to_vec();
+    ins.resize(tn + pad, b' ');
+    // Nothing taken (end-of-line, a tab that shrinks): `<BS>` deletes the typed char.
+    let push = vec![(end > cur).then(|| b[cur..end].to_vec())];
     Plan {
         action: Action::ReplaceTxn {
-            edits,
+            edits: one(Edit::replace(BytePos(cur), end - cur, ins)),
             hint,
             push,
             pop: 0,
         },
         is_edit: true,
-        ..nop(cursor, Mode::VirtualReplace)
+        ..nop(cur + tn, Mode::VirtualReplace)
     }
 }
 
@@ -251,6 +306,7 @@ fn plan_virtual_replace_char(
     let mut line: Vec<u8> = b[ls..le].to_vec();
     let start = cur - ls; // cursor offset within `line`
     let mut p = start;
+    let mut v = motion::vcol_of(&line, 0, p, tabw);
     let mut buf = [0u8; 4];
     let typed = c.encode_utf8(&mut buf).as_bytes();
     let tn = typed.len();
@@ -265,21 +321,13 @@ fn plan_virtual_replace_char(
             }
             p += rest * tn;
             break;
-        } else if line[p] == b'\t' {
-            // Over a TAB spanning `w` virtual columns: insert before it (shrinking it) while more than one
-            // column remains; on its last column replace the tab itself — preserving the next char's column.
-            let vcol = motion::vcol_of(&line, 0, p, tabw);
-            let w = tabw.padding(vcol);
-            if w > 1 {
-                line.splice(p..p, typed.iter().copied());
-            } else {
-                line.splice(p..p + 1, typed.iter().copied());
-            }
-        } else {
-            // Over a normal char: overwrite exactly one grapheme boundary's worth.
-            let nb = next_boundary(&line, p);
-            line.splice(p..nb, typed.iter().copied());
         }
+        // Take what the typed char covers, a tab shrinking and spaces filling a cut wider char, as `gR`
+        // does ([`vreplace_span`]); the next one goes on at the first of those spaces.
+        let (end, pad) = vreplace_span(&line, p, line.len(), v, typed, tabw);
+        let spaces = std::iter::repeat_n(b' ', pad);
+        line.splice(p..end, typed.iter().copied().chain(spaces));
+        v += cells_from(typed, v, tabw);
         p += tn;
     }
     // One replace of the line tail from the cursor; everything before `start` is unchanged.

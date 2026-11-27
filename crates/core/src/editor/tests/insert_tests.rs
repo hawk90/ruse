@@ -856,4 +856,90 @@ mod virtual_replace_tests {
         let st = run("\tX", &[Command::VirtualReplaceChar(0, 'A')]);
         assert_eq!(text(&st), "A\tX");
     }
+
+    fn run_bytes(initial: &[u8], cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    #[test]
+    fn typing_over_a_wider_char_pads_its_leftover_cells() {
+        // #1269 (nvim v0.12.6 `ins_char_bytes` under VREPLACE): `x` over `<ff>` (4 cells) leaves 3 spaces,
+        // the cursor on the first; the next char takes a space; `<BS>` takes the spaces back.
+        let gr = |cmds: &[Command]| {
+            let mut all = vec![
+                Command::Move(1, Motion::Right),
+                Command::EnterVirtualReplace,
+            ];
+            all.extend_from_slice(cmds);
+            run_bytes(b"a\xffbc", &all)
+        };
+        let st = gr(&[Command::VirtualReplaceType('x')]);
+        assert_eq!(st.bytes(), b"ax   bc");
+        assert_eq!(st.cursor().0, 2);
+        let st = gr(&[
+            Command::VirtualReplaceType('x'),
+            Command::VirtualReplaceType('y'),
+        ]);
+        assert_eq!(st.bytes(), b"axy  bc");
+        let st = gr(&[Command::VirtualReplaceType('x'), Command::ReplaceBackspace]);
+        assert_eq!(st.bytes(), b"a\xffbc");
+        let st = run(
+            "a中bc",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('x'),
+            ],
+        );
+        assert_eq!(text(&st), "ax bc");
+    }
+
+    #[test]
+    fn a_wide_typed_char_takes_the_cells_it_covers() {
+        // `中` over `bc` takes both; over `a中` it takes `a` and the cut `中`, a space filling its cell.
+        let st = run(
+            "abcd",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('中'),
+            ],
+        );
+        assert_eq!(text(&st), "a中d");
+        let st = run(
+            "a中b",
+            &[
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('中'),
+            ],
+        );
+        assert_eq!(text(&st), "中 b");
+        let st = run(
+            "abcd",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('中'),
+                Command::ReplaceBackspace,
+            ],
+        );
+        assert_eq!(text(&st), "abcd");
+    }
+
+    #[test]
+    fn count_gr_over_an_invalid_byte_pads_like_gr() {
+        let st = run_bytes(
+            b"a\xffbc",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::VirtualReplaceChar(2, 'x'),
+            ],
+        );
+        assert_eq!(st.bytes(), b"axx  bc");
+        assert_eq!(st.cursor().0, 2);
+    }
 }

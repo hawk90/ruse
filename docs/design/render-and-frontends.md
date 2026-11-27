@@ -204,7 +204,9 @@ column is `row × width + col`. `'list'` / `'listchars'` decide what tabs, space
 A character nvim does not print shows transcribed, one cell per character, never raw (#1181): `^X` for a C0
 control and `^?` for DEL (`<xx>` under `'display'` `uhex`), `<xx>` for a C1 control, `<xxxx>` for the format
 and bidi-control characters nvim's `utf_printable` refuses. `Screen::put_styled` transcribes too, so no
-control byte from a buffer, a file name or a message ever reaches the terminal. The window's gutter
+control byte from a buffer, a file name or a message ever reaches the terminal. The Ex print commands (`:p`,
+`:l`, `:nu`) and the command-line caret count those transcriptions' cells too (#1269), and `:print` writes a
+byte that is not UTF-8 as the Latin-1 char of its value (`ÿ` for 0xFF), as nvim's `msg_prt_line` does. The window's gutter
 (`'foldcolumn'` with nvim's `fill_foldcolumn` marks, `'signcolumn'` with the diagnostics' `E`/`W`/`I`/`H`,
 then `'number'` / `'relativenumber'` / `'numberwidth'`) narrows the text area; `ui/window_view.rs` resolves a window's options
 (window-local on its View, global-local over the session's globals) into a `WinView` per frame, which the

@@ -6373,6 +6373,37 @@ FIXTURES: list[dict] = [
     {"name": "gp_block_past_eof", "lines": ["abcd", "efgh", "ij"], "keys": "l<C-v>jlyGgp"},
     {"name": "gP_block_mid", "lines": ["abcd", "efgh", "ij", "kl"], "keys": "l<C-v>jlyjjgP"},
     {"name": "gp_block_line_end", "lines": ["abcd", "efgh", "ij", "kl"], "keys": "l<C-v>jlyjj$gp"},
+    # --- #1269 display-width leftovers ---
+    # Virtual Replace (`gR`, `gr`) counts screen cells (nvim's ins_char_bytes under VREPLACE): a typed char
+    # takes the chars its cells cover, spaces fill what a wider char leaves, and `<BS>` takes the spaces back.
+    # The `gr` fixtures type `Z`: nvim v0.12 maps `grx` (and `grn`, `gra`, ...) by default, even under --clean.
+    {"name": "i1269_gR_over_invalid", "lines": ["a\xffbc"], "keys": "lgRx<Esc>", "bytes": True},
+    {"name": "i1269_gR_over_invalid_two", "lines": ["a\xffbc"], "keys": "lgRxy<Esc>", "bytes": True},
+    {"name": "i1269_gR_over_invalid_bs", "lines": ["a\xffbc"], "keys": "lgRx<BS><Esc>", "bytes": True},
+    {"name": "i1269_gR_over_wide", "lines": ["a中bc"], "keys": "lgRx<Esc>"},
+    {"name": "i1269_gR_over_wide_bs", "lines": ["a中bc"], "keys": "lgRx<BS><Esc>"},
+    {"name": "i1269_gR_over_control", "lines": ["a\x01bc"], "keys": "lgRx<Esc>"},
+    {"name": "i1269_gR_type_wide", "lines": ["abcd"], "keys": "lgR中<Esc>"},
+    {"name": "i1269_gR_type_wide_bs", "lines": ["abcd"], "keys": "lgR中<BS><Esc>"},
+    {"name": "i1269_gR_type_wide_cut", "lines": ["a中b"], "keys": "gR中<Esc>"},
+    {"name": "i1269_gR_type_wide_over_tab", "lines": ["a\tb"], "keys": ":set ts=8<CR>lgR中<Esc>"},
+    {"name": "i1269_gR_type_wide_tab_end", "lines": ["abcdef\tb"], "keys": ":set ts=8<CR>6lgR中<Esc>"},
+    {"name": "i1269_gr_over_invalid", "lines": ["a\xffbc"], "keys": "lgrZ", "bytes": True},
+    {"name": "i1269_gr_count_over_invalid", "lines": ["a\xffbc"], "keys": "l2grZ", "bytes": True},
+    {"name": "i1269_gr_over_wide", "lines": ["a中bc"], "keys": "lgrZ"},
+    # Blockwise `A` whose right edge cuts through `<ff>`: nvim appends after the byte on that row and copies
+    # it with the typed text into the other rows (for a cut wide char, only its bytes after the cut).
+    {"name": "i1269_block_A_cut_invalid", "lines": ["ab\xffcd", "abcdefgh"], "keys": "l<C-v>jlAX<Esc>", "bytes": True},
+    {"name": "i1269_block_A_cut_invalid_below", "lines": ["abcdefgh", "ab\xffcd"], "keys": "l<C-v>jlAX<Esc>", "bytes": True},
+    {"name": "i1269_block_A_cut_wide", "lines": ["ab\xe4\xb8\xadcd", "abcdefgh"], "keys": "l<C-v>jlAX<Esc>", "bytes": True},
+    # `[:lower:]`/`[:upper:]` test a byte that is not UTF-8 as the Latin-1 char of its value.
+    {"name": "i1269_coll_lower_byte", "lines": ["AZ\xc9\xd7\xe9"], "keys": "/[[:lower:]]<CR>", "bytes": True},
+    {"name": "i1269_coll_upper_byte", "lines": ["az\xd7\xe9\xc9"], "keys": "/[[:upper:]]<CR>", "bytes": True},
+    {"name": "i1269_coll_lower_ff", "lines": ["AZ\xff"], "keys": "/[[:lower:]]<CR>", "bytes": True},
+    {"name": "i1269_coll_not_lower_byte", "lines": ["\xe9\xe9a\xc9"], "keys": "/[^[:lower:]]<CR>", "bytes": True},
+    {"name": "i1269_coll_lower_byte_ic", "lines": ["AZ\xc9\xe9"], "keys": "/[[:lower:]]\\c<CR>", "bytes": True},
+    # `<cword>` holding a byte that is not UTF-8.
+    {"name": "i1269_cword_invalid", "lines": ["foo\xffbar baz"], "keys": ":s/<C-r><C-w>/Z/<CR>", "bytes": True},
 ]
 
 

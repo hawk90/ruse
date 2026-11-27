@@ -207,7 +207,9 @@ impl Session {
                     let pane = ws.focused();
                     let b = pane.doc.bytes();
                     let line = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
-                    crate::app::ex_print::rows(b, line, line, pflags, pane.view.tabs(), &|_| true)
+                    let uhex = ui_opts.display.uhex();
+                    let ts = pane.view.tabs();
+                    crate::app::ex_print::rows(b, line, line, pflags, ts, uhex, &|_| true)
                         .pop()
                         .map_or_else(|| Msg::echo(""), Msg::echo)
                 }

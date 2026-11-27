@@ -1,7 +1,7 @@
 //! The text the Ex print commands show (#609): `:p`, `:l`, `:nu`/`:#`, `:z`, and the `p`/`#`/`l` flags of
 //! `:s` — each line the way nvim's `print_line` writes it into the message area.
 
-use unicode_width::UnicodeWidthChar;
+use ruse_core::cells::{self, Glyph};
 
 use crate::input::PrintFlags;
 
@@ -12,25 +12,41 @@ pub(crate) fn number_width(nlines: usize) -> usize {
 }
 
 /// One line as a print command shows it: the line number first under `#`, then the text with tabs
-/// expanded to `tabstop` and control characters as `^X`. Under `l` (`:list`) a tab shows as `>` and
-/// blanks, a no-break space as `+`, and trailing spaces as `-` (nvim's default `'listchars'`).
+/// expanded to `tabstop` and C0 controls and DEL as `^X` (`<xx>` under `'display'` `uhex`). Under `l`
+/// (`:list`) a tab shows as `>` and blanks, a no-break space as `+`, and trailing spaces as `-` (nvim's
+/// default `'listchars'`).
+///
+/// Columns count as nvim's `msg_prt_line` counts them (#1269): a cluster takes its base char's cells from
+/// [`cells::text_cells`] (`<85>` 4, `<200b>` 6, which the screen draws them as), and a byte that is not
+/// UTF-8 is written as the Latin-1 char of its value (`ÿ` for 0xFF) and takes that char's cells.
 pub(crate) fn print_line(
-    text: &str,
+    text: &[u8],
     lnum: usize,
     flags: PrintFlags,
     width: usize,
     ts: impl Into<ruse_core::Tabs>,
+    uhex: bool,
 ) -> String {
     let ts: ruse_core::Tabs = ts.into();
     let mut out = String::new();
     if flags.number {
         out.push_str(&format!("{lnum:>width$} "));
     }
-    let trail = text.trim_end_matches([' ', '\t']).len();
+    let trail = text.len()
+        - text
+            .iter()
+            .rev()
+            .take_while(|&&c| matches!(c, b' ' | b'\t'))
+            .count();
     let mut vcol = 0usize;
-    for (i, c) in text.char_indices() {
-        match c {
-            '\t' => {
+    let mut latin1 = [0u8; 4];
+    for (i, g) in cells::glyphs(text) {
+        let g: &str = match g {
+            Glyph::Text(s) => s,
+            Glyph::Byte(b) => char::from(b).encode_utf8(&mut latin1),
+        };
+        match g {
+            "\t" => {
                 let w = ts.padding(vcol);
                 if flags.list {
                     out.push('>');
@@ -40,52 +56,52 @@ pub(crate) fn print_line(
                 }
                 vcol += w;
             }
-            ' ' if flags.list && i >= trail => {
+            " " if flags.list && i >= trail => {
                 out.push('-');
                 vcol += 1;
             }
-            '\u{a0}' if flags.list => {
+            _ if flags.list && g.starts_with(['\u{a0}', '\u{202f}']) => {
                 out.push('+');
                 vcol += 1;
             }
-            c if (c as u32) < 0x20 || c == '\u{7f}' => {
-                out.push('^');
-                out.push(if c == '\u{7f}' {
-                    '?'
-                } else {
-                    char::from(c as u8 + b'@')
-                });
-                vcol += 2;
-            }
-            c => {
-                out.push(c);
-                vcol += c.width().unwrap_or(0);
-            }
+            _ => match g.as_bytes() {
+                &[b] if b < 0x20 || b == 0x7f => {
+                    let shown = cells::unprintable(char::from(b), uhex).unwrap_or_default();
+                    vcol += shown.len();
+                    out.push_str(&shown);
+                }
+                _ => {
+                    out.push_str(g);
+                    vcol += cells::text_cells(g, false, uhex);
+                }
+            },
         }
     }
     out
 }
 
 /// The 1-based lines `first..=last` of `bytes` as print rows, skipping those `keep` rejects (`:filter`).
+/// `uhex` is `'display'` `uhex`.
 pub(crate) fn rows(
     bytes: &[u8],
     first: usize,
     last: usize,
     flags: PrintFlags,
     ts: impl Into<ruse_core::Tabs>,
+    uhex: bool,
     keep: &dyn Fn(&str) -> bool,
 ) -> Vec<String> {
     let ts: ruse_core::Tabs = ts.into();
-    let text = String::from_utf8_lossy(bytes);
-    let mut lines: Vec<&str> = text.split('\n').collect();
-    if text.ends_with('\n') {
+    let mut lines: Vec<&[u8]> = bytes.split(|&c| c == b'\n').collect();
+    if bytes.ends_with(b"\n") {
         lines.pop();
     }
     let width = number_width(lines.len().max(1));
     (first.max(1)..=last.min(lines.len().max(1)))
         .filter_map(|n| {
-            let line = lines.get(n - 1).copied().unwrap_or("");
-            keep(line).then(|| print_line(line, n, flags, width, ts))
+            let line = lines.get(n - 1).copied().unwrap_or_default();
+            keep(&String::from_utf8_lossy(line))
+                .then(|| print_line(line, n, flags, width, ts, uhex))
         })
         .collect()
 }
@@ -153,13 +169,59 @@ mod tests {
             number: true,
             ..PrintFlags::default()
         };
-        assert_eq!(print_line("ab\tc", 1, plain, 3, 8), "ab      c");
-        assert_eq!(print_line("ab\tc", 1, number, 3, 8), "  1 ab      c");
-        assert_eq!(print_line("a\tb  ", 1, list, 3, 8), "a>      b--");
-        assert_eq!(print_line("a\u{a0}b \t", 1, list, 3, 8), "a+b->   ");
-        assert_eq!(print_line("a\u{7f}b\u{1b}", 1, plain, 3, 8), "a^?b^[");
-        assert_eq!(print_line("j", 10, number, 3, 8), " 10 j");
+        assert_eq!(
+            print_line("ab\tc".as_bytes(), 1, plain, 3, 8, false),
+            "ab      c"
+        );
+        assert_eq!(
+            print_line("ab\tc".as_bytes(), 1, number, 3, 8, false),
+            "  1 ab      c"
+        );
+        assert_eq!(
+            print_line("a\tb  ".as_bytes(), 1, list, 3, 8, false),
+            "a>      b--"
+        );
+        assert_eq!(
+            print_line("a\u{a0}b \t".as_bytes(), 1, list, 3, 8, false),
+            "a+b->   "
+        );
+        assert_eq!(
+            print_line("a\u{7f}b\u{1b}".as_bytes(), 1, plain, 3, 8, false),
+            "a^?b^["
+        );
+        assert_eq!(print_line("j".as_bytes(), 10, number, 3, 8, false), " 10 j");
         assert_eq!(number_width(1000), 4);
+    }
+
+    #[test]
+    fn lines_count_cells_like_nvim_msg_prt_line() {
+        // #1269, checked against nvim v0.12.6 (`execute('%print')` / `'%list'`).
+        let plain = PrintFlags::default();
+        let list = PrintFlags {
+            list: true,
+            ..PrintFlags::default()
+        };
+        let p = |t: &[u8], f, uhex| print_line(t, 1, f, 3, 8, uhex);
+        // A byte that is not UTF-8 is written as its Latin-1 char and takes that char's cells: 1 for 0xFF,
+        // 4 for 0x85 (`<85>`).
+        assert_eq!(p(b"a\xff\tb", plain, false), "a\u{ff}      b");
+        assert_eq!(p(b"\xff\xff\tb", list, false), "\u{ff}\u{ff}>     b");
+        assert_eq!(p(b"a\x85\tb", plain, false), "a\u{85}   b");
+        // A char nvim does not print takes the cells of its transcription; a wide char 2.
+        assert_eq!(p("a\u{85}\tb".as_bytes(), plain, false), "a\u{85}   b");
+        assert_eq!(p("a\u{200b}\tb".as_bytes(), list, false), "a\u{200b}>b");
+        assert_eq!(p("中\tb".as_bytes(), plain, false), "中      b");
+        // A combining mark after a byte that is not UTF-8 is a char of its own, one cell.
+        assert_eq!(p(b"\xff\xcc\x81\tb", plain, false), "\u{ff}\u{301}      b");
+        assert_eq!(
+            p("e\u{301}\tb".as_bytes(), plain, false),
+            "e\u{301}       b"
+        );
+        // 'display' uhex: `<01>`, `<7f>`.
+        assert_eq!(p(b"a\x01\tb", plain, true), "a<01>   b");
+        assert_eq!(p(b"a\x7f\tb", list, true), "a<7f>>  b");
+        // U+202F is a no-break space for 'listchars' too.
+        assert_eq!(p("a\u{202f}b".as_bytes(), list, false), "a+b");
     }
 
     #[test]
