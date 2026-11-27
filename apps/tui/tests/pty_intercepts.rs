@@ -110,8 +110,8 @@ fn zt_then_h_lands_on_the_cursor_line() {
 
 #[test]
 fn zb_then_h_and_l() {
-    // 23-row window ending at line 53 starts at line 31; `H` keeps the scrolloff margin (nvim: 35, 22 rows).
-    assert_eq!(edit(&numbered(100), "50GzbHdd"), without(100, &[34]));
+    // The 22-row window ending at line 53 starts at line 32; `H` keeps the scrolloff margin (nvim: 35).
+    assert_eq!(edit(&numbered(100), "50GzbHdd"), without(100, &[35]));
     assert_eq!(edit(&numbered(100), "50GzbLdd"), without(100, &[50]));
 }
 
@@ -129,15 +129,15 @@ fn counted_h_counts_from_the_top() {
 
 #[test]
 fn d_l_deletes_through_the_true_bottom_line_ignoring_scrolloff() {
-    // Window 47..=69 (nvim: 47..=68).
-    let gone: Vec<usize> = (50..=69).collect();
+    // Window 47..=68, as nvim's.
+    let gone: Vec<usize> = (50..=68).collect();
     assert_eq!(edit(&numbered(100), "50GztdL"), without(100, &gone));
 }
 
 #[test]
 fn d_h_deletes_through_the_true_top_line_ignoring_scrolloff() {
-    // Window 31..=53 (nvim: 32..=53).
-    let gone: Vec<usize> = (31..=50).collect();
+    // Window 32..=53, as nvim's.
+    let gone: Vec<usize> = (32..=50).collect();
     assert_eq!(edit(&numbered(100), "50GzbdH"), without(100, &gone));
 }
 
@@ -286,10 +286,10 @@ fn ctrl_e_scrolls_and_drags_the_cursor_inside_scrolloff() {
 
 #[test]
 fn ctrl_f_and_ctrl_b_page_scroll_under_vim() {
-    // nvim 0.12.6 with a 23-row window (`laststatus=0`) and `so=3`: `C-f` puts line 22 on top and the
-    // cursor on line 25; `C-b` then brings the cursor back to line 20.
-    assert_eq!(edit(&numbered(60), "\u{6}dd"), without(60, &[25]));
-    assert_eq!(edit(&numbered(60), "\u{6}\u{2}dd"), without(60, &[20]));
+    // nvim 0.12.6 with its default 22-row window and `so=3`: `C-f` puts line 21 on top and the
+    // cursor on line 24; `C-b` then brings the cursor back to line 19.
+    assert_eq!(edit(&numbered(60), "\u{6}dd"), without(60, &[24]));
+    assert_eq!(edit(&numbered(60), "\u{6}\u{2}dd"), without(60, &[19]));
 }
 
 #[test]

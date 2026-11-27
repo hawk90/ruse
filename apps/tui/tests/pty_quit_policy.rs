@@ -61,7 +61,10 @@ fn window_keys_run_the_quit_policy() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys(":set nohid\r:split\r:e g.txt\rx");
     ed.keys_then_wait_for("\x17q", "E37: No write since last change");
+    // A cancelled command line leaves the message (nvim clears its row), so a reply between the two
+    // refusals lets the second one show.
     ed.keys(":\x1b");
+    ed.sync();
     ed.keys_then_wait_for("\x17c", "E37: No write since last change");
     ed.keys(":\x1b:set cf\r");
     ed.keys_then_wait_for("\x17q", "Save changes to \"g.txt\"?");

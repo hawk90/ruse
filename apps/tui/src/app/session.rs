@@ -93,7 +93,10 @@ pub(crate) struct FrameCtx {
     /// Each window's display for the frame (wrap, gutter, horizontal scroll; #615, #616).
     pub(crate) wins: Vec<WinView>,
     pub(crate) cols: u16,
+    /// The windows' rows ([`crate::ui::layout::BottomLayout::text_rows`]).
     pub(crate) text_rows: u16,
+    /// The screen's rows.
+    pub(crate) rows: u16,
 }
 
 /// What the caller's loop does after a key: keep going, or end the session.

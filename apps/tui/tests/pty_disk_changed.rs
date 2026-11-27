@@ -21,12 +21,13 @@ const W12: &str =
 /// nvim's hit-enter prompt under a message too long for the status line (#1222).
 const HIT_ENTER: &str = "Press ENTER or type command to continue";
 
-/// The status line, drawn whole once its `tabstop=4` is there (a command line gives it back whole).
-/// Every check waits for what it looks for: a shell or a save's fsync can keep the screen quiet past the
-/// harness's settle time on a loaded runner.
+/// The bar and the message row once the message is `:set ts?`'s `tabstop=4`, joined as the shared row of
+/// `'cmdheight'` 0 reads (`NORMAL  f.txt [+]    tabstop=4`). Every check waits for what it looks for: a
+/// shell or a save's fsync can keep the screen quiet past the harness's settle time on a loaded runner.
 fn bar(ed: &mut Editor) -> String {
-    let before = ed.mark();
-    ed.keys_then_wait_for(":set ts?\r", "tabstop=4")[before..].to_string()
+    ed.keys_then_wait_for(":set ts?\r", "tabstop=4");
+    let rows = ed.rows();
+    format!("{}  {}", rows[22], rows[23])
 }
 
 /// The file changes under an unmodified buffer: W11 after the shell command that changed it, the flag
@@ -37,7 +38,8 @@ fn an_external_write_flags_an_unmodified_buffer() {
     let file = dir.file("f.txt", b"one\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     // W11 is what nvim says without 'autoread' (#619).
-    ed.keys_then_wait_for(":set noar\r", "f.txt");
+    ed.keys(":set noar\r");
+    ed.sync();
     ed.keys(":!touch f.txt\r\r");
     assert!(
         !bar(&mut ed).contains("[disk changed]"),
@@ -97,7 +99,8 @@ fn the_idle_timer_notices_a_change() {
     let file = dir.file("f.txt", b"one\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     // W11 is what nvim says without 'autoread' (#619).
-    ed.keys_then_wait_for(":set noar\r", "f.txt");
+    ed.keys(":set noar\r");
+    ed.sync();
     let before = ed.mark();
     std::fs::write(&file, b"two, longer\n").unwrap();
     ed.wait_for_after(before, W11);
@@ -114,7 +117,8 @@ fn a_focus_gain_notices_a_change() {
     let file = dir.file("f.txt", b"one\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     // W11 is what nvim says without 'autoread' (#619).
-    ed.keys_then_wait_for(":set noar\r", "f.txt");
+    ed.keys(":set noar\r");
+    ed.sync();
     assert!(
         ed.screen_bytes().contains("\x1b[?1004h"),
         "focus reports are asked for"
@@ -123,7 +127,7 @@ fn a_focus_gain_notices_a_change() {
     std::fs::write(&file, b"two, longer\n").unwrap();
     ed.send(b"\x1b[I");
     let start = Instant::now();
-    while !ed.screen_bytes().contains(W11) {
+    while !ed.rows().iter().any(|r| r.contains(W11)) {
         assert!(
             start.elapsed() < Duration::from_secs(20),
             "{}",
@@ -132,7 +136,7 @@ fn a_focus_gain_notices_a_change() {
         std::thread::sleep(Duration::from_millis(200));
         ed.send(b"0");
     }
-    // W11 waits at the hit-enter prompt (#1222) unless a `0` already cleared it; `:` works either way.
+    // W11 fits the message row; `:` works whatever is shown.
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
     let out = ed.screen_bytes();

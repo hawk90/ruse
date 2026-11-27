@@ -244,8 +244,21 @@ no row past the line's last. `'statuscolumn'` is not supported: its value is an 
 (`%{...}` evaluates Vimscript), and running Vimscript is a non-goal; `:set stc=...` says
 `option not supported`.
 
-**Long messages (#1222).** The last row is both the status bar and the message area: the message follows the
-mode, name and flags. A message that does not fit in the rest of that row is not cut. It is shown the way
+**The bottom rows (#1275, D-068, RFC-0027 §1).** `ui/layout.rs` `BottomLayout` splits the screen into the
+windows, the bar and `'cmdheight'` message rows below it (global, default 1 as nvim, `E487` below 0,
+`render.cmdheight`). At N ≥ 1 the bar has its own row, the windows get `rows − 1 − N` rows as nvim's do with
+`'laststatus'` 2, and the command line opens on the first message row; its wildmenu popup and `c_CTRL-D`
+listing sit just above that row, over the bar, as nvim's do. A message shows on the message rows when it
+wraps to at most N rows, a last row that fills the width taking one more, empty row (nvim with
+`'noshowcmd'`: 80 cells fit `ch=2`, not `ch=1`). A longer file message is cut at its start to N rows less
+one cell (`'shortmess'` `t`); any other grows up over the bar and the windows, with a blank row above it and
+the rows above that left in place, to the hit-enter prompt or `-- More --` on the last row. A height that
+leaves the windows no row is clamped to `rows − 2` when set (nvim's `:set ch=30` reads 22) and again every
+frame, so a smaller screen narrows only the layout. At 0 the bar is the last row and shares it with the
+message, as described next; ruse's 0 is not nvim's (which asks for `<CR>` after every message).
+
+**Long messages at `'cmdheight'` 0 (#1222).** The last row is both the status bar and the message area: the
+message follows the mode, name and flags. A message that does not fit in the rest of that row is not cut. It is shown the way
 nvim v0.12.6 shows a message longer than its command line (probed in a PTY at 80x24, `:help hit-enter`):
 wrapped at any cell across the rows above, and `Press ENTER or type command to continue` on the last row
 (`ui/message.rs`). `<CR>`, `<NL>`, `<Space>` and `CTRL-C` clear it and are used up; any other key clears it
@@ -266,11 +279,12 @@ fail the command, and all but echoes are kept in the history `:[count]mes[sages]
 not keep is listed at the top of `app/messages.rs`. A command's line-count report (`3 fewer lines`, `3 lines
 yanked`, `3 lines >ed 1 time`, `3 substitutions on 2 lines`) is given only when its count is more than
 `'report'` (default 2), with nvim's wording; `app/report.rs` lists them (#1276). Differences from nvim:
-- nvim's message gets a whole command-line row. ruse's shares the row with the bar, so a message that would
-  fit nvim's row, but not the space left after a long file name, also asks for `<CR>`.
+- At `'cmdheight'` 0 the message shares the row with the bar, so a message that would fit nvim's row, but
+  not the space left after a long file name, also asks for `<CR>`.
 - The pager's first page starts at the message, not at the typed command line nvim scrolls up with it; there
-  is no `g<`, `'more'`, `'cmdheight'`, or `'shortmess'` flag other than the built-in `t`; `'messagesopt'`
-  `wait:` and `progress:` are checked and kept but ruse always behaves as `hit-enter`.
+  is no `g<`, `'more'`, or `'shortmess'` flag other than the built-in `t`; `'messagesopt'` `wait:` and
+  `progress:` are checked and kept but ruse always behaves as `hit-enter` (RFC-0027 slices 2–4).
+- A command line closed with `<Esc>` gives back the message it covered; nvim leaves the message row empty.
 - There is no undo/redo report (`1 more line; before #2  0 seconds ago`), nor the `3 lines changed` /
   `indented` / `filtered` reports of `g~`, `=` and `!`. A Visual put over a charwise selection reports the
   net line change, where nvim counts the lines the put itself added.

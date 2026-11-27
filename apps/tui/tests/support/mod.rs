@@ -29,6 +29,22 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
     needle.is_empty() || hay.windows(needle.len()).any(|w| w == needle)
 }
 
+/// The screen `bytes` leave on the PTY's 24x80 through a VT grid, one string per row.
+fn grid_rows(bytes: &[u8]) -> Vec<String> {
+    let mut grid = ruse_tui::term_grid::Grid::new(24, 80);
+    vte::Parser::new().advance(&mut grid, bytes);
+    (0..24)
+        .map(|r| {
+            (0..80)
+                .filter_map(|c| grid.cell(r, c))
+                .map(|(t, _)| if t.is_empty() { " " } else { t })
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect()
+}
+
 /// Terminal output as rough text for a failure message: CSI and OSC sequences dropped, cursor
 /// positioning turned into line breaks, other control bytes dropped.
 fn screen_text(bytes: &[u8]) -> String {
@@ -338,14 +354,31 @@ impl Editor {
         self.keys_then_wait_for(":set ts?\r", "tabstop=");
     }
 
-    /// As [`Editor::wait_for`], but only output after `mark` counts.
+    /// As [`Editor::wait_for`], but only output after `mark` counts: `text` is in it, or a row the output
+    /// after `mark` changed holds it. The renderer repaints only the cells that changed, so a message whose
+    /// cells partly match what the row held before (`  endofline` over `:set eol?`) is not contiguous in
+    /// the raw output.
     pub fn wait_for_after(&mut self, mark: usize, text: &str) -> String {
         let start = Instant::now();
+        let before = {
+            let out = self.output.lock().unwrap();
+            grid_rows(&out[..mark.min(out.len())])
+        };
         loop {
             {
                 let out = self.output.lock().unwrap();
                 if contains(&out[mark.min(out.len())..], text.as_bytes()) {
                     return String::from_utf8_lossy(&out).into_owned();
+                }
+                if out.len() > mark {
+                    let now = grid_rows(&out);
+                    let changed = now
+                        .iter()
+                        .zip(&before)
+                        .any(|(row, was)| row != was && row.contains(text));
+                    if changed {
+                        return String::from_utf8_lossy(&out).into_owned();
+                    }
                 }
             }
             // A child that exited cannot draw any more; say so at once instead of waiting out the limit.
@@ -376,9 +409,10 @@ impl Editor {
         let out = self.output.lock().unwrap().clone();
         let tail = &out[out.len().saturating_sub(4096)..];
         format!(
-            "{what}: after {:.2?}, {} bytes received, child {status}\n--- screen text (tail) ---\n{}\n--- raw tail ---\n{:?}",
+            "{what}: after {:.2?}, {} bytes received, child {status}\n--- screen rows ---\n{}\n--- screen text (tail) ---\n{}\n--- raw tail ---\n{:?}",
             since.elapsed(),
             out.len(),
+            grid_rows(&out).join("\n"),
             screen_text(tail),
             String::from_utf8_lossy(&out[out.len().saturating_sub(1024)..]),
         )
@@ -388,18 +422,7 @@ impl Editor {
     /// string per row. The renderer repaints only the cells that changed, so a row's text need not be
     /// contiguous in the raw output.
     pub fn rows(&self) -> Vec<String> {
-        let mut grid = ruse_tui::term_grid::Grid::new(24, 80);
-        vte::Parser::new().advance(&mut grid, &self.output.lock().unwrap());
-        (0..24)
-            .map(|r| {
-                (0..80)
-                    .filter_map(|c| grid.cell(r, c))
-                    .map(|(t, _)| if t.is_empty() { " " } else { t })
-                    .collect::<String>()
-                    .trim_end()
-                    .to_string()
-            })
-            .collect()
+        grid_rows(&self.output.lock().unwrap())
     }
 
     /// Where the terminal's cursor is now, `(row, col)`, 0-based, through the same VT grid as [`Editor::rows`].

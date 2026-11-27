@@ -57,6 +57,7 @@ impl Session {
             files,
             readonly,
             win_height: 0,
+            screen_rows: 0,
         };
         crate::app::set_exec::apply_config_keys(config, &mut host, only);
         let notes = if only.is_none_or(|k| k.contains(&"keymap.lang")) {

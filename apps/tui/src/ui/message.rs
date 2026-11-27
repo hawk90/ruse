@@ -1,5 +1,6 @@
-//! How a message too long for the status line is shown (#1222). ruse's last row holds both the status bar
-//! and the message after it, so a long message would be cut at the right edge. nvim v0.12.6 (probed in a
+//! How a message too long for the status line is shown (#1222). At `'cmdheight'` 0 ruse's last row holds
+//! both the status bar and the message after it, so a long message would be cut at the right edge; at N ≥ 1
+//! the message has N rows of its own ([`fit_rows`], RFC-0027 §1.2). nvim v0.12.6 (probed in a
 //! PTY at 80x24) shows such a message whole: it wraps across as many rows as it needs, the screen scrolls up,
 //! and `Press ENTER or type command to continue` waits on the last row (`:help hit-enter`). A file message
 //! (`"name" 3L, 12B written`) is cut at its start with a `<` instead, as the default `'shortmess'` flag `t`
@@ -63,6 +64,37 @@ pub(crate) fn fit(prefix_cells: usize, message: &str, cols: usize) -> Shown {
         return Shown::CutRow(cut_start(message, cols));
     }
     Shown::More(wrap(message, cols))
+}
+
+/// How a message is shown on `'cmdheight'` N ≥ 1 message rows (RFC-0027 §1.2).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Rows {
+    /// On the message rows, from the first: one entry per row, at most N.
+    Fit(Vec<String>),
+    /// Grown over the windows to the hit-enter prompt: the message whole, one entry per row.
+    More(Vec<String>),
+}
+
+/// How `message` is shown on `n` ≥ 1 message rows of a screen `cols` wide (RFC-0027 §1.2), as nvim v0.12.6
+/// shows it (probed in a PTY at 80x24 with `'noshowcmd'`; ruse has no `'showcmd'`). The message wraps at
+/// the screen width, and a last row that fills the width takes one more, empty row (the cursor wraps): 80
+/// cells at `ch=2` take two rows and fit, at `ch=1` they wait for `<CR>`. It fits when that is at most `n`
+/// rows. A file message that does not fit is cut at its start to `n` rows less one cell, as the default
+/// `'shortmess'` flag `t` does (`"…/f.txt" 1L, 4B written` is cut to 79 cells at `ch=1`, wrapped whole at
+/// `ch=2`). Any other grows over the windows.
+pub(crate) fn fit_rows(message: &str, cols: usize, n: usize) -> Rows {
+    let mut rows = wrap(message, cols);
+    if rows.last().is_some_and(|r| width(r) >= cols) {
+        rows.push(String::new());
+    }
+    if rows.len() <= n {
+        return Rows::Fit(rows);
+    }
+    if is_file_message(message) && !message.contains('\n') {
+        let cut = cut_start(message, (n * cols).saturating_sub(1));
+        return Rows::Fit(wrap(&cut, cols).into_iter().take(n).collect());
+    }
+    Rows::More(rows)
 }
 
 /// How a question waiting for its answer is shown (#619): on the last row alone, its start cut when it is
@@ -405,6 +437,61 @@ mod tests {
             Answer::DoneThenRun
         );
         assert_eq!(p.hit_enter_key(key(KeyCode::Enter)), Answer::Done);
+    }
+
+    /// nvim v0.12.6 at 80 columns with `'noshowcmd'`: `ch=2` shows `"a\nb"`, 80 and 159 cells on its two
+    /// rows, while `"a\nb\nc"` and 160 cells (two full rows, then the empty one) wait for `<CR>`; `ch=1`
+    /// shows 79 cells and waits after 80.
+    #[test]
+    fn a_message_fits_its_rows_as_nvim_fits_it() {
+        let x = |n: usize| "x".repeat(n);
+        assert_eq!(
+            fit_rows("a\nb", 80, 2),
+            Rows::Fit(vec!["a".into(), "b".into()])
+        );
+        assert_eq!(
+            fit_rows(&x(80), 80, 2),
+            Rows::Fit(vec![x(80), String::new()])
+        );
+        assert_eq!(fit_rows(&x(159), 80, 2), Rows::Fit(vec![x(80), x(79)]));
+        assert_eq!(
+            fit_rows("a\nb\nc", 80, 2),
+            Rows::More(vec!["a".into(), "b".into(), "c".into()])
+        );
+        assert_eq!(
+            fit_rows(&x(160), 80, 2),
+            Rows::More(vec![x(80), x(80), String::new()])
+        );
+        assert_eq!(fit_rows(&x(79), 80, 1), Rows::Fit(vec![x(79)]));
+        assert_eq!(
+            fit_rows(&x(80), 80, 1),
+            Rows::More(vec![x(80), String::new()])
+        );
+        assert_eq!(fit_rows(&x(150), 80, 3), Rows::Fit(vec![x(80), x(70)]));
+    }
+
+    /// A file message too long for its rows is cut at its start to the rows less one cell (`ch=1`: 79
+    /// cells), and one that fits them is wrapped whole (`ch=2`), as nvim shows `:w` of a deep path.
+    #[test]
+    fn a_long_file_message_is_cut_to_its_rows() {
+        let msg = format!("\"{}/f.txt\" 1L, 4B written", "d".repeat(80));
+        let Rows::Fit(rows) = fit_rows(&msg, 80, 1) else {
+            panic!("not cut");
+        };
+        assert_eq!(rows.len(), 1);
+        assert_eq!(width(&rows[0]), 79);
+        assert!(rows[0].starts_with("<ddd"), "{rows:?}");
+        assert!(rows[0].ends_with("/f.txt\" 1L, 4B written"), "{rows:?}");
+        let Rows::Fit(rows) = fit_rows(&msg, 80, 2) else {
+            panic!("not whole");
+        };
+        assert_eq!(rows.concat(), msg);
+        let long = format!("\"{}/f.txt\" 1L, 4B written", "d".repeat(200));
+        let Rows::Fit(rows) = fit_rows(&long, 80, 2) else {
+            panic!("not cut");
+        };
+        assert_eq!(rows.iter().map(|r| width(r)).collect::<Vec<_>>(), [80, 79]);
+        assert!(rows[0].starts_with("<ddd"), "{rows:?}");
     }
 
     #[test]

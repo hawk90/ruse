@@ -1,6 +1,7 @@
 //! Screen-line motions, horizontal scroll and the wrapped viewport (#615) through the real key path,
 //! against nvim v0.12.6 ground truth captured headless (`nvim --clean`, `:set so=0`, the window sizes
-//! given). A ruse terminal one row taller than nvim's `lines - 2` gives the same text rows.
+//! given). A ruse terminal of nvim's `lines` gives the same `lines - 2` text rows (the bar and one
+//! `'cmdheight'` row).
 
 use ruse_tui::headless::{Headless, Profile};
 
@@ -16,7 +17,7 @@ fn probe_a() -> String {
 
 /// A session `cols` wide with 8 text rows, `'scrolloff'` 0 and `'tabstop'` 8 as in `nvim --clean`.
 fn session(text: &str, cols: u16) -> Headless {
-    let mut h = Headless::with_size(Profile::Vim, text, cols, 9);
+    let mut h = Headless::with_size(Profile::Vim, text, cols, 10);
     h.keys(":set so=0 ts=8<CR>");
     h
 }
@@ -259,7 +260,7 @@ fn the_viewport_counts_wrapped_rows() {
 #[test]
 fn a_far_jump_centres_the_cursor_line() {
     let text: String = (1..=100).map(|i| format!("l{i}\n")).collect();
-    let mut h = Headless::with_size(Profile::Vim, &text, 40, 24);
+    let mut h = Headless::with_size(Profile::Vim, &text, 40, 25);
     h.keys(":set so=3<CR>");
     let top = |h: &Headless| h.workspace().focused().view.top() + 1;
     for (keys, want) in [
@@ -337,7 +338,7 @@ fn backward_dgk_after_dollar_takes_the_cursor_char() {
 fn dot_repeats_h_m_l_not_the_lines() {
     let text: String = (1..=100).map(|i| format!("line {i}\n")).collect();
     let run = |keys: &str| {
-        let mut h = Headless::with_size(Profile::Vim, &text, 80, 24);
+        let mut h = Headless::with_size(Profile::Vim, &text, 80, 25);
         h.keys(":set so=3<CR>");
         h.keys(keys);
         let t = h.text();

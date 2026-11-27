@@ -20,7 +20,7 @@ fn a_large_file_opens_in_the_degraded_profile() {
     let mut ed = Editor::start(&dir, &[Path::new("big.txt")]);
     ed.wait_for_row("[large]");
     ed.keys(":e small.txt\r");
-    let rows = ed.wait_for_row("small.txt");
+    let rows = ed.wait_for_row("NORMAL  small.txt");
     assert!(
         !rows.iter().any(|r| r.contains("[large]")),
         "a small file is not degraded"

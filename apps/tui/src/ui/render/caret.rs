@@ -106,7 +106,7 @@ pub(super) fn place_terminal_cursor(
     at_prompt: Option<&str>,
     cmd_caret: Option<usize>,
     focus_cursor: impl Fn() -> (u16, u16),
-    (cols, rows, text_rows): (u16, u16, u16),
+    (cols, rows, text_rows, cmd_row): (u16, u16, u16, u16),
 ) -> io::Result<()> {
     if let Some(bar) = at_prompt {
         // nvim leaves the cursor after the prompt.
@@ -120,11 +120,8 @@ pub(super) fn place_terminal_cursor(
         )?;
     } else if let Some(caret_col) = cmd_caret {
         let ccol = (u16::try_from(caret_col + 1).unwrap_or(u16::MAX)).min(cols.saturating_sub(1));
-        queue!(
-            out,
-            cursor::MoveTo(ccol, rows.saturating_sub(1)),
-            cursor::Show
-        )?;
+        // The command line's row: over the bar at `'cmdheight'` 0, else the first message row.
+        queue!(out, cursor::MoveTo(ccol, cmd_row), cursor::Show)?;
     } else {
         // The focused view owns the cursor; its DISPLAY column is grapheme-cluster / width based
         // (F-006 #4), offset into the focused window's rectangle (F-007).

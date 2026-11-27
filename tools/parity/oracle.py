@@ -363,8 +363,9 @@ def run_neovim(
 #     hand-written; the (lines, keys) here are the only human-authored part. `<Esc>` is passed
 #     verbatim to nvim_replace_termcodes and is understood identically by the Rust key tokenizer;
 #     `<lt>` is a literal `<` on both sides (do_lt, #764), so keys can type the text `<Esc>`.
-# A 100-line buffer for the page-scroll fixtures, and the setup that gives nvim ruse's 23-row window
-# (an 80x24 terminal with no status line under the text) and ruse's scrolloff.
+# A 100-line buffer for the page-scroll fixtures, and the setup that gives nvim a 23-row window
+# (an 80x24 terminal with no status line under the text), which the ruse side replays at 'cmdheight' 0
+# (tests/parity_compare.rs, RFC-0027), and ruse's scrolloff.
 HUNDRED = [f"line {i}" for i in range(1, 101)]
 PAGE_SETUP = "set laststatus=0 scrolloff=3"
 # `nvim_buf_set_lines` saves the buffer's first line for `U`; appending a line and deleting it again as a
