@@ -256,27 +256,51 @@ mod substitute_confirm_tests {
         ]
     }
 
-    fn confirmed(
+    /// The 0-based `(line, byte col)` of the cursor.
+    fn cursor(st: &EditorState) -> (usize, usize) {
+        let (b, c) = (st.doc.bytes(), st.view.cursor);
+        (
+            crate::pos::raw::line_of(b, c),
+            c - crate::motion::line_start(b, c),
+        )
+    }
+
+    /// `:{first},{last}s/a/{rep}/c` (`gc` when `global`) on `text`, answered with the keys `keys`.
+    fn confirmed_with(
         text: &str,
-        first: usize,
-        last: usize,
+        (first, last): (usize, usize),
+        rep: &str,
         global: bool,
-        answers: &[bool],
+        keys: &str,
     ) -> EditorState {
+        let answers = keys
+            .chars()
+            .map(|k| match k {
+                'y' => SubAnswer::Yes,
+                'n' => SubAnswer::No,
+                'a' => SubAnswer::All,
+                'l' => SubAnswer::Last,
+                _ => SubAnswer::Quit,
+            })
+            .collect();
         let mut st = EditorState::new(text.as_bytes().to_vec());
         let ex = ExCmd::Substitute {
             first,
             last,
             pattern: "a".into(),
-            replacement: "x".into(),
+            replacement: rep.into(),
             flags: SubFlags {
                 global,
                 ignore_case: None,
             },
-            answers: Some(answers.to_vec()),
+            answers: Some(answers),
         };
         assert!(matches!(st.apply_ex(&ex), ExOutcome::Substituted(_)));
         st
+    }
+
+    fn confirmed(text: &str, first: usize, last: usize, global: bool, keys: &str) -> EditorState {
+        confirmed_with(text, (first, last), "x", global, keys)
     }
 
     /// #1618: a `:s///c` sets `'[` `']` at the starts of the range's first and last lines, whichever
@@ -285,38 +309,89 @@ mod substitute_confirm_tests {
     #[test]
     fn confirmed_substitute_marks_span_the_whole_range() {
         let text = "a1\n  a2\na3\na4\na5\na6";
-        // `:1,5s/a/x/c` answered `nynnn`.
-        let st = confirmed(text, 1, 5, false, &[false, true, false, false, false]);
+        let st = confirmed(text, 1, 5, false, "nynnn");
         assert_eq!(st.as_str().unwrap(), "a1\n  x2\na3\na4\na5\na6");
         assert_eq!(
             change_marks(&st),
             [Some((0, 0)), Some((4, 0)), Some((1, 0))]
         );
-        // `nyq`: the quit leaves the rest unanswered, which the loop records as `n`.
-        let st = confirmed(text, 1, 5, false, &[false, true]);
+        let st = confirmed(text, 1, 5, false, "nyq");
         assert_eq!(
             change_marks(&st),
             [Some((0, 0)), Some((4, 0)), Some((1, 0))]
         );
-        // `:2,4s/a/x/c` answered `yq`.
-        let st = confirmed(text, 2, 4, false, &[true]);
+        let st = confirmed(text, 2, 4, false, "yq");
         assert_eq!(
             change_marks(&st),
             [Some((1, 0)), Some((3, 0)), Some((1, 0))]
         );
-        // `:1,5s/a/x/gc` answered `nnyynn`: both matches on line 3.
-        let st = confirmed(
-            "a1\n  a2\na3a\na4\na5\na6",
-            1,
-            5,
-            true,
-            &[false, false, true, true, false, false],
-        );
+        // Both matches on line 3.
+        let st = confirmed("a1\n  a2\na3a\na4\na5\na6", 1, 5, true, "nnyynn");
         assert_eq!(st.as_str().unwrap(), "a1\n  a2\nx3x\na4\na5\na6");
         assert_eq!(
             change_marks(&st),
             [Some((0, 0)), Some((4, 0)), Some((2, 0))]
         );
+    }
+
+    /// #1628: the cursor ends where nvim v0.12.6's `do_sub` leaves it (fixtures `i1628_*`): at the
+    /// start of the line of the last match prompted for when it was taken (`y`, `l`), ON that match when
+    /// it was skipped or quit at (`n`, `q`), and on the first non-blank of the last replaced line after
+    /// an `a`.
+    #[test]
+    fn confirmed_substitute_cursor_follows_the_last_prompt() {
+        let text = "a1\n  a2\na3\na4\na5\na6";
+        assert_eq!(cursor(&confirmed(text, 1, 5, false, "nynnn")), (4, 0));
+        assert_eq!(cursor(&confirmed(text, 1, 5, false, "nyq")), (2, 0));
+        assert_eq!(cursor(&confirmed(text, 1, 5, false, "nl")), (1, 0));
+        assert_eq!(cursor(&confirmed(text, 1, 5, false, "q")), (0, 0));
+        let text = "  a1\n ba2\n  a3\nb";
+        assert_eq!(cursor(&confirmed(text, 1, 3, false, "yyy")), (2, 0));
+        assert_eq!(cursor(&confirmed(text, 1, 3, false, "a")), (2, 2));
+        assert_eq!(cursor(&confirmed(text, 1, 3, false, "nyn")), (2, 2));
+        assert_eq!(cursor(&confirmed(text, 1, 3, false, "nq")), (1, 2));
+        // Nothing replaced: no change marks either.
+        let st = confirmed(text, 1, 3, false, "nnn");
+        assert_eq!(
+            (cursor(&st), change_marks(&st)),
+            ((2, 2), [None, None, None])
+        );
+        // On the quit match where the replacements before it on its line moved it.
+        let text = "  a1a\n ba2aa\n  a3a\nb";
+        let st = confirmed_with(text, (1, 3), "xy", true, "nnynq");
+        assert_eq!(cursor(&st), (1, 6));
+        let st = confirmed_with(text, (1, 3), r"x\r", true, "nnynq");
+        assert_eq!(st.as_str().unwrap(), "  a1a\n bx\n2aa\n  a3a\nb");
+        assert_eq!(cursor(&st), (2, 2));
+        // A `\r` in a taken replacement: the line it ends on.
+        let st = confirmed_with("  a1\n ba2\n  a3\nb", (1, 3), r"x\r", false, "yyy");
+        assert_eq!(cursor(&st), (5, 0));
+    }
+
+    /// #1628: `'.` is on the line the last `y`/`l` replacement ends on, or where the first `a` one
+    /// starts; `l` ends `']` on its own line (nvim v0.12.6, fixtures `i1628_*`).
+    #[test]
+    fn confirmed_substitute_dot_and_last_answer_marks() {
+        let text = "a1\n  a2\na3\na4\na5\na6";
+        let dot = |keys| change_marks(&confirmed(text, 1, 5, false, keys))[2];
+        assert_eq!(dot("yyyyy"), Some((4, 0)));
+        assert_eq!(dot("nyyny"), Some((4, 0)));
+        assert_eq!(dot("nya"), Some((2, 0)));
+        assert_eq!(dot("yya"), Some((2, 0)));
+        assert_eq!(dot("a"), Some((0, 0)));
+        let st = confirmed(text, 1, 5, false, "nyl");
+        assert_eq!(st.as_str().unwrap(), "a1\n  x2\nx3\na4\na5\na6");
+        assert_eq!(
+            change_marks(&st),
+            [Some((0, 0)), Some((2, 0)), Some((2, 0))]
+        );
+        let text = "  a1\n ba2\n  a3\nb";
+        let marks = |keys| change_marks(&confirmed_with(text, (1, 3), r"x\r", false, keys));
+        assert_eq!(marks("ynn")[2], Some((1, 0)));
+        assert_eq!(marks("nya")[2], Some((3, 0)));
+        assert_eq!(marks("nl"), [Some((0, 0)), Some((2, 0)), Some((2, 0))]);
+        let st = confirmed("  a1a\n ba2aa\n  a3a\nb", 1, 3, true, "yyya");
+        assert_eq!(change_marks(&st)[2], Some((1, 0)));
     }
 }
 

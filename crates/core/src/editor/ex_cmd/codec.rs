@@ -3,7 +3,7 @@
 use crate::cells::VarStops;
 use std::fmt::Write as _;
 
-use super::{ExCmd, GroupKind, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES, MAX_SHIFT_LEVELS};
+use super::{ExCmd, GroupKind, SubAnswer, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES, MAX_SHIFT_LEVELS};
 use crate::command::CommandParseError;
 use crate::editor::{
     CaretGravity, EditorOption, GlobalCmd, SortKind, SortOptions, SubFlags, MAX_OPTION_INT,
@@ -190,7 +190,13 @@ impl ExCmd {
                 );
                 if let Some(a) = answers {
                     s.push_str(" c:");
-                    s.extend(a.iter().map(|&y| if y { 'y' } else { 'n' }));
+                    s.extend(a.iter().map(|&a| match a {
+                        SubAnswer::Yes => 'y',
+                        SubAnswer::No => 'n',
+                        SubAnswer::All => 'a',
+                        SubAnswer::Last => 'l',
+                        SubAnswer::Quit => 'q',
+                    }));
                 }
                 s
             }
@@ -774,12 +780,17 @@ impl<'a> Args<'a> {
         }
     }
 
-    fn answers(&self, t: &str) -> Result<Vec<bool>, CommandParseError> {
+    /// The `c:` answers: one key per match prompted for. A trace written before #1628 holds only `y`
+    /// and `n`, one per match (padded with `n`), and still decodes.
+    fn answers(&self, t: &str) -> Result<Vec<SubAnswer>, CommandParseError> {
         let a = t.strip_prefix("c:").ok_or_else(|| self.bad())?;
         a.chars()
             .map(|c| match c {
-                'y' => Ok(true),
-                'n' => Ok(false),
+                'y' => Ok(SubAnswer::Yes),
+                'n' => Ok(SubAnswer::No),
+                'a' => Ok(SubAnswer::All),
+                'l' => Ok(SubAnswer::Last),
+                'q' => Ok(SubAnswer::Quit),
                 _ => Err(self.bad()),
             })
             .collect()

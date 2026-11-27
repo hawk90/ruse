@@ -349,10 +349,11 @@ fn confirm_loop_q_ends_the_loop() {
     let mut h = Headless::vim("a\na\na\n");
     h.keys(":set report=0<CR>:%s/a/b/gc<CR>yq");
     assert_eq!(h.status(), "1 substitution on 1 line");
+    // The cursor is on the match `q` was typed at, as nvim leaves it (#1628).
     h.keys("x");
     assert_eq!(
         h.text(),
-        "\na\na\n",
+        "b\n\na\n",
         "the next key is a command, not a register name"
     );
 }

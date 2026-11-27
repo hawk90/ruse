@@ -533,7 +533,7 @@ pub(crate) fn substitute_cmd(
     pattern: &str,
     replacement: &str,
     flags: ruse_core::SubFlags,
-    answers: Option<Vec<bool>>,
+    answers: Option<Vec<ruse_core::SubAnswer>>,
 ) -> ExCmd {
     let (first, last) = ws.resolve_range(range);
     ExCmd::Substitute {

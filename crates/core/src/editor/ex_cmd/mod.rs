@@ -57,14 +57,16 @@ pub enum GroupKind {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ExCmd {
     /// `:s`, `&`, `g&`, `:&`, `:&&`: the lines, literal pattern/replacement and effective flags used.
-    /// `answers` is `Some` for `:s///c`: the user's answer per match, in order (missing ones are "no").
+    /// `answers` is `Some` for `:s///c`: the user's answer per match prompted for, in order, ending at
+    /// the answer that ended the loop (`a`, `l`, `q`), or at the last match. Matches never prompted for
+    /// are "no" (after an `a`, "yes").
     Substitute {
         first: usize,
         last: usize,
         pattern: String,
         replacement: String,
         flags: SubFlags,
-        answers: Option<Vec<bool>>,
+        answers: Option<Vec<SubAnswer>>,
     },
     /// `:g/pat/d` / `:g/pat/s///`: the 1-based lines the pattern marked, and the command run on them.
     Global { marks: Vec<usize>, cmd: GlobalCmd },
@@ -174,6 +176,29 @@ pub enum ExCmd {
     Begin(GroupKind),
     /// The end of the innermost open [`ExCmd::Begin`].
     End,
+}
+
+/// One answer to the `:s///c` prompt (nvim's `do_sub`), in the trace as its key (`y n a l q`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SubAnswer {
+    /// `y`: replace this match and ask about the next.
+    Yes,
+    /// `n`: skip this match and ask about the next.
+    No,
+    /// `a`: replace this match and every one after it, asking no more.
+    All,
+    /// `l`: replace this match and stop.
+    Last,
+    /// `q`, `<Esc>`: replace nothing more and stop.
+    Quit,
+}
+
+impl SubAnswer {
+    /// Whether the loop asks about the next match after this answer.
+    #[must_use]
+    pub fn asks_on(self) -> bool {
+        matches!(self, SubAnswer::Yes | SubAnswer::No)
+    }
 }
 
 /// What an [`ExCmd`] did, for the frontend's status line.

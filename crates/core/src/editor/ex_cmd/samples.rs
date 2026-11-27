@@ -1,4 +1,4 @@
-use super::{ExCmd, GroupKind};
+use super::{ExCmd, GroupKind, SubAnswer};
 use crate::editor::{CaretGravity, EditorOption, GlobalCmd, SortKind, SortOptions, SubFlags};
 use crate::pos::BytePos;
 use crate::register::Register;
@@ -21,7 +21,10 @@ pub(crate) fn samples() -> Vec<ExCmd> {
     vec![
         sub(None),
         sub(Some(Vec::new())),
-        sub(Some(vec![true, false, true])),
+        sub(Some(vec![SubAnswer::Yes, SubAnswer::No, SubAnswer::Yes])),
+        sub(Some(vec![SubAnswer::No, SubAnswer::All])),
+        sub(Some(vec![SubAnswer::Yes, SubAnswer::Last])),
+        sub(Some(vec![SubAnswer::No, SubAnswer::Quit])),
         ExCmd::Global {
             marks: vec![1, 3, 5],
             cmd: GlobalCmd::Delete,

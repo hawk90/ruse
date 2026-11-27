@@ -1,6 +1,6 @@
 use super::super::{ExCmd, ExOutcome};
 use crate::command::{Command, SelectKind};
-use crate::editor::{apply_command, EditorState, GlobalCmd, SubFlags};
+use crate::editor::{apply_command, EditorState, GlobalCmd, SubAnswer, SubFlags};
 use crate::pos::BytePos;
 
 #[test]
@@ -19,14 +19,14 @@ fn a_resolved_substitute_runs_on_its_lines_with_its_answers() {
         answers: None,
     });
     assert_eq!(st.bytes(), b"a a\nb b\n");
-    // Confirm answers: only the "yes" matches change; missing answers are "no".
+    // Confirm answers: only the "yes" matches change; matches never prompted for are "no".
     st.apply_ex(&ExCmd::Substitute {
         first: 1,
         last: 2,
         pattern: "[ab]".into(),
         replacement: "c".into(),
         flags: all,
-        answers: Some(vec![false, true, true]),
+        answers: Some(vec![SubAnswer::No, SubAnswer::Yes, SubAnswer::Yes]),
     });
     assert_eq!(st.bytes(), b"a c\nc b\n");
 }

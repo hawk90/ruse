@@ -22,14 +22,14 @@ pub(crate) fn mark_screen_clobbered() {
 }
 
 /// The state of an in-progress `:s///c` confirm loop (F-009 #2): the pending substitutions, the index
-/// of the one being confirmed, and the answers given so far. The buffer is NOT edited until the loop
-/// ends (all confirmed, or `a`/`l`/`q`), so the absolute offsets stay valid throughout; the accepted
-/// subset is then applied as one undo group, through the resolved `:s` recorded with the answers
-/// (RFC-0020), so a trace replays the same choice without a prompt.
+/// of the one being confirmed, and the answers given so far (one per match prompted for). The buffer is
+/// NOT edited until the loop ends (all confirmed, or `a`/`l`/`q`), so the absolute offsets stay valid
+/// throughout; the accepted subset is then applied as one undo group, through the resolved `:s` recorded
+/// with the answers (RFC-0020), so a trace replays the same choice without a prompt.
 pub(crate) struct Confirm {
     pub(crate) subs: Vec<ruse_core::Substitution>,
     pub(crate) idx: usize,
-    answers: Vec<bool>,
+    answers: Vec<ruse_core::SubAnswer>,
     /// The resolved `:s` (its `answers` filled in when the loop ends).
     ex: ruse_core::ExCmd,
     /// The cursor when the loop began (the frame follows the current match meanwhile).
@@ -79,29 +79,21 @@ pub(crate) fn confirm_key(
     let Some(mut c) = confirm.take() else {
         return;
     };
+    use ruse_core::SubAnswer;
     let n = c.subs.len();
-    match key.code {
-        KeyCode::Char('y') => {
-            c.answers.push(true);
-            c.idx += 1;
-        }
-        KeyCode::Char('n') => {
-            c.answers.push(false);
-            c.idx += 1;
-        }
-        KeyCode::Char('a') => {
-            c.answers.resize(n, true);
-            c.idx = n;
-        }
-        KeyCode::Char('l') => {
-            c.answers.push(true);
-            c.idx = n;
-        }
-        KeyCode::Char('q') | KeyCode::Esc => c.idx = n,
-        _ => {} // any other key: re-prompt (Vim ignores it)
+    let answer = match key.code {
+        KeyCode::Char('y') => Some(SubAnswer::Yes),
+        KeyCode::Char('n') => Some(SubAnswer::No),
+        KeyCode::Char('a') => Some(SubAnswer::All),
+        KeyCode::Char('l') => Some(SubAnswer::Last),
+        KeyCode::Char('q') | KeyCode::Esc => Some(SubAnswer::Quit),
+        _ => None, // any other key: re-prompt (Vim ignores it)
+    };
+    if let Some(answer) = answer {
+        c.answers.push(answer);
+        c.idx = if answer.asks_on() { c.idx + 1 } else { n };
     }
     if c.idx >= n {
-        c.answers.resize(n, false);
         let Confirm {
             mut ex,
             answers,
@@ -111,18 +103,14 @@ pub(crate) fn confirm_key(
         if let ruse_core::ExCmd::Substitute { answers: a, .. } = &mut ex {
             *a = Some(answers);
         }
-        // Run it from where the loop began (the jump it records is that position), then leave the
-        // cursor on the last match shown when nothing was replaced, as the loop did live.
-        let shown = ws.focused().view.cursor().0;
+        // Run it from where the loop began (the jump it records is that position); the core leaves
+        // the cursor where nvim's loop does (#1628).
         ws.place_focused_cursor(BytePos(from));
         let out = crate::app::dispatch::sub_outcome(crate::app::dispatch::run_ex(ex, ws, recorded))
             .unwrap_or(ruse_core::SubOutcome {
                 replacements: 0,
                 lines: 0,
             });
-        if out.replacements == 0 {
-            crate::app::dispatch::place_cursor(ws, recorded, shown);
-        }
         status.give(crate::app::dispatch::substituted_message(&out, report));
         // `confirm` was taken and stays None — the loop is over.
     } else {
