@@ -284,23 +284,41 @@ pub struct BindingKey {
 }
 ```
 
-Declaration example:
+Declaration in the config file, as the schema defines it today (`spec/config-schema.yaml`, the
+`keymap.*` keys; D-045 layer stack, D-062 scope):
 
 ```toml
-[[keybindings]]
-profile = "vim"
-keys = "s"
-command = "editor.substitute"
-when = "view.kind == 'text' && input.mode == 'normal'"
+# ~/.config/ruse/config.toml (user layer) or /etc/ruse/config.toml (machine layer).
+# A workspace layer (<root>/.ruse/config.toml) may NOT set keymap.* keys: they are scope:user (D-062).
 
-[[keybindings]]
-profile = "vim"
-keys = "s"
-command = "git.stage"
-when = "view.kind == 'git-status'"
+# One table per Vim keymap namespace: keymap.normal, keymap.operator_pending, keymap.insert,
+# keymap.cmdline, keymap.visual, keymap.select, keymap.terminal, keymap.lang.
+# The namespace IS the context: a binding that does not name its namespace is not expressible.
+[keymap.normal]
+Y = "y$"
+
+# The persistent form of :lmap — each entry maps one character to one character.
+[keymap.lang]
+a = "b"
 ```
 
-These two are **not a conflict** — their contexts are mutually exclusive. In contrast, the
+Implementation status (verify in code before relying on it):
+
+| Item | Status | Where |
+|---|---|---|
+| Config loader reads and type-checks every `keymap.*` table from the machine and user layers, deep-merging them | exists (#614) | `apps/tui/src/config/schema.rs`, `apps/tui/src/config/load.rs`, `apps/tui/src/config/merge.rs` |
+| `keymap.lang` installed into the Lang-Arg map at startup and on reload | exists (#1151) | `apps/tui/src/app/set_exec/config.rs` (`install_lang_keymap`) |
+| `keymap.normal` … `keymap.terminal` installed as user mappings | **not implemented** — read and checked, then unused | `spec/config-schema.yaml` (`keymap.lang` desc) |
+| Per-binding `profile`, `command` (semantic command ID) and `when` context expression | **no schema key** — design target of this section only | — |
+
+The `BindingKey` tuple above (profile, sequence, context, priority) is the design target. The
+schema expresses only the namespace part of the context today; a command-ID right-hand side and a
+`when` predicate (grammar still unspecified — see [command-engine](../design/command-engine.md)) need
+new schema keys, added to `spec/config-schema.yaml` first.
+
+Under that target, two bindings of `s` — one to `editor.substitute` in a text view in Normal mode,
+one to `git.stage` in a Git status view — are **not a conflict**: their contexts are mutually
+exclusive. In contrast, the
 following **is** a real conflict, which the editor must detect **statically**:
 
 ```
