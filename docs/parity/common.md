@@ -51,13 +51,15 @@ profile. Profile-specific keystrokes are in [vim.md](vim.md) / [emacs.md](emacs.
 - **COM-8 Undo tree** — Vim/Neovim expose chronological branch traversal (`g-`/`g+`, `:earlier/:later`);
   Emacs's model differs (undo-as-undoable, plus the undo-tree package). ruse's transaction/undo engine
   (INV-UNDO) provides a branching history that both surfaces map onto. Undo grouping is by logical unit,
-  not per keystroke (DECISIONS D-005 open for exact boundaries).
+  not per keystroke (DECISIONS D-005 open for exact boundaries). Branching loses no state; the history is
+  bounded by `'undolevels'` and an undo payload budget, past which the oldest states go (D-067).
 - **COM-11 Unified clipboard model** — ruse unifies **Vim registers** ([vim.md](vim.md) VIM-REG) and the
   **Emacs kill ring** ([emacs.md](emacs.md) EMACS-KILL) into one model with an optional OS-clipboard bridge
   and OSC 52 fallback ([terminal.md](terminal.md) TERM-OSC52). Each profile's surface reproduces its own
   semantics (register types / yank-pop) over the shared model.
 - **COM-12 Large files** — not "a slow version of normal mode": a distinct degraded profile (syntax off,
-  bounded undo, streaming search, binary detection, very-long-line handling). See design-requirements §6.
+  streaming search, binary detection, very-long-line handling); undo keeps the bound every buffer has
+  (D-067), not a window of its own. See design-requirements §6.
 - **COM-13 Encoding / line endings** — kept separate from document data (INV — TEXT-19); detection order +
   BOM + `fileformat`/`fileencoding` semantics per [vim.md](vim.md) VIM-STATE.
 

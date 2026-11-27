@@ -214,9 +214,11 @@ pub(super) enum MarkCol {
     /// The line's length: the newline, as nvim's `do_join` puts `']` at `sumsize`.
     LineEnd,
     /// The line's last byte, or column 0 on an empty line: nvim's `ml_get_len(lnum) - 1` (`op_shift`'s
-    /// `']`). On a line ending in a multibyte char nvim's mark is that char's last byte; ruse's marks stay
-    /// on char boundaries, so commit's offset snap moves it to the char's first byte.
+    /// `']`). On a line ending in a multibyte char that is inside the char, which `'[` `']` keep as their
+    /// raw column, as [`Byte`](MarkCol::Byte) does (#1613).
     LastByte,
+    /// The first byte of the line's last char, or column 0 on an empty line: a linewise `do_put`'s `']`.
+    LastChar,
 }
 
 impl MarkAt {

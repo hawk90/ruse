@@ -363,7 +363,7 @@ fn literal_text(unit: &[Command]) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// `E20` for a jump to, or an operator over, an unset named mark (`'a`, `` `a ``, `d'a`): nothing runs.
+/// `E20` for a jump to, or an operator over, an unset mark (`'a`, `` `a ``, `d'a`, `` d`[ ``): nothing runs.
 fn mark_error(cmd: &Command, ws: &Workspace) -> Option<String> {
     let view = &ws.focused().view;
     // `` `[ ``/`'[`/`` `] ``/`']` before any change or yank (nvim v0.12.6, #1087).
@@ -383,13 +383,15 @@ fn mark_error(cmd: &Command, ws: &Workspace) -> Option<String> {
     if let Some(unset) = unset {
         return unset.then(|| "E20: Mark not set".to_string());
     }
-    let name = match cmd {
-        Command::GotoNamedMark(c) | Command::GotoNamedMarkLine(c) => *c,
-        Command::OpToMark { name, .. } => *name,
+    let (name, at) = match cmd {
+        Command::GotoNamedMark(c) | Command::GotoNamedMarkLine(c) => (*c, view.named_mark(*c)),
+        // `` d`[ ``, `y']`, `` c`. ``, `d''` read the special marks too (nvim v0.12.6, #1645).
+        Command::OpToMark { name, .. } => (*name, view.op_mark(*name)),
         _ => return None,
     };
-    ((name.is_ascii_alphanumeric() || matches!(name, '^' | '<' | '>'))
-        && ws.focused().view.named_mark(name).is_none())
+    ((name.is_ascii_alphanumeric()
+        || matches!(name, '^' | '<' | '>' | '[' | ']' | '.' | '\'' | '`'))
+        && at.is_none())
     .then(|| "E20: Mark not set".to_string())
 }
 

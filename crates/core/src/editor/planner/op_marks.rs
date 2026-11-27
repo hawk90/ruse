@@ -87,6 +87,24 @@ pub(super) fn visual_op_start(
     }
 }
 
+/// The change marks of an INCLUSIVE charwise yank of `[s, e)`: `'[` on `s`, `']` on the last byte of the
+/// last char, `e - 1`, as nvim's `mb_adjust_opend` moves an inclusive `oap->end` there and `op_yank` sets
+/// `b_op_end` from it (#1613). `'.` is unused: a yank records none. `None` for an empty span and for one
+/// that takes a newline (`v$y`, whose `']` nvim's `decl` puts on the char before it, the first byte that
+/// [`yank_mark_span`] gives): the default marks cover those.
+pub(super) fn inclusive_yank_marks(b: &[u8], (s, e): (usize, usize)) -> Option<OpMarks> {
+    if e <= s || e > b.len() || b[e - 1] == b'\n' {
+        return None;
+    }
+    let (sl, sc) = line_col(b, s);
+    let (el, ec) = line_col(b, e - 1);
+    Some(OpMarks {
+        start: MarkAt::new(sl, MarkCol::Byte(sc)),
+        end: MarkAt::new(el, MarkCol::Byte(ec)),
+        dot: MarkAt::new(sl, MarkCol::Byte(sc)),
+    })
+}
+
 /// The span a charwise yank of `[s, e)` marks with `'[` `']`: a yank that takes a non-empty line's
 /// newline (`v$y`, `lv$jy`) ends its `']` on that line's last char, as nvim's `op_yank` does (`decl` of the
 /// end skips the NUL), not on the newline (#1302).

@@ -291,12 +291,16 @@ fn plan_search_object(
                 reg,
             )
         }
+        // `ygn` is inclusive: `']` on the match's last byte (#1613).
         SearchOp::Yank => {
             let reg = captured(b, s, e, false);
-            Plan {
-                set_register: Some(RegWrite::Yank(reg, (s, e))),
-                ..nop(s, st.view.mode)
-            }
+            super::op_marks::with_marks(
+                Plan {
+                    set_register: Some(RegWrite::Yank(reg, (s, e))),
+                    ..nop(s, st.view.mode)
+                },
+                super::op_marks::inclusive_yank_marks(b, (s, e)),
+            )
         }
         // `gUgn`, `>gn`, `gqgn`, ...: the shared span-operator planner over the match.
         SearchOp::Case(_)
@@ -610,7 +614,7 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
             ))
         }
         Command::OpToMark { name, linewise, .. } => {
-            let mark = st.view.named_mark(*name)?.0.min(b.len());
+            let mark = st.view.op_mark(*name)?.0.min(b.len());
             let (lo, hi) = (cur.min(mark), cur.max(mark));
             let lines = if *linewise {
                 (

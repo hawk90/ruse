@@ -8,22 +8,19 @@ ik_js_brace_object_value # nvim's JavaScript indent script (GetJavascriptIndent,
 
 # #900: the observables the oracle records since #900 (mode, marks, visualmode). Each line names
 # what differs; the follow-up issues are proposed in the #900 PR.
-v_dollar_D_to_eol_column # '< '> differ: nvim leaves them on line 2 after the area's lines are deleted to one line, past the buffer's end, which a byte offset cannot hold; the change marks verify
-v_gq_joins_short # '> differs: ruse's gq replaces the lines as one edit, so a mark on the joined line goes to its end, where nvim's join moves it with the text; the change marks verify
+v_dollar_D_to_eol_column # #1646: '< '> differ: nvim leaves them on line 2 after the area's lines are deleted to one line, past the buffer's end, which a byte offset cannot hold; the change marks verify
+v_gq_joins_short # #1652: '> differs: ruse's gq replaces the lines as one edit, so a mark on the joined line goes to its end, where nvim's join moves it with the text; the change marks verify
 vb_shift_right_skips_a_short_line # #900: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
 vb_shift_right_ragged_middle # #1302: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
-vb_shift_right_wide_last_char # #1302: '] after a block shift onto a line ending in a multibyte char: nvim's op_shift puts it on the line's last BYTE (ml_get_len - 1, inside the char), ruse keeps marks on a char's first byte
-vb_dollar_ge_y # #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
-vb_dollar_bs_y # #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
-vb_dollar_h_x_wide # #1302: '] after a block yank whose bottom-right is a multibyte char: nvim puts it on the char's last BYTE (mb_adjust_opend), ruse keeps marks on a char's first byte
-vb_dollar_p # #1302: a Visual-block put of a one-line charwise register: nvim's do_put leaves '[ '] on the top row's put text and '. on the last row it put on, and '< '> become '[ ']; ruse takes the marks from its one replacing edit and keeps the old area
+vb_dollar_ge_y # #1649: #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
+vb_dollar_bs_y # #1649: #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
 
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
 # is unchanged by #1307.
-i1307_normal_ixy # '. after Insert: :normal feeds `ixy` as typeahead, which nvim inserts as one run with '. on its first char (col 0); ruse puts '. on the last char typed, as nvim does for keys typed one by one
-i1307_normal_ghl # '. '[ after a Select-mode replace: nvim at col 0, ruse after the typed char
-i1307_normal_R # '^ after an empty Replace: nvim sets it where Replace ended, ruse leaves it unset
+i1307_normal_ixy # #1650: '. after Insert: :normal feeds `ixy` as typeahead, which nvim inserts as one run with '. on its first char (col 0); ruse puts '. on the last char typed, as nvim does for keys typed one by one
+i1307_normal_ghl # #1650: '. '[ after a Select-mode replace: nvim at col 0, ruse after the typed char
+i1307_normal_R # #1651: '^ after an empty Replace: nvim sets it where Replace ended, ruse leaves it unset
 i1259_chain_undo_inside # #639: ruse has no :undo Ex command yet (E492); the chained undo grouping itself verifies
 
 # #1304/#1306: '< '> 'a '^ keep their raw columns through edits; these verify except for the change marks.
@@ -43,7 +40,6 @@ vb_forced_d_redo # #1612: a forced-blockwise operator (d<C-v>j) leaves '< '> on 
 i1269_block_A_cut_invalid # blockwise A whose edge cuts <ff>: nvim's op_insert copies the cut byte with the typed text into the rows below; ruse copies only the typed text (as for a split char, #1149)
 i1269_block_A_cut_wide # blockwise A whose edge cuts a wide char: nvim copies the char's bytes after the cut (invalid UTF-8) into the rows below; ruse copies only the typed text
 i1269_cword_invalid # c_CTRL-R_CTRL-W on a <cword> holding a byte that is not UTF-8: the command line is a String, so ruse splices nothing (then E476 on the empty :s pattern)
-i1615_dd_d_to_mark # an operator to `[ or `] (d`[, y`]) beeps: OpToMark resolves only a-z A-Z 0-9 ^ < > through named_mark, not the change marks; the raw-column marks of the dd before it verify
 
 # #1631: text typed after an Insert <CR> makes no undo entry of its own; these fixtures lock that in except for
 # the mark each line names, a difference of its own.
@@ -60,3 +56,10 @@ i1631_o_redo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), 
 i1631_o_cr_undo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
 i1631_o_cr_redo # nvim's `o` saves the gap below its line (u_save(lnum, lnum + 1), an entry of no lines), so '[ (and '. after u) are on the opened line; ruse's `o` inserts its newline at the end of the line above and makes the entry over that line. The <CR> part verifies (i1631_O_cr_redo, i1631_A_cr_redo)
 i1631_A_cr_bs_redo # '] after CTRL-R of an Insert whose <BS> joined the line its <CR> opened: nvim leaves it on line 1, ruse on line 2 (not yet traced); the same keys after `li` (i1631_cr_bs_redo) verify, and '. and the cursor verify
+
+# #1614: a Visual put's '< '> verify; the change marks after its undo differ.
+v_put_marks_line_line_undo # '] after undoing a linewise Visual put of a line over a line: nvim puts it on the line below the restored one ([3,0]), as its delete and put are separate undo entries; ruse's one replacing edit trims the unchanged line ends, so its undo marks only the restored line ([2,0]); '< '> verify
+
+# #1613: fixtures for '] on a multibyte char that observe other marks; '[ '] verify.
+i1613_gp_char_wide # '. after a charwise gp at a line's end: nvim leaves it at the put's start (col 8), ruse on the cursor gp left past the line's end (col 11)
+i1613_ygn_wide # '< '> and visualmode() after ygn: nvim's gn selects the match in Visual mode, so the yank leaves the Visual marks; ruse's gn yank sets none

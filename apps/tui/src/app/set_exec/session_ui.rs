@@ -16,6 +16,7 @@ impl OptionHost<'_> {
             Opt::FoldOpen => OptVal::Text(self.ui.foldopen.clone().into()),
             Opt::Report => OptVal::Num(self.ui.report),
             Opt::CmdHeight => OptVal::Num(self.ui.cmdheight),
+            Opt::UndoLevels => OptVal::Num(self.ui.undolevels),
             Opt::History => {
                 OptVal::Num(i64::try_from(self.engine.history_len()).unwrap_or(i64::MAX))
             }
@@ -47,6 +48,11 @@ impl OptionHost<'_> {
                 self.ui.cmdheight = n.min(i64::from(self.screen_rows - 2));
             }
             (Opt::CmdHeight, OptVal::Num(n)) => self.ui.cmdheight = n,
+            // Every buffer's undo bound; the states past it go at each buffer's next change (nvim).
+            (Opt::UndoLevels, OptVal::Num(n)) => {
+                self.ui.undolevels = n;
+                self.ws.set_undo_limits(self.ui.undo_limits());
+            }
             (Opt::History, OptVal::Num(n)) => {
                 self.engine.set_history_len(usize::try_from(n).unwrap_or(0));
             }

@@ -173,7 +173,7 @@ fn every_record_carries_a_checksum_and_the_schema_version() {
     while at < raw.len() {
         assert_eq!(&raw[at..at + 4], b"RJ01");
         assert_eq!(u16::from_le_bytes([raw[at + 4], raw[at + 5]]), rj01::SCHEMA);
-        assert_eq!(rj01::SCHEMA, 0x0101, "schema 1.1 (#1286)");
+        assert_eq!(rj01::SCHEMA, 0x0102, "schema 1.2 (#1292, RFC-0025 §7)");
         kinds.push(raw[at + 6]);
         let len = u32::from_le_bytes(raw[at + 8..at + 12].try_into().unwrap()) as usize;
         let crc = u32::from_le_bytes(raw[at + 12..at + 16].try_into().unwrap());
