@@ -42,19 +42,18 @@ impl std::io::Write for FileSink {
     }
 }
 
-/// Initialize file logging if `RUSE_LOG` is set. Best-effort: a bad path or level silently disables logging
-/// rather than blocking startup (external-failure degrade, §7). Safe to call once at startup.
-pub fn init() {
-    let Ok(path) = std::env::var("RUSE_LOG") else {
-        return;
+/// Initialize file logging if `RUSE_LOG` is set (an empty value counts as unset). Best-effort: a bad path
+/// or level disables logging rather than blocking startup (external-failure degrade, §7). A file that
+/// cannot be opened comes back as its error, for the caller to say once before the UI starts (#1324): this
+/// module never writes to the terminal. Safe to call once at startup.
+pub fn init() -> io::Result<()> {
+    let Some(path) = std::env::var_os("RUSE_LOG").filter(|p| !p.is_empty()) else {
+        return Ok(());
     };
-    let Ok(file) = std::fs::OpenOptions::new()
+    let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)
-    else {
-        return;
-    };
+        .open(&path)?;
     let level = std::env::var("RUSE_LOG_LEVEL").unwrap_or_else(|_| "info".into());
     let filter = tracing_subscriber::EnvFilter::try_new(&level)
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
@@ -65,6 +64,17 @@ pub fn init() {
         .with_target(false)
         .with_env_filter(filter)
         .try_init();
+    Ok(())
+}
+
+/// The line the user is told, on stderr, when the `RUSE_LOG` file cannot be opened: the OS reason, never
+/// the path (a custom error's text could name one, so only its kind is shown).
+pub fn open_error_message(e: &io::Error) -> String {
+    let reason = e.raw_os_error().map_or_else(
+        || e.kind().to_string(),
+        |n| io::Error::from_raw_os_error(n).to_string(),
+    );
+    format!("ruse: RUSE_LOG: cannot open the log file: {reason}; logging is off")
 }
 
 /// A file as the log names it: the 64-bit FNV-1a hash of its path's bytes, as 16 hex digits. Stable across
@@ -448,6 +458,23 @@ pub(crate) mod tests {
 
     fn eacces() -> io::Error {
         io::Error::from_raw_os_error(libc::EACCES)
+    }
+
+    #[test]
+    fn an_unopenable_log_file_is_told_by_its_reason_never_its_path() {
+        let msg = open_error_message(&eacces());
+        assert_eq!(
+            msg,
+            format!(
+                "ruse: RUSE_LOG: cannot open the log file: {}; logging is off",
+                eacces()
+            )
+        );
+        // A custom error's text can name a path: only its kind is shown.
+        let custom = io::Error::new(io::ErrorKind::PermissionDenied, "/home/someone/secret.log");
+        let msg = open_error_message(&custom);
+        assert!(!msg.contains("/home/someone"), "{msg}");
+        assert!(msg.contains("permission denied"), "{msg}");
     }
 
     #[test]
