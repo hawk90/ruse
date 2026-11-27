@@ -3,7 +3,9 @@
 //! Split out of [`super::plan_cmd`] (#1349); the arms are as they were there.
 
 use super::block::{block_corners, block_delete_marks};
-use super::op_marks::{delete_marks, start_col_at, visual_op_start, with_marks, yank_mark_span};
+use super::op_marks::{
+    delete_marks, inclusive_yank_marks, start_col_at, visual_op_start, with_marks, yank_mark_span,
+};
 use super::{
     block_insert_point, block_op, block_recase, captured, edit, edit_yank, nop, one, plan_comment,
     plan_format_lines, plan_join, plan_linewise_change, plan_paste_selection, plan_reindent,
@@ -292,27 +294,34 @@ fn plan_selection_span(
     match op {
         // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal: on a char,
         // so a start on a line's break (`$vk` reaches past the end, #1176) is its last char.
-        OpKind::Yank => Plan {
-            set_register: Some(RegWrite::Yank(
-                reg,
-                if line {
-                    (s, e)
-                } else {
-                    yank_mark_span(b, s, e)
-                },
-            )),
-            ..nop(
-                {
-                    let (ls, le) = (line_start(b, s), line_end(b, s));
-                    if s >= le && le > ls && st.view.caret == CaretGravity::OnChar {
-                        prev_grapheme(b, le)
+        OpKind::Yank => with_marks(
+            Plan {
+                set_register: Some(RegWrite::Yank(
+                    reg,
+                    if line {
+                        (s, e)
                     } else {
-                        s
-                    }
-                },
-                Mode::Normal,
-            )
-        },
+                        yank_mark_span(b, s, e)
+                    },
+                )),
+                ..nop(
+                    {
+                        let (ls, le) = (line_start(b, s), line_end(b, s));
+                        if s >= le && le > ls && st.view.caret == CaretGravity::OnChar {
+                            prev_grapheme(b, le)
+                        } else {
+                            s
+                        }
+                    },
+                    Mode::Normal,
+                )
+            },
+            // A Visual area is inclusive: `']` on its last char's last byte (#1613). A `$` area reaches
+            // past the line's end, where nvim's `decl` of the end puts `']` on the last char's first byte.
+            (!line && st.view.curswant != MAXCOL)
+                .then(|| inclusive_yank_marks(b, (s, e)))
+                .flatten(),
+        ),
         OpKind::Delete if s < e => {
             // nvim's `op_delete` marks (#1302), from the selection as it was.
             let kind = if line {

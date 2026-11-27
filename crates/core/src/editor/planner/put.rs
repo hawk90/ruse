@@ -743,7 +743,7 @@ pub(super) fn paste(
         let marks = |p: Plan| Plan {
             op_marks: Some(OpMarks {
                 start: MarkAt::new(first, MarkCol::Byte(0)),
-                end: MarkAt::new(last, MarkCol::LastByte),
+                end: MarkAt::new(last, MarkCol::LastChar),
                 dot: MarkAt::new(first, MarkCol::Byte(0)),
             }),
             ..p

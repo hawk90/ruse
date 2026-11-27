@@ -12,10 +12,8 @@ v_dollar_D_to_eol_column # '< '> differ: nvim leaves them on line 2 after the ar
 v_gq_joins_short # '> differs: ruse's gq replaces the lines as one edit, so a mark on the joined line goes to its end, where nvim's join moves it with the text; the change marks verify
 vb_shift_right_skips_a_short_line # #900: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
 vb_shift_right_ragged_middle # #1302: nvim reports mode i after a block > that skips a short line, though the next key runs in Normal mode (a stale State in the oracle: shift_block returns on a short row before it restores State)
-vb_shift_right_wide_last_char # #1302: '] after a block shift onto a line ending in a multibyte char: nvim's op_shift puts it on the line's last BYTE (ml_get_len - 1, inside the char), ruse keeps marks on a char's first byte
 vb_dollar_ge_y # #900: '> differs: the block's cursor after <C-v>jj$ge is on the last word's end in nvim ([3,8]), past it in ruse ([3,9]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
 vb_dollar_bs_y # #900: '> differs: the block's cursor after <C-v>jj$<BS> is one left of the last char in nvim ([3,7]), on it in ruse ([3,8]); a Visual motion difference, not a mark one; '] follows it, the block's bottom-right
-vb_dollar_h_x_wide # #1302: '] after a block yank whose bottom-right is a multibyte char: nvim puts it on the char's last BYTE (mb_adjust_opend), ruse keeps marks on a char's first byte
 
 # #1307: fixtures for how `:normal` ends that also observe marks; the mode and text verify, and each line
 # names the mark that differs. nvim sets the same marks for the typed keys, and the `<Esc>` path they take
@@ -61,3 +59,7 @@ i1631_A_cr_bs_redo # '] after CTRL-R of an Insert whose <BS> joined the line its
 
 # #1614: a Visual put's '< '> verify; the change marks after its undo differ.
 v_put_marks_line_line_undo # '] after undoing a linewise Visual put of a line over a line: nvim puts it on the line below the restored one ([3,0]), as its delete and put are separate undo entries; ruse's one replacing edit trims the unchanged line ends, so its undo marks only the restored line ([2,0]); '< '> verify
+
+# #1613: fixtures for '] on a multibyte char that observe other marks; '[ '] verify.
+i1613_gp_char_wide # '. after a charwise gp at a line's end: nvim leaves it at the put's start (col 8), ruse on the cursor gp left past the line's end (col 11)
+i1613_ygn_wide # '< '> and visualmode() after ygn: nvim's gn selects the match in Visual mode, so the yank leaves the Visual marks; ruse's gn yank sets none
