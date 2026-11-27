@@ -60,6 +60,13 @@ pub(super) fn coll_element_at(s: &[char], p: usize) -> Option<(char, usize)> {
     .then(|| (s[p + 2], 5))
 }
 
+/// `[:lower:]`: the lowercase letters, and the escape chars of the bytes whose Latin-1 char nvim calls
+/// lowercase (`utf_islower`: µ, ß, à-ö, ø-ÿ), since nvim tests a byte that is not UTF-8 as that char (#1269).
+const LOWER_BODY: &str = r"\p{Ll}\x{10FFB5}\x{10FFDF}-\x{10FFF6}\x{10FFF8}-\x{10FFFF}";
+/// `[:upper:]`: the uppercase letters, and the escape chars of the bytes whose Latin-1 char is uppercase
+/// (À-Ö, Ø-Þ, #1269).
+const UPPER_BODY: &str = r"\p{Lu}\x{10FFC0}-\x{10FFD6}\x{10FFD8}-\x{10FFDE}";
+
 /// A `[:name:]` class: its Rust class body (valid inside `[...]`) and whether it must stay exact under
 /// `'ignorecase'`. Vim tests a named class without case folding (`check_char_class`), so `[:upper:]`
 /// does not match `a`, and no class that holds letters may pick up Rust's Unicode folds (KELVIN SIGN
@@ -87,7 +94,7 @@ pub(super) fn char_class_at(s: &[char], p: usize) -> Option<(NamedClass, usize)>
         ("graph", r"\x{21}-\x{7E}", true),
         ("ident", I_BODY, true),
         ("keyword", K_BODY, true),
-        ("lower", r"\p{Ll}", true),
+        ("lower", LOWER_BODY, true),
         ("print", P_BODY, true),
         (
             "punct",
@@ -97,7 +104,7 @@ pub(super) fn char_class_at(s: &[char], p: usize) -> Option<(NamedClass, usize)>
         ("return", r"\r", false),
         ("space", r"\t\x{B}-\x{D}\x{20}", false),
         ("tab", r"\t", false),
-        ("upper", r"\p{Lu}", true),
+        ("upper", UPPER_BODY, true),
         ("xdigit", "0-9A-Fa-f", true),
     ];
     let rest = &s[p + 2..];

@@ -98,6 +98,7 @@ impl Session {
                 },
             overlay,
             ex_filter,
+            ui_opts,
             ..
         } = self;
         let cols = frame.cols;
@@ -146,6 +147,7 @@ impl Session {
                 n,
                 spec.flags,
                 pane.view.tabs(),
+                ui_opts.display.uhex(),
                 &*keep,
             ));
             if mark {
@@ -307,8 +309,9 @@ impl Session {
                 let b = pane.doc.bytes();
                 let line = ruse_core::pos::line_of(b, pane.view.cursor()) + 1;
                 let tab_width = pane.view.tabs();
+                let uhex = ui_opts.display.uhex();
                 status.echo(
-                    crate::app::ex_print::rows(b, line, line, flags, tab_width, &|_| true)
+                    crate::app::ex_print::rows(b, line, line, flags, tab_width, uhex, &|_| true)
                         .pop()
                         .unwrap_or_default(),
                 );
@@ -328,6 +331,7 @@ impl Session {
             ed,
             overlay,
             ex_filter,
+            ui_opts,
             ..
         } = self;
         let keep = match crate::app::ex_more::filter_keep(&ed.ws, ex_filter.as_ref()) {
@@ -345,6 +349,7 @@ impl Session {
             last,
             flags,
             pane.view.tabs(),
+            ui_opts.display.uhex(),
             &*keep,
         );
         goto_line(last, ed);

@@ -206568,6 +206568,647 @@
         "failed": false,
         "mode": "n"
       }
+    },
+    {
+      "name": "i1269_gR_over_invalid",
+      "lines": [
+        "aÿbc"
+      ],
+      "keys": "lgRx<Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ax   bc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_over_invalid_two",
+      "lines": [
+        "aÿbc"
+      ],
+      "keys": "lgRxy<Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "axy  bc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_over_invalid_bs",
+      "lines": [
+        "aÿbc"
+      ],
+      "keys": "lgRx<BS><Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aÿbc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_over_wide",
+      "lines": [
+        "a中bc"
+      ],
+      "keys": "lgRx<Esc>",
+      "expect": {
+        "text": [
+          "ax bc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_over_wide_bs",
+      "lines": [
+        "a中bc"
+      ],
+      "keys": "lgRx<BS><Esc>",
+      "expect": {
+        "text": [
+          "a中bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_over_control",
+      "lines": [
+        "a\u0001bc"
+      ],
+      "keys": "lgRx<Esc>",
+      "expect": {
+        "text": [
+          "ax bc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_type_wide",
+      "lines": [
+        "abcd"
+      ],
+      "keys": "lgR中<Esc>",
+      "expect": {
+        "text": [
+          "a中d"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_type_wide_bs",
+      "lines": [
+        "abcd"
+      ],
+      "keys": "lgR中<BS><Esc>",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_type_wide_cut",
+      "lines": [
+        "a中b"
+      ],
+      "keys": "gR中<Esc>",
+      "expect": {
+        "text": [
+          "中 b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_type_wide_over_tab",
+      "lines": [
+        "a\tb"
+      ],
+      "keys": ":set ts=8<CR>lgR中<Esc>",
+      "expect": {
+        "text": [
+          "a中\tb"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gR_type_wide_tab_end",
+      "lines": [
+        "abcdef\tb"
+      ],
+      "keys": ":set ts=8<CR>6lgR中<Esc>",
+      "expect": {
+        "text": [
+          "abcdef中b"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gr_over_invalid",
+      "lines": [
+        "aÿbc"
+      ],
+      "keys": "lgrZ",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aZ   bc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gr_count_over_invalid",
+      "lines": [
+        "aÿbc"
+      ],
+      "keys": "l2grZ",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "aZZ  bc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_gr_over_wide",
+      "lines": [
+        "a中bc"
+      ],
+      "keys": "lgrZ",
+      "expect": {
+        "text": [
+          "aZ bc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_block_A_cut_invalid",
+      "lines": [
+        "abÿcd",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jlAX<Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abÿXcd",
+          "abcÿXdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_block_A_cut_invalid_below",
+      "lines": [
+        "abcdefgh",
+        "abÿcd"
+      ],
+      "keys": "l<C-v>jlAX<Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abcdefXgh",
+          "abÿXcd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_block_A_cut_wide",
+      "lines": [
+        "abä¸­cd",
+        "abcdefgh"
+      ],
+      "keys": "l<C-v>jlAX<Esc>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "abä¸­Xcd",
+          "abc­Xdefgh"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_coll_lower_byte",
+      "lines": [
+        "AZÉ×é"
+      ],
+      "keys": "/[[:lower:]]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "AZÉ×é"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_coll_upper_byte",
+      "lines": [
+        "az×éÉ"
+      ],
+      "keys": "/[[:upper:]]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "az×éÉ"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_coll_lower_ff",
+      "lines": [
+        "AZÿ"
+      ],
+      "keys": "/[[:lower:]]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "AZÿ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_coll_not_lower_byte",
+      "lines": [
+        "ééaÉ"
+      ],
+      "keys": "/[^[:lower:]]<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "ééaÉ"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_coll_lower_byte_ic",
+      "lines": [
+        "AZÉé"
+      ],
+      "keys": "/[[:lower:]]\\c<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "AZÉé"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "i1269_cword_invalid",
+      "lines": [
+        "fooÿbar baz"
+      ],
+      "keys": ":s/<C-r><C-w>/Z/<CR>",
+      "bytes": true,
+      "expect": {
+        "text": [
+          "Z baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }

@@ -162,6 +162,23 @@ mod tests {
         assert_eq!(spans("\\<cd\\>", b"ab\xffcd cd"), vec![(6, 8)]);
         assert_eq!(spans("[^a]", b"aa\xffb"), vec![(2, 3), (3, 4)]);
         assert_eq!(spans("\u{ff}", b"a\xff \xc3\xbf"), vec![(3, 5)]);
+        // #1269: `[:lower:]`/`[:upper:]` test the byte as its Latin-1 char (nvim v0.12.6 `utf_islower`):
+        // µ ß à-ö ø-ÿ are lowercase, À-Ö Ø-Þ uppercase, × ÷ neither.
+        let lower: Vec<u8> = (0x80..=0xffu8)
+            .filter(|&b| !spans("[[:lower:]]", &[b]).is_empty())
+            .collect();
+        let want: Vec<u8> = [0xb5, 0xdf]
+            .into_iter()
+            .chain(0xe0..=0xf6)
+            .chain(0xf8..=0xff)
+            .collect();
+        assert_eq!(lower, want);
+        let upper: Vec<u8> = (0x80..=0xffu8)
+            .filter(|&b| !spans("[[:upper:]]", &[b]).is_empty())
+            .collect();
+        let want: Vec<u8> = (0xc0..=0xd6).chain(0xd8..=0xde).collect();
+        assert_eq!(upper, want);
+        assert_eq!(spans("[^[:lower:]]", b"\xe9a\xc9"), vec![(2, 3)]);
         // A pattern spelled from buffer text finds that text (`*` on `foo<ff>bar`).
         let word = spell(b"foo\xffbar");
         assert_eq!(

@@ -462,7 +462,8 @@ impl CmdLine {
 }
 
 /// Render `text` for the command-line row and the DISPLAY column of char index `caret`: a control char is
-/// shown as `^X` (two cells, nvim's `^M` for a literal `<CR>`), other chars at their cell width.
+/// shown as `^X` (two cells, nvim's `^M` for a literal `<CR>`), a char nvim does not print at the width of
+/// its `<xx>` (the screen draws it so), other chars at their cell width.
 #[must_use]
 pub fn display_with_caret(text: &str, caret: usize) -> (String, usize) {
     use unicode_width::UnicodeWidthChar;
@@ -482,8 +483,10 @@ pub fn display_with_caret(text: &str, caret: usize) -> (String, usize) {
             });
             col += 2;
         } else {
+            // A char nvim does not print (a C1 control, U+200B) is drawn as its `<85>`/`<200b>` (#1269).
+            col += ruse_core::cells::unprintable(c, false)
+                .map_or_else(|| c.width().unwrap_or(0), |t| t.len());
             out.push(c);
-            col += c.width().unwrap_or(0);
         }
     }
     (out, caret_col.unwrap_or(col))
@@ -613,5 +616,10 @@ mod tests {
     fn display_shows_control_chars_as_caret_pairs() {
         assert_eq!(display_with_caret("a\rb", 2), ("a^Mb".into(), 3));
         assert_eq!(display_with_caret("ab", 2), ("ab".into(), 2));
+        // #1269, nvim v0.12.6 `getcmdscreenpos()`: `<85>` is 4 cells, `<200b>` 6, `é` (e + U+0301) 1.
+        assert_eq!(display_with_caret("a\u{85}", 2).1, 5);
+        assert_eq!(display_with_caret("a\u{200b}", 2).1, 7);
+        assert_eq!(display_with_caret("ae\u{301}", 3).1, 2);
+        assert_eq!(display_with_caret("a中", 2).1, 3);
     }
 }
