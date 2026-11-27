@@ -556,6 +556,12 @@ features:
     # Census-N/A (D-043): no upstream source tree TABULATES the undo model — it is architecture,
     # design-backed (architecture.md#3). The 4 legacy ids are cross-editor "all editors undo"
     # facts, backlogged with COM-8 (undo tree) since F-001 went Census-N/A (#1315).
+    # RFC-0026 slice 1 (#1290, D-067): the history is bounded for every buffer by 'undolevels'
+    # (editor.undolevels, 1000 as nvim, which keeps ul+1 groups; :set ul) and the undo payload budget
+    # (editor.undo_max_bytes, 256 MiB, ruse only). Past either the oldest level goes (nvim's
+    # u_savecommon loop: the oldest alternate branch first, else the oldest group by re-rooting the
+    # tree); the current group is never dropped, seq is never renumbered. 'undolevels' 0 is Vi's
+    # toggling u; a negative value keeps no undo. The Emacs undo variables are not offered (D-067).
     status: done
     depends_on: [C-UNDO, C-TRANSACTION]
     summary: Undo recorded by logical unit (e.g. one insert session), not per keystroke.
@@ -567,6 +573,7 @@ features:
       - "An i…<Esc> insert session is a single undo step, not one step per keystroke."
       - Formatter/LSP edits group as separate undo units from user edits.
       - "A new change after an undo branches history without losing the undone states (g-/g+ chronological traversal)."
+      - "The history is bounded by 'undolevels' (+1 groups) and an undo payload budget: past either, the oldest states are dropped by re-rooting the tree and u stops at the oldest kept state; the newest change is always kept (D-067)."
 
   F-006:
     title: TUI rendering (ANSI/Unicode)
@@ -761,7 +768,7 @@ features:
     # unix/dos/mac per buffer (modifies; [dos]/[mac] in the write report), 'fileformats' read detection as nvim,
     # ++ff=mac, 'binary' (:set bin, ++bin, ruse -b: no conversion, tw/wm/et zeroed and restored); Emacs
     # large-file-warning-threshold (y/n/l) and out-of-memory-warning-percentage; the degraded large-file
-    # profile past 32 MiB (no highlighting, [large]); bounded undo / streaming search still to come.
+    # profile past 32 MiB (no highlighting, [large]); streaming search still to come (bounded undo is every buffer's, F-005, D-067).
     # v0.1.9 #619 journal as swap/auto-save (tests/pty_autosave.rs): 'swapfile' / Emacs auto-save-default (no
     # journal when off), 'updatecount' (sync count; 0 = none), 'directory' shown read-only; Emacs
     # auto-save-visited-mode / -interval save the visited file after the idle interval. Divergences:

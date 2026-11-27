@@ -380,6 +380,21 @@ pub const SCHEMA: &[KeyDef] = &[
         Merge::Replace,
         false,
     ),
+    // The undo bound (RFC-0026 §1, #1290).
+    key(
+        "editor.undolevels",
+        int(-2_147_483_648, 2_147_483_647),
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
+    key(
+        "editor.undo_max_bytes",
+        int(0, i64::MAX),
+        Scope::User,
+        Merge::Replace,
+        false,
+    ),
     key(
         "editor.hlsearch",
         Ty::Bool,
