@@ -101,7 +101,7 @@ The dividing line follows Vim/Emacs semantics, not implementation convenience.
 
 | State | Today | Rationale |
 |---|---|---|
-| `RegisterStore` (unnamed, `a`-`z`, `"0`, `"1`-`"9`, `"-`, `"+`/`"*` mirror) | `View.registers` (`editor/mod.rs:167`) | Vim registers are global; D-026 "one shared store" |
+| `RegisterStore` (unnamed, `a`-`z`, `"0`, `"1`-`"9`, `"-`, `"+`/`"*` mirror) | `Workspace.registers` (`workspace/mod.rs`), lent into `View.registers` (`editor/mod.rs`) for one command by the swap-trick (D-057 slice 2, #944) | Vim registers are global; D-026 "one shared store" |
 | Uppercase/global marks `mA`-`mZ`, special globals | absent (`named_marks` a-z only) | Vim `mA`-`mZ` are global; D-027 `NamedMap` |
 | Alternate buffer `alt` + `"#`/`"%` bridge | `alt` on Workspace (`workspace/mod.rs`); `"#` absent | one alternate per window-set; already partly here |
 | Last search pattern / last Ex line (`"/`, `":`) | synced per-command (`set_special_registers`, `workspace/registers.rs`) | already effectively global; formalize |
