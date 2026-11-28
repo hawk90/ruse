@@ -251,6 +251,28 @@ fn sgr_extended_colors_semicolon_form() {
     assert!(s.bold, "the parameter after the RGB triple is its own SGR");
 }
 
+/// SGR 58 (underline colour) in the `;` form spends its colour parameters as 38/48 do (VTE, kitty), so
+/// they set no attribute; the cell model has no underline colour, so the pen is unchanged (#1742).
+#[test]
+fn sgr_58_semicolon_form_spends_its_parameters() {
+    for seq in [
+        &b"\x1b[58;5;1mx"[..],
+        b"\x1b[58;2;3;4;5mx",
+        b"\x1b[58;5mx",
+        b"\x1b[58;2;3mx",
+    ] {
+        assert_eq!(
+            pen(seq),
+            CellStyle::default(),
+            "{:?}",
+            String::from_utf8_lossy(seq)
+        );
+    }
+    let s = pen(b"\x1b[58;2;3;4;5;1mx");
+    assert!(s.bold, "the parameter after the RGB triple is its own SGR");
+    assert!(!s.italic && !s.underline);
+}
+
 /// ITU T.416 colon subparameters stay in their group (#779).
 #[test]
 fn sgr_extended_colors_colon_form() {
