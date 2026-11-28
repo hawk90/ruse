@@ -28,7 +28,7 @@ re-measured by `python3 tools/ruse.py docs check` (see [Re-measuring](#re-measur
 
 | # | Rule | Evidence |
 | --- | --- | --- |
-| L1 | A module with child files is `x.rs` + `x/`. Do not create a new `x/mod.rs`. | 38 of 54 non-test module directories; every directory added since v0.2.2 |
+| L1 | A module with child files is `x.rs` + `x/`. Do not create a new `x/mod.rs`. | 39 of 55 non-test module directories; every directory added since v0.2.2 |
 | L2 | Leave the existing `x/mod.rs` directories as they are. Move one only as part of a split of that module that you are making anyway. | 16 directories, listed below |
 | T1 | A small test module stays inline: `#[cfg(test)] mod tests { ... }` at the end of the file. | 99 files |
 | T2 | An out-of-line test file of module `x` is `x/tests.rs`, declared by `#[cfg(test)] mod tests;`. | 21 files (2 of them T3 hubs) |
@@ -48,8 +48,8 @@ Measured module directories (a directory under `src/` holding `.rs` files):
 | Crate | `x.rs` + `x/` (non-test) | `x.rs` + `x/` (test-only) | `x/mod.rs` |
 | --- | --- | --- | --- |
 | `crates/core` | 12 | 2 (`editor/tests`, `workspace/tests`) | 8 |
-| `apps/tui` | 26 | 1 (`input/unit_tests`) | 8 |
-| Total | 38 | 3 | 16 |
+| `apps/tui` | 27 | 1 (`input/unit_tests`) | 8 |
+| Total | 39 | 3 | 16 |
 
 - All 15 module directories added in v0.2.2 use `x.rs` + `x/` (v0.2.2 review, RA-STRUCT-026). v0.2.3 added
   none; v0.2.4 added 2 (`editor/substitute`, `persist/codec`), both `x.rs` + `x/`.

@@ -65,9 +65,11 @@ wrap + CR/LF/BS/TAB; cursor `CUP`/`CUU`/`CUD`/`CUF`/`CUB`/`CHA`/`VPA` + save/res
 colors, truecolor, bold/underline/italic/reverse); erase `ED`/`EL`; **alt-screen** (`?1049h/l` — stash/restore
 the main screen) so vim/htop don't corrupt it; `RI`/index scrolling; `?25` cursor visibility; settable tab
 stops (`HTS`, `TBC` 0/3, `CHT`, `CBT`; every 8 columns after `RIS`; a resize keeps the stops on kept columns
-and gives new columns the default stops, as libvterm does). Off-screen rows accumulate in a bounded
+and gives new columns the default stops, as libvterm does); `DECALN` (`ESC # 8`: fill with `E`, reset the
+scroll region, home the cursor, as DEC and xterm do). Any other `ESC` with intermediates (DEC line size, S7C1T/
+S8C1T, charset designators, `ESC % G`) is ignored, never run as the plain final byte (#1792). Off-screen rows accumulate in a bounded
 scrollback (paging UI = slice 2b), readable oldest first through `Grid::scrollback` / `scrollback_row`. The grid
-ignores OSC; `ChunkParser` hands vte at most 1 MiB of one OSC body (tmux's bound) and drops the rest up to the
+ignores OSC; `ChunkParser` (`term_grid/chunk.rs`) hands vte at most 1 MiB of one OSC body (tmux's bound) and drops the rest up to the
 terminator, so a child that opens an OSC and never ends it cannot grow ruse's memory (#1779).
 
 `screen::Cell` gained a `CellStyle` (bg + bold/underline/italic on top of fg/reverse); `flush_diff` emits the

@@ -152,6 +152,27 @@ fixtures! {
     decscusr_is_not_save_cursor: (1, 4, b"a\x1b[2 qb") => ["ab  "] @ (0, 2);
     da2_query_does_not_print: (1, 3, b"\x1b[>cx") => ["x  "] @ (0, 1);
 
+    // --- ESC with intermediates (#1792): its own meaning or nothing, never the plain final byte ---
+    // DECALN fills the screen with `E` and homes the cursor (VT510, xterm). libvterm (nvim 0.12.6
+    // `:terminal`) fills the same screen but keeps the cursor, so these cursors follow the DEC manual.
+    decaln_fills_the_screen_with_e: (2, 4, b"ab\x1b#8") => ["EEEE", "EEEE"] @ (0, 0);
+    decaln_homes_the_cursor_not_decrc: (3, 4, b"\x1b[3;3H\x1b7\x1b[2;2H\x1b#8x") => ["xEEE", "EEEE", "EEEE"] @ (0, 1);
+    decaln_cancels_the_pending_wrap: (2, 4, b"\x1b[2;1Habcd\x1b#8x") => ["xEEE", "EEEE"] @ (0, 1);
+    decaln_resets_the_scroll_region: (3, 2, b"\x1b[1;2r\x1b#8\x1b[3;1H\nx") => ["EE", "EE", "x "] @ (2, 1);
+    // The other intermediate forms leave the text and the cursor (libvterm, nvim 0.12.6 `:terminal`).
+    dec_double_height_top_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b#3x") => ["      ", " x    ", "      "] @ (1, 2);
+    dec_double_height_bottom_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b#4x") => ["      ", " x    ", "      "] @ (1, 2);
+    dec_single_width_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b#5x") => ["      ", " x    ", "      "] @ (1, 2);
+    dec_double_width_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b#6x") => ["      ", " x    ", "      "] @ (1, 2);
+    s7c1t_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b Fx") => ["      ", " x    ", "      "] @ (1, 2);
+    s8c1t_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b Gx") => ["      ", " x    ", "      "] @ (1, 2);
+    select_utf8_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b%Gx") => ["      ", " x    ", "      "] @ (1, 2);
+    select_default_charset_is_ignored: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b%@x") => ["      ", " x    ", "      "] @ (1, 2);
+    designator_with_final_8_is_not_decrc: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b(8x") => ["      ", " x    ", "      "] @ (1, 2);
+    designator_with_final_7_is_not_decsc: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b)7\x1b8x") => ["      ", "      ", "   x  "] @ (2, 4);
+    designator_with_final_m_is_not_ri: (3, 6, b"\x1b[3;4H\x1b7\x1b[2;2H\x1b(Mx") => ["      ", " x    ", "      "] @ (1, 2);
+    designator_with_final_c_is_not_ris: (3, 6, b"ab\x1b[2;2H\x1b(cx") => ["ab    ", " x    ", "      "] @ (1, 2);
+
     // --- wide glyphs and combining marks (#780, #782) ---
     wide_glyph_takes_two_columns: (1, 4, "中a".as_bytes()) => ["中a "] @ (0, 3);
     wide_glyph_at_the_last_column_wraps_first: (2, 3, "ab中".as_bytes()) => ["ab ", "中 "] @ (1, 2);
