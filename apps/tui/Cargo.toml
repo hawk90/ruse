@@ -91,3 +91,7 @@ harness = false
 [[bench]]
 name = "ex_lines"
 harness = false
+
+[[bench]]
+name = "term_scroll"
+harness = false

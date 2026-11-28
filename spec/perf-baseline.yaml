@@ -130,3 +130,10 @@ benches:
     line_of_end/100000: "12.6 ns"
     nth_line_start_last/100000: "0.32 ns"
     refresh/100000: "1.32 ms"
+  term_scroll:                      # #1739 terminal grid scroll: 10k lines fed to a 50x200 grid. Bench
+                                    # profile, 2026-11-29. Before (per-cell row copy + cloned scrollback row):
+                                    # full_screen 255 ms, region 235 ms, reverse_index 244 ms (~25 us a line).
+                                    # Rows are now `Vec` handles rotated in place: ~0.6 us a line.
+    term_scroll/full_screen_10k_lines: "6.07 ms"
+    term_scroll/region_10k_lines: "5.27 ms"
+    term_scroll/reverse_index_10k: "6.27 ms"
