@@ -156,9 +156,26 @@ impl Grid {
 
     // --- write side (VT actions) ---
 
+    /// Before cell `(row, col)` is overwritten: if it is one half of a wide glyph, blank the other half, so the
+    /// glyph does not survive as a stray half (#782).
+    fn split_wide(&mut self, row: u16, col: u16) {
+        let i = self.idx(row, col);
+        if self.cells[i].continuation && col > 0 {
+            let left = i - 1;
+            self.cells[left] = GridCell::blank(self.cells[left].style);
+        }
+        if col + 1 < self.cols && self.cells[i + 1].continuation {
+            self.cells[i + 1] = GridCell::blank(self.cells[i + 1].style);
+        }
+    }
+
     fn write_char(&mut self, c: char, w: u16) {
         if self.cx >= self.cols {
             return;
+        }
+        self.split_wide(self.cy, self.cx);
+        if w == 2 && self.cx + 1 < self.cols {
+            self.split_wide(self.cy, self.cx + 1);
         }
         let i = self.idx(self.cy, self.cx);
         self.cells[i] = GridCell {
@@ -837,6 +854,21 @@ mod tests {
         assert_eq!(g.scrollback.len(), 1);
         assert_eq!(row_text(&g, 0), "   ");
         assert_eq!(row_text(&g, 1), "   ");
+    }
+
+    /// #782: overwriting either half of a wide glyph blanks the other half.
+    #[test]
+    fn overwriting_half_a_wide_glyph_blanks_the_other_half() {
+        for (bytes, want) in [
+            ("한\x1b[1;2HX", " X   "),   // narrow onto the right half
+            ("한\x1b[1;1HX", "X    "),   // narrow onto the left half
+            ("a한\x1b[1;1H中", "中   "), // wide whose right half lands on a left half
+            ("한\x1b[1;2H中", " 中  "),  // wide whose left half lands on a right half
+        ] {
+            let mut g = Grid::new(1, 5);
+            feed(&mut g, bytes.as_bytes());
+            assert_eq!(row_text(&g, 0), want, "after {bytes:?}");
+        }
     }
 
     /// One piece of hostile terminal output: a CSI/ESC sequence with arbitrary (often huge) parameters, a
