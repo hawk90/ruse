@@ -28,11 +28,11 @@ re-measured by `python3 tools/ruse.py docs check` (see [Re-measuring](#re-measur
 
 | # | Rule | Evidence |
 | --- | --- | --- |
-| L1 | A module with child files is `x.rs` + `x/`. Do not create a new `x/mod.rs`. | 37 of 53 non-test module directories; every directory added since v0.2.2 |
+| L1 | A module with child files is `x.rs` + `x/`. Do not create a new `x/mod.rs`. | 38 of 54 non-test module directories; every directory added since v0.2.2 |
 | L2 | Leave the existing `x/mod.rs` directories as they are. Move one only as part of a split of that module that you are making anyway. | 16 directories, listed below |
 | T1 | A small test module stays inline: `#[cfg(test)] mod tests { ... }` at the end of the file. | 97 files |
 | T2 | An out-of-line test file of module `x` is `x/tests.rs`, declared by `#[cfg(test)] mod tests;`. | 21 files (2 of them T3 hubs) |
-| T3 | Several topic suites for one module are `<topic>_tests.rs`, each declared by that module with `#[cfg(test)] mod <topic>_tests;`. | 26 files beside the module, 34 under a test directory |
+| T3 | Several topic suites for one module are `<topic>_tests.rs`, each declared by that module with `#[cfg(test)] mod <topic>_tests;`. | 27 files beside the module, 34 under a test directory |
 | T4 | Every out-of-line unit-test file name is `tests.rs` or ends in `_tests.rs`. | all but 3 helper files |
 | T5 | An integration test is one file per target in `<crate>/tests/`, named for the behavior it covers; shared helpers are `tests/<name>/mod.rs`. | one target per file in each crate |
 
@@ -48,8 +48,8 @@ Measured module directories (a directory under `src/` holding `.rs` files):
 | Crate | `x.rs` + `x/` (non-test) | `x.rs` + `x/` (test-only) | `x/mod.rs` |
 | --- | --- | --- | --- |
 | `crates/core` | 12 | 2 (`editor/tests`, `workspace/tests`) | 8 |
-| `apps/tui` | 25 | 1 (`input/unit_tests`) | 8 |
-| Total | 37 | 3 | 16 |
+| `apps/tui` | 26 | 1 (`input/unit_tests`) | 8 |
+| Total | 38 | 3 | 16 |
 
 - All 15 module directories added in v0.2.2 use `x.rs` + `x/` (v0.2.2 review, RA-STRUCT-026). v0.2.3 added
   none; v0.2.4 added 2 (`editor/substitute`, `persist/codec`), both `x.rs` + `x/`.
@@ -94,7 +94,7 @@ module under test. Two shapes are in use:
 
 - **Beside the module's other children**: `ui/render.rs` declares `caret_tests`, `window_tests`, ... in
   `ui/render/`. All in `apps/tui` (`app/dispatch/`, `app/session/`, `highlight/`, `input/`,
-  `input/ex/`, `input/set_cmd/`, `persist/rj01/`, `ui/render/`). A module may also keep a `tests.rs` next to them
+  `input/ex/`, `input/set_cmd/`, `persist/rj01/`, `pty/`, `ui/render/`). A module may also keep a `tests.rs` next to them
   (`app/dispatch/`).
 - **Under a test hub**: a hub module file declares one `<topic>_tests` per topic in its own directory.
   Used when a module has many topic suites.

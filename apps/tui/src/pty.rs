@@ -406,6 +406,9 @@ fn spawn_reader(mut fd: File, wake: File, tx: SyncSender<Vec<u8>>) -> JoinHandle
 }
 
 #[cfg(test)]
+mod lifecycle_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
