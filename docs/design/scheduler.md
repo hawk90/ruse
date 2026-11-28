@@ -349,7 +349,11 @@ pub enum CancelReason { Superseded, DeadlineMissed, Shutdown, BudgetRevoked, Deg
    20 ms, as nvim's `got_int` (#898). It is the `UserAbort` path in miniature.
 2. **External processes** (LSP, git, formatters, `=`/`!` filter operators from D-025) — cancel closes stdin /
    sends the cancel request / on grace-timeout `SIGTERM` then `SIGKILL`. The process's CPU is metered and its
-   slot freed.
+   slot freed. *Shipped today, before the scheduler:* the blocking shell-outs (`:!`, `:r !`, `:w !`, the
+   `:{range}!` / `!` / `gq` / `=` filters, `apps/tui/src/shell.rs`) poll the same user-interrupt checkpoint
+   while they wait; CTRL-C sends `SIGKILL` to the shell's own process group at once (no grace step yet),
+   reaps it, and leaves the buffer unchanged. Their output is capped (4 MiB, or 8× a filter's input), past
+   which the command is killed and the output reported truncated (a filter refuses it instead) (#855).
 3. **WASM plugin instances** (post-MVP, D-004/D-009) — `cancel` bumps the wasmtime **epoch** (fuel
    interruption), so a spinning guest is unwound at the next epoch boundary rather than trusted to poll.
 

@@ -404,7 +404,7 @@ pub(crate) fn ex_write(
 /// that reaches the last line ends as the file does (nvim: `:w !od -c` of `a\nb` without `'eol'` sends three
 /// bytes, RFC-0024 §3).
 fn write_command(cmd: &str, src: &WriteSource, w: &WriteOptions) -> Result<String, WriteFailure> {
-    match crate::shell::filter(
+    match crate::shell::pipe(
         cmd,
         if src.to_end {
             w.lines_out(&src.text, src.fmt)

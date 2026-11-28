@@ -80,6 +80,29 @@ fn ctrl_c_stops_a_global_normal_over_many_lines() {
     );
 }
 
+/// #855: CTRL-C ends a `:!` that would run for half a minute, and the editor takes the next keys.
+#[test]
+fn ctrl_c_cancels_a_shell_command() {
+    let dir = Scratch::new();
+    dir.file("f.txt", b"a\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.send(b":!sleep 30\r");
+    interrupt_then_wq(&mut ed);
+    assert_eq!(std::fs::read(dir.path("f.txt")).unwrap(), b"a\n");
+}
+
+/// #855: a cancelled filter leaves the lines it was given as they were (the shell's partial output, here
+/// `x`, is not put in their place), so `:wq` writes the file back unchanged.
+#[test]
+fn ctrl_c_cancels_a_filter_and_keeps_the_buffer() {
+    let dir = Scratch::new();
+    dir.file("f.txt", b"one\ntwo\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.send(b":%!echo x; sleep 30\r");
+    interrupt_then_wq(&mut ed);
+    assert_eq!(std::fs::read(dir.path("f.txt")).unwrap(), b"one\ntwo\n");
+}
+
 #[test]
 fn a_huge_search_count_returns_at_once() {
     let dir = Scratch::new();
