@@ -16,6 +16,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -66,12 +67,23 @@ pub trait Pty {
     fn resize(&mut self, rows: u16, cols: u16) -> io::Result<()>;
 }
 
-/// A shell running on a Unix PTY. Owns the master fd (as a [`File`]) and the reader thread; `Drop` hangs up
-/// the child, reaps it, and joins the reader so no zombie or thread leaks.
+/// How long `Drop` lets the child act on SIGHUP before it escalates to SIGKILL (#771).
+const HANGUP_GRACE: Duration = Duration::from_millis(500);
+/// How long `Drop` waits to reap the child after SIGKILL before it gives up (a process stuck in an
+/// uninterruptible sleep cannot be reaped; leaking that zombie beats freezing the editor).
+const KILL_GRACE: Duration = Duration::from_secs(2);
+
+/// A shell running on a Unix PTY. Owns the master fd (as a [`File`]), the reader thread, and the write end
+/// of the reader's wake pipe; `Drop` stops the reader, closes the master, hangs up the child, and reaps it,
+/// all bounded in time, so a child that ignores SIGHUP cannot freeze the editor (#771).
 pub struct UnixPty {
-    master: File,
+    /// `None` only inside `Drop`, which closes it before hanging up the child.
+    master: Option<File>,
     child_pid: libc::pid_t,
     reader: Option<JoinHandle<()>>,
+    /// Closing this wakes the reader's `poll` (POLLHUP on the read end), so the reader exits even while a
+    /// process that outlives the child still holds the slave open and no EOF ever comes.
+    wake: Option<File>,
 }
 
 impl UnixPty {
@@ -79,12 +91,28 @@ impl UnixPty {
     /// its reader thread streams output chunks into. The channel disconnects (reader thread ends) on EOF —
     /// i.e. when the child exits.
     pub fn spawn(rows: u16, cols: u16) -> io::Result<(UnixPty, Receiver<Vec<u8>>)> {
-        // Build argv in the PARENT: no allocation may happen between fork and exec.
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        let c_shell = CString::new(shell).map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidInput, "SHELL has an interior NUL")
-        })?;
-        let argv = [c_shell.as_ptr(), ptr::null()];
+        Self::spawn_argv(&[shell.as_str()], rows, cols)
+    }
+
+    /// Fork `argv` (`argv[0]` looked up on `PATH`) on a fresh PTY sized `rows × cols`.
+    fn spawn_argv(argv: &[&str], rows: u16, cols: u16) -> io::Result<(UnixPty, Receiver<Vec<u8>>)> {
+        // Build argv in the PARENT: no allocation may happen between fork and exec.
+        let c_args = argv
+            .iter()
+            .map(|a| CString::new(*a))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "argv has an interior NUL"))?;
+        let Some(c_prog) = c_args.first() else {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty argv"));
+        };
+        let c_argv: Vec<*const libc::c_char> = c_args
+            .iter()
+            .map(|a| a.as_ptr())
+            .chain(std::iter::once(ptr::null()))
+            .collect();
+        // The reader's wake pipe (close-on-exec), made before the fork like everything else that allocates.
+        let (wake_rx, wake_tx) = wake_pipe()?;
 
         let mut winsize = libc::winsize {
             ws_row: rows,
@@ -103,10 +131,11 @@ impl UnixPty {
         }
         if pid == 0 {
             // CHILD: `forkpty` already made the slave our controlling terminal on fds 0/1/2. Only
-            // async-signal-safe calls here. `c_shell`/`argv` live at the same COW addresses as the parent.
-            // SAFETY: argv is NUL-terminated and points at a valid CString; on success execvp never returns.
+            // async-signal-safe calls here. `c_args`/`c_argv` live at the same COW addresses as the parent;
+            // the wake pipe is close-on-exec, so the exec'd program never holds it.
+            // SAFETY: c_argv is NUL-terminated and points at valid CStrings; on success execvp never returns.
             unsafe {
-                libc::execvp(c_shell.as_ptr(), argv.as_ptr());
+                libc::execvp(c_prog.as_ptr(), c_argv.as_ptr());
                 libc::_exit(127); // exec failed (e.g. no such shell)
             }
         }
@@ -116,12 +145,13 @@ impl UnixPty {
         let master = unsafe { File::from_raw_fd(master) };
         let (tx, rx) = mpsc::channel();
         let reader_fd = master.try_clone()?;
-        let reader = spawn_reader(reader_fd, tx);
+        let reader = spawn_reader(reader_fd, wake_rx, tx);
         Ok((
             UnixPty {
-                master,
+                master: Some(master),
                 child_pid: pid,
                 reader: Some(reader),
+                wake: Some(wake_tx),
             },
             rx,
         ))
@@ -130,7 +160,10 @@ impl UnixPty {
 
 impl Pty for UnixPty {
     fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
-        self.master.write_all(bytes)
+        match self.master.as_mut() {
+            Some(m) => m.write_all(bytes),
+            None => Err(io::ErrorKind::BrokenPipe.into()),
+        }
     }
 
     fn resize(&mut self, rows: u16, cols: u16) -> io::Result<()> {
@@ -143,7 +176,10 @@ impl Pty for UnixPty {
         // Raw pointer (not `&mut`) to dodge the cross-platform `unnecessary_mut_passed` clippy lint, per the
         // slice-1 forkpty hazard. SAFETY: `master` is a live PTY master fd; `winp` points at an init winsize.
         let winp: *mut libc::winsize = &mut winsize;
-        let r = unsafe { libc::ioctl(self.master.as_raw_fd(), libc::TIOCSWINSZ, winp) };
+        let Some(master) = self.master.as_ref() else {
+            return Err(io::ErrorKind::BrokenPipe.into());
+        };
+        let r = unsafe { libc::ioctl(master.as_raw_fd(), libc::TIOCSWINSZ, winp) };
         if r != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -152,27 +188,122 @@ impl Pty for UnixPty {
 }
 
 impl Drop for UnixPty {
+    /// Bounded teardown (#771): nothing here may block on the child, because it runs on the main thread
+    /// when a terminal buffer closes (`:bd!`) as well as at exit.
     fn drop(&mut self) {
-        // Hang up the child; then reap it so no zombie survives. Closing the slave (child death) EOFs the
-        // master, so the reader thread ends and can be joined.
-        // SAFETY: `child_pid` is our own child; SIGHUP/waitpid on it are always valid.
-        unsafe {
-            libc::kill(self.child_pid, libc::SIGHUP);
-            let mut status = 0;
-            libc::waitpid(self.child_pid, &mut status, 0);
-        }
+        // 1. Stop the reader. Closing the wake pipe's write end wakes its `poll`, so it exits even while a
+        //    background process still holds the slave (on Linux a master read only fails with EIO once EVERY
+        //    slave fd is closed, so EOF alone may never come). The reader blocks nowhere else, so this join
+        //    returns promptly.
+        drop(self.wake.take());
         if let Some(h) = self.reader.take() {
             let _ = h.join();
+        }
+        // 2. Close the master (the reader's dup is already closed): the slave side sees a hangup, as when a
+        //    terminal emulator window closes.
+        drop(self.master.take());
+        // 3. Hang up the child's process group (forkpty made the child a session leader, so its pgid is its
+        //    pid), give it a moment, then SIGKILL the group and reap. `trap '' HUP` does not survive this.
+        let pid = self.child_pid;
+        signal_child(pid, libc::SIGHUP);
+        if reap_within(pid, HANGUP_GRACE) {
+            return;
+        }
+        signal_child(pid, libc::SIGKILL);
+        let _ = reap_within(pid, KILL_GRACE);
+    }
+}
+
+/// Send `sig` to the child's process group and to the child itself (in case it left its group).
+fn signal_child(pid: libc::pid_t, sig: libc::c_int) {
+    // SAFETY: `pid` is our own child and the leader of its own process group; kill touches no memory.
+    unsafe {
+        libc::kill(-pid, sig);
+        libc::kill(pid, sig);
+    }
+}
+
+/// Poll `waitpid(pid, WNOHANG)` until the child is reaped or `limit` passes. `true` once it is reaped (or is
+/// no longer our child), `false` on timeout.
+fn reap_within(pid: libc::pid_t, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    loop {
+        let mut status = 0;
+        // SAFETY: `pid` is our own child; `status` is a valid out-pointer.
+        let r = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+        if r == pid {
+            return true;
+        }
+        if r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+            return true; // ECHILD: nothing left to reap
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// A close-on-exec pipe `(read end, write end)` that wakes the reader thread when the write end closes.
+fn wake_pipe() -> io::Result<(File, File)> {
+    let mut fds: [RawFd; 2] = [-1; 2];
+    // SAFETY: `fds` is a valid two-element out-array.
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: both fds are fresh and owned here; each File closes its own.
+    let (r, w) = unsafe { (File::from_raw_fd(fds[0]), File::from_raw_fd(fds[1])) };
+    for f in [&r, &w] {
+        // SAFETY: a live fd we own; F_SETFD only sets its descriptor flags.
+        if unsafe { libc::fcntl(f.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok((r, w))
+}
+
+/// Block until `fd` is readable (or hung up) or `wake` fires. `Ok(true)` when `fd` is ready, `Ok(false)` when
+/// woken to stop.
+fn wait_readable(fd: RawFd, wake: RawFd) -> io::Result<bool> {
+    let mut fds = [
+        libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: wake,
+            events: libc::POLLIN,
+            revents: 0,
+        },
+    ];
+    loop {
+        // SAFETY: `fds` is a valid array of two initialised pollfds.
+        let r = unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) };
+        if r < 0 {
+            let e = io::Error::last_os_error();
+            if e.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(e);
+        }
+        if fds[1].revents != 0 {
+            return Ok(false);
+        }
+        if fds[0].revents != 0 {
+            return Ok(true);
         }
     }
 }
 
-/// Read the PTY master in a dedicated thread, forwarding output chunks to `tx`. Ends on EOF (child exit) or
-/// once the receiver is dropped; dropping `tx` on exit disconnects the channel, signalling the session.
-fn spawn_reader(mut fd: File, tx: Sender<Vec<u8>>) -> JoinHandle<()> {
+/// Read the PTY master in a dedicated thread, forwarding output chunks to `tx`. Ends on EOF (child exit), on
+/// a wake from `Drop` (the wake pipe's write end closed), or once the receiver is dropped; dropping `tx` on
+/// exit disconnects the channel, signalling the session.
+fn spawn_reader(mut fd: File, wake: File, tx: Sender<Vec<u8>>) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
-        loop {
+        // Stops when woken by Drop (`Ok(false)`) or when poll itself fails.
+        while let Ok(true) = wait_readable(fd.as_raw_fd(), wake.as_raw_fd()) {
             match fd.read(&mut buf) {
                 Ok(0) => break, // EOF: the child closed the tty
                 Ok(n) => {
@@ -181,7 +312,7 @@ fn spawn_reader(mut fd: File, tx: Sender<Vec<u8>>) -> JoinHandle<()> {
                     }
                 }
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(_) => break, // master closed / I/O error
+                Err(_) => break, // master closed / I/O error (Linux: EIO once the slave is gone)
             }
         }
     })
@@ -203,5 +334,61 @@ mod tests {
         assert_eq!(ctrl('5'), Some(vec![0x1d]));
         assert_eq!(ctrl(']'), Some(vec![0x1d]));
         assert_eq!(ctrl('7'), Some(vec![0x1f]));
+    }
+
+    /// Read `rx` until the output contains `needle` or `limit` passes; whether it was seen.
+    fn wait_for(rx: &Receiver<Vec<u8>>, needle: &str, limit: Duration) -> bool {
+        let deadline = Instant::now() + limit;
+        let mut out = Vec::new();
+        while Instant::now() < deadline {
+            if let Ok(chunk) = rx.recv_timeout(Duration::from_millis(50)) {
+                out.extend_from_slice(&chunk);
+                if String::from_utf8_lossy(&out).contains(needle) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Spawn `script` under `sh -c`, wait for it to print `READY`, drop the PTY, and return how long the drop
+    /// took and whether the child is still alive afterwards. `None` when the environment denies a PTY.
+    fn drop_after_ready(script: &str) -> Option<(Duration, bool)> {
+        let (pty, rx) = UnixPty::spawn_argv(&["/bin/sh", "-c", script], 24, 80).ok()?;
+        assert!(
+            wait_for(&rx, "READY", Duration::from_secs(5)),
+            "child never got ready"
+        );
+        let pid = pty.child_pid;
+        let start = Instant::now();
+        drop(pty);
+        let took = start.elapsed();
+        // SAFETY: signal 0 only probes whether `pid` exists.
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        Some((took, alive))
+    }
+
+    /// #771: a child that ignores SIGHUP no longer hangs `Drop` in a blocking `waitpid`: it is SIGKILLed after
+    /// the grace period and reaped.
+    #[test]
+    fn drop_kills_a_child_that_ignores_sighup() {
+        let Some((took, alive)) = drop_after_ready("trap '' HUP; echo READY; sleep 30") else {
+            return; // no PTY available (sandbox)
+        };
+        assert!(took < Duration::from_secs(5), "Drop took {took:?}");
+        assert!(!alive, "the child survived Drop");
+    }
+
+    /// #771: a background job in its own process group that ignores SIGHUP keeps the slave open after the
+    /// shell dies, so the master never reaches EOF (on Linux a read only fails once every slave fd is
+    /// closed). The reader is woken by `Drop` instead, so the join cannot hang.
+    #[test]
+    fn drop_returns_while_a_background_job_holds_the_slave() {
+        let script = "set -m; (trap '' HUP; sleep 10) & trap '' HUP; echo READY; wait";
+        let Some((took, alive)) = drop_after_ready(script) else {
+            return; // no PTY available (sandbox)
+        };
+        assert!(took < Duration::from_secs(5), "Drop took {took:?}");
+        assert!(!alive, "the shell survived Drop");
     }
 }
