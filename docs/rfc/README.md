@@ -69,6 +69,7 @@ row says which decision did it. Each RFC is in exactly one row below.
 | [RFC-0025](accepted/RFC-0025-file-encodings.md) | File encodings at the persist boundary ('fileencoding', ++enc, C-x RET f) | D-066 | approved 2026-11-28 | [persistence-and-recovery](../design/persistence-and-recovery.md) |
 | [RFC-0026](accepted/RFC-0026-large-file-safety.md) | Large-file safety: bounded undo, stop-at-first-match search, a highlight budget | D-067 | approved 2026-11-28 | [persistence-and-recovery](../design/persistence-and-recovery.md) |
 | [RFC-0027](accepted/RFC-0027-cmdheight-shortmess-pager.md) | The message area: 'cmdheight', 'shortmess' flags and one pager for listing output | D-068 | approved 2026-11-28 | [render-and-frontends](../design/render-and-frontends.md) |
+| [RFC-0028](accepted/RFC-0028-trace-exact-text-and-result-hash.md) | Exact free text and a result hash in the trace (amends RFC-0020) | D-069 | approved 2026-11-28 | [command-engine §7.3](../design/command-engine.md) |
 
 ## Rejected (do-not-relitigate)
 
