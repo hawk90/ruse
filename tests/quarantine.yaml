@@ -39,3 +39,13 @@ quarantine:
     issue: 916
     owner: maintainer
     expires: 2027-03-01
+  - test: apps/tui/tests/term_grid_conformance.rs::lone_continuation_byte_prints_a_replacement
+    reason: Conformance fixture for a known grid bug; a lone 0x80..=0x9F byte is executed as a C1 control and vanishes instead of printing U+FFFD.
+    issue: 1750
+    owner: maintainer
+    expires: 2027-03-01
+  - test: apps/tui/tests/term_grid_conformance.rs::split_utf8_then_lone_c1_matches_one_feed
+    reason: Chunk-split counterexample for a known grid bug; a UTF-8 sequence split across feeds followed by a lone C1 byte gives a different grid than one feed.
+    issue: 1750
+    owner: maintainer
+    expires: 2027-03-01
