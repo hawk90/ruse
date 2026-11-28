@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc f829eb08e5146cdde2470ee0b0d006ac590f8a324617d86045a53306655dd01d # shrinks to size = (1, 1), parts = [([194], Some((0, 2))), ([27, 91, 54, 53, 53, 51, 53, 67], None)]
+cc ac982f959370e624984efac967794414709fe6492d955cb2d0995f4f6ff4524b # shrinks to parts = [[128]], max = 0
