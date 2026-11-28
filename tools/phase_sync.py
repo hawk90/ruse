@@ -23,11 +23,18 @@ except ImportError:
 
 PHASES = "spec/phases.yaml"
 MARKER = re.compile(r"<!--\s*ruse-phase:([a-z0-9-]+)\s*-->")
+# Wall-clock cap per `gh` call, so a stalled API request cannot hang the tool (a paginated milestone list is
+# a few requests; this is generous).
+GH_TIMEOUT_SECS = 120
 
 
 def _gh(args):
-    """Run gh; return (rc, stdout, stderr)."""
-    r = subprocess.run(["gh"] + args, capture_output=True, text=True)
+    """Run gh; return (rc, stdout, stderr). A call past GH_TIMEOUT_SECS is killed and the tool exits 1."""
+    cmd = ["gh"] + args
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_TIMEOUT_SECS)
+    except subprocess.TimeoutExpired:
+        raise SystemExit(f"FAIL: `{' '.join(cmd)}` timed out after {GH_TIMEOUT_SECS:g}s — killed")
     return r.returncode, r.stdout, r.stderr
 
 
