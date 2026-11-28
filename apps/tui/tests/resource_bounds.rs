@@ -5,6 +5,11 @@
 //! The interrupt tests install a core interrupt hook that always reports CTRL-C, so the first checkpoint a
 //! long command reaches stops it: deterministic, and the same path the terminal hook drives (the PTY side
 //! is `pty_interrupt.rs`).
+//!
+//! The bounds measure work, not wall time (#1619): a runaway count burns CPU on the test thread, so each
+//! case asserts the thread's CPU time, which a loaded machine (load average ~55 under parallel builds)
+//! does not inflate the way it inflates wall time. A far looser wall-clock deadline stays only as a guard
+//! against a command that blocks without computing.
 
 use std::time::{Duration, Instant};
 
@@ -12,14 +17,61 @@ use proptest::prelude::*;
 use ruse_core::Mode;
 use ruse_tui::headless::Headless;
 
-/// Generous for a debug build on a slow runner; every case here is milliseconds when it is bounded.
+/// The work bound, in CPU time on the test thread: generous for a debug build on a slow runner; every case
+/// here is milliseconds when it is bounded (the largest, `1000000ix`, ~0.4 s), and the regressions it
+/// guards are quadratic or count-proportional (40000ix once took ~30 s).
 const BOUNDED: Duration = Duration::from_secs(10);
+
+/// The hang guard, in wall time: only catches a command that stops computing yet does not return, so it
+/// is loose enough that no amount of scheduling delay on a loaded machine reaches it.
+const HANG_GUARD: Duration = Duration::from_secs(300);
+
+/// CPU time consumed by the calling thread so far: unlike wall time, it does not grow while the thread
+/// waits for a core.
+#[cfg(unix)]
+fn thread_cpu_time() -> Duration {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `ts` is a valid, writable timespec; CLOCK_THREAD_CPUTIME_ID exists on Linux and macOS.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &raw mut ts) };
+    assert_eq!(rc, 0, "clock_gettime(CLOCK_THREAD_CPUTIME_ID)");
+    Duration::new(
+        u64::try_from(ts.tv_sec).expect("non-negative seconds"),
+        u32::try_from(ts.tv_nsec).expect("nanoseconds below one second"),
+    )
+}
+
+/// No thread CPU clock off Unix: fall back to wall time (the bound is as load-sensitive as before there).
+#[cfg(not(unix))]
+fn thread_cpu_time() -> Duration {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    START.get_or_init(Instant::now).elapsed()
+}
+
+/// Feed `keys` to `h` and return the CPU time it took on this thread, failing past [`HANG_GUARD`] of wall
+/// time.
+fn measure(h: &mut Headless, keys: &str) -> Duration {
+    let (cpu0, wall0) = (thread_cpu_time(), Instant::now());
+    h.keys(keys);
+    let (cpu, wall) = (thread_cpu_time() - cpu0, wall0.elapsed());
+    assert!(
+        wall < HANG_GUARD,
+        "{keys:?} did not return for {wall:?} (cpu {cpu:?})"
+    );
+    cpu
+}
+
+/// Feed `keys` to `h`, asserting they finish within [`BOUNDED`] of this thread's CPU time.
+fn bounded(h: &mut Headless, keys: &str) {
+    let cpu = measure(h, keys);
+    assert!(cpu < BOUNDED, "{keys:?} took {cpu:?} of CPU");
+}
 
 fn timed(text: &str, keys: &str) -> Headless {
     let mut h = Headless::vim(text);
-    let t0 = Instant::now();
-    h.keys(keys);
-    assert!(t0.elapsed() < BOUNDED, "{keys:?} took {:?}", t0.elapsed());
+    bounded(&mut h, keys);
     h
 }
 
@@ -101,13 +153,7 @@ fn a_large_count_insert_is_fast_and_one_undo_step() {
     // An Emacs `C-u` count of a self-insert takes the same path. (The leading `a` puts the session in
     // Insert first: before any text is typed it is in Normal, where a session chord takes `C-u`.)
     let mut h = Headless::emacs("\n");
-    let t0 = Instant::now();
-    h.keys("a<C-u>200000x");
-    assert!(
-        t0.elapsed() < BOUNDED,
-        "C-u 200000 x took {:?}",
-        t0.elapsed()
-    );
+    bounded(&mut h, "a<C-u>200000x");
     assert_eq!(h.text(), format!("a{}\n", "x".repeat(200_000)));
 }
 
@@ -285,10 +331,9 @@ proptest! {
     ) {
         let text = "foo bar 12\n(baz) qux. foo\n\n  zed z\n";
         let keys = format!("/foo<CR>{digits}{cmd}{}", if dot { "." } else { "" });
-        let t0 = Instant::now();
         let mut h = Headless::vim(text);
-        h.keys(&keys);
-        prop_assert!(t0.elapsed() < BOUNDED, "{} took {:?}", keys, t0.elapsed());
+        let cpu = measure(&mut h, &keys);
+        prop_assert!(cpu < BOUNDED, "{} took {:?} of CPU", keys, cpu);
         prop_assert!(h.text().len() < 1 << 20, "{} grew the buffer to {}", keys, h.text().len());
     }
 }
