@@ -418,14 +418,32 @@ impl Grid {
         }
     }
 
-    fn apply_sgr(&mut self, ps: &[u16]) {
-        if ps.is_empty() {
+    /// Apply an SGR. `groups` holds one slice per `;`-separated parameter; a slice longer than one carries
+    /// `:` subparameters (ITU T.416). A colon group is one self-contained attribute (`38:2::R:G:B`, `38:5:N`,
+    /// `4:3`), so its subparameters must never be read as SGR codes of their own (#779); the legacy `;` form
+    /// of 38/48 instead spends the parameters that follow it.
+    fn apply_sgr(&mut self, groups: &[&[u16]]) {
+        if groups.is_empty() {
             self.style = CellStyle::default();
             return;
         }
         let mut i = 0;
-        while i < ps.len() {
-            match ps[i] {
+        while i < groups.len() {
+            let group = groups[i];
+            let code = group.first().copied().unwrap_or(0);
+            if group.len() > 1 {
+                match code {
+                    // `4:0` is "no underline"; `4:1`..`4:5` (single/double/curly/dotted/dashed) all draw as the
+                    // cell model's one underline.
+                    4 => self.style.underline = group[1] != 0,
+                    38 => self.style.fg = colon_color(group).unwrap_or(self.style.fg),
+                    48 => self.style.bg = colon_color(group).unwrap_or(self.style.bg),
+                    _ => {} // 58 (underline colour) has no cell field; other subparameters are ignored
+                }
+                i += 1;
+                continue;
+            }
+            match code {
                 0 => self.style = CellStyle::default(),
                 1 => self.style.bold = true,
                 3 => self.style.italic = true,
@@ -435,21 +453,23 @@ impl Grid {
                 23 => self.style.italic = false,
                 24 => self.style.underline = false,
                 27 => self.style.reverse = false,
-                30..=37 => self.style.fg = Color::AnsiValue((ps[i] - 30) as u8),
+                30..=37 => self.style.fg = Color::AnsiValue((code - 30) as u8),
                 39 => self.style.fg = Color::Reset,
-                40..=47 => self.style.bg = Color::AnsiValue((ps[i] - 40) as u8),
+                40..=47 => self.style.bg = Color::AnsiValue((code - 40) as u8),
                 49 => self.style.bg = Color::Reset,
-                90..=97 => self.style.fg = Color::AnsiValue((ps[i] - 90 + 8) as u8),
-                100..=107 => self.style.bg = Color::AnsiValue((ps[i] - 100 + 8) as u8),
-                38 => {
-                    let (color, adv) = ext_color(&ps[i..]);
-                    self.style.fg = color;
-                    i += adv;
-                    continue;
-                }
-                48 => {
-                    let (color, adv) = ext_color(&ps[i..]);
-                    self.style.bg = color;
+                90..=97 => self.style.fg = Color::AnsiValue((code - 90 + 8) as u8),
+                100..=107 => self.style.bg = Color::AnsiValue((code - 100 + 8) as u8),
+                38 | 48 => {
+                    let ps: Vec<u16> = groups[i..]
+                        .iter()
+                        .map(|g| g.first().copied().unwrap_or(0))
+                        .collect();
+                    let (color, adv) = ext_color(&ps);
+                    if code == 38 {
+                        self.style.fg = color;
+                    } else {
+                        self.style.bg = color;
+                    }
                     i += adv;
                     continue;
                 }
@@ -473,9 +493,9 @@ fn remap(old: &[GridCell], old_rows: u16, old_cols: u16, rows: u16, cols: u16) -
     out
 }
 
-/// Parse an extended-colour SGR at `ps[0] == 38|48`: `;5;n` → 256-colour, `;2;r;g;b` → truecolor. Returns the
-/// colour and how many params it consumed (so the SGR loop can skip them). Handles both `;` and `:` forms
-/// (the parser flattens subparams), tolerating short/garbled sequences.
+/// Parse a legacy `;`-form extended-colour SGR at `ps[0] == 38|48`: `;5;n` → 256-colour, `;2;r;g;b` →
+/// truecolor. Returns the colour and how many params it consumed (so the SGR loop can skip them), tolerating
+/// short/garbled sequences. The `:` form is parsed by [`colon_color`].
 fn ext_color(ps: &[u16]) -> (Color, usize) {
     match ps.get(1).copied() {
         Some(5) => (
@@ -491,6 +511,28 @@ fn ext_color(ps: &[u16]) -> (Color, usize) {
             5.min(ps.len()),
         ),
         _ => (Color::Reset, 1),
+    }
+}
+
+/// Parse a `:`-form extended colour: `group == [38|48, 5, n]` or `[38|48, 2, (colorspace,) r, g, b]`. The
+/// colour-space id is optional in practice (`38:2::R:G:B` per T.416, `38:2:R:G:B` as many programs emit it);
+/// six or more elements mean it is present. `None` for an unknown or truncated form (the colour is kept).
+fn colon_color(group: &[u16]) -> Option<Color> {
+    match group.get(1).copied()? {
+        5 => Some(Color::AnsiValue(*group.get(2)? as u8)),
+        2 => {
+            let rgb = if group.len() >= 6 {
+                &group[3..6]
+            } else {
+                group.get(2..5)?
+            };
+            Some(Color::Rgb {
+                r: rgb[0] as u8,
+                g: rgb[1] as u8,
+                b: rgb[2] as u8,
+            })
+        }
+        _ => None,
     }
 }
 
@@ -588,7 +630,7 @@ impl Perform for Grid {
                     self.cy = 0;
                 }
             }
-            'm' => self.apply_sgr(&ps),
+            'm' => self.apply_sgr(&params.iter().collect::<Vec<_>>()),
             's' => self.saved = Some((self.cy, self.cx)),
             'u' => {
                 if let Some((r, c)) = self.saved {
@@ -687,6 +729,36 @@ mod tests {
                 b: 30
             }
         );
+    }
+
+    /// #779: colon-form SGR subparameters belong to their group, not to the SGR code list.
+    #[test]
+    fn sgr_colon_subparameters_stay_in_their_group() {
+        let rgb = Color::Rgb {
+            r: 10,
+            g: 20,
+            b: 30,
+        };
+        let style = |bytes: &str| {
+            let mut g = Grid::new(1, 4);
+            feed(&mut g, bytes.as_bytes());
+            *g.cell(0, 0).unwrap().1
+        };
+        let s = style("\x1b[4:3mX"); // curly underline: not italic
+        assert!(s.underline && !s.italic);
+        let s = style("\x1b[1;4m\x1b[4:0mX"); // underline off: not a full reset
+        assert!(s.bold && !s.underline);
+        assert_eq!(style("\x1b[38:2::10:20:30mX").fg, rgb);
+        assert_eq!(style("\x1b[38:2:10:20:30mX").fg, rgb); // colour-space id omitted
+        assert_eq!(style("\x1b[48:2::10:20:30mX").bg, rgb);
+        let s = style("\x1b[38:5:1mX"); // 256-colour index 1, not bold
+        assert!(s.fg == Color::AnsiValue(1) && !s.bold);
+        let s = style("\x1b[58:2::1:3:4mX"); // underline colour: ignored, no bold/italic/underline
+        assert!(!s.bold && !s.italic && !s.underline);
+        // The `;` form still spends the following parameters.
+        let s = style("\x1b[38;5;1;1mX");
+        assert!(s.fg == Color::AnsiValue(1) && s.bold);
+        assert_eq!(style("\x1b[48;2;10;20;30mX").bg, rgb);
     }
 
     #[test]
