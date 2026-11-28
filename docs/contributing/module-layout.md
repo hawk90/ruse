@@ -30,7 +30,7 @@ re-measured by `python3 tools/ruse.py docs check` (see [Re-measuring](#re-measur
 | --- | --- | --- |
 | L1 | A module with child files is `x.rs` + `x/`. Do not create a new `x/mod.rs`. | 38 of 54 non-test module directories; every directory added since v0.2.2 |
 | L2 | Leave the existing `x/mod.rs` directories as they are. Move one only as part of a split of that module that you are making anyway. | 16 directories, listed below |
-| T1 | A small test module stays inline: `#[cfg(test)] mod tests { ... }` at the end of the file. | 97 files |
+| T1 | A small test module stays inline: `#[cfg(test)] mod tests { ... }` at the end of the file. | 98 files |
 | T2 | An out-of-line test file of module `x` is `x/tests.rs`, declared by `#[cfg(test)] mod tests;`. | 21 files (2 of them T3 hubs) |
 | T3 | Several topic suites for one module are `<topic>_tests.rs`, each declared by that module with `#[cfg(test)] mod <topic>_tests;`. | 27 files beside the module, 34 under a test directory |
 | T4 | Every out-of-line unit-test file name is `tests.rs` or ends in `_tests.rs`. | all but 3 helper files |

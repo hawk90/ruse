@@ -44,25 +44,86 @@ impl TermGuard {
     }
 
     pub(crate) fn enter() -> io::Result<TermGuard> {
-        terminal::enable_raw_mode()?;
+        let ledger = enter_with(&mut LiveTerminal)?;
+        Ok(TermGuard { ledger })
+    }
+}
+
+/// The steps of [`TermGuard::enter`], as a seam so the unwind order unit-tests without a terminal (#786).
+trait Setup {
+    fn raw_mode_on(&mut self) -> io::Result<()>;
+    /// Arm [`restore`] with the mode pops `exit`.
+    fn arm(&mut self, exit: Vec<u8>);
+    fn alt_screen_on(&mut self) -> io::Result<()>;
+    /// Probe the terminal (never fails: a failed probe leaves the env/default belief).
+    fn probe(&mut self) -> caps::ledger::Ledger;
+    /// Push the modes the ledger enables.
+    fn push(&mut self, enter: &[u8]) -> io::Result<()>;
+    /// Undo whatever is armed — pop the pushed modes, leave the alternate screen, show the cursor, leave
+    /// raw mode — and disarm.
+    fn restore(&mut self);
+}
+
+/// Enter raw mode and the alternate screen, probe, and push the ledger's modes. On an error after raw
+/// mode is on, every step already taken is undone and the restore disarmed before the error returns: no
+/// guard exists yet, so nothing else would leave the terminal raw-free (#786).
+fn enter_with(t: &mut impl Setup) -> io::Result<caps::ledger::Ledger> {
+    t.raw_mode_on()?;
+    // Armed at once, so a signal or panic from here on (the probe included) still leaves the alternate
+    // screen and raw mode; the modes the ledger pushes are added once they are known.
+    t.arm(Vec::new());
+    let entered = enter_after_raw(t);
+    if entered.is_err() {
+        t.restore();
+    }
+    entered
+}
+
+fn enter_after_raw(t: &mut impl Setup) -> io::Result<caps::ledger::Ledger> {
+    t.alt_screen_on()?;
+    // Probe AFTER raw mode (so replies arrive as raw bytes) and inside the alt screen (so query echoes, if
+    // any, never touch the parent scrollback).
+    let ledger = t.probe();
+    // Armed before the push: a mode the terminal took is popped even if the write fails part way.
+    t.arm(caps::sequences::exit(&ledger));
+    t.push(&caps::sequences::enter(&ledger))?;
+    Ok(ledger)
+}
+
+/// The real terminal behind [`Setup`].
+struct LiveTerminal;
+
+impl Setup for LiveTerminal {
+    fn raw_mode_on(&mut self) -> io::Result<()> {
+        terminal::enable_raw_mode()
+    }
+
+    fn arm(&mut self, exit: Vec<u8>) {
+        arm(exit);
+    }
+
+    fn alt_screen_on(&mut self) -> io::Result<()> {
         queue!(io::stdout(), terminal::EnterAlternateScreen)?;
-        io::stdout().flush()?;
-        // Armed at once, so a signal or panic during the probe still leaves the alternate screen and raw
-        // mode; the modes the ledger pushes are added once they are known.
-        arm(Vec::new());
-        // Probe AFTER raw mode (so replies arrive as raw bytes) and inside the alt screen (so query
-        // echoes, if any, never touch the parent scrollback).
+        io::stdout().flush()
+    }
+
+    fn probe(&mut self) -> caps::ledger::Ledger {
         let (ledger, typed) = detect_capabilities();
         // Keys typed while the probe read the terminal are read first, before any new input (#1013).
         for key in caps::typeahead::decode(&typed) {
             crate::breakcheck::push(crossterm::event::Event::Key(key));
         }
+        ledger
+    }
+
+    fn push(&mut self, enter: &[u8]) -> io::Result<()> {
         let mut out = io::stdout();
-        // Armed before the push: a mode the terminal took is popped even if the write fails part way.
-        arm(caps::sequences::exit(&ledger));
-        out.write_all(&caps::sequences::enter(&ledger))?;
-        out.flush()?;
-        Ok(TermGuard { ledger })
+        out.write_all(enter)?;
+        out.flush()
+    }
+
+    fn restore(&mut self) {
+        restore(false);
     }
 }
 
@@ -143,5 +204,98 @@ pub(crate) fn restore(only_from_owner: bool) {
 impl Drop for TermGuard {
     fn drop(&mut self) {
         restore(false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The unwind of [`enter_with`] as a pure sequence (#786): each step can be made to fail, and the
+    //! steps taken are recorded in order.
+
+    use super::*;
+
+    #[derive(Default)]
+    struct Script {
+        fail: Option<&'static str>,
+        log: Vec<&'static str>,
+        armed: bool,
+    }
+
+    impl Script {
+        fn failing(step: &'static str) -> Script {
+            Script {
+                fail: Some(step),
+                ..Script::default()
+            }
+        }
+
+        fn step(&mut self, name: &'static str) -> io::Result<()> {
+            self.log.push(name);
+            if self.fail == Some(name) {
+                Err(io::Error::other(name))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl Setup for Script {
+        fn raw_mode_on(&mut self) -> io::Result<()> {
+            self.step("raw")
+        }
+        fn arm(&mut self, _: Vec<u8>) {
+            self.log.push("arm");
+            self.armed = true;
+        }
+        fn alt_screen_on(&mut self) -> io::Result<()> {
+            self.step("alt")
+        }
+        fn probe(&mut self) -> caps::ledger::Ledger {
+            self.log.push("probe");
+            caps::ledger::Ledger::with_defaults()
+        }
+        fn push(&mut self, _: &[u8]) -> io::Result<()> {
+            self.step("push")
+        }
+        fn restore(&mut self) {
+            self.log.push("restore");
+            self.armed = false;
+        }
+    }
+
+    #[test]
+    fn a_clean_enter_stays_armed_and_never_restores() {
+        let mut t = Script::default();
+        assert!(enter_with(&mut t).is_ok());
+        assert_eq!(t.log, ["raw", "arm", "alt", "probe", "arm", "push"]);
+        assert!(t.armed);
+    }
+
+    #[test]
+    fn a_failed_raw_mode_leaves_nothing_to_undo() {
+        let mut t = Script::failing("raw");
+        assert!(enter_with(&mut t).is_err());
+        assert_eq!(t.log, ["raw"]);
+        assert!(!t.armed);
+    }
+
+    #[test]
+    fn a_failed_alternate_screen_leaves_raw_mode() {
+        let mut t = Script::failing("alt");
+        assert!(enter_with(&mut t).is_err());
+        assert_eq!(t.log, ["raw", "arm", "alt", "restore"]);
+        assert!(!t.armed, "the restore is disarmed");
+    }
+
+    #[test]
+    fn a_failed_mode_push_pops_the_modes_and_leaves_the_screen() {
+        let mut t = Script::failing("push");
+        let err = enter_with(&mut t).unwrap_err();
+        assert_eq!(err.to_string(), "push");
+        assert_eq!(
+            t.log,
+            ["raw", "arm", "alt", "probe", "arm", "push", "restore"]
+        );
+        assert!(!t.armed, "the restore is disarmed");
     }
 }
