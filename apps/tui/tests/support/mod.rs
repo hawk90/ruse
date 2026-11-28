@@ -245,6 +245,10 @@ impl Editor {
         }
         let output = Arc::new(Mutex::new(Vec::new()));
         let mut reader = master.try_clone().expect("clone master fd");
+        // Every real terminal answers DA1 (`CSI c`), and the startup probe reads until that answer (or a
+        // one-second liveness deadline, #777), so the harness answers it as a terminal would: a bare VT220
+        // reply that confirms no mode, so the env belief stands, as it did when the probe went unanswered.
+        let mut answer = master.try_clone().expect("clone master fd");
         let sink = Arc::clone(&output);
         let reader_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop = Arc::clone(&reader_stop);
@@ -255,6 +259,10 @@ impl Editor {
                 events: libc::POLLIN,
                 revents: 0,
             };
+            // Where the next DA1 request is looked for: past the last one answered, and early enough to
+            // catch a request split across reads.
+            let mut scanned = 0;
+            const DA1: &[u8] = b"\x1b[c";
             // Poll with a timeout rather than block in read, so a stop request is seen (`hang_up`).
             while !stop.load(Ordering::SeqCst) {
                 // SAFETY: `pfd` is a valid pollfd for an fd this thread owns.
@@ -264,7 +272,18 @@ impl Editor {
                 // Linux reports EIO, not EOF, after the child exits; both end the stream.
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
-                    Ok(n) => sink.lock().unwrap().extend_from_slice(&buf[..n]),
+                    Ok(n) => {
+                        let mut out = sink.lock().unwrap();
+                        out.extend_from_slice(&buf[..n]);
+                        while let Some(at) =
+                            out[scanned..].windows(DA1.len()).position(|w| w == DA1)
+                        {
+                            scanned += at + DA1.len();
+                            let _ = answer.write_all(b"\x1b[?62c");
+                            let _ = answer.flush();
+                        }
+                        scanned = scanned.max(out.len().saturating_sub(DA1.len() - 1));
+                    }
                 }
             }
         });

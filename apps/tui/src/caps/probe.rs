@@ -9,8 +9,9 @@
 //!
 //! This module is pure: [`query_batch`] builds the outbound bytes, [`ProbeParser`] folds an inbound
 //! byte stream into a [`Ledger`] and reports when the fence is reached. The live drain that pushes
-//! the bytes and reads the replies lives in `main.rs`; the protocol logic is tested here against
-//! canned streams (see `tests/caps_probe.rs`).
+//! the bytes and reads the replies lives in `terminal::capabilities`: it reads until the fence, and its
+//! one overall deadline only stops it waiting on a terminal that never answers DA1 (#777). The
+//! protocol logic is tested here against canned streams (see `tests/caps_probe.rs`).
 
 use super::ledger::{
     CapValue, Capability, Confidence, Entry, GraphicsProtocol, KeyEncoding, Ledger, Source,
