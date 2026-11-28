@@ -8,9 +8,10 @@
 //! also read back. This mirrors the terminal-PTY / LSP-client / remote-transport seams (interface in core,
 //! live impl in `apps/tui`, mock in tests).
 //!
-//! Text-only, [`Option<String>`] on read: a `get` returns `None` when no clipboard tool is available or the
-//! clipboard is empty (so `"+p` with nothing to paste is a graceful no-op, never a crash), and `set` is
-//! best-effort (silently dropped when no tool exists). The linewise/charwise geometry a register carries is
+//! Text, [`Option<String>`] on read: a `get` returns `None` when no clipboard tool is available or the
+//! clipboard is empty (so `"+p` with nothing to paste is a graceful no-op, never a crash). Bytes on write:
+//! `set` takes the register's exact bytes, so a register that holds non-UTF-8 text reaches the clipboard
+//! unaltered (#1736); it is best-effort (silently dropped when no tool exists). The linewise/charwise geometry a register carries is
 //! reconstructed by [`RegisterStore`](crate::register::RegisterStore) from the text, since the OS clipboard
 //! itself is untyped bytes.
 
@@ -19,8 +20,9 @@
 pub trait Clipboard {
     /// The clipboard's current text, or `None` when it is empty or no clipboard tool is available.
     fn get(&self) -> Option<String>;
-    /// Best-effort write of `text` to the clipboard; a no-op when no clipboard tool is available.
-    fn set(&self, text: &str);
+    /// Best-effort write of `bytes` (a register's contents, exactly; not necessarily UTF-8, #1736) to the
+    /// clipboard; a no-op when no clipboard tool is available.
+    fn set(&self, bytes: &[u8]);
 }
 
 /// The default provider: no clipboard at all. `get` yields `None`, `set` is a no-op. Keeps core pure and
@@ -32,14 +34,14 @@ impl Clipboard for NoClipboard {
     fn get(&self) -> Option<String> {
         None
     }
-    fn set(&self, _text: &str) {}
+    fn set(&self, _bytes: &[u8]) {}
 }
 
-/// An in-memory clipboard double for unit tests: a shared, cloneable handle over one `Option<String>`, so a
+/// An in-memory clipboard double for unit tests: a shared, cloneable handle over one `Option<Vec<u8>>`, so a
 /// test can inject it into a [`Workspace`](crate::Workspace), drive `"+y`/`"+p`, and read the result back
 /// with [`MemClipboard::contents`]. Interior mutability keeps the [`Clipboard`] `&self` contract.
 #[derive(Clone, Default)]
-pub struct MemClipboard(std::sync::Arc<std::sync::Mutex<Option<String>>>);
+pub struct MemClipboard(std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>);
 
 impl MemClipboard {
     /// A fresh, empty in-memory clipboard.
@@ -48,23 +50,26 @@ impl MemClipboard {
         MemClipboard::default()
     }
 
-    /// The current contents (what a `set` last wrote, or `None` if never written / preloaded).
+    /// The current contents, byte for byte (what a `set` last wrote, or `None` if never written /
+    /// preloaded).
     #[must_use]
-    pub fn contents(&self) -> Option<String> {
+    pub fn contents(&self) -> Option<Vec<u8>> {
         self.0.lock().expect("clipboard mutex").clone()
     }
 
     /// Seed the clipboard as if an external app had put `text` there (for a `"+p` test).
     pub fn preload(&self, text: &str) {
-        *self.0.lock().expect("clipboard mutex") = Some(text.to_string());
+        *self.0.lock().expect("clipboard mutex") = Some(text.as_bytes().to_vec());
     }
 }
 
 impl Clipboard for MemClipboard {
+    /// Like a real clipboard read, non-UTF-8 contents read as `None`.
     fn get(&self) -> Option<String> {
-        self.0.lock().expect("clipboard mutex").clone()
+        let bytes = self.0.lock().expect("clipboard mutex").clone()?;
+        String::from_utf8(bytes).ok()
     }
-    fn set(&self, text: &str) {
-        *self.0.lock().expect("clipboard mutex") = Some(text.to_string());
+    fn set(&self, bytes: &[u8]) {
+        *self.0.lock().expect("clipboard mutex") = Some(bytes.to_vec());
     }
 }

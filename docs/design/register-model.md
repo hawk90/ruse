@@ -406,7 +406,9 @@ Behavior:
   produced slot's text to the sink. OSC-52 **write is always attempted** (works over SSH/tmux where OS APIs
   don't) with tmux passthrough wrapping (TERM-PROBE-3); on OS-native availability, prefer it and use OSC-52 as
   fallback. Writes carry the `RegisterType` only *internally*; the OS clipboard is plain text (types are lost
-  crossing the boundary — a read from `"+` yields `Char`, or `Line` iff the payload ends in `\n`).
+  crossing the boundary — a read from `"+` yields `Char`, or `Line` iff the payload ends in `\n`). The push
+  carries the slot's exact bytes (`Clipboard::set(&[u8])`), so a register holding non-UTF-8 text reaches the
+  OS clipboard unaltered (#1736); a read whose bytes are not UTF-8 yields nothing rather than a lossy copy.
 - **Read** (`"+p`, `M-y` when clipboard is a ring source, `clipboard=unnamedplus` yank source): read from OS
   API when available. **OSC-52 read is opt-in** (`osc52_read_enabled`, default off) and requires explicit
   user confirmation per SEC-7 — silent OSC-52 read is a clipboard-exfiltration vector. If read is unavailable,
