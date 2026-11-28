@@ -161,16 +161,15 @@ impl ProbeParser {
         match final_byte {
             b'c' if params.first() == Some(&b'?') => {
                 // DA1 reply (`CSI ? <attrs> c`). The fence — nothing more will come. A `4` among the
-                // attributes advertises SIXEL graphics (F-031 slice 3b / D-053).
+                // attributes advertises SIXEL graphics (F-031 slice 3b / D-053). That is evidence FOR
+                // Sixel, not against Kitty: it only climbs the ladder, so a terminal already believed to
+                // speak Kitty keeps Kitty (#1004).
                 let attrs = &params[1..]; // after the leading '?'
                 if attrs.split(|&b| b == b';').any(|p| parse_u16(p) == Some(4)) {
-                    ledger.record(
-                        Capability::InlineGraphics,
-                        Entry {
-                            value: CapValue::Graphics(GraphicsProtocol::Sixel),
-                            source: Source::Probed,
-                            confidence: Confidence::Confirmed,
-                        },
+                    ledger.offer_graphics(
+                        GraphicsProtocol::Sixel,
+                        Source::Probed,
+                        Confidence::Confirmed,
                     );
                 }
                 Reply::Fence
@@ -249,5 +248,26 @@ mod tests {
         let mut p = ProbeParser::new();
         assert_eq!(p.feed(b"\x1b[?62;22c", &mut l), ProbeState::Fenced);
         assert_eq!(l.graphics(), GraphicsProtocol::None);
+    }
+
+    #[test]
+    fn da1_sixel_does_not_demote_a_kitty_terminal() {
+        // A terminal the env names as Kitty-capable (`TERM=xterm-kitty`, or Ghostty / WezTerm by name) whose
+        // DA1 also lists attribute 4 keeps Kitty, the only protocol the session draws (#1004).
+        let mut l = Ledger::with_defaults();
+        crate::caps::seed_env(&mut l, "xterm-kitty", "", "");
+        let mut p = ProbeParser::new();
+        assert_eq!(p.feed(b"\x1b[?62;4;22c", &mut l), ProbeState::Fenced);
+        assert_eq!(l.graphics(), GraphicsProtocol::Kitty);
+        // An iTerm2 hint is below Sixel on the ladder, so the probed Sixel replaces it.
+        let mut l = Ledger::with_defaults();
+        crate::caps::seed_env(&mut l, "xterm-256color", "", "iTerm.app");
+        assert_eq!(l.graphics(), GraphicsProtocol::ITerm2);
+        ProbeParser::new().feed(b"\x1b[?62;4c", &mut l);
+        assert_eq!(l.graphics(), GraphicsProtocol::Sixel);
+        assert_eq!(
+            l.get(Capability::InlineGraphics).map(|e| e.source),
+            Some(Source::Probed)
+        );
     }
 }

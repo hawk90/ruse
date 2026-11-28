@@ -171,6 +171,40 @@ impl Ledger {
         }
     }
 
+    /// Record evidence that the terminal supports the inline-graphics protocol `g` (D-053 ladder, #1004).
+    /// Support for one protocol says nothing against another — DA1's Sixel attribute does not deny the
+    /// Kitty protocol — so the evidence only CLIMBS the ladder: it takes effect when `g` ranks above the
+    /// protocol on record, or is the same protocol at least as authoritatively sourced (a probed Kitty
+    /// confirms an env-hinted Kitty). A lower rung never replaces a higher one, whatever its source, and a
+    /// user override is never replaced. Returns whether the row changed.
+    pub fn offer_graphics(
+        &mut self,
+        g: GraphicsProtocol,
+        source: Source,
+        confidence: Confidence,
+    ) -> bool {
+        let takes = match self.get(Capability::InlineGraphics) {
+            Some(cur) if cur.source == Source::UserOverride => false,
+            Some(Entry {
+                value: CapValue::Graphics(have),
+                source: have_source,
+                ..
+            }) => g > have || (g == have && source >= have_source),
+            _ => true,
+        };
+        if takes {
+            self.rows.insert(
+                Capability::InlineGraphics,
+                Entry {
+                    value: CapValue::Graphics(g),
+                    source,
+                    confidence,
+                },
+            );
+        }
+        takes
+    }
+
     /// A user override — the highest authority, always wins (acceptance #2).
     pub fn set_override(&mut self, cap: Capability, value: CapValue) {
         self.rows.insert(
@@ -256,6 +290,60 @@ mod tests {
         assert!(GraphicsProtocol::Kitty > GraphicsProtocol::Sixel);
         assert!(GraphicsProtocol::Sixel > GraphicsProtocol::ITerm2);
         assert!(GraphicsProtocol::ITerm2 > GraphicsProtocol::None);
+    }
+
+    fn env(g: GraphicsProtocol) -> (GraphicsProtocol, Source, Confidence) {
+        (g, Source::EnvHint, Confidence::Assumed)
+    }
+
+    fn probe(g: GraphicsProtocol) -> (GraphicsProtocol, Source, Confidence) {
+        (g, Source::Probed, Confidence::Confirmed)
+    }
+
+    /// Offer each piece of graphics evidence in turn; return the protocol and source that end on record.
+    fn after(offers: &[(GraphicsProtocol, Source, Confidence)]) -> (GraphicsProtocol, Source) {
+        let mut l = Ledger::with_defaults();
+        for &(g, s, c) in offers {
+            l.offer_graphics(g, s, c);
+        }
+        let e = l.get(Capability::InlineGraphics).unwrap();
+        (l.graphics(), e.source)
+    }
+
+    #[test]
+    fn graphics_evidence_only_climbs_the_ladder() {
+        use GraphicsProtocol::{ITerm2, Kitty, Sixel};
+        // #1004: a probed Sixel (DA1 attribute 4) does not demote an env-hinted Kitty.
+        assert_eq!(after(&[env(Kitty), probe(Sixel)]), (Kitty, Source::EnvHint));
+        // A real Kitty graphics reply confirms the hint, and ranks as Probed Kitty over a probed Sixel.
+        assert_eq!(
+            after(&[env(Kitty), probe(Sixel), probe(Kitty)]),
+            (Kitty, Source::Probed)
+        );
+        assert_eq!(
+            after(&[probe(Sixel), probe(Kitty)]),
+            (Kitty, Source::Probed)
+        );
+        // A higher rung replaces a lower one; a lower rung never replaces a higher one, whatever its source.
+        assert_eq!(after(&[env(ITerm2), probe(Sixel)]), (Sixel, Source::Probed));
+        assert_eq!(after(&[probe(Sixel), env(ITerm2)]), (Sixel, Source::Probed));
+        // The same rung from a weaker source does not take the row.
+        assert_eq!(after(&[probe(Kitty), env(Kitty)]), (Kitty, Source::Probed));
+    }
+
+    #[test]
+    fn graphics_evidence_never_replaces_a_user_override() {
+        let mut l = Ledger::with_defaults();
+        l.set_override(
+            Capability::InlineGraphics,
+            CapValue::Graphics(GraphicsProtocol::None),
+        );
+        assert!(!l.offer_graphics(
+            GraphicsProtocol::Kitty,
+            Source::Probed,
+            Confidence::Confirmed
+        ));
+        assert_eq!(l.graphics(), GraphicsProtocol::None);
     }
 
     #[test]
