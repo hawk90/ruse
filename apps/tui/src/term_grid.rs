@@ -178,6 +178,20 @@ impl Grid {
         }
     }
 
+    /// Before an erase or shift whose edge falls between columns `col - 1` and `col`: if that edge cuts a wide
+    /// glyph (`col` is its continuation), blank both halves with the current pen, as xterm's `ClearCells` /
+    /// `DamagedCells` do, so no lone half survives the operation (#1734).
+    fn cut_wide_at(&mut self, row: u16, col: u16) {
+        if col == 0 || col >= self.cols {
+            return;
+        }
+        let i = self.idx(row, col);
+        if self.cells[i].continuation {
+            self.cells[i - 1] = GridCell::blank(self.style);
+            self.cells[i] = GridCell::blank(self.style);
+        }
+    }
+
     fn write_char(&mut self, c: char, w: u16) {
         if self.cx >= self.cols {
             return;
@@ -302,9 +316,16 @@ impl Grid {
         self.cx = next.min(self.cols - 1);
     }
 
-    /// Erase the cells `[from, to)` on row `row` to a blank carrying the current style.
+    /// Erase the cells `[from, to)` on row `row` to a blank carrying the current style. A wide glyph cut by
+    /// either edge is erased whole.
     fn erase_span(&mut self, row: u16, from: u16, to: u16) {
-        for col in from..to.min(self.cols) {
+        let to = to.min(self.cols);
+        if from >= to {
+            return;
+        }
+        self.cut_wide_at(row, from);
+        self.cut_wide_at(row, to);
+        for col in from..to {
             let i = self.idx(row, col);
             self.cells[i] = GridCell::blank(self.style);
         }
@@ -376,10 +397,12 @@ impl Grid {
     }
 
     /// `ICH` — insert `n` blank cells at the cursor, shifting the rest of the line right (cells past the right
-    /// edge are lost).
+    /// edge are lost). A wide glyph split at the cursor or pushed half off the edge is blanked whole.
     fn insert_chars(&mut self, n: u16) {
         let n = n.min(self.cols - self.cx);
         let row = self.cy;
+        self.cut_wide_at(row, self.cx);
+        self.cut_wide_at(row, self.cols - n);
         let mut c = self.cols - 1;
         while c >= self.cx + n {
             let (src, dst) = (self.idx(row, c - n), self.idx(row, c));
@@ -393,14 +416,21 @@ impl Grid {
     }
 
     /// `DCH` — delete `n` cells at the cursor, shifting the rest of the line left; blanks fill the right edge.
+    /// A wide glyph only partly deleted is blanked whole.
     fn delete_chars(&mut self, n: u16) {
         let n = n.min(self.cols - self.cx);
         let row = self.cy;
+        self.cut_wide_at(row, self.cx);
+        self.cut_wide_at(row, self.cx + n);
         for c in self.cx..self.cols - n {
             let (src, dst) = (self.idx(row, c + n), self.idx(row, c));
             self.cells[dst] = self.cells[src].clone();
         }
-        self.erase_span(row, self.cols - n, self.cols);
+        // Blank the freed right edge directly: `erase_span` would read the stale cells there as a glyph to cut.
+        for c in self.cols - n..self.cols {
+            let i = self.idx(row, c);
+            self.cells[i] = GridCell::blank(self.style);
+        }
     }
 
     fn enter_alt_screen(&mut self) {

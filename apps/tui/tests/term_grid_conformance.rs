@@ -143,6 +143,22 @@ fixtures! {
     wide_glyph_at_the_last_column_wraps_first: (2, 3, "ab中".as_bytes()) => ["ab ", "中 "] @ (1, 2);
     overwriting_the_left_half_blanks_the_right: (1, 3, "中\rx".as_bytes()) => ["x  "] @ (0, 1);
     overwriting_the_right_half_blanks_the_left: (1, 3, "中\x1b[2Gx".as_bytes()) => [" x "] @ (0, 2);
+    // An erase or shift that cuts a wide glyph blanks its other half too (xterm `ClearCells`, #1734).
+    el_from_the_right_half_erases_the_whole_glyph: (1, 4, "a中b\x1b[1;3H\x1b[K".as_bytes()) => ["a   "] @ (0, 2);
+    el1_to_the_left_half_erases_the_whole_glyph: (1, 4, "a中b\x1b[1;2H\x1b[1K".as_bytes()) => ["   b"] @ (0, 1);
+    ed_from_the_right_half_erases_the_whole_glyph:
+        (2, 4, "a中b\r\nxy\x1b[1;3H\x1b[J".as_bytes()) => ["a   ", "    "] @ (0, 2);
+    ed1_to_the_left_half_erases_the_whole_glyph:
+        (2, 4, "xy\r\na中b\x1b[2;2H\x1b[1J".as_bytes()) => ["    ", "   b"] @ (1, 1);
+    ech_on_the_right_half_erases_the_whole_glyph: (1, 4, "a中b\x1b[1;3H\x1b[X".as_bytes()) => ["a  b"] @ (0, 2);
+    ech_ending_on_the_left_half_erases_the_whole_glyph:
+        (1, 4, "a中b\x1b[1;1H\x1b[2X".as_bytes()) => ["   b"] @ (0, 0);
+    ich_on_the_right_half_blanks_the_glyph: (1, 5, "a中bc\x1b[1;3H\x1b[@".as_bytes()) => ["a   b"] @ (0, 2);
+    ich_pushing_half_a_glyph_off_the_edge_blanks_it:
+        (1, 4, "ab中\x1b[1;1H\x1b[@".as_bytes()) => [" ab "] @ (0, 0);
+    dch_on_the_right_half_blanks_the_glyph: (1, 5, "a中bc\x1b[1;3H\x1b[P".as_bytes()) => ["a bc "] @ (0, 2);
+    dch_shifting_a_glyph_to_the_edge_keeps_it: (1, 5, "abc中\x1b[1;1H\x1b[P".as_bytes()) => ["bc中 "] @ (0, 0);
+    dch_of_the_left_half_blanks_the_glyph: (1, 5, "a中bc\x1b[1;2H\x1b[P".as_bytes()) => ["a bc "] @ (0, 1);
     combining_mark_joins_the_previous_glyph: (1, 3, "e\u{301}x".as_bytes()) => ["e\u{301}x "] @ (0, 2);
     combining_mark_joins_the_glyph_at_the_pending_wrap: (1, 2, "ab\u{301}".as_bytes()) => ["ab\u{301}"] @ (0, 1);
     combining_mark_joins_a_wide_glyph: (1, 3, "中\u{301}".as_bytes()) => ["中\u{301} "] @ (0, 2);
@@ -375,6 +391,25 @@ fn feed_split(rows: u16, cols: u16, bytes: &[u8], cuts: &[usize]) -> Grid {
     g
 }
 
+/// No lone half of a wide glyph: a width-2 glyph is followed by its continuation (unless it sits in the
+/// last column, where only a 1-column screen can put it), and a continuation follows a width-2 glyph (#1734).
+fn lone_wide_half(g: &Grid) -> Option<(u16, u16)> {
+    let (rows, cols) = g.size();
+    let wide = |r: u16, c: u16| {
+        g.cell(r, c)
+            .and_then(|(t, _)| t.chars().next())
+            .is_some_and(|ch| unicode_width::UnicodeWidthChar::width(ch) == Some(2))
+    };
+    (0..rows)
+        .flat_map(|r| (0..cols).map(move |c| (r, c)))
+        .find(|&(r, c)| {
+            let continuation = g.cell(r, c).is_none();
+            let lone_left = wide(r, c) && c + 1 < cols && g.cell(r, c + 1).is_some();
+            let orphan = continuation && (c == 0 || !wide(r, c - 1));
+            lone_left || orphan
+        })
+}
+
 /// `n` cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920).
 fn cases(n: u32) -> ProptestConfig {
     let scale = std::env::var("RUSE_PROPTEST_SCALE")
@@ -442,6 +477,8 @@ proptest! {
         let whole = snapshot(&feed(size.0, size.1, &bytes));
         let split = snapshot(&feed_split(size.0, size.1, &bytes, &cuts));
         prop_assert_eq!(whole, split);
+        let g = feed(size.0, size.1, &bytes);
+        prop_assert_eq!(lone_wide_half(&g), None, "{:?}", String::from_utf8_lossy(&bytes));
     }
 
     /// Every fixture stream, cut anywhere, still gives its one-feed grid.
