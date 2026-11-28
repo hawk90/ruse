@@ -123,12 +123,19 @@ pub const READ_CHUNK: usize = 4096;
 /// How often a reader blocked on a full channel re-checks whether `Drop` asked it to stop.
 const FULL_RETRY: Duration = Duration::from_millis(10);
 
-/// How a closed terminal's child is ended (#771): `SIGHUP` (after the master closes, as when a terminal
-/// emulator window closes), then `SIGKILL` after 0.5 s; given up on 2 s after that.
+/// How a closed terminal's child is ended (#771, #1788): `SIGHUP` (after the master closes, as when a
+/// terminal emulator window closes), then `SIGTERM` after 2 s, then `SIGKILL` after 2 s more; given up on
+/// 2 s after that. This is nvim's `proc_stop` / `children_kill_cb` schedule for a PTY job
+/// (`KILL_TIMEOUT_MS`), so a child that handles SIGTERM but not SIGHUP (a server saving its state) gets to
+/// clean up.
 const HANGUP: &crate::reap::Escalation = &[
     crate::reap::Step {
         signal: libc::SIGHUP,
-        grace: Duration::from_millis(500),
+        grace: Duration::from_secs(2),
+    },
+    crate::reap::Step {
+        signal: libc::SIGTERM,
+        grace: Duration::from_secs(2),
     },
     crate::reap::Step {
         signal: libc::SIGKILL,
@@ -274,15 +281,16 @@ impl Drop for UnixPty {
         //    terminal emulator window closes.
         drop(self.master.take());
         // 3. Hang up the child's process group (forkpty made the child a session leader, so its pgid is its
-        //    pid) and hand it to the reaper, which gives it a moment, SIGKILLs the group and reaps it
-        //    (#1774). `trap '' HUP` does not survive this.
+        //    pid) and hand it to the reaper, which sends the group SIGTERM and then SIGKILL as each grace
+        //    runs out, and reaps it (#1774, #1788). `trap '' HUP` does not survive this.
         crate::reap::end_in_background(self.child_pid, HANGUP);
     }
 }
 
 /// Wait (at most one full escalation, plus slack) for every child handed to the reaper to be reaped or
-/// given up on. Called once at exit, after the terminals are dropped, so a child that ignores SIGHUP is
-/// still SIGKILLed before the editor exits, as when `Drop` did it inline (#1775).
+/// given up on. Called once at exit, after the terminals are dropped, so a child that ignores SIGHUP and
+/// SIGTERM is still SIGKILLed before the editor exits, as when `Drop` did it inline (#1775). Bounded: about
+/// 4 s for a child that ignores both, at most the whole escalation (6 s) for one that SIGKILL cannot end.
 pub fn finish_reaping() {
     let escalation: Duration = HANGUP.iter().map(|s| s.grace).sum();
     crate::reap::finish_background(escalation + Duration::from_millis(100));
@@ -623,8 +631,8 @@ mod tests {
         Some(Teardown { took, gone_after })
     }
 
-    /// #771: a child that ignores SIGHUP no longer hangs `Drop` in a blocking `waitpid`: it is SIGKILLed after
-    /// the grace period and reaped.
+    /// #771: a child that ignores SIGHUP no longer hangs `Drop` in a blocking `waitpid`: it is ended after
+    /// the grace period (SIGTERM since #1788) and reaped.
     #[test]
     fn drop_kills_a_child_that_ignores_sighup() {
         let Some(t) = drop_after_ready("trap '' HUP; echo READY; sleep 30") else {
@@ -647,19 +655,51 @@ mod tests {
             t.took
         );
         let gone = t.gone_after.expect("the reaper never reaped the child");
-        // It ignored SIGHUP, so only the SIGKILL after the grace ended it: the escalation is unchanged.
+        // It ignored SIGHUP, so only the SIGTERM after the hangup grace ended it.
         assert!(
             gone >= HANGUP[0].grace - Duration::from_millis(50),
             "the child went after {gone:?}, before the hangup grace"
         );
     }
 
-    /// #1775: at exit `finish_reaping` waits for the reaper, so a child that ignores SIGHUP is SIGKILLed and
-    /// reaped before the editor exits, never orphaned by it.
+    /// #1788: as in nvim, a closed terminal's child that ignores SIGHUP gets SIGTERM after the hangup grace,
+    /// not SIGKILL, so its TERM handler runs and it cleans up.
+    #[test]
+    fn a_child_that_ignores_sighup_gets_sigterm_and_cleans_up() {
+        assert_eq!(HANGUP[0].signal, libc::SIGHUP);
+        assert_eq!(HANGUP[1].signal, libc::SIGTERM);
+        assert_eq!(HANGUP[2].signal, libc::SIGKILL);
+        assert_eq!(HANGUP[0].grace, Duration::from_secs(2), "KILL_TIMEOUT_MS");
+        assert_eq!(HANGUP[1].grace, Duration::from_secs(2), "KILL_TIMEOUT_MS");
+        let marker = std::env::temp_dir().join(format!("ruse-1788-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let script = format!(
+            "trap '' HUP; trap 'echo cleaned > {}; exit 0' TERM; echo READY; while :; do sleep 0.05; done",
+            marker.display()
+        );
+        let Some(t) = drop_after_ready(&script) else {
+            return; // no PTY available (sandbox)
+        };
+        let gone = t.gone_after.expect("the reaper never reaped the child");
+        let cleaned = std::fs::read_to_string(&marker).unwrap_or_default();
+        let _ = std::fs::remove_file(&marker);
+        assert_eq!(cleaned.trim(), "cleaned", "the TERM handler never ran");
+        assert!(
+            gone >= HANGUP[0].grace - Duration::from_millis(50),
+            "the child went after {gone:?}, before the hangup grace"
+        );
+        assert!(
+            gone < HANGUP[0].grace + HANGUP[1].grace,
+            "the child went after {gone:?}: SIGKILLed, not let to clean up"
+        );
+    }
+
+    /// #1775, #1788: at exit `finish_reaping` waits for the reaper, so a child that ignores SIGHUP and SIGTERM
+    /// is SIGKILLed and reaped before the editor exits, never orphaned by it, and the wait stays bounded.
     #[test]
     fn finish_reaping_waits_out_the_escalation() {
         let Ok((pty, rx)) = UnixPty::spawn_argv(
-            &["/bin/sh", "-c", "trap '' HUP; echo READY; sleep 30"],
+            &["/bin/sh", "-c", "trap '' HUP TERM; echo READY; sleep 30"],
             24,
             80,
         ) else {
@@ -670,8 +710,16 @@ mod tests {
             "child never got ready"
         );
         let pid = pty.child_pid;
+        let start = Instant::now();
         drop(pty);
         finish_reaping();
+        let took = start.elapsed();
+        let whole: Duration = HANGUP.iter().map(|s| s.grace).sum();
+        assert!(
+            took >= HANGUP[0].grace + HANGUP[1].grace - Duration::from_millis(50),
+            "SIGKILLed after {took:?}, before the HUP and TERM graces ran out"
+        );
+        assert!(took < whole + Duration::from_millis(500), "took {took:?}");
         // SAFETY: signal 0 only probes whether `pid` exists; a zombie still does.
         let r = unsafe { libc::kill(pid, 0) };
         let err = io::Error::last_os_error().raw_os_error();

@@ -41,7 +41,7 @@ source and the loop multiplexing that renders it. The feature is intentionally s
   A dedicated reader thread streams master-fd output over an `mpsc` channel; the channel
   disconnects on EOF (child exit). `Drop` wakes and joins the reader, closes the master, sends `SIGHUP`, and
   hands the child to one process-wide reaper thread (`apps/tui/src/reap.rs`, shared with the shell-outs and
-  the clipboard tools, #1774), so closing a terminal (`:bd!`) never waits on the child (#1775). The reaper SIGKILLs a child still there after 0.5 s, reaps it (`waitpid`), and gives up after 2 s
+  the clipboard tools, #1774), so closing a terminal (`:bd!`) never waits on the child (#1775). As in nvim (`proc_stop`, `children_kill_cb`, `KILL_TIMEOUT_MS`), the reaper sends `SIGTERM` to a child still there after 2 s and `SIGKILL` after 2 s more (#1788), reaps it (`waitpid`), and gives up after 2 s
   more (an unkillable zombie leaks rather than holding the reaper). At exit the editor waits for the reaper
   (`pty::finish_reaping`) so no child outlives it. A failure after `forkpty` (the master clone, the reader
   thread spawn) drops the half-built PTY, so the child is still hung up and reaped (#1754).

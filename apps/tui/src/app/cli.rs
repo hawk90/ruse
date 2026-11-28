@@ -208,8 +208,10 @@ pub fn run() -> ExitCode {
         });
     }
     // The session dropped its terminals, handing their children to the PTY reaper thread (#1775); let it
-    // finish the bounded HUP-then-KILL escalation so no child outlives the editor. After the watchdog stood
-    // down and the journals are written, so this wait can neither race the watchdog nor delay the rescue.
+    // finish the bounded HUP, TERM, KILL escalation (#1788) so no child outlives the editor. After the
+    // watchdog stood down (`begin_exit` holds its lock, so a signal arriving during this wait of up to a few
+    // seconds cannot make it end the process under us) and after the journals are written, so this wait can
+    // neither race the watchdog nor delay the rescue.
     #[cfg(unix)]
     crate::pty::finish_reaping();
     if let Some(sig) = signal {
