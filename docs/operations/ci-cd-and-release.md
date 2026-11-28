@@ -48,6 +48,14 @@ held back: it costs ~4% on `highlight_incremental` at 100–1000 lines, above th
 path. Arithmetic on user-sized values (counts, columns, offsets) must therefore saturate or check
 explicitly rather than rely on the debug-only panic.
 
+### Scheduled-run failures file an issue (#1358)
+A scheduled run blocks nothing, so a red one used to go unseen (#1357). `scheduled-failure.yml` watches every
+workflow with a `schedule:` trigger through `workflow_run`. A scheduled run that fails (`failure`,
+`timed_out`, `startup_failure`) opens one issue per workflow, titled `fix(ci): the scheduled <name> workflow
+fails`, or comments on the open one. The next successful scheduled run closes it. Cancelled runs change
+nothing, and manual or PR runs of the watched workflows are ignored. `issues: write` is granted to that job alone. A
+new scheduled workflow must be added to its `workflows:` list.
+
 ### Fast PR CI (5–10 min)
 `format → lint → compile → unit tests → core property tests → changed-component tests`.
 Base platforms: **Linux x86_64, Windows x86_64, macOS ARM64**. WSL is hard to reproduce on hosted runners —

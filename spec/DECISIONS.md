@@ -1137,3 +1137,67 @@ related:
   is designed (its rebuild must apply the bound); the budget fires on normal files.
 - Refs: [RFC-0026](../docs/rfc/accepted/RFC-0026-large-file-safety.md), D-005, D-064, RFC-0007, RFC-0008,
   INV-UNDO, INV-BUFFER-KIND, INV-FAIL-BOUNDED, F-005, F-008, F-009, F-015, COM-12, #1289, #1290.
+
+## D-069 — The trace writes free text exactly and records the replay result's hash · decided (design)
+- **Decision:** Amends D-061 / RFC-0020 R5. A command is written in today's plain form if and
+  only if that line has no `\n` and `from_line` reads it back as the same command. Otherwise it is written as
+  `line_hex <hex of the line>`, and the reader parses the decoded line without trimming it. So `search_next `
+  (an empty pattern) stays plain, and old traces decode as before. `:trace save` refuses a trace unless
+  `Trace::from_text(&t.to_text()) == Ok(t)`. A parse error (for example `TooLarge`) is the existing
+  `Refusal::NoReplay(e)`, and a different trace is a new `Refusal::NotExact { line }`, naming the first line
+  that reads back differently. That also catches losses that move only the cursor, which its text
+  comparison cannot. It then writes `result_hash=<FNV-1a of the replayed buffer text>` in the header.
+  `Trace::replay` checks the hash and returns `ResultMismatch`. `ruse --replay` exits 1 with nothing on
+  stdout, as it does for `HashMismatch`, and the message names the opt-out (delete the token), since later parity fixes make old traces mismatch on
+  purpose. A trace without the token is not checked. The format stays `v1`: the rule "grows by verbs only"
+  becomes "grows by verbs, and by header tokens a `v1` reader ignores". `parse_header` ignores unknown
+  tokens, and no token may start with `v`. Slices 1 (the structural check) and 2 (`line_hex`) land together.
+  Full design: [RFC-0028](../docs/rfc/accepted/RFC-0028-trace-exact-text-and-result-hash.md).
+- **Approved by the maintainer 2026-11-28** (every RFC recommendation):
+  - Exact text: a conditional `line_hex` record, written only when the plain line does not read back as the
+    same command (no per-verb hex twins, no `v2` quoting).
+  - The hash covers the replayed buffer text only (no cursor token, no state digest).
+  - Algorithm: FNV-1a 64, the existing `doc_hash`; no new dependency in `core`.
+  - Recorded as a `result_hash=` header token, filled by `:trace save` after its check.
+  - On a mismatch `--replay` fails like `HashMismatch` (exit 1, nothing on stdout), naming the opt-out.
+  - The format stays `v1`; RFC-0020's "grows by verbs only" gains "and by header tokens a `v1` reader ignores".
+- **Reason:** #721 and #1264. `from_text` and `from_line` trim each line (`trace.rs:149`, `line_form.rs:314`),
+  and eight encoders write free text raw, so `SearchNext("foo ")` reads back as `SearchNext("foo")` and a `\n`
+  splits the line. The save-time check replays the in-memory trace and compares only the text, so it misses
+  this. Probed: `/foo ` gives byte 13 live and byte 8 from the text, with the same text. The trace records
+  no result, so a later build that replays an old trace to another document exits 0. Measured: 0 committed
+  trace files, and 0 inline test traces change.
+- **Re-evaluate if:** a trace `v2` or session persistence lands (fold `line_hex` into its quoting; make the
+  hash mandatory); `Command` free text becomes bytes; traces become a trust input (the hash must become a
+  signature).
+- Refs: [RFC-0028](../docs/rfc/accepted/RFC-0028-trace-exact-text-and-result-hash.md), RFC-0020, RFC-0012,
+  D-061, D-034, D-039, F-022, DET-003, INV-ADDITIVE, INV-FAIL-BOUNDED, DEP-CRYPTO-HASH, #721, #1264.
+
+## D-070 — Acceptance criteria and capabilities are linked to the tests that prove them · decided (design)
+- **Decision:** Each PRD acceptance criterion gets a permanent id `F-NNN.ACk` (`{id, text}` items), k being
+  its current 1-based position frozen at conversion, then never renumbered or reused; the existing positional
+  prose refs (39, 25 with a feature id in 20 files) are checked against their criterion's text and rewritten
+  to `F-0NN.ACN` in code and living docs (a bare `acceptance #N` gets its feature by hand); historical records
+  (DECISIONS.md, accepted RFCs) stay as written. A Rust test is linked
+  only on the test: a `// covers: <F-NNN.ACk | CAP-*>` line directly above a `#[test]`/`#[tokio::test]` fn,
+  collected by a scanner. The spec side carries only non-Rust evidence: a criterion's `verify` may name a
+  parity fixture as `path#fixture-name`, which must exist and not be a known divergence. `gov check` FAILS a
+  marker that cites an unknown id or binds to a non-test or `#[ignore]` fn; a CI slice later cross-checks the
+  runnable `cargo test -- --list` on both platforms. Every criterion of every `status: done` feature is linked
+  or waived; the criteria not yet linked when this lands carry `waiver: legacy-unlinked (#1321)` in PRD.yaml,
+  and the `acceptance_unlinked` bucket in `spec/parity/ratchet.yaml` counts those marks and may only fall.
+  Capabilities are covered through their `prd:` features or a `covers: CAP-*` marker. Measurements and
+  options: [RFC-0029](../docs/rfc/accepted/RFC-0029-spec-test-links.md).
+- **Approved by the maintainer 2026-11-28** (every RFC recommendation): criterion ids `F-NNN.ACk` with k the
+  current position frozen at conversion (1A); Rust links only as test-side `// covers:` markers, spec-side
+  refs only for corpus fixtures, and a named fixture counts as a criterion link (2A); a static gate in
+  `gov check` now and a `cargo test -- --list` cross-check in CI later (3B); the done rule for every done
+  feature with per-criterion `legacy-unlinked` waivers counted by the `acceptance_unlinked` ratchet (4A);
+  capabilities covered through `prd:` or `covers: CAP-*`, the capability `status` field deferred to slice 5
+  (5A). Left open for the slice that needs them: whether a non-legacy (hand-reviewed) waiver is allowed, and
+  whether design requirements join (after #1705).
+- **Re-evaluate if:** a proc-macro or test-harness crate is admitted for another reason (an attribute form
+  becomes free); nextest or stable libtest JSON is adopted (per-test pass evidence becomes cheap); the spec
+  generator (D-022, #982) lands.
+- Refs: [RFC-0029](../docs/rfc/accepted/RFC-0029-spec-test-links.md), D-022, D-033, D-034, RA-TEST-030,
+  RA-RUSE-010, #1321, #1705, #989, #886, #884.

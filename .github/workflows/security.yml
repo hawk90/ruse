@@ -31,8 +31,10 @@ jobs:
           # computed, audit anyway. push/schedule always audit.
           run=1
           if [ "$EVENT" = "pull_request" ]; then
-            if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null; then
-              if git diff --name-only FETCH_HEAD HEAD 2>/dev/null | grep -qE 'Cargo\.(lock|toml)$'; then
+            # Capture the diff first (#1359): a piped `git diff | grep` reads a failed diff as "no change".
+            if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null \
+               && changed=$(git diff --name-only FETCH_HEAD HEAD); then
+              if printf '%s\n' "$changed" | grep -qE 'Cargo\.(lock|toml)$'; then
                 run=1
               else
                 run=0
@@ -45,7 +47,7 @@ jobs:
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.run == '1'
         uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
-          tool: cargo-audit
+          tool: cargo-audit@0.23.0
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.run == '1'
         run: cargo audit
       - if: steps.detect.outputs.have == '0' && steps.detect.outputs.run == '1'

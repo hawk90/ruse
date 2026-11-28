@@ -1,0 +1,84 @@
+# Scheduled-run failure tracker (#1358). A red scheduled run blocks nothing and notifies no one, so this files it:
+# when a watched workflow's SCHEDULED run fails, it opens one tracking issue per workflow (fixed title), or
+# comments on the open one; the next successful scheduled run closes it. Cancelled, skipped and neutral runs
+# change nothing. Manual (`workflow_dispatch`) and PR runs of the watched workflows are ignored: someone is
+# already looking at those.
+#
+# `workflow_run` lets this watch the other workflows without editing them, and it only fires from the copy of this
+# file on the default branch. It runs with the default branch's code and a token that can write issues, so it
+# checks nothing out and passes run metadata to the shell through `env:` only, never through `${{ }}` in `run:`.
+#
+# Test it (the real proof is a failing scheduled run): dispatch this workflow by hand with `conclusion: failure`
+# (opens, then on a second dispatch comments on, the `dispatch-test` issue), then with `conclusion: success`
+# (closes it). It touches only issues whose title names the `workflow` input.
+name: scheduled-failure
+on:
+  workflow_run:
+    # The `name:` of each workflow with a `schedule:` trigger.
+    workflows: [ci, fuzz, oracle, perf, security]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      workflow:
+        description: Workflow name the test issue is filed for
+        type: string
+        default: dispatch-test
+      conclusion:
+        description: Run conclusion to simulate
+        type: choice
+        options: [failure, success]
+        default: failure
+permissions: {}
+concurrency:
+  # One tracker job per watched workflow at a time, so two runs cannot both open an issue.
+  group: scheduled-failure-${{ github.event.workflow_run.name || inputs.workflow }}
+  cancel-in-progress: false
+jobs:
+  track:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.event.workflow_run.name || inputs.workflow }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion || inputs.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          title="fix(ci): the scheduled ${WORKFLOW} workflow fails"
+          # Exact-title match: the search is only a prefilter.
+          existing="$(gh issue list --state open --search "\"${title}\" in:title" --json number,title \
+            | jq -r --arg t "$title" 'map(select(.title == $t)) | first | .number // empty')"
+          case "$CONCLUSION" in
+            failure|timed_out|startup_failure)
+              note="The run ended \`${CONCLUSION}\` at ${HEAD_SHA}: ${RUN_URL}"
+              if [ -n "$existing" ]; then
+                gh issue comment "$existing" --body "Failed again. ${note}"
+                echo "commented on #${existing}"
+              else
+                body="$(printf '%s\n\n%s\n\n%s\n' \
+                  "The scheduled \`${WORKFLOW}\` workflow failed. ${note}" \
+                  "Later failures comment here; the next successful scheduled run closes this issue." \
+                  "Filed by \`.github/workflows/scheduled-failure.yml\` (#1358).")"
+                gh issue create --title "$title" --body "$body" \
+                  --label type/bug --label area/infra --label impact/reliability
+              fi
+              ;;
+            success)
+              if [ -n "$existing" ]; then
+                gh issue close "$existing" --comment "Scheduled run passed at ${HEAD_SHA}: ${RUN_URL}"
+                echo "closed #${existing}"
+              else
+                echo "no open tracking issue for ${WORKFLOW}"
+              fi
+              ;;
+            *)
+              echo "conclusion ${CONCLUSION}: nothing to do"
+              ;;
+          esac
