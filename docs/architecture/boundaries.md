@@ -39,6 +39,8 @@ and this page is the bug. Status words: **yes** / **no** = observed in the code 
 | Command-line and search history rings | input engine | session | `apps/tui/src/input/history.rs` | — |
 | Folds | frontend | per window | `apps/tui/src/folds.rs`, `apps/tui/src/app/fold_cmds.rs` | AGENTS.md "Folds are frontend-only state" |
 | Terminal (PTY) grid | frontend `Terminal` | per terminal | `apps/tui/src/term_buffer.rs`, `apps/tui/src/term_grid.rs` | INV-BUFFER-KIND |
+| File shape (`FileFormat`: line ending, `'bomb'`, `'endofline'`, `'endoffile'`, `'binary'`, encoding) | frontend `Files` registry (`BufferFile.fmt`; `WriteOptions.nofile_fmt` for a buffer without a file); `Document` holds only the decoded text | per buffer | `apps/tui/src/persist/encoding.rs` (`FileFormat`), `apps/tui/src/app/dispatch/files.rs` (`BufferFile`), `apps/tui/src/app/write_opts.rs` (`nofile_fmt`) | F-008, D-066 |
+| Encoding codecs and name table (`FileEncoding`); the only user of `encoding_rs` | frontend persist boundary; always the default (UTF-8, invalid bytes kept) until `'fileencoding'` lands | read / write / journal | `apps/tui/src/persist/codec.rs` | D-066, RFC-0025, `DEP-ENCODING` |
 | LSP diagnostics | frontend LSP coordinator | per buffer | `apps/tui/src/lsp/model.rs`, `apps/tui/src/app/lsp_coordinator.rs` | F-014 |
 | Effective config (layers merged) | frontend config loader | session | `apps/tui/src/config/` | D-062, `spec/config-schema.yaml` |
 | Workspace trust decision | frontend (`LspCoordinator.trusted`, config `TrustStore`) | session / state dir | `apps/tui/src/trust.rs`, `apps/tui/src/app/lsp_coordinator.rs` | D-058, D-062, INV-TRUST-1 |
@@ -56,7 +58,7 @@ for one command, built by `Workspace::lend` and taken apart again (`crates/core/
 | LSP coordinator (rename, code action, format) | `ExCmd::Edits` with `TransactionOrigin::Lsp` | yes, through a transaction | `apps/tui/src/app/lsp_coordinator.rs` | INV-ORIGIN, INV-TRUST-1 |
 | File re-read from disk (`'autoread'`) | a transaction with its own origin | yes, through a transaction | `crates/core/src/transaction.rs` (`TransactionOrigin`) | INV-ORIGIN |
 | LSP / PTY raw I/O | status, diagnostics, grid updates | no; not recorded as `Command`s; `--replay` ignores it | `apps/tui/src/lsp/mod.rs`, `apps/tui/src/term_buffer.rs` (module docs) | F-022 |
-| Terminal / ephemeral buffers | append path | exempt from INV-TXN/INV-UNDO by kind | `apps/tui/src/term_buffer.rs` | INV-BUFFER-KIND |
+| Terminal (PTY) | grid updates only | no; the grid lives outside any `Document`, so the INV-BUFFER-KIND exemption is never exercised (there is no buffer-kind type) | `apps/tui/src/term_buffer.rs` | INV-BUFFER-KIND (not yet enforced) |
 | Plugins | — | no plugin host exists | — | D-004 (deferred by D-039), D-009, INV-PLUGIN-NO-CORE |
 | Frontend | view-only state (scroll, folds, rendering) | no; `Document` never depends on `View` | `apps/tui/src/` | INV-DOC-VIEW |
 
@@ -95,6 +97,7 @@ state directory and unsaved work is not journaled (`apps/tui/src/health.rs`).
 |---|---|---|---|---|
 | Saved file text | yes | the file (atomic temp + rename) | `apps/tui/src/persist/atomic.rs` | CONTRACT-PERSISTENCE |
 | Unsaved edits | yes, as an offer: the recovery prompt restores the disk text plus one undoable change | `<state>/journal/<basename>.<path hash>.rj` (RJ01) | `apps/tui/src/persist/journal.rs`, `apps/tui/src/persist/rj01.rs` | D-064, `spec/contracts/persistence-format.yaml` |
+| File shape of a journaled buffer (`FileFormat`, encoding since RJ01 1.2) | yes, in the journal header and file-format meta records; a record naming an encoding this build lacks is refused | `<state>/journal/` | `apps/tui/src/persist/rj01.rs` (`decode_encoding`) | D-064, D-066 |
 | Discarded journals | yes, archived 14 days / 20 per path | `<state>/journal/archive/` | `apps/tui/src/persist/retention.rs` | D-064 |
 | Legacy `RJS0` sidecar (`<file>.ruse-journal`) | read once, then archived; never written | next to the file | `apps/tui/src/persist/rjs0.rs` | D-064 |
 | Undo history | no (no undofile; recovery does not restore the pre-crash undo tree) | — | — | D-064 ("Re-evaluate if: persistent undo") |
