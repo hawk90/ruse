@@ -160,8 +160,13 @@ impl InputEngine {
         let only_ctrl = key.modifiers - KeyModifiers::SHIFT == KeyModifiers::CONTROL;
         match key.code {
             KeyCode::Char('n' | 'g') if only_ctrl => {
-                if mode == Mode::Normal {
+                if mode == Mode::Normal || mode == Mode::TerminalNormal {
+                    // Terminal-Normal stays where it is (nvim `nt`), and the keys end a
+                    // `t_CTRL-\_CTRL-O` one-shot without resuming Terminal mode (#1733).
                     self.reset();
+                    if mode == Mode::TerminalNormal {
+                        self.finish_terminal_one_shot();
+                    }
                     Feed::Ignored
                 } else {
                     self.action(Command::EnterNormal)

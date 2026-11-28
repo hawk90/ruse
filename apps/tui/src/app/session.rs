@@ -68,7 +68,8 @@ enum Prefix {
     /// A `z` or `C-w` typed under an armed operator cancelled it (Vim's `checkclearop`); the key it would
     /// have taken next is swallowed without effect, as in Vim.
     Swallow,
-    /// Terminal mode `CTRL-\` awaits `CTRL-N`, the Terminal → Terminal-Normal escape (F-011).
+    /// Terminal mode `CTRL-\` awaits `CTRL-N`, the Terminal → Terminal-Normal escape, or `CTRL-O`, one
+    /// Normal command (F-011, #1733).
     #[cfg(unix)]
     TermEscape,
 }

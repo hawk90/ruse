@@ -207,6 +207,8 @@ impl Session {
         {
             return;
         }
+        #[cfg(unix)]
+        let terminal_shot = self.engine.in_terminal_one_shot();
         self.route_key(raw_key, from_replay, frame);
         // A read-only buffer refuses a change in Emacs's words (#619).
         if self.emacs_profile
@@ -232,6 +234,8 @@ impl Session {
             self.ed.status.clear();
             self.run_ex_pieces(vec![line.to_string()], frame);
         }
+        #[cfg(unix)]
+        self.settle_terminal_one_shot(terminal_shot);
     }
 
     pub(super) fn route_key(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {

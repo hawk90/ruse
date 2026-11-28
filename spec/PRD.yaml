@@ -147,7 +147,8 @@ features:
     # Suspended{resume:Insert} and the completing command pops it; t_CTRL-\ CTRL-O is the same construct
     # (KL-OBL-5, #106). gv restores an outlived selection (View.last_visual, F-007); mode is per-window
     # (F-007 per-View mode, fed per keystroke) — #6/#7. KL-OBL-6 (collapse==dispatch) is unit-tested in
-    # keymap.rs. Deferred (post-MVP, not acceptance): live terminal buffers (t_CTRL-\ CTRL-O flow),
+    # keymap.rs. The live t_CTRL-\ CTRL-O flow landed with terminal buffers (#1733: Suspended{resume:
+    # Terminal}, ended by the frontend at the next clean boundary). Deferred (post-MVP, not acceptance):
     # Lang-Arg translate re-dispatch (CONCEPT-LANG-ARG blocks F-027), Emacs depth-9 / Helix depth-2 as
     # shipped profiles (the router proves them by test). READY-WITH-SCOPE (C-INPUT/C-EDITLANG concepts
     # pending) — ships done as F-025 did, the parity chain is closed on census map_mode ids.
@@ -898,7 +899,8 @@ features:
     # (colors incl. truecolor, cursor addressing, erase, alt-screen, resize via TIOCSWINSZ), so full-screen
     # TUIs (vim/htop) render. Slice 2b (partial): scroll regions (DECSTBM) + IL/DL/ICH/DCH/ECH, so region-
     # scrolling apps (less/vim/git-log/tmux) render correctly. Bracketed paste into the child landed with #600
-    # (bracketed when the child set ?2004h, ESC/C1 dropped). REMAINING: scrollback paging UI + mouse (slice
+    # (bracketed when the child set ?2004h, ESC/C1 dropped). `CTRL-\ CTRL-O` runs one Terminal-Normal
+    # command and resumes Terminal mode (#1733). REMAINING: scrollback paging UI + mouse (slice
     # 2b), Windows ConPTY (slice 3), C-SCHEDULER integration (slice 4). Stays `planned`
     # — unix VT emulator, not yet cross-platform + scheduler-integrated. See docs/design/terminal.md.
     status: planned

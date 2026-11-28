@@ -66,7 +66,13 @@ grid **and** `ioctl(TIOCSWINSZ)`s the PTY so the child reflows.
 The terminal is a first-class workspace buffer: `:terminal` creates an empty placeholder `Document`, focuses
 it, enters `Mode::Terminal`. Modes are per-view (VS-OBL-1): `Mode::Terminal` forwards keys to the PTY;
 `CTRL-\ CTRL-N` drops to `Mode::TerminalNormal` (the normal grammar over the empty doc — `:q`, `C-w`, window
-switch); `i`/`a`/`A` resume Terminal.
+switch); `i`/`a`/`A` resume Terminal unless they are the argument of a pending command (`"a`, `fa`).
+`CTRL-\ CTRL-O` (#1733) drops to Terminal-Normal for one command: the engine records a
+`Suspended { resume: Terminal }` return address (the `i_CTRL-O` construct) and keeps the count, register and
+operator alive between keys, and the session resumes Terminal once the engine is back at a clean boundary
+with no session prefix, command line or selection open. So `yy`, `3yk`, `"ayy`, `<Esc>`, `:cmd<CR>` and
+`v…<Esc>` each return to Terminal mode, as in nvim 0.12.6 (mode `ntT`, then `t`). `CTRL-\ CTRL-N` in
+Terminal-Normal stays there and ends a one-shot without resuming; focus leaving the terminal ends it too.
 
 **Slice 2b (partly landed):** scroll regions (`DECSTBM`) + insert/delete line (`IL`/`DL`) + insert/delete/erase
 char (`ICH`/`DCH`/`ECH`) are in, so region-scrolling apps (less, vim, git log, tmux) render correctly. Still

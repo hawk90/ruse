@@ -336,8 +336,8 @@ impl Session {
             ..
         } = self;
         // F-011 terminal routing: a terminal buffer owns the keystream. In Terminal mode keys forward to the
-        // PTY child, except `CTRL-\ CTRL-N` which drops to Terminal-Normal. In Terminal-Normal, `i`/`a`/`A`
-        // resume Terminal; every other key falls through to the normal grammar (so `:q`, `C-w`, etc. work) —
+        // PTY child, except `CTRL-\ CTRL-N` which drops to Terminal-Normal and `CTRL-\ CTRL-O` which drops
+        // there for one command. In Terminal-Normal, `i`/`a`/`A` resume Terminal; every other key falls through to the normal grammar (so `:q`, `C-w`, etc. work) —
         // the placeholder document is empty, so slice 1 has no scrollback paging (that arrives with the grid).
         #[cfg(unix)]
         {
@@ -349,6 +349,13 @@ impl Session {
                             *prefix = Prefix::None;
                             if is_ctrl(key, 'n') {
                                 self.ed.run(Command::EnterTerminalNormal);
+                                return true;
+                            }
+                            // `t_CTRL-\_CTRL-O` (#1733): Terminal-Normal for one command, with Terminal
+                            // as the return address; `settle_terminal_one_shot` resumes it.
+                            if is_ctrl(key, 'o') {
+                                self.ed.run(Command::EnterTerminalNormal);
+                                self.engine.begin_terminal_one_shot();
                                 return true;
                             }
                             // Not the escape: the swallowed `CTRL-\` is dropped; fall through to send `key`.
@@ -368,8 +375,12 @@ impl Session {
                     // falls through to the normal editor grammar (read-only over an empty doc).
                     Mode::TerminalNormal
                         if matches!(key.code, KeyCode::Char('i' | 'a' | 'A'))
-                            && !crate::input::is_chord(key) =>
+                            && !crate::input::is_chord(key)
+                            // Not the argument of a pending command: `"a`, `fa`, `ma`, `ya` (#1733).
+                            && self.engine.pending() == Pending::Base =>
                     {
+                        // Inside a one-shot, `i` is its command and resumes Terminal itself.
+                        self.engine.finish_terminal_one_shot();
                         self.ed.run(Command::EnterTerminal);
                         return true;
                     }
@@ -378,6 +389,35 @@ impl Session {
             }
         }
         false
+    }
+
+    /// After a key, finish a `t_CTRL-\_CTRL-O` one-shot (#1733) whose command is complete: nvim returns
+    /// to Terminal mode once the Normal command ends — after `yy`, `3yk`, `"ayy`, `<Esc>`, a `:` line's
+    /// `<CR>`, or a `v` selection's `<Esc>` (verified against nvim 0.12.6). A count, register, operator,
+    /// open command line, session prefix or live selection keeps it waiting. `armed` is whether the
+    /// one-shot was in flight before the key, so the `CTRL-O` that armed it does not finish it.
+    #[cfg(unix)]
+    pub(super) fn settle_terminal_one_shot(&mut self, armed: bool) {
+        if !armed || !self.engine.in_terminal_one_shot() {
+            return;
+        }
+        if !self.terminals.contains_key(&self.ed.ws.focused_buffer()) {
+            // Focus left the terminal (`CTRL-W w`): there is no Terminal mode to resume here.
+            self.engine.finish_terminal_one_shot();
+            return;
+        }
+        let idle = self.engine.at_clean_boundary()
+            && matches!(self.prefix, Prefix::None)
+            && !self.overlay_open();
+        match self.ed.ws.focused().view.mode() {
+            Mode::Terminal => self.engine.finish_terminal_one_shot(),
+            // A selection's `<Esc>` lands in Normal on a terminal buffer; Terminal resumes from it too.
+            Mode::TerminalNormal | Mode::Normal if idle => {
+                self.engine.finish_terminal_one_shot();
+                self.ed.run(Command::EnterTerminal);
+            }
+            _ => {}
+        }
     }
 
     /// The input engine's turn: every key no owner took, command-line keys included, and what its `Feed`
