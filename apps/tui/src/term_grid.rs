@@ -621,11 +621,24 @@ impl Grid {
 }
 
 /// Copy the top-left overlap of `old` into a fresh `rows × cols` screen (blanks fill the rest). No reflow — good enough for slice 2.
+/// A wide glyph left without its right half becomes a blank with the glyph's pen, as xterm and VTE do, so no
+/// lone left half survives (#1785): one whose right half falls past the new right edge, and one a 1-column
+/// screen held alone (all `write_char` can do there) once the screen widens. A 1-column screen keeps it.
 fn remap(old: &[Row], rows: u16, cols: u16) -> Vec<Row> {
     let mut out = blank_screen(rows, cols);
     for (dst, src) in out.iter_mut().zip(old) {
         for (d, s) in dst.iter_mut().zip(src) {
             d.clone_from(s);
+        }
+        if cols == 1 {
+            continue;
+        }
+        for c in 0..dst.len() {
+            let wide = !dst[c].continuation
+                && dst[c].text.chars().next().and_then(UnicodeWidthChar::width) == Some(2);
+            if wide && !dst.get(c + 1).is_some_and(|n| n.continuation) {
+                dst[c] = GridCell::blank(dst[c].style);
+            }
         }
     }
     out
@@ -1439,6 +1452,17 @@ mod tests {
                 let (rows, cols) = g.size();
                 let (cy, cx) = g.cursor();
                 proptest::prop_assert!(cy < rows && cx < cols, "cursor ({cy},{cx}) outside {rows}x{cols}");
+                // No lone half of a wide glyph, after a resize too (#1785).
+                for (r, row) in g.cells.iter().enumerate() {
+                    for (c, cell) in row.iter().enumerate() {
+                        let wide = cell.text.chars().next().and_then(UnicodeWidthChar::width) == Some(2);
+                        let next_cont = row.get(c + 1).is_some_and(|n| n.continuation);
+                        proptest::prop_assert!(!cell.continuation || (c > 0 && !row[c - 1].continuation),
+                            "orphan continuation at ({r},{c})");
+                        proptest::prop_assert!(!wide || next_cont || c + 1 == row.len() && row.len() == 1,
+                            "lone left half at ({r},{c})");
+                    }
+                }
                 for r in 0..rows {
                     for c in 0..cols {
                         let _ = g.cell(r, c);
