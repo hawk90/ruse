@@ -8,7 +8,9 @@
 //! The wait can be cancelled (#855, scheduler.md §8): while the shell runs, the editor thread polls the
 //! user-interrupt checkpoint ([`ruse_core::interrupt::breakcheck`], CTRL-C in the TUI). On an interrupt the
 //! shell's whole process group (it runs in its own) gets `SIGTERM`, then `SIGKILL` if it is still there
-//! after 2 s, as in nvim (#1748), and is reaped ([`crate::reap::SHELL`]); the helper returns
+//! after 2 s, as in nvim (#1748), and is reaped ([`crate::reap::SHELL`]). Unlike nvim, a group member
+//! that outlives the shell (one that ignores `SIGTERM`) is SIGKILLed when the grace runs out, without the
+//! cancel waiting for it ([`crate::reap::end_group`], #1787). The helper returns
 //! [`ShellError::Interrupted`], so a cancelled filter or read leaves the buffer as it was. The captured
 //! output is bounded too: past [`MAX_OUTPUT`] the command is killed and its output kept up to the cap,
 //! reported as truncated; a filter, whose output replaces lines, refuses a truncated result instead.
@@ -257,10 +259,11 @@ fn run(cmd: &str, input: Option<&[u8]>, limit: usize) -> Result<ShellOutput, She
 
 /// End the shell's process group (the shell leads it) and reap the shell, so no zombie stays behind:
 /// `SIGTERM` first, so the command can clean up, then `SIGKILL` after the grace, as nvim does (#1748).
-/// Returns the shell's exit status, `None` when it was given up on.
+/// Returns as soon as the shell exits; whatever is left of its group is SIGKILLed when the grace runs out
+/// (#1787). Returns the shell's exit status, `None` when it was given up on.
 #[cfg(unix)]
 fn stop(pid: libc::pid_t) -> Option<std::process::ExitStatus> {
-    crate::reap::end(pid, crate::reap::SHELL)
+    crate::reap::end_group(pid, crate::reap::SHELL)
 }
 
 #[cfg(not(unix))]
@@ -501,6 +504,49 @@ mod tests {
         assert!(
             took >= Duration::from_secs(2) && took < Duration::from_secs(6),
             "SIGKILL comes after the 2 s grace: {took:?}"
+        );
+    }
+
+    /// #1787: a grandchild in the command's group that ignores SIGTERM does not outlive the cancel: the
+    /// shell exits on SIGTERM at once, the cancel returns, and the group is SIGKILLed when the grace runs
+    /// out. nvim leaves such a process running; ruse does not.
+    #[test]
+    fn an_interrupt_kills_a_grandchild_that_ignores_sigterm() {
+        let dir = std::env::temp_dir().join(format!("ruse-shell-1787-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pidfile = dir.join("pid");
+        let _ = std::fs::remove_file(&pidfile);
+        // The subshell ignores SIGTERM and execs `sleep`, which keeps the ignored disposition.
+        let cmd = format!(
+            "(trap '' TERM; exec sleep 30) & echo $! > '{}'; wait",
+            pidfile.display()
+        );
+        let (got, took) = interrupted(|| capture(&cmd));
+        assert!(matches!(got, Err(ShellError::Interrupted)), "{got:?}");
+        assert!(
+            took < Duration::from_secs(2),
+            "the shell exited on SIGTERM, so the cancel does not wait out the grace: {took:?}"
+        );
+        let pid: libc::pid_t = std::fs::read_to_string(&pidfile)
+            .expect("the shell wrote its job's pid")
+            .trim()
+            .parse()
+            .unwrap();
+        let until = Instant::now() + Duration::from_secs(5);
+        // SAFETY: signal 0 checks for existence only; nothing is delivered.
+        while unsafe { libc::kill(pid, 0) } == 0 && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // SAFETY: as above.
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        if alive {
+            // SAFETY: `pid` is the test's own grandchild; do not leak it past a failure.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            !alive,
+            "the grandchild {pid} that ignores SIGTERM survived the cancel"
         );
     }
 
