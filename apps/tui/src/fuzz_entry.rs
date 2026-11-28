@@ -12,7 +12,7 @@ pub fn term_grid(data: &[u8]) {
     let rows = u16::from(size.first().copied().unwrap_or(24) % 40) + 1;
     let cols = u16::from(size.get(1).copied().unwrap_or(80) % 120) + 1;
     let mut g = crate::term_grid::Grid::new(rows, cols);
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::term_grid::ChunkParser::new();
     for chunk in rest.split(|&b| b == 0xFF) {
         parser.advance(&mut g, chunk);
         let (r, c) = g.size();

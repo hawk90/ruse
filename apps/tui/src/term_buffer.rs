@@ -10,10 +10,8 @@
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
-use vte::Parser;
-
 use crate::pty::{Pty, UnixPty};
-use crate::term_grid::Grid;
+use crate::term_grid::{ChunkParser, Grid};
 
 /// How much output one [`Terminal::drain`] may feed the VT parser (#770). A child that floods output (`yes`)
 /// no longer keeps the event loop in `drain`: the rest waits for the next tick, so keys (CTRL-C, `:q!`) still
@@ -67,7 +65,12 @@ impl Output {
     /// spent; a tick always feeds at least one slice when output is pending, so a flood still progresses.
     /// A disconnect appends `[process exited]` once and sets `exited`; it is only seen after the backlog,
     /// so the last output lands first. `true` if anything changed.
-    fn drain_into(&mut self, parser: &mut Parser, grid: &mut Grid, budget: DrainBudget) -> bool {
+    fn drain_into(
+        &mut self,
+        parser: &mut ChunkParser,
+        grid: &mut Grid,
+        budget: DrainBudget,
+    ) -> bool {
         let start = Instant::now();
         let mut fed = 0usize;
         let mut changed = false;
@@ -108,7 +111,7 @@ impl Output {
 pub struct Terminal {
     pty: UnixPty,
     out: Output,
-    parser: Parser,
+    parser: ChunkParser,
     grid: Grid,
 }
 
@@ -119,7 +122,7 @@ impl Terminal {
         Ok(Terminal {
             pty,
             out: Output::new(rx),
-            parser: Parser::new(),
+            parser: ChunkParser::new(),
             grid: Grid::new(rows, cols),
         })
     }
@@ -200,7 +203,7 @@ mod tests {
             b"\x1b[200~a[201~rmb\x1b[201~"
         );
         let mut grid = Grid::new(4, 10);
-        let mut parser = Parser::new();
+        let mut parser = ChunkParser::new();
         parser.advance(&mut grid, b"\x1b[?1049;2004h");
         assert!(grid.bracketed_paste());
         parser.advance(&mut grid, b"\x1b[?2004l");
@@ -227,7 +230,7 @@ mod tests {
             time: Duration::from_secs(3600),
         };
         let per_tick = budget.bytes / crate::pty::READ_CHUNK;
-        let (mut parser, mut grid) = (Parser::new(), Grid::new(4, 10));
+        let (mut parser, mut grid) = (ChunkParser::new(), Grid::new(4, 10));
 
         // One tick takes exactly the budget's worth and leaves the rest queued.
         let mut out = backlog(3 * per_tick);
@@ -253,7 +256,7 @@ mod tests {
             bytes: DRAIN_BUDGET.bytes,
             time: Duration::ZERO,
         };
-        let (mut parser, mut grid) = (Parser::new(), Grid::new(4, 10));
+        let (mut parser, mut grid) = (ChunkParser::new(), Grid::new(4, 10));
         let mut out = backlog(2);
         assert!(out.drain_into(&mut parser, &mut grid, budget));
         assert_eq!(out.at, DRAIN_SLICE, "one slice per tick");

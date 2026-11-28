@@ -12,12 +12,11 @@
 use crossterm::style::Color;
 use proptest::prelude::*;
 use ruse_tui::screen::CellStyle;
-use ruse_tui::term_grid::Grid;
-use vte::Parser;
+use ruse_tui::term_grid::{ChunkParser, Grid};
 
 fn feed(rows: u16, cols: u16, bytes: &[u8]) -> Grid {
     let mut g = Grid::new(rows, cols);
-    Parser::new().advance(&mut g, bytes);
+    ChunkParser::new().advance(&mut g, bytes);
     g
 }
 
@@ -174,16 +173,46 @@ fn lone_continuation_byte_prints_a_replacement() {
     check(1, 4, b"\x80a", &["\u{fffd}a  "], (0, 2));
 }
 
-/// Found by `chunk_split_is_equivalent_to_one_feed`: `é` cut between its two bytes, then a lone 0x80
-/// later in the stream, gives a different grid than one feed.
-#[test]
-#[ignore = "#1750: a split UTF-8 sequence followed by a lone C1 byte differs from one feed"]
-fn split_utf8_then_lone_c1_matches_one_feed() {
-    let bytes = b"\xc3\xa9 \x80";
+// --- chunk-split regressions (#1765), found by `chunk_split_is_equivalent_to_one_feed` ---
+//
+// vte 0.15 completes a UTF-8 sequence cut across `advance` calls from a lookahead, and skips the bytes
+// after the char that the lookahead held. `ChunkParser` keeps the cut sequence back instead.
+
+fn assert_split_matches_one_feed(rows: u16, cols: u16, bytes: &[u8], cuts: &[usize]) {
     assert_eq!(
-        snapshot(&feed_split(1, 2, bytes, &[1])),
-        snapshot(&feed(1, 2, bytes))
+        snapshot(&feed_split(rows, cols, bytes, cuts)),
+        snapshot(&feed(rows, cols, bytes)),
+        "{:?} cut at {cuts:?}",
+        String::from_utf8_lossy(bytes)
     );
+}
+
+/// `é` cut between its two bytes lost the LF after it, so `中` overwrote the row that holds `é`.
+#[test]
+fn split_utf8_keeps_the_linefeed_after_it() {
+    let bytes = "xyz\x1bM\x1b[H\x1b[?38:5:200H\n\x1b]0;t\x07xyz\u{e9}\n\u{4e2d}\x1b[?H".as_bytes();
+    let cut = bytes.iter().position(|&b| b == 0xc3).expect("é") + 1;
+    assert_split_matches_one_feed(1, 3, bytes, &[cut]);
+}
+
+/// NBSP cut between its two bytes lost the CR after it, so the U+FFFD for the lone 0xA0 landed one cell right.
+#[test]
+fn split_utf8_keeps_the_carriage_return_after_it() {
+    let bytes = b"\x1b[?38:5:200;H\xc2\xa0\r\xa0\x00\x00a";
+    assert_eq!(screen(&feed(1, 2, bytes)), ["\u{fffd}a"]);
+    assert_split_matches_one_feed(1, 2, bytes, &[14]);
+}
+
+/// `é` cut between its two bytes lost the space after it (then a lone 0x80 follows).
+#[test]
+fn split_utf8_then_lone_c1_matches_one_feed() {
+    assert_split_matches_one_feed(1, 2, b"\xc3\xa9 \x80", &[1]);
+}
+
+/// A U+0085 (NEL) cut between its two bytes was printed; one feed executes it as a C1 control.
+#[test]
+fn split_utf8_c1_control_is_executed_as_in_one_feed() {
+    assert_split_matches_one_feed(1, 4, b"a\xc2\x85b", &[2]);
 }
 
 // --- SGR pen fixtures ---
@@ -317,7 +346,7 @@ fn feed_split(rows: u16, cols: u16, bytes: &[u8], cuts: &[usize]) -> Grid {
     cuts.sort_unstable();
     cuts.dedup();
     let mut g = Grid::new(rows, cols);
-    let mut parser = Parser::new();
+    let mut parser = ChunkParser::new();
     let mut start = 0;
     for cut in cuts.into_iter().chain(std::iter::once(bytes.len())) {
         parser.advance(&mut g, &bytes[start..cut]);
@@ -390,10 +419,6 @@ proptest! {
         cuts in proptest::collection::vec(any::<usize>(), 0..12),
     ) {
         let bytes = pieces.concat();
-        // #1750: a lone 0x80..=0x9F byte runs as an 8-bit C1 control, and after a UTF-8 sequence split
-        // across feeds it changes the grid (see `split_utf8_then_lone_c1_matches_one_feed`). Streams with a
-        // byte in that range that is not valid UTF-8 are skipped until #1750 is fixed.
-        prop_assume!(std::str::from_utf8(&bytes).is_ok() || !bytes.iter().any(|b| (0x80..=0x9f).contains(b)));
         let whole = snapshot(&feed(size.0, size.1, &bytes));
         let split = snapshot(&feed_split(size.0, size.1, &bytes, &cuts));
         prop_assert_eq!(whole, split);
