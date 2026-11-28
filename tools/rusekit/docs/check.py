@@ -12,12 +12,15 @@ the delta, biased (like spec-validate) toward ZERO false positives:
     (a split moved the code). Scanned in docs/ and spec/ Markdown AND in spec/**/*.yaml, where
     `evidence:`/`source:` lists cite code. Dated records quote the tree as it was and are
     skipped: docs/reviews/, accepted/rejected RFCs, and the spec/DECISIONS.md log.
+  * docs/contributing/module-layout.md re-measured (rusekit.docs.module_layout, #1689): a structural
+    mismatch (the L2 `x/mod.rs` set, the T3 directory list, the hub set) -> ERROR; a stale volatile
+    tally -> WARN. `--write` rewrites the stale numbers.
   * a `path.rs::name` evidence reference whose file exists but defines no `name` -> WARN.
     Rule: only the FIRST `::` segment is checked, and it must appear in the file as
     `fn|struct|enum|trait|type|const|static|mod|union|macro_rules! <name>` (a plain grep, no
     parsing), so `file.rs::Type::method` checks `Type`. A non-`.rs` path is not checked.
 
-Only same-file broken anchors fail the command; the rest is advisory.
+Only same-file broken anchors and module-layout structure mismatches fail the command; the rest is advisory.
 """
 from __future__ import annotations
 
@@ -28,6 +31,7 @@ import re
 import sys
 
 from rusekit import repo, render, contract  # noqa: E402
+from rusekit.docs import module_layout  # noqa: E402
 
 # Subtrees where normative words are legitimate (specs of contracts, not explanations).
 LEAK_SKIP = ("docs/rfc/", "docs/invariants/", "docs/anti-patterns/", "docs/protocols/")
@@ -140,6 +144,8 @@ def _prose_lines(text: str):
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ruse docs check")
     ap.add_argument("--max-warn", type=int, default=40, help="cap warnings printed")
+    ap.add_argument("--write", action="store_true",
+                    help=f"rewrite stale counts in {module_layout.DOC} before checking")
     args = ap.parse_args(argv)
 
     marker = contract.load_kinds().get("generated_marker")
@@ -151,8 +157,7 @@ def main(argv: list[str]) -> int:
                    + glob.glob(repo.path("spec/**/*.md"), recursive=True))
     spec_yaml = sorted(glob.glob(repo.path("spec/**/*.yaml"), recursive=True))
 
-    errors: list[str] = []
-    warns: list[str] = []
+    errors, warns = module_layout.run(repo.ROOT, write=args.write)
     generated: list[str] = []
     slug_cache: dict[str, set[str]] = {}
 
@@ -247,7 +252,7 @@ def main(argv: list[str]) -> int:
             print(f"      … and {len(warns) - args.max_warn} more")
     print()
     if errors:
-        render.fail(f"docs-check: FAIL ({len(errors)} broken anchors)")
+        render.fail(f"docs-check: FAIL ({len(errors)} errors)")
         return 1
     render.ok(f"docs-check: PASS" + (f" ({len(warns)} warnings)" if warns else ""))
     return 0
