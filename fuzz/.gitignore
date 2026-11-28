@@ -1,4 +1,6 @@
 target
-corpus
+# Seed corpora are tracked (#1319): a handful of named seeds per target, each one kept by `cargo fuzz cmin`.
+# The inputs a fuzz run adds are named by their SHA-1 and stay local; rename one to commit it as a seed.
+corpus/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]
 artifacts
 coverage

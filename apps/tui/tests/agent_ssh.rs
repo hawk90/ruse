@@ -9,7 +9,7 @@ use ruse_tui::remote::client::AgentClient;
 use ruse_tui::remote::transport;
 
 #[test]
-#[ignore = "needs a reachable SSH host with `ruse` on PATH (set RUSE_SSH_TEST_HOST)"]
+#[ignore = "needs a reachable SSH host with `ruse` on PATH (set RUSE_SSH_TEST_HOST); quarantined in tests/quarantine.yaml (#916)"]
 fn ssh_handshakes_and_reads_a_remote_file() {
     let Ok(host) = std::env::var("RUSE_SSH_TEST_HOST") else {
         // Without a target this smoke cannot prove anything — skip rather than assert on nothing.

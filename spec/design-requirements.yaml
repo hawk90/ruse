@@ -315,7 +315,7 @@ items:
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
     notes: >-
-      RJ01 records (RFC-0023 §2, D-064): magic, schema_ver 1.0, kind, CRC32C over the header and the
+      RJ01 records (RFC-0023 §2, D-064): magic, schema_ver 1.2, kind, CRC32C over the header and the
       payload, end magic. Records are appended; compaction and a journal changed under the writer rewrite it
       whole by temp + fsync + rename. Replay stops at the first bad record and reports the lost tail.
   - id: PERSIST-004
