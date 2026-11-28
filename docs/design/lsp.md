@@ -1,3 +1,14 @@
+---
+doc: lsp
+project: ruse
+title: "Built-in LSP (F-014) — design"
+summary: >
+  Design of the built-in LSP client (F-014): the client and normalized model (CAP-LSP-COORD), the codec
+  (CAP-LSP-CODEC), and the landed and planned slices.
+audience: [maintainers, contributors, llm-agents]
+status: draft
+---
+
 # Built-in LSP (F-014) — design
 
 Status: **slices 1–7 landed** (local diagnostics + hover/goto + format + rename + completion + references + code-actions, cross-platform; orchestration in `app/lsp_coordinator.rs`). Owner capabilities:

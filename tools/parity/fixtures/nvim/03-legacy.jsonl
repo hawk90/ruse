@@ -1,0 +1,1066 @@
+# nvim oracle fixture inputs (tools/parity/oracle.py, #1590): one JSON object per line, `#` comments.
+# Fixtures that predate the split, in their original order. Edit in place; add NEW fixtures to i<issue>.jsonl.
+
+# --- #618 text formatting: auto-wrap while typing ('textwidth', 'wrapmargin', 'formatoptions'), the
+#     'comments' leaders, J with 'joinspaces' and fo-j, gq/gw, fo r/o, gc with 'commentstring',
+#     'formatprg', and the #617 leftovers ('equalprg', ^ CTRL-D, <Up> off an autoindent, = with 'pi',
+#     'cinwords'). nvim's window is 80 columns, ruse's headless view too ('wrapmargin'). --------------
+{"name": "tw_counted_insert_wraps", "lines": [""], "keys": ":set tw=10<CR>8ia b<Esc>"}
+{"name": "tw_wraps_while_typing", "lines": [""], "keys": ":set tw=10<CR>ihello world foo bar<Esc>"}
+{"name": "tw_fo_without_t_does_not_wrap", "lines": [""], "keys": ":set tw=10 fo-=t<CR>ihello world foo bar<Esc>"}
+{"name": "tw_wrap_keeps_autoindent", "lines": ["  x"], "keys": ":set tw=10<CR>A hello world foo<Esc>"}
+{"name": "tw_wrap_noai_column_zero", "lines": ["  x"], "keys": ":set tw=10 noai<CR>A hello world foo<Esc>"}
+{"name": "tw_wrap_continues_hash_comment", "lines": ["# x"], "keys": ":set tw=10<CR>A hello world foo<Esc>"}
+{"name": "tw_wrap_continues_slash_comment", "lines": ["// x"], "keys": ":set tw=12<CR>A hello world foo<Esc>"}
+{"name": "tw_wrap_fo_without_c_drops_leader", "lines": ["// x"], "keys": ":set tw=12 fo-=c<CR>A hello world foo<Esc>"}
+{"name": "tw_wrap_c_comment_middle", "lines": ["/* x"], "keys": ":set tw=12<CR>A hello world foo<Esc>"}
+{"name": "tw_long_word_moves_down", "lines": ["x"], "keys": ":set tw=10<CR>A aaaaaaaaaaaaaaa<Esc>"}
+{"name": "tw_fo_l_keeps_long_line", "lines": ["aaaaaaaaaaaaaaaa"], "keys": ":set tw=10 fo+=l<CR>A b c<Esc>"}
+{"name": "tw_long_line_breaks_without_l", "lines": ["aaaaaaaaaaaaaaaa"], "keys": ":set tw=10<CR>A b c<Esc>"}
+{"name": "tw_one_letter_words", "lines": [""], "keys": ":set tw=10<CR>ia b c d e f g h i j k<Esc>"}
+{"name": "tw_fo_1_keeps_one_letter_words", "lines": [""], "keys": ":set tw=10 fo+=1<CR>ia b c d e f g h i j k<Esc>"}
+{"name": "tw_two_spaces_after_period", "lines": [""], "keys": ":set tw=10<CR>ifoo.  bar baz qux<Esc>"}
+{"name": "tw_insert_before_text_no_wrap", "lines": ["hello world"], "keys": ":set tw=8<CR>0ifoo <Esc>"}
+{"name": "tw_typing_blank_does_not_wrap", "lines": [""], "keys": ":set tw=5<CR>iabcdefg h<Esc>"}
+{"name": "tw_wrap_mid_line", "lines": ["aaa bbb ccc"], "keys": ":set tw=10<CR>$ix<Esc>"}
+{"name": "tw_wrap_tab_indent", "lines": ["\tx"], "keys": ":set tw=12 ts=8 noet<CR>A aa bb<Esc>"}
+{"name": "tw_wrap_multibyte", "lines": ["ééé ééé"], "keys": ":set tw=8<CR>A éé<Esc>"}
+{"name": "tw_fo_2_insert_no_effect", "lines": ["  x", "    y"], "keys": ":set tw=10 fo+=2<CR>A aaa bbb ccc<Esc>"}
+{"name": "tw_fo_n_list_indent", "lines": ["1. x"], "keys": ":set tw=10 fo+=n<CR>A aaa bbb ccc<Esc>"}
+{"name": "tw_dot_repeats_wrapping_insert", "lines": ["", "z"], "keys": ":set tw=8<CR>ia b c d e<Esc>j."}
+{"name": "wm_with_tw_uses_tw", "lines": ["x"], "keys": ":set tw=10 wm=5<CR>A aaa bbb ccc<Esc>"}
+{"name": "wm_wraps_before_the_edge", "lines": ["x"], "keys": ":set wm=70<CR>A aaa bbb ccc<Esc>"}
+{"name": "wm_narrow_width", "lines": ["x"], "keys": ":set wm=74<CR>A aaa bbb ccc<Esc>"}
+{"name": "wm_gq_width", "lines": ["aaa bbb ccc ddd"], "keys": ":set wm=74<CR>gqq"}
+{"name": "js_join_after_period", "lines": ["a.", "b"], "keys": ":set js<CR>J"}
+{"name": "js_join_after_question", "lines": ["a?", "b"], "keys": ":set js<CR>J"}
+{"name": "js_join_after_period_space", "lines": ["a. ", "b"], "keys": ":set js<CR>J"}
+{"name": "js_gJ_adds_nothing", "lines": ["a.", "b"], "keys": ":set js<CR>gJ"}
+{"name": "js_off_one_space", "lines": ["a.", "b"], "keys": "J"}
+{"name": "fo_j_removes_leader", "lines": ["// a", "// b"], "keys": "J"}
+{"name": "fo_j_off_keeps_leader", "lines": ["// a", "// b"], "keys": ":set fo-=j<CR>J"}
+{"name": "fo_j_gJ_removes_leader", "lines": ["// a", "// b"], "keys": "gJ"}
+{"name": "fo_j_trailing_comment", "lines": ["x // a", "// b"], "keys": "J"}
+{"name": "fo_j_not_after_code", "lines": ["a", "// b"], "keys": "J"}
+{"name": "fo_j_three_part_comment", "lines": ["/* a", " * b", " */"], "keys": "3J"}
+{"name": "fo_j_hash_count", "lines": ["# a", "# b", "# c"], "keys": "3J"}
+{"name": "fo_j_indented_leader", "lines": ["// a", "  // b"], "keys": "J"}
+{"name": "join_empty_part_after_space", "lines": ["a ", "", "b"], "keys": "3J"}
+{"name": "fo_M_no_space_multibyte", "lines": ["あ", "い"], "keys": ":set fo+=M<CR>J"}
+{"name": "fo_B_no_space_between_multibyte", "lines": ["あ", "い"], "keys": ":set fo+=B<CR>J"}
+{"name": "fo_B_space_to_ascii", "lines": ["あ", "b"], "keys": ":set fo+=B<CR>J"}
+{"name": "gq_line_to_tw", "lines": ["aaa bbb ccc ddd eee fff"], "keys": ":set tw=10<CR>gqq"}
+{"name": "gw_line_keeps_cursor", "lines": ["aaa bbb ccc ddd eee fff"], "keys": ":set tw=10<CR>wwgww"}
+{"name": "gq_comment_keeps_leader", "lines": ["// aaa bbb ccc ddd eee fff"], "keys": ":set tw=12<CR>gqq"}
+{"name": "gq_joins_comment_paragraph", "lines": ["// aaa bbb", "// ccc ddd eee fff"], "keys": ":set tw=12<CR>gqj"}
+{"name": "gq_fo_without_q_ignores_leader", "lines": ["// aaa bbb", "// ccc ddd eee fff"], "keys": ":set tw=12 fo-=q<CR>gqj"}
+{"name": "gq_keeps_first_line_indent", "lines": ["  aaa bbb ccc", "ddd eee fff"], "keys": ":set tw=10<CR>gqj"}
+{"name": "gq_fo_2_second_line_indent", "lines": ["  aaa bbb ccc", "    ddd eee fff"], "keys": ":set tw=10 fo+=2<CR>gqj"}
+{"name": "gq_fo_n_list", "lines": ["1. aaa bbb ccc ddd eee"], "keys": ":set tw=10 fo+=n<CR>gqq"}
+{"name": "gq_no_n_list", "lines": ["1. aaa bbb ccc ddd eee"], "keys": ":set tw=10<CR>gqq"}
+{"name": "gq_fo_n_two_items", "lines": ["1. aaa bbb", "2. ccc ddd"], "keys": ":set tw=40 fo+=n<CR>gqj"}
+{"name": "gq_joinspaces", "lines": ["aaa bbb.", "ccc ddd"], "keys": ":set js tw=40<CR>gqj"}
+{"name": "gq_one_space", "lines": ["aaa bbb.", "ccc ddd"], "keys": ":set tw=40<CR>gqj"}
+{"name": "gq_paragraphs", "lines": ["aaa", "", "bbb", "ccc"], "keys": ":set tw=40<CR>gqG"}
+{"name": "gq_leader_change_ends_paragraph", "lines": ["// a", "# b"], "keys": ":set tw=40<CR>gqj"}
+{"name": "gq_c_comment_block", "lines": ["/*", " * aaa", " * bbb", " */"], "keys": ":set tw=40<CR>gqG"}
+{"name": "gq_ap_lands_below", "lines": ["aaa bbb", "ccc", "", "x"], "keys": ":set tw=40<CR>gqap"}
+{"name": "gq_brace_end_adjusted", "lines": ["aaa bbb", "ccc", "", "x"], "keys": ":set tw=40<CR>gq}"}
+{"name": "gw_ap_keeps_cursor", "lines": ["aaa bbb", "ccc ddd"], "keys": ":set tw=5<CR>jwgwap"}
+{"name": "gq_visual", "lines": ["aaa bbb ccc", "ddd"], "keys": ":set tw=8<CR>Vjgq"}
+{"name": "gq_et_rebuilds_tab_indent", "lines": ["\taaa bbb ccc"], "keys": ":set tw=12 ts=4 et<CR>gqq"}
+{"name": "gq_long_line_tw_default", "lines": ["a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a "], "keys": "gqq"}
+{"name": "fo_o_continues_slash_comment", "lines": ["// a"], "keys": ":set fo+=o<CR>ob<Esc>"}
+{"name": "fo_o_O_continues_comment", "lines": ["// a"], "keys": ":set fo+=o<CR>Ob<Esc>"}
+{"name": "fo_r_cr_continues_comment", "lines": ["// a"], "keys": ":set fo+=r<CR>A<CR>b<Esc>"}
+{"name": "fo_default_cr_no_leader", "lines": ["// a"], "keys": "A<CR>b<Esc>"}
+{"name": "fo_ro_c_comment_middle", "lines": ["/* a"], "keys": ":set fo+=ro<CR>ob<Esc>"}
+{"name": "fo_ro_middle_continues", "lines": ["/* a", " * b"], "keys": ":set fo+=ro<CR>jA<CR>c<Esc>"}
+{"name": "fo_ro_auto_end", "lines": ["/* a", " * b"], "keys": ":set fo+=ro<CR>jA<CR>/c<Esc>"}
+{"name": "fo_ro_closed_comment_no_leader", "lines": ["/* a */"], "keys": ":set fo+=ro<CR>ob<Esc>"}
+{"name": "fo_ro_hash_indented", "lines": ["  # a"], "keys": ":set fo+=ro<CR>ob<Esc>"}
+{"name": "fo_ro_dash_first_line_only", "lines": ["- a"], "keys": ":set fo+=ro<CR>ob<Esc>"}
+{"name": "fo_ro_dash_O_no_leader", "lines": ["- a"], "keys": ":set fo+=ro<CR>Ob<Esc>"}
+{"name": "fo_ro_quote_leader", "lines": ["> a"], "keys": ":set fo+=ro<CR>ob<Esc>"}
+{"name": "fo_ro_bare_leader", "lines": ["//"], "keys": ":set fo+=ro<CR>A<CR>b<Esc>"}
+{"name": "fo_o_esc_trims_leader_blank", "lines": ["  // a"], "keys": ":set fo+=o<CR>o<Esc>"}
+{"name": "fo_o_indented_leader", "lines": ["  // a"], "keys": ":set fo+=o<CR>ob<Esc>"}
+{"name": "fo_o_noai_leader", "lines": ["// a"], "keys": ":set fo+=o noai<CR>ob<Esc>"}
+{"name": "fo_o_noai_indented_leader", "lines": ["  // a"], "keys": ":set fo+=o noai<CR>ob<Esc>"}
+{"name": "fo_o_comment_start_alone", "lines": ["/*"], "keys": ":set fo+=o<CR>ob<Esc>"}
+{"name": "fo_O_on_comment_end", "lines": ["  */"], "keys": ":set fo+=o<CR>Ob<Esc>"}
+{"name": "fo_o_after_comment_end_lines_up", "lines": ["  /* a", "   */"], "keys": ":set fo+=o<CR>job<Esc>"}
+{"name": "fo_r_cr_cr_trims", "lines": ["// a"], "keys": ":set fo+=r<CR>A<CR><CR>b<Esc>"}
+{"name": "set_fo_illegal_flag", "lines": ["x"], "keys": ":set fo=xyz<CR>"}
+{"name": "set_com_illegal_flag", "lines": ["x"], "keys": ":set com=abc<CR>"}
+{"name": "set_com_zero_length", "lines": ["x"], "keys": ":set com=:,<CR>"}
+{"name": "set_cms_needs_percent_s", "lines": ["x"], "keys": ":set cms=abc<CR>"}
+{"name": "set_fo_add_dedups", "lines": ["aaa bbb"], "keys": ":set tw=5 fo=t fo+=ct<CR>A x<Esc>"}
+{"name": "gcc_empty_cms_does_nothing", "lines": ["abc"], "keys": "gcc"}
+{"name": "gcc_comments_line", "lines": ["x"], "keys": ":set cms=#%s<CR>gcc"}
+{"name": "gcc_uncomments_line", "lines": ["#x"], "keys": ":set cms=#%s<CR>gcc"}
+{"name": "gc_j_comments_two_lines", "lines": ["x", "y"], "keys": ":set cms=#\\ %s<CR>gcj"}
+{"name": "gc_j_uncomments_two_lines", "lines": ["# x", "# y"], "keys": ":set cms=#\\ %s<CR>gcj"}
+{"name": "gc_blank_line_gets_bare_leader", "lines": ["", "x"], "keys": ":set cms=#\\ %s<CR>gcj"}
+{"name": "gc_uses_least_indent", "lines": ["  x", "    y"], "keys": ":set cms=#\\ %s<CR>gcj"}
+{"name": "gcc_wraps_both_parts", "lines": ["x"], "keys": ":set cms=/*%s*/<CR>gcc"}
+{"name": "gcc_unwraps_both_parts", "lines": ["/* x */"], "keys": ":set cms=/*%s*/<CR>gcc"}
+{"name": "gc_cursor_keeps_column", "lines": ["  abc", "  def"], "keys": ":set cms=#\\ %s<CR>llgcj"}
+{"name": "gc_k_cursor_to_start", "lines": ["  abc", "  def"], "keys": ":set cms=#\\ %s<CR>jllgck"}
+{"name": "gcc_count", "lines": ["  abc", "  def", "x"], "keys": ":set cms=#\\ %s<CR>ll2gcc"}
+{"name": "gcc_dot_repeat", "lines": ["  abc", "  def", "x"], "keys": ":set cms=#\\ %s<CR>llgccj."}
+{"name": "gc_visual_lines", "lines": ["  abc", "  def", "x"], "keys": ":set cms=#\\ %s<CR>lljVkgc"}
+{"name": "gc_G_then_undo", "lines": ["  abc", "  def", "x"], "keys": ":set cms=#\\ %s<CR>llgcGu"}
+{"name": "gc_search_motion", "lines": ["abc", "abd"], "keys": ":set cms=#\\ %s<CR>gc/abd<CR>"}
+{"name": "gc_mark_motion", "lines": ["abc", "abd", "x"], "keys": ":set cms=#\\ %s<CR>jmagg0gc'a"}
+{"name": "gc_keeps_trailing_blanks", "lines": ["x  ", "y"], "keys": ":set cms=#\\ %s<CR>gcj"}
+{"name": "gcc_exact_parts_first", "lines": ["#  x"], "keys": ":set cms=#\\ %s<CR>gcc"}
+{"name": "gcc_leader_only_empties", "lines": ["# "], "keys": ":set cms=#\\ %s<CR>gcc"}
+{"name": "gc_tab_indent_shortest", "lines": ["\tx", "  y"], "keys": ":set cms=#\\ %s<CR>gcj"}
+{"name": "gc_mixed_comments_comment_all", "lines": ["# x", "y"], "keys": ":set cms=#\\ %s<CR>gcj"}
+{"name": "fp_gq_filters_lines", "lines": ["b", "a", "z"], "keys": ":set fp=sort<CR>gqj"}
+{"name": "fp_gq_cursor_last_line", "lines": ["  b", "  a", "z"], "keys": ":set fp=sort<CR>gqj"}
+{"name": "fp_gw_does_not_filter", "lines": ["b", "a", "z"], "keys": ":set fp=sort<CR>gwj"}
+{"name": "fp_visual_gq", "lines": ["b", "a", "z"], "keys": ":set fp=sort<CR>Vjgq"}
+{"name": "ep_equal_filters_lines", "lines": ["  b", "  a", "z"], "keys": ":set ep=sort<CR>=j"}
+{"name": "ep_equal_from_below", "lines": ["  b", "  a", "z"], "keys": ":set ep=sort<CR>jll=k"}
+{"name": "ep_visual_equal", "lines": ["b", "a", "z"], "keys": ":set ep=sort<CR>Vj="}
+{"name": "ep_count_equal_equal", "lines": ["b", "a", "z"], "keys": ":set ep=sort<CR>2=="}
+{"name": "ai_down_removes_indent", "lines": ["  foo", "bar"], "keys": ":set ts=4 sw=4 et<CR>o<Down><Esc>"}
+{"name": "ai_up_then_type", "lines": ["  foo", "  bar"], "keys": ":set ts=4 sw=4 et<CR>o<Up>x<Esc>"}
+{"name": "ai_caret_ctrl_d_restores_next_line", "lines": ["  x"], "keys": "A<CR>^<C-d>y<CR>z<Esc>"}
+{"name": "ai_caret_ctrl_d_after_text", "lines": ["  x"], "keys": "A^<C-d><CR>y<Esc>"}
+{"name": "ai_zero_ctrl_d_no_restore", "lines": ["  x"], "keys": "A<CR>0<C-d>y<CR>z<Esc>"}
+{"name": "pi_equal_keeps_tab", "lines": ["{", "\t  x", "}"], "keys": ":set ts=4 sw=4 et pi<CR>=G"}
+{"name": "pi_off_equal_rebuilds", "lines": ["{", "\t  x", "}"], "keys": ":set ts=4 sw=4 et nopi<CR>=G"}
+{"name": "pi_equal_noet_keeps_mixed", "lines": ["{", "  \tx", "}"], "keys": ":set ts=4 sw=4 noet pi<CR>=G"}
+{"name": "pi_equal_nested", "lines": ["{", "{", "  x", "}", "}"], "keys": ":set ts=4 sw=4 noet pi<CR>=G"}
+{"name": "cinw_custom_keyword", "lines": ["  unless x"], "keys": ":set ts=4 sw=4 et si cinw=unless<CR>oy<Esc>"}
+{"name": "cinw_drops_default", "lines": ["  if (x)"], "keys": ":set ts=4 sw=4 et si cinw=unless<CR>oy<Esc>"}
+{"name": "cinw_append", "lines": ["  loop"], "keys": ":set ts=4 sw=4 et si cinw+=loop<CR>oy<Esc>"}
+# --- #615 screen-line motions (80-column window): `gm` / `g0` / `g^` / `g$` set the wanted column from
+#     where they land (after `$` too), `gj` / `gk` keep theirs, and count over the wrapped rows. --------
+{"name": "gm_resets_dollar_curswant", "lines": ["ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ", "gh ij", "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "], "keys": "$gmjj"}
+{"name": "g0_resets_dollar_curswant", "lines": ["ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ", "gh ij", "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "], "keys": "$g0jj"}
+{"name": "g_dollar_sets_curswant", "lines": ["ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ", "gh ij", "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "], "keys": "0g$jj"}
+{"name": "gj_keeps_dollar_curswant", "lines": ["ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ", "gh ij", "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "], "keys": "$gjj"}
+{"name": "gm_on_short_line_then_j", "lines": ["ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ", "gh ij", "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "], "keys": "j$gmj"}
+{"name": "gj_over_wrapped_line", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": "5lgjgjx"}
+{"name": "gk_over_wrapped_line", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": "Gk$gkgkx"}
+{"name": "dgj_in_wrapped_line", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": "3ldgj"}
+{"name": "g_dollar_in_wrapped_line", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": "gjdg$"}
+{"name": "nowrap_gj_is_linewise", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": ":set nowrap<CR>dgj"}
+# #1536: Visual `{count}gj` moves one screen row and leaves no count pending (a leaked `1` would make
+# the `2x` a `12x`).
+{"name": "vis_count_gj_over_wrapped_line", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": "j3lv1gj"}
+{"name": "vis_count_gj_leaves_no_count", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": "j3lv1gj<Esc>2x"}
+# #1539: `.` after an operator over a screen-line motion re-resolves the motion where the cursor is now
+#     (nvim's redo buffer holds the keys `dgj`, not the span), so the repeat can turn linewise or move
+#     another screen row. 120-char lines wrap over two rows of the 80-column window.
+{"name": "sdot_dgj_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "dgj."}
+{"name": "sdot_dgk_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "Gdgk."}
+{"name": "sdot_3dgk_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$3dgk."}
+{"name": "sdot_3dgk_dot_mid_row", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G40l3dgk."}
+{"name": "sdot_3dgk_dot_second_row", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G90l3dgk."}
+# After `$` the wanted column is the line's end (MAXCOL), which makes `dgk` inclusive; the `.` runs
+# from the clamped cursor with an ordinary wanted column, so the repeat is exclusive.
+{"name": "sdot_dollar_3dgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$3dgk"}
+{"name": "sdot_dollar_dgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$dgk"}
+{"name": "sdot_dollar_dgk_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$dgk."}
+{"name": "sdot_dollar_dgj_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "$dgj."}
+{"name": "sdot_2dgj_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "2dgj."}
+{"name": "sdot_dgj_count_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "dgj2."}
+{"name": "sdot_dgj_dot_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "dgj.."}
+{"name": "sdot_dg_dollar_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "dg$."}
+{"name": "sdot_dg0_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "$dg0."}
+{"name": "sdot_dg_caret_dot", "lines": ["   012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "   012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "$dg^."}
+{"name": "sdot_dgm_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "dgm."}
+{"name": "sdot_dgM_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "dgM."}
+{"name": "sdot_cgj_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "cgjX<Esc>."}
+{"name": "sdot_cgj_dot_moved", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "cgjX<Esc>j0."}
+{"name": "sdot_ygj_dot_repeats_x", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "xygj."}
+{"name": "sdot_gUgj_dot", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "gUgjj0."}
+{"name": "sdot_dgj_dot_wrapped_words", "lines": ["first", "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29", "last line"], "keys": "j3ldgj."}
+{"name": "sdot_dgj_fail_keeps_x", "lines": ["abc"], "keys": "xdgj."}
+{"name": "sdot_nowrap_dgj_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": ":set nowrap<CR>dgj."}
+{"name": "sdot_ctrl_o_gj_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "ix<C-o>gjy<Esc>gg0."}
+{"name": "sdot_ctrl_o_dgj_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "ix<C-o>dgjy<Esc>gg0."}
+# #1576: after `$` the wanted column is MAXCOL, which makes `gk` inclusive under an operator; going
+#     back, the inclusive end is the cursor, so `dgk` also takes the cursor's char. `dvgk` toggles it
+#     back to exclusive; `g0` / `g^` and `gk` without `$` stay exclusive.
+{"name": "sdot_dollar_2dgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$2dgk"}
+{"name": "sdot_dollar_ygk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$ygk"}
+{"name": "sdot_dollar_cgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$cgkX<Esc>"}
+{"name": "sdot_dollar_gUgk", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$gUgk"}
+{"name": "sdot_dollar_dvgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$dvgk"}
+{"name": "sdot_dollar_dgk_count_dot", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$dgk2."}
+{"name": "sdot_dollar_dgk_short_line_above", "lines": ["abcdef", "xyz"], "keys": "j$dgk"}
+{"name": "sdot_dollar_h_dgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$hdgk"}
+{"name": "sdot_mid_dgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G40ldgk"}
+{"name": "sdot_second_row_dgk", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G90ldgk"}
+{"name": "sdot_dollar_dg0", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$dg0"}
+{"name": "sdot_dollar_dg_caret", "lines": ["   012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "   012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G$dg^"}
+{"name": "sdot_second_row_dg0", "lines": ["012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"], "keys": "G90ldg0"}
+# --- #1180 Visual-block `>`/`<` (`:help v_b_>`): shift from the block's left column. `|` rows: a row
+#     the left edge cuts a `<Tab>` or a wide character on (neither corner sits on it). ---------------
+{"name": "vb_shift_right", "lines": ["abc def", "ghi jkl", "mno"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>"}
+{"name": "vb_shift_right_merges_the_blanks_left", "lines": ["ab  cd", "ef  gh"], "keys": ":set ts=8 sw=4 et<CR>4l<C-v>j>"}
+{"name": "vb_shift_right_merges_the_blanks_left_noet", "lines": ["ab  cd", "ef  gh"], "keys": ":set ts=8 sw=4 noet<CR>4l<C-v>j>"}
+{"name": "vb_shift_right_from_a_blank", "lines": ["ab  cd", "ef  gh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j>"}
+{"name": "vb_shift_right_count", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j3>"}
+{"name": "vb_shift_right_on_a_tab", "lines": ["a\tb\tc", "d\te\tf"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>j>"}
+{"name": "vb_shift_right_on_a_tab_noet", "lines": ["a\tb\tc", "d\te\tf"], "keys": ":set ts=8 sw=4 noet<CR>l<C-v>j>"}
+{"name": "vb_shift_right_cuts_a_tab", "lines": ["abcdefgh", "a\tb", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>jj>"}
+{"name": "vb_shift_right_cuts_a_tab_noet", "lines": ["abcdefgh", "a\tb", "abcdefgh"], "keys": ":set ts=8 sw=4 noet<CR>3l<C-v>jj>"}
+{"name": "vb_shift_right_cuts_a_wide_char", "lines": ["abcdefgh", "a中中b", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>jj>"}
+{"name": "vb_shift_right_after_a_tab", "lines": ["ab cd ef ghijklmnop qrstuvwxyz", "gh (ij k\tl"], "keys": ":set ts=8 sw=4 et<CR>j$<C-v>>"}
+{"name": "vb_shift_right_blank_before_a_tab", "lines": ["ab\tcd"], "keys": ":set ts=8 sw=4 et<CR>3|<C-v>>"}
+{"name": "vb_shift_right_skips_a_short_line", "lines": ["abcdef", "ab", "abcdef"], "keys": ":set ts=8 sw=4 et<CR>4l<C-v>jj>"}
+{"name": "vb_shift_right_at_a_line_end", "lines": ["abcd", "abcdef"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j>"}
+{"name": "vb_shift_right_skips_an_empty_line", "lines": ["abcd", "", "abcd"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>jj>"}
+{"name": "vb_shift_right_blank_line", "lines": ["ab", "    ", "ab"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>jj>"}
+{"name": "vb_shift_right_dot", "lines": ["abc def", "ghi jkl", "mno pqr", "stu vwx"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>jj."}
+{"name": "vb_shift_right_count_dot", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j2>."}
+{"name": "vb_shift_right_undo", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>u"}
+{"name": "vb_shift_right_from_below", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>jw<C-v>k>"}
+{"name": "vb_shift_left", "lines": ["ab      cd", "ef      gh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<"}
+{"name": "vb_shift_left_at_text", "lines": ["ab    cd", "ef    gh"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>j<"}
+{"name": "vb_shift_left_short_run", "lines": ["ab  cd", "ef gh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<"}
+{"name": "vb_shift_left_count", "lines": ["ab          cd", "ef          gh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j2<"}
+{"name": "vb_shift_left_tabs", "lines": ["ab\t\tcd", "ef\t\tgh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<"}
+{"name": "vb_shift_left_in_a_tab", "lines": ["abcdefghijklmnop", "a\t\tx"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>j<"}
+{"name": "vb_shift_left_in_a_tab_count", "lines": ["abcdefghijklmnop", "a\t\tx"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>j3<"}
+{"name": "vb_shift_left_cuts_a_tab", "lines": ["abcdefghijklmnop", "a\t\tx", "abcdefghijklmnop"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>jj<"}
+{"name": "vb_shift_left_cuts_a_tab_far", "lines": ["abcdefghijklmnop", "a\t\tx", "abcdefghijklmnop"], "keys": ":set ts=8 sw=4 et<CR>10l<C-v>jj4<"}
+{"name": "vb_shift_left_cuts_a_wide_char", "lines": ["abcdefgh", "a中  b", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>jj<"}
+{"name": "vb_shift_left_blank_tail", "lines": ["ab      ", "ab      "], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<"}
+{"name": "vb_shift_left_dot", "lines": ["ab          cd", "ef          gh"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>j<."}
+# --- #1142 a block change whose Insert takes a `<CR>`: nvim's `op_change` copies what the top row grew
+#     by into the lines below it by number, the new ones first; `I`/`A` that leave the top row copy
+#     nothing. ------------------------------------------------------------------------------------
+{"name": "vb_C_cr_mid", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jCx<CR>y<Esc>"}
+{"name": "vb_C_cr_three_rows", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jjCx<CR>y<Esc>"}
+{"name": "vb_C_cr_twice", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jjCx<CR>y<CR>z<Esc>"}
+{"name": "vb_C_cr_first", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jC<CR>y<Esc>"}
+{"name": "vb_C_cr_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jCx<CR>y<Esc>u"}
+{"name": "vb_c_cr_moves_the_tail", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlcx<CR>y<Esc>"}
+{"name": "vb_c_cr_longer_than_the_tail", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlcxyz<CR>w<Esc>"}
+{"name": "vb_I_cr_copies_nothing", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jIx<CR>y<Esc>"}
+{"name": "vb_A_cr_copies_nothing", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jAx<CR>y<Esc>"}
+{"name": "vb_A_dollar_cr_copies_nothing", "lines": ["abcd", "ef", "ijkl"], "keys": "l<C-v>j$Ax<CR>y<Esc>"}
+{"name": "vb_I_cr_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jIx<CR>y<Esc>3G."}
+# `=` leaves the cursor at the wanted column of its first line ('nostartofline', as `>>`, #1176).
+{"name": "eq_cursor_keeps_end_of_line", "lines": ["{", "      xyz abc", "}"], "keys": ":set ts=8 sw=4 et<CR>j$=="}
+{"name": "eq_cursor_keeps_column", "lines": ["{", "      xyz abc", "}"], "keys": ":set ts=8 sw=4 et<CR>jfa=="}
+{"name": "eq_cursor_keeps_column_zero", "lines": ["{", "      xyz abc", "}"], "keys": ":set ts=8 sw=4 et<CR>j0=="}
+{"name": "eq_cursor_visual", "lines": ["{", "      xyz abc;", "  q;", "}"], "keys": ":set ts=8 sw=4 et<CR>jfaVj="}
+{"name": "py_eq_cursor_keeps_end_of_line", "lines": ["if a:", "        xyz = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>j$=="}
+# --- #1142 Python's `elif`/`else`/`except`/`finally` (nvim's indent/python.vim, `filetype indent on`):
+#     the buffer is named `fixture.py` on both sides. -----------------------------------------------
+{"name": "py_eq_keeps_if_else", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_keeps_elif_else", "lines": ["if a:", "    x = 1", "elif b:", "    y = 2", "else:", "    w = 0", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_keeps_try_clauses", "lines": ["try:", "    x = 1", "except E:", "    y = 2", "else:", "    v = 1", "finally:", "    w = 3", "z = 4"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_keeps_for_else", "lines": ["for i in r:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_keeps_while_else", "lines": ["while a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_keeps_nested_else", "lines": ["def f():", "    if a:", "        x = 1", "    else:", "        y = 2", "    return 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_fixes_deep_bodies", "lines": ["if a:", "        x = 1", "else:", "            y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_on_the_else_line", "lines": ["def f():", "    if a:", "        x = 1", "    else:", "        y = 2", "    return 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3j=="}
+{"name": "py_o_on_else", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjoq<Esc>"}
+{"name": "py_o_on_elif", "lines": ["if a:", "    x = 1", "elif b:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjoq<Esc>"}
+{"name": "py_o_in_else_body", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "    w = 3", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"}
+{"name": "py_o_end_of_else_body", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"}
+{"name": "py_O_above_else", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjOq<Esc>"}
+{"name": "py_o_in_except_body", "lines": ["try:", "    x = 1", "except E:", "    y = 2", "    u = 1", "finally:", "    w = 3", "z = 4"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"}
+{"name": "py_o_in_finally_body", "lines": ["try:", "    x = 1", "finally:", "    w = 3", "    u = 1", "z = 4"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3joq<Esc>"}
+{"name": "py_o_in_nested_else_body", "lines": ["def f():", "    if a:", "        x = 1", "    else:", "        y = 2", "        v = 0", "    return 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>4joq<Esc>"}
+{"name": "py_cc_in_else_body", "lines": ["if a:", "    x = 1", "else:", "    y = 2", "    w = 3", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>3jccq<Esc>"}
+# --- #1207 Visual `$` rests one past the line's last char (nvim's Visual `coladvance`): a motion from
+#     there, `h` or `ge`, starts past it, so `<C-v>$h` keeps the block's right edge; `<Esc>` brings the
+#     cursor back onto the char, and block `O` puts a corner past a short row's end. ---
+{"name": "vb_dollar_h_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$hy"}
+{"name": "vb_dollar_h_y_mid", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$hy"}
+{"name": "vb_dollar_h_d", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$hd"}
+{"name": "vb_dollar_h_c", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$hcX<Esc>"}
+{"name": "vb_dollar_l_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$ly"}
+{"name": "vb_dollar_first_h", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "$<C-v>jjhy"}
+{"name": "vb_dollar_first_hh", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "$<C-v>jjhhy"}
+{"name": "issue_case", "lines": ["abcdef", "abcdef"], "keys": "$<C-v>jhy"}
+{"name": "vb_dollar_h_short_last", "lines": ["abcdefgh", "abcdef", "abc"], "keys": "l<C-v>jj$hy"}
+{"name": "vb_dollar_h_d_short_last", "lines": ["abcdefgh", "abcdef", "abc"], "keys": "l<C-v>jj$hd"}
+{"name": "vb_dollar_hh_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$hhy"}
+{"name": "vb_dollar_h_A", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$hAX<Esc>"}
+{"name": "vb_dollar_h_k_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "G<C-v>kk$hy"}
+{"name": "vb_dollar_h_o_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$hoy"}
+{"name": "vb_dollar_j_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>$jjy"}
+{"name": "v_dollar_j_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "lv$jy"}
+{"name": "v_dollar_j_h_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "lv$jhy"}
+{"name": "v_dollar_h_y", "lines": ["abcdef", "abc"], "keys": "lv$hy"}
+{"name": "v_j_dollar_k_h", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "lv$jjkhy"}
+{"name": "vb_dollar_F_y", "lines": ["abcdefgh", "abc", "abcdefgh"], "keys": "<C-v>jj$Fhy"}
+{"name": "vb_dollar_b_y", "lines": ["abc defgh", "abc", "abc defgh"], "keys": "<C-v>jj$by"}
+{"name": "vb_dollar_ge_y", "lines": ["abc defgh", "abc", "abc defgh"], "keys": "<C-v>jj$gey"}
+{"name": "vb_dollar_3h_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$3hy"}
+{"name": "vb_dollar_bs_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$<BS>y"}
+{"name": "vb_dollar_h_empty_last", "lines": ["abcdef", "abc", ""], "keys": "l<C-v>jj$hy"}
+{"name": "vb_dollar_k_h", "lines": ["abcdefgh", "abcdef", "abc"], "keys": "l<C-v>jj$khy"}
+{"name": "vb_dollar_h_l_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$hly"}
+{"name": "vb_dollar_esc_h", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$<Esc>hx"}
+{"name": "vb_dollar_h_x_wide", "lines": ["ab中", "abc", "ab中中"], "keys": "<C-v>jj$hy"}
+{"name": "vb_dollar_h_tab", "lines": ["ab\tc", "abc", "abcdefghijk"], "keys": ":set ts=8<CR><C-v>j$hy"}
+{"name": "v_dollar_h_d", "lines": ["abcdef", "abc"], "keys": "lv$hd"}
+{"name": "v_dollar_esc_h", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "v$<Esc>hx"}
+{"name": "vb_dollar_esc_x", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>jj$<Esc>x"}
+{"name": "vb_dollar_j_esc_x", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "$<C-v>jj<Esc>x"}
+{"name": "v_dollar_j_esc_x", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "$vjj<Esc>x"}
+{"name": "vb_dollar_I", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$IX<Esc>"}
+{"name": "vb_dollar_A", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$AX<Esc>"}
+{"name": "vb_dollar_o_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$oy"}
+{"name": "vb_dollar_O_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$Oy"}
+{"name": "vb_dollar_O_h_y", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$Ohy"}
+{"name": "vb_dollar_r", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$rx"}
+{"name": "vb_dollar_J", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "<C-v>j$J"}
+{"name": "vb_dollar_tilde", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$~"}
+{"name": "vb_dollar_gv", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$<Esc>gvy"}
+{"name": "vb_dollar_p", "lines": ["xy", "abcdef", "abc", "abcdefgh"], "keys": "yljl<C-v>jj$p"}
+{"name": "vb_dollar_h_gv", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$h<Esc>gvy"}
+{"name": "vb_dollar_colon_cu_cr", "lines": ["abcdef", "abc", "abcdefgh"], "keys": "l<C-v>jj$:<C-u><CR>x"}
+# --- An empty command line (`:<CR>`, `:<C-u><CR>`) does nothing; it is no unknown command. ---
+{"name": "colon_empty_line", "lines": ["abcdef", "abc"], "keys": ":<CR>x"}
+{"name": "colon_cu_empty_line", "lines": ["abcdef", "abc"], "keys": ":abc<C-u><CR>x"}
+{"name": "colon_empty_line_visual", "lines": ["abcdef", "abc"], "keys": "V:<C-u><CR>x"}
+{"name": "colon_empty_keeps_colon_reg", "lines": ["abcdef", "abc"], "keys": ":s/a/X/<CR>:<CR>\":p"}
+{"name": "colon_empty_keeps_at_colon", "lines": ["abcdef", "abc"], "keys": ":s/b/X/<CR>:<CR>j@:"}
+# --- #1205/#1206 Python indent as nvim's `python#GetIndent` (`filetype indent on`, `g:python_indent`
+#     defaults): dedent after `return`/`pass`/`break`/`continue`/`raise`, brackets, `\` joins, and the
+#     'indentkeys' `<:>`, `=elif`, `=except`, `e`, `0#`, `0)`, `!^F`, `o`, `O` (with `can_cindent`).
+#     `py_syn_*` run nvim with `syntax on` (`setup`), as ruse reads strings and comments from the tree. ---
+{"name": "py_ret", "lines": ["def f():", "    return x"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "py_pass", "lines": ["def f():", "    pass"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "py_break", "lines": ["for i in r:", "    if a:", "        break"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "py_raise", "lines": ["def f():", "    raise E"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "py_ret_eq", "lines": ["def f():", "    return x", "y = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_ret_eq_deep", "lines": ["def f():", "    return x", "        y = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_paren_o", "lines": ["x = foo(a,"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>ob)<Esc>"}
+{"name": "py_paren_eq", "lines": ["x = foo(a,", "b)", "y = 2"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_paren_eq_nested", "lines": ["def f():", "    x = foo(a,", "b,", "c)", "    y = 2"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_paren_cr", "lines": ["x = foo(a,"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>A<CR>b)<Esc>"}
+{"name": "py_paren_empty", "lines": ["x = foo("], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>ob)<Esc>"}
+{"name": "py_bracket", "lines": ["x = [1,", "2]"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_brace", "lines": ["x = {1:", "2}"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_closer_alone", "lines": ["x = foo(", "a,", ")"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_def_paren", "lines": ["def f(a,", "b):", "pass"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_else_typed", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joelse:<Esc>"}
+{"name": "py_elif_typed", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joelif b:<Esc>"}
+{"name": "py_except_typed", "lines": ["try:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joexcept E:<Esc>"}
+{"name": "py_finally_typed", "lines": ["try:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jofinally:<Esc>"}
+{"name": "py_else_typed_noColon", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joelse<Esc>"}
+{"name": "py_cc_after_return", "lines": ["def f():", "    return x", "    y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjccq<Esc>"}
+{"name": "py_S_after_return", "lines": ["def f():", "    return x", "    y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjSq<Esc>"}
+{"name": "py_ctrlf_after_return", "lines": ["def f():", "    return x", "    y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjA<C-f><Esc>"}
+{"name": "py_hash_after_return", "lines": ["def f():", "    return x"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo<Tab>#c<Esc>"}
+{"name": "py_paren_close_typed", "lines": ["x = foo(", "        a,"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo)<Esc>"}
+{"name": "py_paren_close_typed_bs", "lines": ["x = foo(", "        a,"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo<BS><BS>)<Esc>"}
+{"name": "py_colon_typed_in_paren", "lines": ["x = foo(a,"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>o<C-u>  d[1:<Esc>"}
+{"name": "py_else_then_space", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joelse x<Esc>"}
+{"name": "py_elsewhere", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joelsewhere<Esc>"}
+{"name": "py_o_after_colon_comment", "lines": ["if a:  # c"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>oq<Esc>"}
+{"name": "py_backslash", "lines": ["x = a + \\"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>ob<Esc>"}
+{"name": "py_backslash2", "lines": ["x = a + \\", "        b + \\"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joc<Esc>"}
+{"name": "py_nested_paren", "lines": ["x = foo(bar(", "a"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_nested_paren_eol", "lines": ["x = foo(", "    bar(", "a"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_after_paren_close", "lines": ["x = foo(", "    a,", "    b)", "    y = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_top_pass", "lines": ["pass", "    y = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_top_pass_o", "lines": ["pass"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>oq<Esc>"}
+{"name": "py_cr_split_after_return", "lines": ["def f():", "    return x y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>j$i<CR><Esc>"}
+{"name": "py_O_after_return", "lines": ["def f():", "    return x", "    y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjOq<Esc>"}
+{"name": "py_except_typed_deep", "lines": ["def f():", "    try:", "        x = 1", "        y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>Goexcept:<Esc>"}
+{"name": "py_dot_o_return", "lines": ["def f():", "    return x", "y = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>j."}
+{"name": "py_ik_else_undo", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joelse:<Esc>u"}
+{"name": "py_ik_else_dot", "lines": ["if a:", "    x = 1", "    y = 2"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joelse:<Esc>j."}
+{"name": "py_ik_ctrl_t_then_else", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo<C-t>else<Esc>"}
+{"name": "py_ik_ctrl_d_then_else", "lines": ["if a:", "    if b:", "        x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>Go<C-d>else<Esc>"}
+{"name": "py_ik_space_then_else", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo else<Esc>"}
+{"name": "py_ik_else_after_cr", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo <CR>else<Esc>"}
+{"name": "py_ik_else_nested_oneliner", "lines": ["for x in y:", "    if a: b()", "    else"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>Gx$ae<Esc>"}
+{"name": "py_ik_dict_colon", "lines": ["d = {", "    1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jA: 2<Esc>"}
+{"name": "py_ik_hash_first", "lines": ["def f():", "    return x"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo#c<Esc>"}
+{"name": "py_ik_hash_typed_late", "lines": ["def f():", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joy  #c<Esc>"}
+{"name": "py_ik_finally", "lines": ["try:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jofinally:<Esc>"}
+{"name": "py_ik_elif_mid_line", "lines": ["if a:", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>joy = 1 if b elif<Esc>"}
+{"name": "py_ik_bracket_close", "lines": ["x = [", "    1,"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo]<Esc>"}
+{"name": "py_ik_brace_open_first", "lines": ["def f():", "    return x"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo{<Esc>"}
+{"name": "py_ik_ctrl_f", "lines": ["def f():", "    return x", "        y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>GA<C-f>z<Esc>"}
+{"name": "py_ik_ctrl_f_mid", "lines": ["def f():", "x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>Gfx<Esc>i<C-f>z<Esc>"}
+{"name": "py_cc_on_else", "lines": ["if a:", "    x = 1", "    else:"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>Gccq<Esc>"}
+{"name": "py_Vc", "lines": ["def f():", "    return x", "    y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>GVcq<Esc>"}
+{"name": "py_cj", "lines": ["def f():", "    return x", "    y", "    z"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jjcjq<Esc>"}
+{"name": "py_c_dollar_blank", "lines": ["def f():", "    return x", "    y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>G^c$q<Esc>"}
+{"name": "py_count_o", "lines": ["def f():", "    return x"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>j3oq<Esc>"}
+{"name": "py_eq_mixed", "lines": ["def f(a,", "b):", "  if a:", "   return (1 +", "2)", "  else:", "      pass", "  x = [", "1, 2,", "]", "  y"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_noet", "lines": ["class C:", "def f(self):", "if a:", "return 1", "x = foo(a,", "b)"], "file": "fixture.py", "keys": ":set ts=8 sw=4 noet<CR>=G"}
+{"name": "py_eq_continuation", "lines": ["x = 1 + \\", "2 + \\", "3", "y = 4"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_except_try", "lines": ["try:", "    try:", "        x", "    except A:", "        y", "except B:", "    z"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_O_in_paren", "lines": ["x = foo(a,", "        b)"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jOq<Esc>"}
+{"name": "py_cr_in_paren", "lines": ["x = foo(a, b)"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>fbi<CR><Esc>"}
+{"name": "py_o_blank_lines_between", "lines": ["def f():", "    return x", "", ""], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "py_o_esc_empties", "lines": ["def f():", "    x = 1"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>jo<Esc>"}
+{"name": "py_eq_count", "lines": ["def f():", "x = 1", "y = 2", "z = 3"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>j2=="}
+{"name": "py_syn_o_after_hash_in_string", "lines": ["if a == '#':"], "file": "fixture.py", "setup": "syntax on", "keys": ":set ts=8 sw=4 et<CR>oq<Esc>"}
+{"name": "py_syn_o_paren_in_string", "lines": ["x = '('", "y = 1"], "file": "fixture.py", "setup": "syntax on", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "py_syn_o_paren_in_comment", "lines": ["x = 1  # (", "y = 1"], "file": "fixture.py", "setup": "syntax on", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "py_syn_docstring_eq", "lines": ["def f():", "    '''a", "        b", "    '''", "    x"], "file": "fixture.py", "setup": "syntax on", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "py_eq_docstring_nosyntax", "lines": ["def f():", "    '''a", "        b", "    '''", "    x"], "file": "fixture.py", "keys": ":set ts=8 sw=4 et<CR>=G"}
+# --- #1206 a closer typed first on a line in a brace language lines up with its opener, as nvim's
+#     'cinkeys'/'indentkeys' `0}`, `0)`, `0]` re-indent it. ---
+{"name": "ik_rs_close_brace", "lines": ["fn f() {", "    x;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>"}
+{"name": "ik_rs_close_brace_nested", "lines": ["fn f() {", "    if a {", "        x;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>"}
+{"name": "ik_rs_close_paren", "lines": ["fn f() {", "    g(", "        a,"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Go);<Esc>"}
+{"name": "ik_rs_close_bracket", "lines": ["fn f() {", "    let v = [", "        1,"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Go];<Esc>"}
+{"name": "ik_c_close_brace", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>"}
+{"name": "ik_c_close_brace_nested", "lines": ["int f() {", "    if (a) {", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>"}
+{"name": "ik_c_hash", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>jo#define A<Esc>"}
+{"name": "ik_js_close_brace", "lines": ["function f() {", "    x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>"}
+{"name": "ik_go_close_brace", "lines": ["func f() {", "\tx()"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>jo}<Esc>"}
+{"name": "ik_json_close_brace", "lines": ["{", "    \"a\": 1"], "file": "fixture.json", "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>"}
+{"name": "ik_css_close_brace", "lines": ["a {", "    color: red;"], "file": "fixture.css", "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>"}
+{"name": "ik_sh_fi", "lines": ["if a; then", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>jofi<Esc>"}
+{"name": "ik_sh_close_brace", "lines": ["f() {", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>jo}<Esc>"}
+# --- #1214 a block not closed yet (the usual state while typing): the opened line keeps the indent
+#     nvim's cindent/indent scripts give it, not column 0; `else` on its own line lines up with its
+#     `if`. ---
+{"name": "unc_rs_o_after_inner_close", "lines": ["fn f() {", "    if a {", "        x;", "    }"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_rs_o_after_stmt", "lines": ["fn f() {", "    x;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_rs_o_after_stmt_deep", "lines": ["fn f() {", "    if a {", "        x;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_rs_O_above_stmt", "lines": ["fn f() {", "    x;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>GOq<Esc>"}
+{"name": "unc_rs_cr_after_stmt", "lines": ["fn f() {", "    x;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>GA<CR>q<Esc>"}
+{"name": "unc_rs_else_own_line", "lines": ["fn f() {", "    if a {", "        x;", "    }"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Goelse {<Esc>"}
+{"name": "unc_rs_else_own_line_closed", "lines": ["fn f() {", "    if a {", "        x;", "    }", "}"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>3joelse {<Esc>"}
+{"name": "unc_rs_o_after_else_open", "lines": ["fn f() {", "    if a {", "        x;", "    }", "    else {"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_rs_eq", "lines": ["fn f() {", "if a {", "x;", "}", "y;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "unc_rs_o_after_stmt_after_block", "lines": ["fn f() {", "    if a {", "        x;", "    }", "    y;"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_rs_o_after_opener", "lines": ["fn f() {", "    x;", "    if a {"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_c_o_after_inner_close", "lines": ["int f() {", "    if (a) {", "        x;", "    }"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_c_o_after_stmt", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_c_o_after_stmt_deep", "lines": ["int f() {", "    if (a) {", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_c_O_above_stmt", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>GOq<Esc>"}
+{"name": "unc_c_else_own_line", "lines": ["int f() {", "    if (a) {", "        x;", "    }"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goelse {<Esc>"}
+{"name": "unc_c_else_own_line_closed", "lines": ["int f() {", "    if (a) {", "        x;", "    }", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>3joelse {<Esc>"}
+{"name": "unc_c_o_after_else_open", "lines": ["int f() {", "    if (a) {", "        x;", "    }", "    else {"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_c_eq", "lines": ["int f() {", "if (a) {", "x;", "}", "y;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "unc_c_o_after_stmt_after_block", "lines": ["int f() {", "    if (a) {", "        x;", "    }", "    y;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_c_o_after_opener", "lines": ["int f() {", "    x;", "    if (a) {"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_js_o_after_inner_close", "lines": ["function f() {", "    if (a) {", "        x;", "    }"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_js_o_after_stmt", "lines": ["function f() {", "    x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_js_o_after_stmt_deep", "lines": ["function f() {", "    if (a) {", "        x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_js_O_above_stmt", "lines": ["function f() {", "    x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>GOq<Esc>"}
+{"name": "unc_js_else_own_line", "lines": ["function f() {", "    if (a) {", "        x;", "    }"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goelse {<Esc>"}
+{"name": "unc_js_else_own_line_closed", "lines": ["function f() {", "    if (a) {", "        x;", "    }", "}"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>3joelse {<Esc>"}
+{"name": "unc_js_o_after_else_open", "lines": ["function f() {", "    if (a) {", "        x;", "    }", "    else {"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_js_eq", "lines": ["function f() {", "if (a) {", "x;", "}", "y;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "unc_js_o_after_stmt_after_block", "lines": ["function f() {", "    if (a) {", "        x;", "    }", "    y;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_js_o_after_opener", "lines": ["function f() {", "    x;", "    if (a) {"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "unc_sh_o_in_if", "lines": ["if a; then", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "unc_go_o_after_stmt", "lines": ["func f() {", "\tx()"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>joq<Esc>"}
+{"name": "unc_css_o_after_decl", "lines": ["a {", "    color: red;"], "file": "fixture.css", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "unc_json_o_after_member", "lines": ["{", "    \"a\": 1,"], "file": "fixture.json", "keys": ":set ts=8 sw=4 et<CR>jo\"b\"<Esc>"}
+# --- #1206 the word and character 'indentkeys' of the other node-depth languages (nvim's defaults
+#     for each file type): sh's `0=fi`, `0=done`, `0=esac`, `0=then`, `0=do`, `0=elif`, `0=else` and
+#     the `0=fin`… that undo `fi`; cindent's `0#` and `e`; `:` after `case`/`default` (C, JS, Go). ---
+{"name": "ik_sh_done", "lines": ["for i in a; do", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>jodone<Esc>"}
+{"name": "ik_sh_esac", "lines": ["case a in", "    b) x;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>joesac<Esc>"}
+{"name": "ik_sh_else", "lines": ["if a; then", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>joelse<Esc>"}
+{"name": "ik_sh_elif", "lines": ["if a; then", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>joelif b; then<Esc>"}
+{"name": "ik_sh_then_own_line", "lines": ["if a"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>othen<Esc>"}
+{"name": "ik_sh_do_own_line", "lines": ["for i in a"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>odo<Esc>"}
+{"name": "ik_sh_find_not_fi", "lines": ["if a; then", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>jofind<Esc>"}
+{"name": "ik_sh_fi_nested", "lines": ["f() {", "    if a; then", "        x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Gofi<Esc>"}
+{"name": "ik_sh_done_nested", "lines": ["if a; then", "    while b; do", "        x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Godone<Esc>"}
+{"name": "ik_sh_fi_after_else", "lines": ["if a; then", "    x", "else", "    y"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Gofi<Esc>"}
+{"name": "ik_sh_double_semi", "lines": ["case a in", "    b)", "        x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Go;;<Esc>"}
+{"name": "ik_c_hash_nested", "lines": ["int f() {", "    if (a) {", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go#if A<Esc>"}
+{"name": "ik_c_hash_late", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>joy; #<Esc>"}
+{"name": "ik_c_else_unbraced", "lines": ["int f() {", "    if (a)", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goelse<Esc>"}
+{"name": "ik_c_case", "lines": ["int f() {", "    switch (a) {", "        case 1:", "            x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>"}
+{"name": "ik_c_default", "lines": ["int f() {", "    switch (a) {", "        case 1:", "            x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Godefault:<Esc>"}
+{"name": "ik_js_else_unbraced", "lines": ["function f() {", "    if (a)", "        x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goelse<Esc>"}
+{"name": "ik_js_case", "lines": ["function f() {", "    switch (a) {", "    case 1:", "        x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>"}
+{"name": "ik_go_case", "lines": ["func f() {", "\tswitch a {", "\tcase 1:", "\t\tx()"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Gocase 2:<Esc>"}
+{"name": "ik_go_default", "lines": ["func f() {", "\tswitch a {", "\tcase 1:", "\t\tx()"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Godefault:<Esc>"}
+{"name": "ik_go_eq_switch", "lines": ["func f() {", "switch a {", "case 1:", "x()", "default:", "y()", "}", "}"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>=G"}
+{"name": "ik_go_o_mid_body", "lines": ["func f() {", "\tx()", "\ty()", "}"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>joq<Esc>"}
+{"name": "ik_c_eq_switch", "lines": ["int f() {", "switch (a) {", "case 1:", "x;", "break;", "default:", "y;", "}", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_js_eq_switch", "lines": ["function f() {", "switch (a) {", "case 1:", "x;", "break;", "default:", "y;", "}", "}"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_sh_eq_blocks", "lines": ["if a; then", "x", "fi", "for i in a; do", "y", "done", "while b", "do", "z", "done"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "unc_rs_o_before_later_fn", "lines": ["fn a() {", "    x;", "", "fn b() {", "}"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "unc_c_o_in_string_brace", "lines": ["int f() {", "    s = \"{\";"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>joq<Esc>"}
+{"name": "unc_sh_o_nested", "lines": ["if a; then", "    for i in b; do", "        x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Goq<Esc>"}
+{"name": "ik_rs_else_no_key", "lines": ["fn f() {", "    if a {", "        x;", "    }"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Go<C-t>else {<Esc>"}
+# --- #1206 the rest of the 'indentkeys': `0{` (C, JS, Rust, CSS, sh; Go has none), where an Allman `{`
+#     lines up with the statement it opens and `=` lays Allman code out as cindent does; sh's `)` (case
+#     patterns); cindent's `:` after a jump label (column 0 when the line above ends a statement) and
+#     its alignment of a typed `case`/`default` with the previous label of the switch. ---
+{"name": "ik_c_allman_fn", "lines": ["int f()"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_c_allman_if", "lines": ["int f() {", "    if (a)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_c_allman_if_closed", "lines": ["int f() {", "    if (a)", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>jo{<Esc>"}
+{"name": "ik_c_block_brace", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_c_allman_while", "lines": ["int f() {", "    while (a)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_c_allman_else", "lines": ["int f() {", "    if (a) {", "    }", "    else"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_c_allman_struct", "lines": ["struct s"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_c_allman_if_deep", "lines": ["int f() {", "    if (a)", "    {", "        if (b)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_c_brace_after_ctrl_t", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go<C-t>{<Esc>"}
+{"name": "ik_c_brace_then_text", "lines": ["int f()"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>o{<CR>x;<Esc>"}
+{"name": "ik_js_allman_fn", "lines": ["function f()"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_js_allman_if", "lines": ["function f() {", "    if (a)"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_js_block", "lines": ["function f() {", "    x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_go_allman_if", "lines": ["func f() {", "\tif a"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Go{<Esc>"}
+{"name": "ik_go_block", "lines": ["func f() {", "\tx()"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Go{<Esc>"}
+{"name": "ik_rs_allman_fn", "lines": ["fn f()"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_rs_allman_if", "lines": ["fn f() {", "    if a"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_css_brace", "lines": ["a"], "file": "fixture.css", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_css_brace_in", "lines": ["a {", "    color: red;"], "file": "fixture.css", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_json_brace", "lines": ["[", "    1,"], "file": "fixture.json", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_sh_brace", "lines": ["f()"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_sh_brace_in", "lines": ["if a; then", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_sh_case_pat", "lines": ["case a in", "    b) x;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>joc)<Esc>"}
+{"name": "ik_sh_case_pat_first", "lines": ["case a in"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>ob)<Esc>"}
+{"name": "ik_sh_case_pat_after_body", "lines": ["case a in", "    b)", "        x", "        ;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Goc)<Esc>"}
+{"name": "ik_sh_case_pat_after_body_nosemi", "lines": ["case a in", "    b)", "        x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Goc)<Esc>"}
+{"name": "ik_sh_paren_subshell", "lines": ["f() {", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Go(y)<Esc>"}
+{"name": "ik_sh_paren_mid", "lines": ["if a; then", "    x"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Goy $(z)<Esc>"}
+{"name": "ik_sh_case_pat_after_ctrl_t", "lines": ["case a in", "    b) x;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Go<C-t>c)<Esc>"}
+{"name": "ik_sh_case_nested", "lines": ["f() {", "    case a in", "        b) x;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Goc)<Esc>"}
+{"name": "ik_sh_esac_after", "lines": ["case a in", "    b)", "        x", "        ;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>Goesac<Esc>"}
+{"name": "ik_sh_pat_alt", "lines": ["case a in", "    b) x;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>joc|d)<Esc>"}
+{"name": "ik_sh_pat_star", "lines": ["case a in", "    b) x;;"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>jo*)<Esc>"}
+{"name": "ik_c_label", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_nested", "lines": ["int f() {", "    if (a) {", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_then_stmt", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<CR>y;<Esc>"}
+{"name": "ik_c_label_eq", "lines": ["int f() {", "x;", "out:", "y;", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_c_ternary_colon", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goy = a ? b : c;<Esc>"}
+{"name": "ik_c_ternary_line", "lines": ["int f() {", "    x = a"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go? b<CR>: c;<Esc>"}
+{"name": "ik_c_bitfield", "lines": ["struct s {", "    int a"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goint b:<Esc>"}
+{"name": "ik_c_public", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gopublic:<Esc>"}
+{"name": "ik_c_label_top", "lines": ["int x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_space", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout :<Esc>"}
+{"name": "ik_c_label_in_switch", "lines": ["int f() {", "    switch (a) {", "        case 1:", "            x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_scope", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goa::b();<Esc>"}
+{"name": "ik_js_label", "lines": ["function f() {", "    x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_js_obj_key", "lines": ["var o = {", "    a: 1,"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Gob:<Esc>"}
+{"name": "ik_go_label", "lines": ["func f() {", "\tx()"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Goout:<Esc>"}
+{"name": "ik_c_case_hand_switch", "lines": ["int f() {", "    switch (a) {", "    case 1:", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>"}
+{"name": "ik_c_default_hand_switch", "lines": ["int f() {", "    switch (a) {", "    case 1:", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Godefault:<Esc>"}
+{"name": "ik_c_case_hand_deep", "lines": ["int f() {", "    switch (a) {", "            case 1:", "                x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>"}
+{"name": "ik_c_case_first", "lines": ["int f() {", "    switch (a) {"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gocase 1:<Esc>"}
+{"name": "ik_c_case_eq_hand", "lines": ["int f() {", "    switch (a) {", "    case 1:", "        x;", "case 2:", "}", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_c_case_hand_after_break", "lines": ["int f() {", "    switch (a) {", "    case 1:", "        x;", "        break;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>"}
+{"name": "ik_js_case_hand_deep", "lines": ["function f() {", "    switch (a) {", "        case 1:", "            x;"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>"}
+{"name": "ik_go_case_hand_deep", "lines": ["func f() {", "\tswitch a {", "\t\tcase 1:", "\t\t\tx()"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Gocase 2:<Esc>"}
+{"name": "ik_c_label_after_unterminated", "lines": ["int f() {", "    if (a)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_after_comment", "lines": ["int f() {", "    x;", "    /* c */"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_after_open", "lines": ["int f() {"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_after_label", "lines": ["int f() {", "out:"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goin:<Esc>"}
+{"name": "ik_c_label_after_close", "lines": ["int f() {", "    if (a) {", "        x;", "    }"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_after_comma", "lines": ["int f() {", "    g(a,"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "ik_c_label_in_struct", "lines": ["struct s {", "    int a;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gob:<Esc>"}
+{"name": "ik_c_label_mid_word", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:y<Esc>"}
+{"name": "ik_c_label_digit", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go1:<Esc>"}
+{"name": "ik_c_label_o_after", "lines": ["int f() {", "    x;", "out:"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goy;<Esc>"}
+{"name": "ik_c_label_o_after_closed", "lines": ["int f() {", "    x;", "out:", "    y;", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>3joz;<Esc>"}
+{"name": "ik_c_label_eq_nested", "lines": ["int f() {", "if (a) {", "out:", "y;", "}", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_c_protected", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goprivate:<Esc>"}
+{"name": "ik_js_label_eq", "lines": ["function f() {", "x;", "out:", "for (;;) {}", "}"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_c_eq_allman", "lines": ["int f()", "{", "if (a)", "{", "x;", "}", "else", "{", "y;", "}", "while (b)", "{", "z;", "}", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_c_eq_allman_struct", "lines": ["struct s", "{", "int a;", "};"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_js_eq_allman", "lines": ["function f()", "{", "if (a)", "{", "x;", "}", "else", "{", "y;", "}", "}"], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_rs_eq_allman", "lines": ["fn f()", "{", "if a", "{", "x;", "}", "else", "{", "y;", "}", "}"], "file": "fixture.rs", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_sh_eq_allman", "lines": ["f()", "{", "x", "}"], "file": "fixture.sh", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_css_eq_allman", "lines": ["a", "{", "color: red;", "}"], "file": "fixture.css", "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "ik_c_allman_o_after_brace", "lines": ["int f() {", "    if (a)", "    {"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gox;<Esc>"}
+{"name": "ik_c_allman_close", "lines": ["int f() {", "    if (a)", "    {", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>"}
+{"name": "ik_c_allman_hand_header", "lines": ["int f() {", "      if (a)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go{<Esc>"}
+{"name": "ik_c_brace_not_first", "lines": ["int f() {", "    if (a)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gox {<Esc>"}
+{"name": "ik_c_brace_initializer", "lines": ["int a[] ="], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_js_brace_object_value", "lines": ["var o ="], "file": "fixture.js", "keys": ":set ts=8 sw=4 et<CR>o{<Esc>"}
+{"name": "ik_go_case_after_open_brace", "lines": ["func f() {", "\tswitch a {"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Gocase 1:<Esc>"}
+{"name": "ik_go_case_after_label", "lines": ["func f() {", "\tswitch a {", "\tcase 1:"], "file": "fixture.go", "keys": ":set ts=8 sw=8 noet<CR>Godefault:<Esc>"}
+{"name": "ik_c_scope_after_label", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gostd::y;<Esc>"}
+# --- #1163 'lisp' (nvim's get_lisp_indent and its Lisp bracket search): `=` (the first line of a
+#     multi-line range kept), and under 'autoindent' `o`/`O`/`<CR>`/`cc`; 'lispwords' forms take two
+#     columns, arguments line up with the first one, `;` comments, strings and `#\(` open nothing. ---
+{"name": "lisp_eq_defun", "lines": ["(defun f (x)", "(let ((y 1))", "(+ x", "y)))"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_args_align", "lines": ["(foo a", "b", "c)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_arg_on_next_line", "lines": ["(foo", "a", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_nested_first", "lines": ["((lambda (x)", "x)", "1)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_string", "lines": ["(foo \"a (b\"", "c)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_comment", "lines": ["(foo a ; (x", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_char_paren", "lines": ["(foo #\\( a", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_first_line_kept", "lines": ["   (foo a", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_one_line", "lines": ["(foo", "      b)"], "keys": ":set lisp ts=8 sw=4 et<CR>j=="}
+{"name": "lisp_eq_bracket", "lines": ["(let [a 1", "b 2]", "a)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_number_arg", "lines": ["(foo 1", "2)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_quote_arg", "lines": ["(foo 'a", "'b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_top_level", "lines": ["(a)", "   (b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_same_level_prev", "lines": ["(foo a", "     b", "  c", "d)"], "keys": ":set lisp ts=8 sw=4 et<CR>jj=="}
+{"name": "lisp_o", "lines": ["(defun f (x)"], "keys": ":set lisp ts=8 sw=4 et<CR>oa<Esc>"}
+{"name": "lisp_o_args", "lines": ["(foo a"], "keys": ":set lisp ts=8 sw=4 et<CR>ob<Esc>"}
+{"name": "lisp_cr", "lines": ["(foo a b)"], "keys": ":set lisp ts=8 sw=4 et<CR>fbi<CR><Esc>"}
+{"name": "lisp_O", "lines": ["(foo a", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>jOc<Esc>"}
+{"name": "lisp_cc", "lines": ["(foo a", "      b)"], "keys": ":set lisp ts=8 sw=4 et<CR>jccz)<Esc>"}
+{"name": "lisp_noai_o", "lines": ["(foo a"], "keys": ":set lisp sw=4 noai et<CR>ob<Esc>"}
+{"name": "lisp_lispwords", "lines": ["(myform (a)", "b)"], "keys": ":set lisp sw=4 lispwords+=myform et<CR>=G"}
+{"name": "lisp_eq_tab", "lines": ["(foo\ta", "b)"], "keys": ":set lisp sw=4 ts=8 et<CR>=G"}
+{"name": "lisp_eq_noet", "lines": ["(defun f (x)", "(let ((y 1))", "(+ x", "y)))"], "keys": ":set lisp sw=4 noet ts=4<CR>=G"}
+{"name": "lisp_eq_escaped_quote", "lines": ["(foo \"a\\\" (\"", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_blank_line", "lines": ["(foo a", "", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_dot", "lines": ["(foo a", "b", "(bar", "c)"], "keys": ":set lisp ts=8 sw=4 et<CR>j==jj."}
+{"name": "lisp_o_undo", "lines": ["(foo a"], "keys": ":set lisp ts=8 sw=4 et<CR>ob<Esc>u"}
+{"name": "lisp_o_esc_empties", "lines": ["(foo a"], "keys": ":set lisp ts=8 sw=4 et<CR>o<Esc>"}
+{"name": "lisp_visual_eq", "lines": ["(foo a", "b", "c)"], "keys": ":set lisp ts=8 sw=4 et<CR>Vj="}
+{"name": "lisp_set_query", "lines": ["x"], "keys": ":set lisp<CR>:set nolisp<CR>ix<Esc>"}
+{"name": "lisp_nested_let", "lines": ["(let ((a 1)", "(b 2))", "(+ a b))"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_when_body", "lines": ["(when x", "(foo)", "(bar))"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_cr_mid", "lines": ["(defun f (x) (g x))"], "keys": ":set lisp ts=8 sw=4 et<CR>f(;i<CR><Esc>"}
+{"name": "lisp_eq_odd_quotes", "lines": ["(foo \"a (", "b\" c", "d)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_char_semicolon", "lines": ["(foo #\\; a", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_comment_with_quote", "lines": ["(foo a ; \"x", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_wide_before", "lines": ["(中 (foo a", "b))"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_tab_inside", "lines": ["(foo\t(bar a", "b))"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_vector", "lines": ["(foo [a", "b]", "c)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_quoted_list", "lines": ["'(a b", "c)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_string_arg_first", "lines": ["(foo \"bar\"", "baz)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_keyword_arg", "lines": ["(foo :a 1", ":b 2)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_closed_above", "lines": ["(defun f ()", "(a)", "(b))"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_deep", "lines": ["(a (b (c", "d)", "e)", "f)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_backslash_paren", "lines": ["(foo \\( a", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_single_quote_char", "lines": ["(foo '(' a", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_lispwords_empty", "lines": ["(defun f (x)", "x)"], "keys": ":set lisp ts=8 sw=4 et lispwords=<CR>=G"}
+{"name": "lisp_eq_paren_in_comment_line", "lines": ["(foo", "; (", ";", "b)"], "keys": ":set lisp ts=8 sw=4 et<CR>=G"}
+{"name": "lisp_eq_noai", "lines": ["(foo a", "b)"], "keys": ":set lisp noai ts=8 sw=4 et<CR>=G"}
+# #1232: a byte that is not UTF-8 is a cell of its own, and the valid text around it keeps its grapheme
+# clusters (a base with a combining mark, a ZWJ emoji). `bytes` fixtures spell each line in Latin-1, one
+# char per byte, because a JSON string cannot hold an invalid byte (see `_latin1_lines`).
+{"name": "inv_l_keeps_cluster_after", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "llll", "bytes": true}
+{"name": "inv_l_onto_invalid", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "ll", "bytes": true}
+{"name": "inv_dollar_h", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "$hh", "bytes": true}
+{"name": "inv_x_cluster_before", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "x", "bytes": true}
+{"name": "inv_x_invalid_byte", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "llx", "bytes": true}
+{"name": "inv_dollar_x_cluster", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "$x", "bytes": true}
+{"name": "inv_3x", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "3x", "bytes": true}
+{"name": "inv_w_invalid_is_a_word", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "w", "bytes": true}
+{"name": "inv_ww", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "ww", "bytes": true}
+{"name": "inv_dw", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "wdw", "bytes": true}
+{"name": "inv_yl_register", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "llyl", "bytes": true}
+{"name": "inv_f_cluster_base", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "fe", "bytes": true}
+{"name": "inv_F_cluster_base", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "$hhFe", "bytes": true}
+{"name": "inv_t_cluster", "lines": ["eÌ\u0081 ÿ eÌ\u0081x"], "keys": "tx", "bytes": true}
+{"name": "inv_mid_l", "lines": ["aÿeÌ\u0081b"], "keys": "lll", "bytes": true}
+{"name": "inv_mid_dollar_h", "lines": ["aÿeÌ\u0081b"], "keys": "$h", "bytes": true}
+{"name": "inv_mid_llx", "lines": ["aÿeÌ\u0081b"], "keys": "llx", "bytes": true}
+{"name": "inv_mark_after_invalid_l", "lines": ["ÿÌ\u0081a"], "keys": "ll", "bytes": true}
+{"name": "inv_mark_after_invalid_x", "lines": ["ÿÌ\u0081a"], "keys": "x", "bytes": true}
+{"name": "inv_mark_after_invalid_lx", "lines": ["ÿÌ\u0081a"], "keys": "lx", "bytes": true}
+{"name": "inv_cut_char_l", "lines": ["ê°aÌ\u0081"], "keys": "ll", "bytes": true}
+{"name": "inv_cut_char_x", "lines": ["ê°aÌ\u0081"], "keys": "x", "bytes": true}
+{"name": "inv_cut_char_dollar_h", "lines": ["ê°aÌ\u0081"], "keys": "$h", "bytes": true}
+{"name": "inv_stray_continuation_l", "lines": ["a\u0080Ì\u0081b"], "keys": "lll", "bytes": true}
+{"name": "inv_stray_continuation_x", "lines": ["a\u0080Ì\u0081b"], "keys": "x", "bytes": true}
+{"name": "inv_stray_continuation_lx", "lines": ["a\u0080Ì\u0081b"], "keys": "lx", "bytes": true}
+{"name": "inv_zwj_l", "lines": ["ð\u009f\u0091¨â\u0080\u008dð\u009f\u0091© ÿ ð\u009f\u0091¨â\u0080\u008dð\u009f\u0091©"], "keys": "lll", "bytes": true}
+{"name": "inv_zwj_x", "lines": ["ð\u009f\u0091¨â\u0080\u008dð\u009f\u0091© ÿ ð\u009f\u0091¨â\u0080\u008dð\u009f\u0091©"], "keys": "x", "bytes": true}
+{"name": "inv_zwj_dollar_h", "lines": ["ð\u009f\u0091¨â\u0080\u008dð\u009f\u0091© ÿ ð\u009f\u0091¨â\u0080\u008dð\u009f\u0091©"], "keys": "$h", "bytes": true}
+{"name": "inv_in_word_w", "lines": ["abÿcd ef"], "keys": "w", "bytes": true}
+{"name": "inv_in_word_e", "lines": ["abÿcd ef"], "keys": "e", "bytes": true}
+{"name": "inv_in_word_dollar_b", "lines": ["abÿcd ef"], "keys": "$bb", "bytes": true}
+{"name": "inv_in_word_diw", "lines": ["abÿcd ef"], "keys": "ldiw", "bytes": true}
+{"name": "inv_ge", "lines": ["eÌ\u0081 ÿ eÌ\u0081"], "keys": "$ge", "bytes": true}
+{"name": "inv_two_lines_j", "lines": ["eÌ\u0081ÿx", "eÌ\u0081ÿy"], "keys": "llj", "bytes": true}
+{"name": "inv_r_cluster", "lines": ["eÌ\u0081 ÿ"], "keys": "rZ", "bytes": true}
+# #1243: a byte that is not UTF-8 has the class of the Latin-1 char of its value (nvim's `utf_ptr2char`
+# returns the byte): 0xA0 is blank, 0xB5 and 0xC0-0xFF are keyword chars, the rest punctuation. Search
+# and the keyword lookups (`*`, `#`, `gd`, completion) see it as one char of that class.
+{"name": "inv_w_continuation_is_punct", "lines": ["a\u0080b c"], "keys": "w", "bytes": true}
+{"name": "inv_w_a0_is_blank", "lines": ["a\u00a0b c"], "keys": "w", "bytes": true}
+{"name": "inv_W_a0_is_blank", "lines": ["a\u00a0b c"], "keys": "W", "bytes": true}
+{"name": "inv_w_b5_is_keyword", "lines": ["aµb c"], "keys": "w", "bytes": true}
+{"name": "inv_e_continuation", "lines": ["ab\u0080cd"], "keys": "e", "bytes": true}
+{"name": "inv_diw_continuation", "lines": ["ab\u0080cd"], "keys": "diw", "bytes": true}
+{"name": "inv_star_keyword_joins", "lines": ["fooÿbar x fooÿbar foo"], "keys": "*", "bytes": true}
+{"name": "inv_star_from_blank", "lines": ["fooÿbar x fooÿbar foo x"], "keys": "w*", "bytes": true}
+{"name": "inv_star_word_starts_invalid", "lines": ["ÿab ab ÿab"], "keys": "l*", "bytes": true}
+{"name": "inv_star_continuation_ends_word", "lines": ["ab\u0080cd ab ab\u0080cd"], "keys": "*", "bytes": true}
+{"name": "inv_star_skips_continuation", "lines": ["\u0080ab ab \u0080ab"], "keys": "*", "bytes": true}
+{"name": "inv_star_cut_lead", "lines": ["é°ab ab é°ab"], "keys": "*", "bytes": true}
+{"name": "inv_star_n", "lines": ["xÿy a xÿy b xÿy"], "keys": "*n", "bytes": true}
+{"name": "inv_gstar", "lines": ["xÿ a xÿy"], "keys": "g*", "bytes": true}
+{"name": "inv_hash", "lines": ["fooÿbar x fooÿbar foo"], "keys": "$#", "bytes": true}
+{"name": "inv_hash_keyword", "lines": ["xÿy a xÿy"], "keys": "$#", "bytes": true}
+{"name": "inv_gd", "lines": ["xÿy = 1", "xÿy"], "keys": "jgd", "bytes": true}
+{"name": "inv_search_dot", "lines": ["x aÿb aÿb"], "keys": "/a.b<CR>", "bytes": true}
+{"name": "inv_search_dot_n", "lines": ["x aÿb aÿb"], "keys": "/a.b<CR>n", "bytes": true}
+{"name": "inv_search_after_invalid", "lines": ["ÿab cd ab"], "keys": "/ab<CR>", "bytes": true}
+{"name": "inv_search_other_lines", "lines": ["ÿ", "abc", "\u0080abc"], "keys": "/abc<CR>n", "bytes": true}
+{"name": "inv_search_backward", "lines": ["ab ÿ ab"], "keys": "$?ab<CR>", "bytes": true}
+{"name": "inv_search_cut", "lines": ["é°ab ab"], "keys": "/ab<CR>", "bytes": true}
+{"name": "inv_search_two_dots_cut", "lines": ["zz xé°y"], "keys": "/x..y<CR>", "bytes": true}
+{"name": "inv_search_one_dot_cut", "lines": ["zz xé°y"], "keys": "/x.y<CR>", "bytes": true}
+{"name": "inv_search_keyword_class", "lines": ["a\u0080b ab"], "keys": "/\\k\\k<CR>", "bytes": true}
+{"name": "inv_search_keyword_class_ff", "lines": ["zz aÿb"], "keys": "/\\k\\k\\k<CR>", "bytes": true}
+{"name": "inv_search_word_class", "lines": ["aÿb ÿ"], "keys": "/\\w\\w<CR>", "bytes": true}
+{"name": "inv_search_bow_continuation", "lines": ["ab\u0080cd ab"], "keys": "/\\<cd\\><CR>", "bytes": true}
+{"name": "inv_search_bow_ff", "lines": ["abÿcd cd"], "keys": "/\\<cd\\><CR>", "bytes": true}
+{"name": "inv_search_negated_collection", "lines": ["aaÿb"], "keys": "/[^a]<CR>", "bytes": true}
+{"name": "inv_search_not_latin1", "lines": ["aÿ Ã¿"], "keys": "/ÿ<CR>", "bytes": true}
+{"name": "inv_search_ignorecase", "lines": ["aÿ b"], "keys": ":set ic<CR>/Ÿ<CR>", "bytes": true}
+{"name": "inv_search_gn", "lines": ["x aÿb"], "keys": "/a.b<CR>0dgn", "bytes": true}
+{"name": "inv_sub_across", "lines": ["abÿcd"], "keys": ":s/b.c/X/<CR>", "bytes": true}
+{"name": "inv_sub_after", "lines": ["ÿxy xy"], "keys": ":s/xy/Z/g<CR>", "bytes": true}
+{"name": "inv_sub_other_line", "lines": ["ÿ", "xy"], "keys": ":%s/y/Z/<CR>", "bytes": true}
+{"name": "inv_global_delete", "lines": ["aÿ", "b", "cÿ"], "keys": ":g/b/d<CR>", "bytes": true}
+{"name": "inv_vglobal_delete", "lines": ["aÿ", "b", "cÿ"], "keys": ":v/b/d<CR>", "bytes": true}
+{"name": "inv_ex_delete", "lines": ["ÿ", "b"], "keys": ":1d<CR>", "bytes": true}
+{"name": "inv_ex_yank_put", "lines": ["ÿ", "b"], "keys": ":1y<CR>:2put<CR>", "bytes": true}
+{"name": "inv_ex_join", "lines": ["aÿ", "b"], "keys": ":j<CR>", "bytes": true}
+{"name": "inv_ex_move", "lines": ["ÿ", "b"], "keys": ":m$<CR>", "bytes": true}
+{"name": "inv_ex_copy", "lines": ["ÿ", "b"], "keys": ":t.<CR>", "bytes": true}
+{"name": "inv_ex_shift", "lines": ["ÿ", "b"], "keys": ":set sw=4 et<CR>:%><CR>", "bytes": true}
+{"name": "inv_ex_sort", "lines": ["bÿ", "a"], "keys": ":sort<CR>", "bytes": true}
+{"name": "inv_ex_sort_bytes", "lines": ["ÿ", "\u0080", "Ã©", "z"], "keys": ":sort<CR>", "bytes": true}
+{"name": "inv_ex_sort_pattern", "lines": ["xÿb", "xÿa"], "keys": ":sort /x./<CR>", "bytes": true}
+{"name": "inv_global_pattern_across", "lines": ["aÿb", "ab", "a\u0080b"], "keys": ":g/a.b/d<CR>", "bytes": true}
+{"name": "inv_sub_multiline", "lines": ["aÿ", "b"], "keys": ":%s/.\\nb/Z/<CR>", "bytes": true}
+{"name": "inv_star_next_line", "lines": ["ÿ foo", "foo"], "keys": "w*", "bytes": true}
+# Case operators keep a byte that is not UTF-8 as it is (#706): these use bytes whose Latin-1 char has
+# no case (0x80, 0xA9, 0xD7). nvim upper-cases a cased one as its Latin-1 char and writes it as UTF-8
+# (`g~~` on 0xFF gives U+0178), which ruse does not do.
+{"name": "inv_g_tilde_line", "lines": ["ab\u0080cd"], "keys": "g~~", "bytes": true}
+{"name": "inv_gU_word", "lines": ["ab©cd ef"], "keys": "gUiw", "bytes": true}
+{"name": "inv_visual_U", "lines": ["ab\u0080cd"], "keys": "VU", "bytes": true}
+{"name": "inv_visual_tilde", "lines": ["ab\u0080cd"], "keys": "v$~", "bytes": true}
+{"name": "inv_visual_r", "lines": ["abÿcd"], "keys": "v$rx", "bytes": true}
+{"name": "inv_tilde_over_invalid", "lines": ["a×b"], "keys": "3~", "bytes": true}
+{"name": "inv_J_after_invalid", "lines": ["aÿ", "b"], "keys": "J", "bytes": true}
+{"name": "inv_J_before_invalid", "lines": ["a", "ÿb"], "keys": "J", "bytes": true}
+# `gq` formats a line that is not UTF-8 (where a break depends on the `<ff>` width: `inv_w_gq_tw`).
+{"name": "inv_gq_line", "lines": ["aaaa bbbb cÿ"], "keys": ":set tw=5<CR>gqq", "bytes": true}
+{"name": "inv_i_ctrl_w_keyword_byte", "lines": ["abÿcd"], "keys": "A<C-w><Esc>", "bytes": true}
+{"name": "inv_i_ctrl_w_continuation", "lines": ["ab\u0080cd"], "keys": "A<C-w><Esc>", "bytes": true}
+# #1251: nvim draws a byte that is not UTF-8 as `<ff>`, four cells, and counts it so in every virtual
+# column: `{count}|`, `gM`, the `j`/`k` wanted column, blockwise Visual and `'textwidth'`. A control char
+# is `^A` (two cells) and a format char `<200b>` (six) in the same model.
+{"name": "inv_w_pipe_3", "lines": ["ÿÿabc"], "keys": "3|", "bytes": true}
+{"name": "inv_w_pipe_5", "lines": ["ÿÿabc"], "keys": "5|", "bytes": true}
+{"name": "inv_w_pipe_9", "lines": ["ÿÿabc"], "keys": "9|", "bytes": true}
+{"name": "inv_w_pipe_past_end", "lines": ["ÿÿabc"], "keys": "20|", "bytes": true}
+{"name": "inv_w_d_pipe", "lines": ["ÿÿabc"], "keys": "$d5|", "bytes": true}
+{"name": "inv_w_d_pipe_onto_invalid", "lines": ["ÿÿabc"], "keys": "$d6|", "bytes": true}
+{"name": "inv_w_y_pipe", "lines": ["ÿabc"], "keys": "$y3|", "bytes": true}
+{"name": "inv_w_v_pipe_past_end", "lines": ["ÿab", "x"], "keys": "v20|d", "bytes": true}
+{"name": "inv_w_cut_pipe", "lines": ["ê°a"], "keys": "5|", "bytes": true}
+{"name": "inv_w_mark_after_pipe", "lines": ["ÿÌ\u0081a"], "keys": "5|", "bytes": true}
+{"name": "inv_w_gM", "lines": ["ÿÿÿÿ abcd"], "keys": "gM", "bytes": true}
+{"name": "inv_w_gM_count", "lines": ["ÿÿÿÿ abcd"], "keys": "25gM", "bytes": true}
+{"name": "inv_w_dgM", "lines": ["ÿÿÿÿ abcd"], "keys": "$dgM", "bytes": true}
+{"name": "inv_w_j_wanted", "lines": ["ÿÿabcdef", "abcdefghijkl"], "keys": "$hj", "bytes": true}
+{"name": "inv_w_j_onto_invalid", "lines": ["abcdefghijkl", "ÿÿabcdef"], "keys": "6lj", "bytes": true}
+{"name": "inv_w_jk_round_trip", "lines": ["abcdefghijkl", "ÿÿabcdef"], "keys": "6ljk", "bytes": true}
+{"name": "inv_w_j_mid_invalid", "lines": ["abcdefgh", "aÿbcd"], "keys": "3lj", "bytes": true}
+{"name": "inv_w_j_past_invalid", "lines": ["abcdefgh", "aÿbcd"], "keys": "5lj", "bytes": true}
+{"name": "inv_w_pipe_j", "lines": ["ÿabc", "abcdefghij"], "keys": "3|j", "bytes": true}
+{"name": "inv_w_block_d", "lines": ["aÿbcde", "abcdef"], "keys": "l<C-v>jld", "bytes": true}
+{"name": "inv_w_block_d_below", "lines": ["abcdef", "aÿbcde"], "keys": "l<C-v>jld", "bytes": true}
+{"name": "inv_w_block_y", "lines": ["aÿbcde", "abcdef"], "keys": "l<C-v>jly", "bytes": true}
+{"name": "inv_w_block_I", "lines": ["aÿbcde", "abcdef"], "keys": "ll<C-v>jIX<Esc>", "bytes": true}
+{"name": "inv_w_block_I_below", "lines": ["abcdef", "aÿbcde"], "keys": "ll<C-v>jIX<Esc>", "bytes": true}
+{"name": "inv_w_block_dollar_A", "lines": ["aÿb", "abcdef"], "keys": "<C-v>j$AX<Esc>", "bytes": true}
+{"name": "inv_w_gq_tw", "lines": ["ÿÿÿÿ ÿÿÿÿ a b c d"], "keys": ":set tw=10<CR>gqq", "bytes": true}
+{"name": "w_pipe_tab_j", "lines": ["\tabc", "abcdefghij"], "keys": ":set ts=8<CR>3|j"}
+{"name": "w_pipe_wide_j", "lines": ["中abc", "abcdefghij"], "keys": "2|j"}
+{"name": "w_pipe_tab", "lines": ["a\tbc"], "keys": ":set ts=8<CR>5|x"}
+{"name": "w_pipe_wide", "lines": ["中文ab"], "keys": "4|x"}
+{"name": "w_gM_tab", "lines": ["\tabcd"], "keys": ":set ts=8<CR>gMx"}
+{"name": "w_d_pipe_past_end", "lines": ["abc"], "keys": "d10|"}
+{"name": "w_gM_count_over_100", "lines": ["abcdefghij"], "keys": "200gMx"}
+{"name": "w_pipe_control", "lines": ["\u0001\u0001abc"], "keys": "5|x"}
+{"name": "w_j_control", "lines": ["\u0001\u0001abc", "abcdefgh"], "keys": "3lj"}
+{"name": "w_j_zwsp", "lines": ["\u200babc", "abcdefgh"], "keys": "lj"}
+{"name": "w_j_c1", "lines": ["\u0085abc", "abcdefgh"], "keys": "lj"}
+# #1252: Insert-mode features keep a byte that is not UTF-8. Keyword completion offers a candidate that
+# holds one; `CTRL-Y`/`CTRL-E` copy the char at the caret's virtual column and insert such a byte as the
+# Latin-1 char of its value, in UTF-8 (`ÿ`), as nvim does; a collection compares it as that Latin-1 char
+# (`[ð-ÿ]` and `[ÿ]` take byte 0xFF, `/ÿ` and `\%xff` do not); `:retab` measures `<ff>` as 4 cells.
+{"name": "inv_i_ctrl_n", "lines": ["abÿcd", "x"], "keys": "Goa<C-n><Esc>", "bytes": true}
+{"name": "inv_i_ctrl_n_twice", "lines": ["aÿb", "aÿc", "x"], "keys": "Goa<C-n><C-n><Esc>", "bytes": true}
+{"name": "inv_i_ctrl_p", "lines": ["abÿcd", "x"], "keys": "Goa<C-p><Esc>", "bytes": true}
+{"name": "inv_i_ctrl_y", "lines": ["ÿabcdef", "x"], "keys": "jA<C-y><C-y><Esc>", "bytes": true}
+{"name": "inv_i_ctrl_e", "lines": ["x", "aÿb"], "keys": "A<C-e><C-e><Esc>", "bytes": true}
+{"name": "inv_i_ctrl_y_after_invalid", "lines": ["ÿabcdef", "x"], "keys": "jA<C-y><C-y><C-y><C-y><Esc>", "bytes": true}
+{"name": "w_i_ctrl_y_tab", "lines": ["\tabc", "x"], "keys": ":set ts=8<CR>jA<C-y><Esc>"}
+{"name": "w_i_ctrl_y_wide", "lines": ["中ab", "x"], "keys": "jA<C-y><C-y><Esc>"}
+{"name": "inv_coll_range", "lines": ["zzÿ"], "keys": "/[ð-ÿ]<CR>", "bytes": true}
+{"name": "inv_coll_range_skips_below", "lines": ["zzé ÿ"], "keys": "/[ð-ÿ]<CR>", "bytes": true}
+{"name": "inv_coll_item", "lines": ["zzÿ"], "keys": "/[ÿ]<CR>", "bytes": true}
+{"name": "inv_coll_hex_range", "lines": ["zz\u0080"], "keys": "/[\\x80-\\xff]<CR>", "bytes": true}
+{"name": "inv_coll_wide_range", "lines": ["zzÿ"], "keys": "/[ÿ-ā]<CR>", "bytes": true}
+{"name": "inv_coll_negated", "lines": ["aÿÿb"], "keys": "/[^ÿa]<CR>", "bytes": true}
+{"name": "inv_coll_ignorecase", "lines": ["zzÿ"], "keys": "/[Ÿ]\\c<CR>", "bytes": true}
+{"name": "inv_coll_not_outside", "lines": ["zzÿ Ã¿"], "keys": "/\\%xff<CR>", "bytes": true}
+{"name": "inv_retab_et", "lines": ["ÿ \ta    b"], "keys": ":set et ts=4<CR>:retab<CR>", "bytes": true}
+{"name": "inv_retab_bang", "lines": ["ÿ        a \t"], "keys": ":set noet ts=4<CR>:retab!<CR>", "bytes": true}
+{"name": "inv_retab_tab_after", "lines": ["ÿ\ta"], "keys": ":set et ts=8<CR>:retab<CR>", "bytes": true}
+{"name": "inv_cword_fallback", "lines": ["+\u0080+ x"], "keys": ":s/<C-r><C-w>/Z/<CR>", "bytes": true}
+# --- #1163 cindent (nvim's get_c_indent, indent_c.c): `=` with the default 'cinoptions' and with
+#     each flag, in a C file and in a buffer with no file; the opens and typed keys of 'cinkeys' in a
+#     C file and under 'cindent'; 'cinkeys'/'cinscopedecls'/'cinwords' changed. ---
+{"name": "cin_eq_basic", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_kr", "lines": ["int f() {", "if (a) {", "x();", "} else {", "y();", "}", "while (b) {", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_switch", "lines": ["void f(int a)", "{", "switch (a)", "{", "case 1:", "x();", "break;", "case 2: {", "y();", "}", "break;", "default:", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_cont", "lines": ["int f()", "{", "x = a +", "b +", "c;", "y = g(a,", "b,", "c);", "if (a &&", "b)", "z();", "t = cond", "? a", ": b;", "s = \"abc\\", "def\";", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_init", "lines": ["struct s x = {", "1,", "2,", "{ 3, 4 },", "};", "enum e {", "A,", "B = 2,", "C", "};", "int a,", "b,", "c;", "static int arr[] = {", "1, 2,", "3", "};"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_comment", "lines": ["int f()", "{", "/*", "* a", "* b", "*/", "/* one", "two", "*/", "/*", "text", "*/", "// line", "// more", "x = 1; // trail", "// next", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_preproc", "lines": ["#include <a.h>", "int f()", "{", "#ifdef A", "x();", "#else", "y();", "#endif", "#define M(a) \\", "do { a; } \\", "while (0)", "return 0;", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_krparam", "lines": ["int", "f(a, b)", "int a;", "char b;", "{", "return a;", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_label", "lines": ["int f()", "{", "x();", "out:", "y();", "if (a)", "goto out;", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_cpp", "lines": ["namespace n {", "class C : public B,", "public D", "{", "public:", "C();", "private:", "int x;", "};", "C::C()", ": B(1),", "D(2)", "{", "}", "}", "extern \"C\" {", "int g();", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_paren", "lines": ["int f()", "{", "if (a && (b ||", "c))", "x();", "foo(", "a,", "b", ");", "bar(baz(1,", "2), 3);", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_raw", "lines": ["int f()", "{", "s = R\"x(", "  keep", ")x\";", "y();", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_type", "lines": ["static", "int", "f(void)", "{", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_dowhile", "lines": ["int f()", "{", "do {", "x();", "} while (a);", "y();", "do", "z();", "while (b &&", "c);", "w();", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_else", "lines": ["int f()", "{", "if (a)", "if (b)", "x();", "else", "y();", "else", "z();", "w();", "}"], "keys": ":set ts=8 sw=4 et<CR>=G", "file": "fixture.c"}
+{"name": "cin_eq_basic_nofile", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "cin_eq_cont_nofile", "lines": ["int f()", "{", "x = a +", "b +", "c;", "y = g(a,", "b,", "c);", "if (a &&", "b)", "z();", "t = cond", "? a", ": b;", "s = \"abc\\", "def\";", "}"], "keys": ":set ts=8 sw=4 et<CR>=G"}
+{"name": "cin_eq_switch_nocin_nofile", "lines": ["void f(int a)", "{", "switch (a)", "{", "case 1:", "x();", "break;", "case 2: {", "y();", "}", "break;", "default:", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et nocin<CR>=G"}
+{"name": "cin_cino_gt_2s", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et cino=>2s<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_e_2", "lines": ["int f() {", "if (a) {", "x();", "} else {", "y();", "}", "while (b) {", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et cino=e2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_e_m2", "lines": ["int f() {", "if (a) {", "x();", "} else {", "y();", "}", "while (b) {", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et cino=e-2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_n_2", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et cino=n2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_f_2", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et cino=f2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_lbrace_2", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et cino={2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_rbrace_2", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et cino=}2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_caret_m2", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}"], "keys": ":set ts=8 sw=4 et cino=^-2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_LU_2", "lines": ["int f()", "{", "x();", "out:", "y();", "if (a)", "goto out;", "}"], "keys": ":set ts=8 sw=4 et cino=L2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_LU_0", "lines": ["int f()", "{", "x();", "out:", "y();", "if (a)", "goto out;", "}"], "keys": ":set ts=8 sw=4 et cino=L0<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_colon_0", "lines": ["void f(int a)", "{", "switch (a)", "{", "case 1:", "x();", "break;", "case 2: {", "y();", "}", "break;", "default:", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et cino=:0<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_equal_10", "lines": ["void f(int a)", "{", "switch (a)", "{", "case 1:", "x();", "break;", "case 2: {", "y();", "}", "break;", "default:", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et cino==10<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_l_1", "lines": ["void f(int a)", "{", "switch (a)", "{", "case 1:", "x();", "break;", "case 2: {", "y();", "}", "break;", "default:", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et cino=l1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_b_1", "lines": ["void f(int a)", "{", "switch (a)", "{", "case 1:", "x();", "break;", "case 2: {", "y();", "}", "break;", "default:", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et cino=b1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_g_0", "lines": ["namespace n {", "class C : public B,", "public D", "{", "public:", "C();", "private:", "int x;", "};", "C::C()", ": B(1),", "D(2)", "{", "}", "}", "extern \"C\" {", "int g();", "}"], "keys": ":set ts=8 sw=4 et cino=g0<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_h_2", "lines": ["namespace n {", "class C : public B,", "public D", "{", "public:", "C();", "private:", "int x;", "};", "C::C()", ": B(1),", "D(2)", "{", "}", "}", "extern \"C\" {", "int g();", "}"], "keys": ":set ts=8 sw=4 et cino=h2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_NU_ms", "lines": ["namespace n {", "class C : public B,", "public D", "{", "public:", "C();", "private:", "int x;", "};", "C::C()", ": B(1),", "D(2)", "{", "}", "}", "extern \"C\" {", "int g();", "}"], "keys": ":set ts=8 sw=4 et cino=N-s<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_EU_ms", "lines": ["namespace n {", "class C : public B,", "public D", "{", "public:", "C();", "private:", "int x;", "};", "C::C()", ": B(1),", "D(2)", "{", "}", "}", "extern \"C\" {", "int g();", "}"], "keys": ":set ts=8 sw=4 et cino=E-s<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_p_2", "lines": ["int", "f(a, b)", "int a;", "char b;", "{", "return a;", "}"], "keys": ":set ts=8 sw=4 et cino=p2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_t_0", "lines": ["static", "int", "f(void)", "{", "}"], "keys": ":set ts=8 sw=4 et cino=t0<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_i_8", "lines": ["namespace n {", "class C : public B,", "public D", "{", "public:", "C();", "private:", "int x;", "};", "C::C()", ": B(1),", "D(2)", "{", "}", "}", "extern \"C\" {", "int g();", "}"], "keys": ":set ts=8 sw=4 et cino=i8<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_plus_2", "lines": ["int f()", "{", "x = a +", "b +", "c;", "y = g(a,", "b,", "c);", "if (a &&", "b)", "z();", "t = cond", "? a", ": b;", "s = \"abc\\", "def\";", "}"], "keys": ":set ts=8 sw=4 et cino=+2<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_c_5", "lines": ["int f()", "{", "/*", "* a", "* b", "*/", "/* one", "two", "*/", "/*", "text", "*/", "// line", "// more", "x = 1; // trail", "// next", "}"], "keys": ":set ts=8 sw=4 et cino=c5<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_c1_CU_1", "lines": ["int f()", "{", "/*", "* a", "* b", "*/", "/* one", "two", "*/", "/*", "text", "*/", "// line", "// more", "x = 1; // trail", "// next", "}"], "keys": ":set ts=8 sw=4 et cino=c1,C1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_slash_4", "lines": ["int f()", "{", "/*", "* a", "* b", "*/", "/* one", "two", "*/", "/*", "text", "*/", "// line", "// more", "x = 1; // trail", "// next", "}"], "keys": ":set ts=8 sw=4 et cino=/4<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_lparen_0", "lines": ["int f()", "{", "if (a && (b ||", "c))", "x();", "foo(", "a,", "b", ");", "bar(baz(1,", "2), 3);", "}"], "keys": ":set ts=8 sw=4 et cino=(0<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_lparen_s", "lines": ["int f()", "{", "x = a +", "b +", "c;", "y = g(a,", "b,", "c);", "if (a &&", "b)", "z();", "t = cond", "? a", ": b;", "s = \"abc\\", "def\";", "}"], "keys": ":set ts=8 sw=4 et cino=(s<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_u_0", "lines": ["int f()", "{", "if (a && (b ||", "c))", "x();", "foo(", "a,", "b", ");", "bar(baz(1,", "2), 3);", "}"], "keys": ":set ts=8 sw=4 et cino=u0<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_lparen0_w_1", "lines": ["int f()", "{", "if ( a && (b ||", "c))", "x();", "foo(", "a,", "b", ");", "bar(baz(1,", "2), 3);", "}"], "keys": ":set ts=8 sw=4 et cino=(0,w1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_WU_4", "lines": ["int f()", "{", "foo(", "a, b);", "if (verylongcondition(", "arg))", "x();", "}"], "keys": ":set ts=8 sw=4 et cino=W4<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_k_2s", "lines": ["int f()", "{", "if (a", "&& b)", "x();", "while (c", "|| d)", "y();", "}"], "keys": ":set ts=8 sw=4 et cino=k2s<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_m_1", "lines": ["int f()", "{", "if (a && (b ||", "c))", "x();", "foo(", "a,", "b", ");", "bar(baz(1,", "2), 3);", "}"], "keys": ":set ts=8 sw=4 et cino=m1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_MU_1", "lines": ["int f()", "{", "if (a && (b ||", "c))", "x();", "foo(", "a,", "b", ");", "bar(baz(1,", "2), 3);", "}"], "keys": ":set ts=8 sw=4 et cino=M1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_j_1", "lines": ["class A {", "void f() {", "new Runnable() {", "public void run() {", "x();", "}", "};", "}", "}"], "keys": ":set ts=8 sw=4 et cino=j1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_JU_1", "lines": ["var o = {", "a: 1,", "b: {", "c: 2", "},", "d: [", "1,", "2", "]", "};"], "keys": ":set ts=8 sw=4 et cino=J1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_rparen_3", "lines": ["int f()", "{", "foo(a,", "b,", "c,", "d,", "e,", "f,", "g);", "x();", "}"], "keys": ":set ts=8 sw=4 et cino=)3<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_star_3", "lines": ["int f()", "{", "/*", "a", "b", "c", "d", "e", "f", "*/", "x();", "}"], "keys": ":set ts=8 sw=4 et cino=*3<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_hash_1", "lines": ["int f()", "{", "x(); # c", "# d", "y();", "}"], "keys": ":set ts=8 sw=4 et cino=#1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_PU_1", "lines": ["int f()", "{", "#pragma omp parallel", "x();", "}"], "keys": ":set ts=8 sw=4 et cino=P1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_U1_with_lparen0", "lines": ["int f()", "{", "if (a && (b ||", "c))", "x();", "foo(", "a,", "b", ");", "bar(baz(1,", "2), 3);", "}"], "keys": ":set ts=8 sw=4 et cino=(0,U1<CR>=G", "file": "fixture.c"}
+{"name": "cin_cino_combo", "lines": ["int main(void)", "{", "int a = 1;", "if (a)", "a++;", "else if (a > 2)", "{", "a--;", "}", "else", "a = 0;", "for (i = 0; i < n; i++)", "x[i] = 0;", "while (a)", "{", "a--;", "}", "do", "a++;", "while (a < 10);", "return a;", "}", "void f(int a)", "{", "switch (a)", "{", "case 1:", "x();", "break;", "case 2: {", "y();", "}", "break;", "default:", "z();", "}", "}"], "keys": ":set ts=8 sw=4 et cino=>2,n-1,{1,}1,:2,=2<CR>=G", "file": "fixture.c"}
+{"name": "cin_o_after_if", "lines": ["int f() {", "    if (a)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gox;<Esc>"}
+{"name": "cin_o_after_stmt", "lines": ["int f() {", "    if (a)", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goy;<Esc>"}
+{"name": "cin_O_before_close", "lines": ["int f() {", "}"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>GOx;<Esc>"}
+{"name": "cin_cr_in_args", "lines": ["int f() {", "    foo(a, b);"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>G$Fbi<CR><Esc>"}
+{"name": "cin_cr_before_paren", "lines": ["int f() {", "    foo(a, b)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>G$i<CR><Esc>"}
+{"name": "cin_close_brace", "lines": ["int f() {", "    if (a) {", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go}<Esc>"}
+{"name": "cin_case_colon", "lines": ["int f() {", "    switch (a) {", "        case 1:", "            x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gocase 2:<Esc>"}
+{"name": "cin_label_colon", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goout:<Esc>"}
+{"name": "cin_hash", "lines": ["int f() {", "    x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go#define A<Esc>"}
+{"name": "cin_else", "lines": ["int f() {", "    if (a)", "        x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Goelse<Esc>"}
+{"name": "cin_ctrl_f", "lines": ["int f() {", "x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>GA<C-f><Esc>"}
+{"name": "cin_cc", "lines": ["int f() {", "    if (a)", "z;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gccy;<Esc>"}
+{"name": "cin_S", "lines": ["int f() {", "    while (a)", "z;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>GSy;<Esc>"}
+{"name": "cin_o_in_comment", "lines": ["int f() {", "    /* a"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gob<Esc>"}
+{"name": "cin_o_unclosed_paren", "lines": ["int f() {", "    if (a &&"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gob)<Esc>"}
+{"name": "cin_o_ternary", "lines": ["int f() {", "    x = a"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Go? b<CR>: c;<Esc>"}
+{"name": "cin_scope_colon", "lines": ["class C {", "    int x;"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et<CR>Gopublic:<Esc>"}
+{"name": "cin_o_noai", "lines": ["int f() {", "    if (a)"], "file": "fixture.c", "keys": ":set ts=8 sw=4 et noai<CR>Gox;<Esc>"}
+{"name": "cin_o_after_if_setcin", "lines": ["int f() {", "    if (a)"], "keys": ":set ts=8 sw=4 et cin<CR>Gox;<Esc>"}
+{"name": "cin_o_after_stmt_setcin", "lines": ["int f() {", "    if (a)", "        x;"], "keys": ":set ts=8 sw=4 et cin<CR>Goy;<Esc>"}
+{"name": "cin_O_before_close_setcin", "lines": ["int f() {", "}"], "keys": ":set ts=8 sw=4 et cin<CR>GOx;<Esc>"}
+{"name": "cin_cr_in_args_setcin", "lines": ["int f() {", "    foo(a, b);"], "keys": ":set ts=8 sw=4 et cin<CR>G$Fbi<CR><Esc>"}
+{"name": "cin_cr_before_paren_setcin", "lines": ["int f() {", "    foo(a, b)"], "keys": ":set ts=8 sw=4 et cin<CR>G$i<CR><Esc>"}
+{"name": "cin_close_brace_setcin", "lines": ["int f() {", "    if (a) {", "        x;"], "keys": ":set ts=8 sw=4 et cin<CR>Go}<Esc>"}
+{"name": "cin_hash_setcin", "lines": ["int f() {", "    x;"], "keys": ":set ts=8 sw=4 et cin<CR>Go#define A<Esc>"}
+{"name": "cin_else_setcin", "lines": ["int f() {", "    if (a)", "        x;"], "keys": ":set ts=8 sw=4 et cin<CR>Goelse<Esc>"}
+{"name": "cin_ctrl_f_setcin", "lines": ["int f() {", "x;"], "keys": ":set ts=8 sw=4 et cin<CR>GA<C-f><Esc>"}
+{"name": "cin_cc_setcin", "lines": ["int f() {", "    if (a)", "z;"], "keys": ":set ts=8 sw=4 et cin<CR>Gccy;<Esc>"}
+{"name": "cin_nocin_o_after_if", "lines": ["int f() {", "    if (a)"], "keys": ":set ts=8 sw=4 et<CR>Gox;<Esc>"}
+{"name": "cin_cink_word", "lines": ["int f() {", "    switch (a) {", "    case 1:", "        x;"], "keys": ":set ts=8 sw=4 et cin cink+==break<CR>Gobreak<Esc>"}
+{"name": "cin_cink_no_brace", "lines": ["int f() {", "    if (a) {", "        x;"], "keys": ":set ts=8 sw=4 et cin cink-=0}<CR>Go}<Esc>"}
+{"name": "cin_cink_no_o", "lines": ["int f() {", "    if (a)"], "keys": ":set ts=8 sw=4 et cin cink-=o noai<CR>Gox;<Esc>"}
+{"name": "cin_cinsd", "lines": ["class C {", "    int x;"], "keys": ":set ts=8 sw=4 et cin cinsd=signals<CR>Gosignals:<Esc>"}
+{"name": "cin_cinw_eq", "lines": ["int f() {", "unless (a)", "x;", "}"], "keys": ":set ts=8 sw=4 et cinw=unless<CR>=G"}
+# --- #1163 'vartabstop' / 'varsofttabstop' (nvim's tabstop_padding/tabstop_at/tabstop_fromto): cursor
+#     columns, :retab with a stop list, Insert <Tab>/<BS>, shifts with sw=0, indents built with tabs. ---
+{"name": "vts_bar_on_tab", "lines": ["\ta\tb\tc"], "keys": ":set ts=8 sw=8 vts=4,8<CR>10|"}
+{"name": "vts_bar_past_b", "lines": ["\ta\tb\tc"], "keys": ":set ts=8 sw=8 vts=4,8<CR>14|"}
+{"name": "vts_bar_one_stop", "lines": ["\ta\tb"], "keys": ":set ts=8 sw=8 vts=3<CR>8|"}
+{"name": "vts_bar_repeat_last", "lines": ["\t\t\t\tx"], "keys": ":set ts=8 sw=8 vts=2,3<CR>9|"}
+{"name": "vts_dollar_j", "lines": ["\t\t\tx", "abcdefghijklmnopqrstuvwxyz"], "keys": ":set ts=8 sw=8 vts=2,6<CR>$j"}
+{"name": "vts_j_wanted", "lines": ["abcdefghijklmnop", "\t\tx"], "keys": ":set ts=8 sw=8 vts=4,8<CR>11|j"}
+{"name": "vts_gM", "lines": ["\t\tabcdefghij"], "keys": ":set ts=8 sw=8 vts=4,8<CR>gM"}
+{"name": "vts_ts_ignored", "lines": ["\ta\tb\tc"], "keys": ":set sw=8 ts=2 vts=4,8<CR>14|"}
+{"name": "vts_unset", "lines": ["\ta\tb\tc"], "keys": ":set ts=8 sw=8 vts=4,8<CR>:set vts=<CR>10|"}
+{"name": "vts_zero_unsets", "lines": ["\ta\tb\tc"], "keys": ":set ts=8 sw=8 vts=4,8<CR>:set vts=0<CR>10|"}
+{"name": "vts_bad_zero", "lines": ["x"], "keys": ":set ts=8 sw=8 vts=4,0<CR>"}
+{"name": "vts_bad_word", "lines": ["x"], "keys": ":set ts=8 sw=8 vts=a<CR>"}
+{"name": "vts_bad_trailing", "lines": ["x"], "keys": ":set ts=8 sw=8 vts=4,<CR>"}
+{"name": "vts_blockwise", "lines": ["\tabcdef", "abcdefghijklmn"], "keys": ":set ts=8 sw=8 vts=4,8<CR>j9|<C-v>k3ld"}
+{"name": "vts_retab_et", "lines": ["\ta\tb", "\t\tc"], "keys": ":set ts=8 sw=8 vts=4,8 et<CR>:retab<CR>"}
+{"name": "vts_retab_noet_bang", "lines": ["\ta\tb", "        c"], "keys": ":set ts=8 sw=8 vts=4,8 noet<CR>:retab!<CR>"}
+{"name": "vts_retab_list", "lines": ["\ta\tb", "        c"], "keys": ":set ts=8 sw=8 noet<CR>:retab! 4,8<CR>"}
+{"name": "vts_retab_list_sets_vts", "lines": ["\ta\tb"], "keys": ":set ts=8 sw=8 noet<CR>:retab 4,8<CR>10|"}
+{"name": "vts_retab_one_sets_ts", "lines": ["\ta\tb"], "keys": ":set ts=8 sw=8 noet<CR>:retab 3<CR>5|"}
+{"name": "vts_retab_one_keeps_vts", "lines": ["\ta\tb"], "keys": ":set ts=8 sw=8 noet vts=4,8<CR>:retab 3<CR>5|"}
+{"name": "vts_retab_bad", "lines": ["\ta"], "keys": ":set ts=8 sw=8<CR>:retab 4,0<CR>"}
+{"name": "vts_retab_bad_word", "lines": ["\ta"], "keys": ":set ts=8 sw=8<CR>:retab 4,x<CR>"}
+{"name": "vts_ins_tab_et", "lines": ["x"], "keys": ":set ts=8 sw=8 vts=4,8 et sts=0 nosta<CR>i<Tab>a<Tab>b<Tab>c<Esc>"}
+{"name": "vts_ins_tab_et_sta", "lines": ["x"], "keys": ":set ts=8 sw=8 vts=4,8 et sts=0<CR>i<Tab>a<Tab>b<Tab>c<Esc>"}
+{"name": "vts_ins_tab_noet", "lines": ["x"], "keys": ":set ts=8 sw=8 vts=4,8 noet sts=0<CR>i<Tab>a<Tab>b<Esc>"}
+{"name": "vts_ins_tab_noet_nosta", "lines": ["x"], "keys": ":set ts=8 sw=8 vts=4,8 noet nosta<CR>i<Tab><Tab>a<Esc>"}
+{"name": "vts_vsts_tab_noet", "lines": [""], "keys": ":set sw=8 ts=8 vsts=2,4 noet nosta<CR>i<Tab><Tab><Tab>a<Esc>"}
+{"name": "vts_vsts_tab_et", "lines": [""], "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>i<Tab><Tab><Tab>a<Esc>"}
+{"name": "vts_vsts_bs_noet", "lines": [""], "keys": ":set sw=8 ts=8 vsts=2,4 noet nosta<CR>i<Tab><Tab><Tab><BS>a<Esc>"}
+{"name": "vts_vsts_bs_et", "lines": [""], "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>i<Tab><Tab><Tab><BS>a<Esc>"}
+{"name": "vts_vsts_bs_twice", "lines": [""], "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>i<Tab><Tab><Tab><BS><BS>a<Esc>"}
+{"name": "vts_vsts_mid_line", "lines": ["abc"], "keys": ":set sw=8 ts=8 vsts=2,4 et nosta<CR>A<Tab>d<Tab>e<Esc>"}
+{"name": "vts_vsts_with_vts", "lines": [""], "keys": ":set ts=8 sw=8 vts=4,8 vsts=3 noet nosta<CR>i<Tab><Tab><Tab><Tab>a<Esc>"}
+{"name": "vts_vsts_wins_over_sts", "lines": [""], "keys": ":set sw=8 ts=8 sts=4 vsts=2 et nosta<CR>i<Tab><Tab>a<Esc>"}
+{"name": "vts_sta_tab", "lines": ["x"], "keys": ":set ts=8 vts=4,8 sw=4 sta noet<CR>i<Tab><Tab><Tab><Esc>"}
+{"name": "vts_bs_tab_char", "lines": ["\t\tx"], "keys": ":set ts=8 sw=8 vts=4,8 noet nosta sts=0<CR>A<Esc>0f\tla<BS><Esc>"}
+{"name": "vts_shift_sw0", "lines": ["x"], "keys": ":set ts=8 vts=4,8 sw=0 noet<CR>>>>>"}
+{"name": "vts_shift_sw0_left", "lines": ["\t\t\tx"], "keys": ":set ts=8 vts=4,8 sw=0 noet<CR><<"}
+{"name": "vts_shift_sw0_offset", "lines": ["      x"], "keys": ":set ts=8 vts=4,8 sw=0 et<CR>>>"}
+{"name": "vts_shift_sw0_round", "lines": ["      x"], "keys": ":set ts=8 vts=4,8 sw=0 et sr<CR>>>"}
+{"name": "vts_shift_sw0_round_left", "lines": ["      x"], "keys": ":set ts=8 vts=4,8 sw=0 et sr<CR><<"}
+{"name": "vts_shift_sw4", "lines": ["x"], "keys": ":set ts=8 vts=3,8 sw=4 noet<CR>>>>>>>"}
+{"name": "vts_shift_count", "lines": ["x", "y"], "keys": ":set ts=8 vts=2,6 sw=0 noet<CR>3>>"}
+{"name": "vts_ai_noet", "lines": ["            x"], "keys": ":set ts=8 sw=8 vts=4,8 noet ai<CR>oy<Esc>"}
+{"name": "vts_ctrl_t", "lines": ["x"], "keys": ":set ts=8 vts=4,8 sw=6 noet<CR>i<C-t><C-t><Esc>"}
+{"name": "vts_eq_noet", "lines": ["int f() {", "if (a)", "x;", "}"], "keys": ":set ts=8 vts=4,8 sw=4 noet<CR>=G"}
+{"name": "vts_list_tab", "lines": ["\tab"], "keys": ":set ts=8 sw=8 vts=4,8<CR>A<C-v><Tab>x<Esc>"}
+{"name": "vts_insert_tab_char_col", "lines": ["\tab"], "keys": ":set ts=8 sw=8 vts=4,8<CR>$i<C-v><Tab><Esc>"}
+# --- #1163 `%` as nvim's findmatchlimit: quotes, 'c' literals, escapes, `/* */`, `#if`/`#else`/`#endif`,
+#     and the 'lisp' rules (`;` comments, `#\\(` characters). ---
+{"name": "pct_quote", "lines": ["(a \")\" b)"], "keys": "%"}
+{"name": "pct_quote_back", "lines": ["(a \"(\" b)"], "keys": "$%"}
+{"name": "pct_char_lit", "lines": ["(a ')' b)"], "keys": "%"}
+{"name": "pct_char_lit_esc", "lines": ["(a '\\)' b)"], "keys": "%"}
+{"name": "pct_odd_quotes", "lines": ["(a \" ) b"], "keys": "%"}
+{"name": "pct_escaped", "lines": ["(a \\) b)"], "keys": "%"}
+{"name": "pct_escaped_start", "lines": ["\\(a ( b) c\\)"], "keys": "l%"}
+{"name": "pct_in_quotes_start", "lines": ["\"(a)\" (b)"], "keys": "l%"}
+{"name": "pct_cursor_before", "lines": ["x = f(a, b);"], "keys": "%"}
+{"name": "pct_multiline_quote", "lines": ["f(\"a)\",", "b)"], "keys": "%"}
+{"name": "pct_eol_backslash", "lines": ["f(\"a \\", ")\")", "x"], "keys": "%"}
+{"name": "pct_nothing", "lines": ["abc"], "keys": "%"}
+{"name": "pct_brace_mix", "lines": ["{ ( } )"], "keys": "%"}
+{"name": "pct_op_d", "lines": ["(a \")\" b) c"], "keys": "d%"}
+{"name": "pct_comment_start", "lines": ["/* a", "b */ x"], "keys": "%"}
+{"name": "pct_comment_end", "lines": ["/* a", "b */ x"], "keys": "j$hh%"}
+{"name": "pct_comment_star", "lines": ["/* a */"], "keys": "l%"}
+{"name": "pct_ifdef", "lines": ["#if A", "x", "#else", "y", "#endif"], "keys": "%"}
+{"name": "pct_ifdef_chain", "lines": ["#if A", "x", "#else", "y", "#endif"], "keys": "%%%"}
+{"name": "pct_ifdef_nested", "lines": ["#ifdef A", "#if B", "#endif", "#endif"], "keys": "%"}
+{"name": "pct_ifdef_indented", "lines": ["  #  if A", "x", "  #endif"], "keys": "%"}
+{"name": "pct_hash_no_if", "lines": ["#define X (1)"], "keys": "%"}
+{"name": "pct_lisp_comment", "lines": ["(a ; )", "b)"], "keys": ":set lisp<CR>%"}
+{"name": "pct_nolisp_comment", "lines": ["(a ; )", "b)"], "keys": "%"}
+{"name": "pct_lisp_hash_char", "lines": ["(a #\\) b)"], "keys": ":set lisp<CR>%"}
+{"name": "pct_lisp_in_comment", "lines": ["x ; (a)"], "keys": ":set lisp<CR>f(%"}
+{"name": "pct_lisp_comment_quote", "lines": ["(a ; \"", "b)"], "keys": ":set lisp<CR>%"}
+{"name": "pct_lisp_string_semicolon", "lines": ["(a \";\" )"], "keys": ":set lisp<CR>%"}
+{"name": "pct_lisp_back", "lines": ["(a", "; (", "b)"], "keys": ":set lisp<CR>G$%"}
+# #1548: the backslashes before a bracket are counted with `check_prevcol`, whose `utf_head_off` step
+# stops on a byte no valid char owns (and goes back over a cluster: `\` + a combining mark is a `\`);
+# the backslashes before a `"` are raw bytes. Default 'cpoptions' (no `M`, no `%`).
+{"name": "pct_inv_bs1_cont", "lines": ["( \\\u0080) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs2_cont", "lines": ["( \\\\\u0080) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs3_cont", "lines": ["( \\\\\\\u0080) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs_cont_bs", "lines": ["( \\\u0080\\) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs2_cont_bs", "lines": ["( \\\\\u0080\\) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_cont_bs", "lines": ["( \u0080\\) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_cont_bs_back", "lines": ["( \u0080\\) )"], "keys": "$%", "bytes": true}
+{"name": "pct_inv_bs1_cont_back", "lines": ["( \\\u0080) )"], "keys": "$%", "bytes": true}
+{"name": "pct_inv_bs1_cont_open_back", "lines": ["( \\\u0080( )"], "keys": "$%", "bytes": true}
+{"name": "pct_inv_bs_cont2", "lines": ["( \\\u0080\u0080) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs_cont3", "lines": ["( \\\u0080\u0080\u0080) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs_cont4", "lines": ["( \\\u0080\u0080\u0080\u0080) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs_cut_lead", "lines": ["( \\ä\u0080) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_bs_lone_lead", "lines": ["( \\ä) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_lead_bs", "lines": ["( ä\\) )"], "keys": "%", "bytes": true}
+{"name": "pct_inv_quote_cont", "lines": ["(a \"\u0080)\" b)"], "keys": "%", "bytes": true}
+{"name": "pct_inv_quote_lead_bs", "lines": ["(a \"Ã\\\"\" b)"], "keys": "%", "bytes": true}
+{"name": "pct_inv_quote_lead_bs_back", "lines": ["(a \"Ã\\\"\" b)"], "keys": "$%", "bytes": true}
+{"name": "pct_inv_quote_bs_cont", "lines": ["(a \"\\\u0080\" ) b)"], "keys": "%", "bytes": true}
+{"name": "pct_inv_quote_bs_lead", "lines": ["(a \"\\Ã\" ) b)"], "keys": "%", "bytes": true}
+{"name": "pct_inv_op_d_bs1_cont", "lines": ["( \\\u0080) ) x"], "keys": "d%", "bytes": true}
+{"name": "pct_inv_op_d_bs_cont_bs", "lines": ["( \\\u0080\\) ) x"], "keys": "d%", "bytes": true}
+{"name": "pct_inv_escaped_start", "lines": ["\\\u0080\\( ) \\)"], "keys": "lll%", "bytes": true}
+{"name": "pct_inv_start_after_bs_cont", "lines": ["\\\u0080( ( ) )"], "keys": "ll%", "bytes": true}
+{"name": "pct_comb_bs", "lines": ["( \\́) )"], "keys": "%"}
+{"name": "pct_comb_bs2", "lines": ["( \\́́) )"], "keys": "%"}
+{"name": "pct_comb_bs_back", "lines": ["( \\́) )"], "keys": "$%"}
+{"name": "pct_comb_bs_open_back", "lines": ["( \\́( )"], "keys": "$%"}
+{"name": "pct_comb_quote_bs", "lines": ["(a \"\\́\" ) b)"], "keys": "%"}
+{"name": "pct_comb_bs_valid_char", "lines": ["( \\é) )"], "keys": "%"}
+{"name": "pct_prepend_paren", "lines": ["( \u0600) )"], "keys": "%"}
+{"name": "pct_prepend_bs_paren", "lines": ["( \\\u0600) )"], "keys": "%"}
+# #900: fixtures that end in Visual mode (the area being made), or that are about the numbered and
+# small-delete registers, the marks or the undo walk, each observing what it is about.
+{"name": "obs_visual_charwise", "lines": ["abc def", "ghi"], "keys": "lvjl", "observe": ["visual", "marks"]}
+{"name": "obs_visual_linewise", "lines": ["abc", "def", "ghi"], "keys": "jVj", "observe": ["visual", "marks"]}
+{"name": "obs_visual_blockwise", "lines": ["abcd", "efgh"], "keys": "l<C-v>jl", "observe": ["visual", "marks"]}
+{"name": "obs_visual_o_swaps", "lines": ["abcdef"], "keys": "lvllo", "observe": ["visual"]}
+{"name": "obs_visual_gv_reselects", "lines": ["foo bar"], "keys": "wviw<Esc>0gv", "observe": ["visual", "marks"]}
+{"name": "obs_visual_v_to_V", "lines": ["abc", "def"], "keys": "lvjV", "observe": ["visual"]}
+{"name": "obs_regs_dd_shifts", "lines": ["a", "b", "c", "d"], "keys": "dddddd", "observe": ["regs"]}
+{"name": "obs_regs_small_delete", "lines": ["foo bar baz"], "keys": "dwx", "observe": ["regs"]}
+{"name": "obs_regs_multiline_delete_numbered", "lines": ["foo bar", "baz"], "keys": "wd/baz<CR>", "observe": ["regs"]}
+{"name": "obs_regs_named_delete_shifts", "lines": ["a", "b", "c"], "keys": "\"add\"bdd", "observe": ["regs"]}
+{"name": "obs_marks_set_and_moved", "lines": ["one", "two", "three"], "keys": "jmajmbggOx<Esc>", "observe": ["marks"]}
+{"name": "obs_marks_yank_change_marks", "lines": ["foo bar baz"], "keys": "wyiw", "observe": ["marks"]}
+{"name": "obs_marks_put_change_marks", "lines": ["foo", "bar"], "keys": "yyjp", "observe": ["marks"]}
+{"name": "obs_undo_three_steps", "lines": ["abc"], "keys": "xxx", "setup": "let &undolevels = &undolevels"}
+{"name": "obs_undo_insert_break", "lines": ["abc"], "keys": "ia<C-g>ub<Esc>", "setup": "let &undolevels = &undolevels"}
+{"name": "obs_undo_after_redo", "lines": ["abc"], "keys": "xxuu<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "obs_undo_dot_repeat", "lines": ["a b c"], "keys": "dw..", "setup": "let &undolevels = &undolevels"}
+# #761: N% past 100 and a text-object count past the end fail like nvim, not clamp
+{"name": "i761_101_percent", "lines": ["a", "b", "c", "d"], "keys": "j101%x"}
+{"name": "i761_1000_percent", "lines": ["a", "b", "c", "d"], "keys": "j1000%x"}
+{"name": "i761_d101_percent", "lines": ["a", "b", "c", "d"], "keys": "jd101%"}
+{"name": "i761_101d_percent", "lines": ["a", "b", "c", "d"], "keys": "j101d%"}
+{"name": "i761_d100_percent", "lines": ["a", "b", "c", "d"], "keys": "jd100%"}
+{"name": "i761_v101_percent", "lines": ["a", "b", "c", "d"], "keys": "jv101%d"}
+{"name": "i761_0_percent", "lines": ["a(b)", "c"], "keys": "j0%x"}
+{"name": "i761_3daw", "lines": ["a b"], "keys": "3daw"}
+{"name": "i761_2daw_exact", "lines": ["a b"], "keys": "2daw"}
+{"name": "i761_3daw_multiline", "lines": ["a b", "c"], "keys": "3daw"}
+{"name": "i761_4daw_multiline", "lines": ["a b", "c"], "keys": "4daw"}
+{"name": "i761_d3aw", "lines": ["a b"], "keys": "d3aw"}
+{"name": "i761_3caw", "lines": ["a b"], "keys": "3cawX<Esc>"}
+{"name": "i761_3yaw", "lines": ["a b"], "keys": "3yawP"}
+{"name": "i761_3daW", "lines": ["a.b c"], "keys": "3daW"}
+{"name": "i761_3diw", "lines": ["a b"], "keys": "3diw"}
+{"name": "i761_4diw", "lines": ["a b"], "keys": "4diw"}
+{"name": "i761_3diw_tail", "lines": ["a b c"], "keys": "w3diw"}
+{"name": "i761_v3aw", "lines": ["a b"], "keys": "v3awd"}
+{"name": "i761_v4iw", "lines": ["a b"], "keys": "v4iwd"}
+{"name": "i761_3das", "lines": ["A. B."], "keys": "3das"}
+{"name": "i761_5dis", "lines": ["A. B."], "keys": "5dis"}
+{"name": "i761_3dap", "lines": ["a", "", "b"], "keys": "3dap"}
+{"name": "i761_3daw_then_x", "lines": ["a b"], "keys": "3dawx"}

@@ -1,3 +1,14 @@
+---
+doc: design-requirements-registry
+project: ruse
+title: "Design-requirement registry (DR-*)"
+summary: >
+  The rules for spec/design-requirements.yaml, the source of truth for DR-* status: what each record
+  holds, how status and evidence are kept, and how the narrative in design-requirements.md stays separate.
+audience: [maintainers, contributors, llm-agents]
+status: draft
+---
+
 # Design-requirement registry (DR-*)
 
 [`spec/design-requirements.yaml`](../../spec/design-requirements.yaml) is the **source of truth for the status of the long-horizon design requirements (DR-\*)**.

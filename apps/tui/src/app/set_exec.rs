@@ -31,6 +31,8 @@ use crate::input::set_cmd::{
 use crate::input::{FoldMethod, InputEngine};
 use crate::ui::window_view::DisplayGlobals;
 
+#[cfg(test)]
+pub(crate) use config::config_key;
 pub(crate) use config::{apply_config_keys, install_lang_keymap};
 use values::{core_option, core_value, set_window_value, window_value};
 
@@ -494,7 +496,7 @@ fn journal_dir() -> String {
 
 /// ruse's default of `def`: the table's, except for the options whose default depends on the environment
 /// (`'backupdir'` names the state directory, `'backupskip'` the temp directories).
-fn default_of(def: &OptDef) -> OptVal {
+pub(crate) fn default_of(def: &OptDef) -> OptVal {
     match def.opt {
         Opt::BackupDir => OptVal::Text(crate::persist::backup::default_backupdir().into()),
         Opt::Directory => OptVal::Text(journal_dir().into()),

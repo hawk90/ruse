@@ -1,0 +1,937 @@
+# nvim oracle fixture inputs (tools/parity/oracle.py, #1590): one JSON object per line, `#` comments.
+# Fixtures that predate the split, in their original order. Edit in place; add NEW fixtures to i<issue>.jsonl.
+
+{"name": "x_delete_char", "lines": ["hello"], "keys": "x"}
+{"name": "dw_delete_word", "lines": ["foo bar"], "keys": "dw"}
+{"name": "de_to_word_end", "lines": ["foobar baz"], "keys": "de"}
+{"name": "daw_a_word", "lines": ["foo bar baz"], "keys": "daw"}
+{"name": "diw_inner_word", "lines": ["foo bar baz"], "keys": "diw"}
+{"name": "dd_delete_line", "lines": ["alpha", "beta"], "keys": "dd"}
+{"name": "cw_change_word", "lines": ["foo bar"], "keys": "cwbaz<Esc>"}
+{"name": "yy_p_duplicate_line", "lines": ["one", "two"], "keys": "yyp"}
+{"name": "r_replace_char", "lines": ["hello"], "keys": "rz"}
+{"name": "tilde_toggle_case", "lines": ["abc"], "keys": "~"}
+{"name": "di_paren_inner", "lines": ["foo (bar) baz"], "keys": "di("}
+{"name": "da_quote_around", "lines": ["say \"hi\" now"], "keys": "da\""}
+# --- expansion (impl/oracle-harden): already-implemented ruse ops chosen to SURFACE divergence.
+#     operator x motion --------------------------------------------------------------------------
+{"name": "d_to_eol", "lines": ["hello world"], "keys": "d$"}
+{"name": "d_to_bol", "lines": ["hello world"], "keys": "$d0"}
+{"name": "caret_first_non_blank", "lines": ["  foo bar"], "keys": "$^"}
+{"name": "d_caret_from_eol", "lines": ["  foobar"], "keys": "$d^"}
+# #762: `^` / `g^` / `_` / `d^` on an all-blank line rest on the last blank, never past it.
+{"name": "caret_all_blank_line_bare", "lines": ["    ", "x"], "keys": "^"}
+{"name": "caret_all_blank_from_col0", "lines": ["   ", "x"], "keys": "0^"}
+{"name": "caret_all_blank_tabs", "lines": ["\t \t", "x"], "keys": "^"}
+{"name": "gcaret_all_blank_line", "lines": ["    ", "x"], "keys": "g^"}
+{"name": "underscore_all_blank_line", "lines": ["x", "    "], "keys": "j_"}
+{"name": "j_onto_all_blank_line_caret", "lines": ["abcdef", "   "], "keys": "j^"}
+{"name": "d_caret_all_blank_line", "lines": ["    ", "x"], "keys": "0d^"}
+{"name": "c_caret_all_blank_line", "lines": ["    ", "x"], "keys": "0c^Z<Esc>"}
+{"name": "plus_onto_all_blank_line", "lines": ["x", "    "], "keys": "+"}
+{"name": "minus_onto_all_blank_line", "lines": ["    ", "x"], "keys": "j-"}
+{"name": "I_on_all_blank_line", "lines": ["    ", "x"], "keys": "IZ<Esc>"}
+{"name": "y_caret_all_blank_line", "lines": ["    ", "x"], "keys": "0y^P"}
+{"name": "d_gcaret_all_blank_line", "lines": ["    ", "x"], "keys": "0dg^"}
+{"name": "d_caret_all_blank_tabs", "lines": ["\t \t", "x"], "keys": "0d^"}
+{"name": "v_caret_all_blank_line_d", "lines": ["    ", "x"], "keys": "0v^d"}
+{"name": "v_caret_all_blank_line_esc", "lines": ["    ", "x"], "keys": "0v^<Esc>"}
+{"name": "d_caret_count_all_blank_line", "lines": ["    ", "x"], "keys": "03d^"}
+{"name": "dG_to_last_line", "lines": ["alpha", "beta", "gamma"], "keys": "dG"}
+{"name": "dj_linewise", "lines": ["alpha", "beta", "gamma"], "keys": "dj"}
+{"name": "c_to_eol", "lines": ["hello world"], "keys": "c$END<Esc>"}
+{"name": "y_eol_then_paste", "lines": ["hello"], "keys": "y$p"}
+{"name": "count_dd", "lines": ["alpha", "beta", "gamma"], "keys": "2dd"}
+{"name": "count_x", "lines": ["abcdef"], "keys": "3x"}
+{"name": "d_paragraph_fwd", "lines": ["one", "two", "", "three"], "keys": "d}"}
+#     display-line motions gj/gk/g0/g$/g^ — ruse does NOT soft-wrap (one buffer line == one display
+#     row), so as BARE CURSOR MOTIONS these equal j/k/0/$/^ exactly, as Vim itself does under `nowrap`
+#     (:help gj). Paired with the plain-motion fixtures above, they VERIFY IDENTICALLY. (The OPERATOR
+#     forms `dgj`/`dgk` are NOT fixtured: ruse aliases them to the linewise `dj`/`dk`, whereas nvim
+#     treats `gj`/`gk` as characterwise-exclusive — subject to exclusive-linewise promotion — so nvim's
+#     `dgj` deletes ONE line, not two. A documented deliberate divergence, see input/mod.rs.)
+{"name": "gj_display_down", "lines": ["alpha", "beta"], "keys": "gj"}
+{"name": "gk_display_up", "lines": ["alpha", "beta"], "keys": "jgk"}
+{"name": "g0_display_bol", "lines": ["hello world"], "keys": "$g0"}
+{"name": "gdollar_display_eol", "lines": ["hello world"], "keys": "g$"}
+{"name": "gcaret_display_first_non_blank", "lines": ["  foo bar"], "keys": "$g^"}
+#     `gM` — go to `count`% of the line by char count (bare `gM` = the middle char). The trailing `x`
+#     makes the landing observable (deletes the char under the cursor). ruse counts CHARACTERS where
+#     nvim counts display cells, so these ASCII fixtures agree; tab/wide-char lines are a documented
+#     divergence and deliberately not fixtured.
+{"name": "gM_middle_char", "lines": ["abcdefghij"], "keys": "gMx"}
+{"name": "gM_from_eol", "lines": ["abcdefghij"], "keys": "$gMx"}
+{"name": "gM_count_25_percent", "lines": ["abcdefghij"], "keys": "25gMx"}
+{"name": "gM_count_100_percent", "lines": ["abcdefghij"], "keys": "100gMx"}
+{"name": "gM_odd_length", "lines": ["abcde"], "keys": "gMx"}
+{"name": "dgM_operator_to_middle", "lines": ["abcdefghij"], "keys": "dgM"}
+#     text objects -------------------------------------------------------------------------------
+{"name": "di_bracket_inner", "lines": ["pre[abc]post"], "keys": "f[di["}
+{"name": "da_brace_around", "lines": ["pre{ab}post"], "keys": "f{da{"}
+{"name": "di_dquote_inner", "lines": ["say \"hi\" now"], "keys": "di\""}
+{"name": "ci_squote_text", "lines": ["x 'old' y"], "keys": "ci'NEW<Esc>"}
+{"name": "da_angle_around", "lines": ["a<tag>b"], "keys": "f<da<"}
+{"name": "dip_inner_paragraph", "lines": ["one", "two", "", "three"], "keys": "dip"}
+#     actions ------------------------------------------------------------------------------------
+{"name": "J_join_lines", "lines": ["foo", "bar"], "keys": "J"}
+{"name": "count_tilde", "lines": ["abcdef"], "keys": "3~"}
+{"name": "count_r", "lines": ["abcdef"], "keys": "3rz"}
+# CONFIG-DEPENDENT (the only fixture that carries a `setup`): `>>` depends on three editor options.
+# Every OTHER fixture is config-INDEPENDENT — its result is the same under nvim's factory defaults, so
+# it needs no setup and its `expect` is a clean cross-editor claim. `>>` is not: its indent unit and its
+# final cursor both hinge on config, so it is only a valid comparison against ruse when the oracle runs
+# under a config MATCHING ruse's defaults (spec/config-schema.yaml):
+#   editor.indent_style=space  -> `expandtab`      (indent with spaces, not a tab)
+#   editor.tab_width=4         -> `shiftwidth=4`   (one indent level is 4 columns)
+# The cursor follows nvim's own `nostartofline` (the wanted column, #1176), as ruse does. Under this
+# config the oracle records `"    hello"`, which is what ruse produces from its defaults. (Captured
+# under nvim's own defaults it was a tab.)
+{"name": "shift_right_line", "lines": ["hello"], "keys": ">>", "setup": "set shiftwidth=4 expandtab"}
+# --- edge-case corpus (impl/corpus-edgecases): CORNERS of already-implemented ops, chosen to
+#     surface subtle correctness bugs the way the earlier di( forward-scan bug was caught.
+#     word motions on punctuation / mixed classes / last word --------------------------------------
+{"name": "dw_on_punct", "lines": ["foo.bar baz"], "keys": "dw"}
+{"name": "de_on_dotted", "lines": ["a.b.c"], "keys": "de"}
+{"name": "dw_last_word", "lines": ["hello world"], "keys": "wdw"}
+#     dw/dW at end-of-line: Vim does NOT let the operator cross the newline (the end of the last word
+#     on the line becomes the end of the operated text), so `dw` on the last word must not join lines.
+{"name": "dw_last_word_joins_next", "lines": ["foo", "bar"], "keys": "dw"}
+{"name": "dw_last_word_trailing_ws", "lines": ["foo   ", "bar"], "keys": "dw"}
+{"name": "dw_midline_last_word_trailing_ws", "lines": ["ab cd  ", "ef"], "keys": "wdw"}
+{"name": "dW_last_word_at_eol", "lines": ["foo.bar", "baz"], "keys": "dW"}
+{"name": "count_dw_crosses_eol", "lines": ["a b", "c d"], "keys": "2dw"}
+#     char-search operators + repeat (f/t/F/T/;/,) ------------------------------------------------
+{"name": "dfx_find_inclusive", "lines": ["abcxdef"], "keys": "dfx"}
+{"name": "dtx_till", "lines": ["abcxdef"], "keys": "dtx"}
+{"name": "dTx_till_back", "lines": ["abcxdef"], "keys": "$dTx"}
+{"name": "dFx_find_back", "lines": ["abcxdef"], "keys": "$dFx"}
+{"name": "semicolon_repeats_find", "lines": ["a.b.c.d"], "keys": "f.;x"}
+{"name": "comma_repeats_find_reverse", "lines": ["a.b.c.d"], "keys": "f.$,x"}
+#     ge/gE backward word-end under operator ------------------------------------------------------
+{"name": "dge_backward_word_end", "lines": ["foo bar"], "keys": "$dge"}
+#     cw special cases (on-blank behaves like cw, not ce) -----------------------------------------
+{"name": "cw_on_blank", "lines": ["foo  bar"], "keys": "llcwZ<Esc>"}
+{"name": "ciw_inner_word", "lines": ["foo bar"], "keys": "ciwZ<Esc>"}
+#     case operators over motion / line ----------------------------------------------------------
+{"name": "gU_word", "lines": ["foo bar"], "keys": "gUw"}
+{"name": "guu_line_lowercase", "lines": ["FOO BAR"], "keys": "guu"}
+{"name": "g_tilde_word", "lines": ["FooBar"], "keys": "g~w"}
+#     line-operator synonyms (D/C/S) -------------------------------------------------------------
+{"name": "cap_D_to_eol", "lines": ["hello world"], "keys": "wD"}
+{"name": "cap_C_change_eol", "lines": ["hello world"], "keys": "wCbye<Esc>"}
+{"name": "cap_S_change_line", "lines": ["hello", "next"], "keys": "Sbye<Esc>"}
+#     % match under operator + inclusive ---------------------------------------------------------
+{"name": "d_percent_paren", "lines": ["a(bcd)e"], "keys": "f(d%"}
+#     dot-repeat -----------------------------------------------------------------------------------
+{"name": "dot_repeats_dw", "lines": ["a b c d"], "keys": "dw."}
+{"name": "dot_repeats_x", "lines": ["abcdef"], "keys": "x.."}
+#     named registers --------------------------------------------------------------------------
+{"name": "named_reg_yank_paste", "lines": ["one", "two"], "keys": "\"ayyj\"ap"}
+#     inner/around block on its own lines — Vim's "linewise inner block" special case ------------
+{"name": "ci_paren_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "ci(Z<Esc>"}
+{"name": "di_paren_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "di("}
+{"name": "ci_brace_multiline_2lines", "lines": ["fn(){", "a", "b", "}"], "keys": "jci{Z<Esc>"}
+{"name": "di_brace_multiline_2lines", "lines": ["fn(){", "a", "b", "}"], "keys": "jdi{"}
+{"name": "da_paren_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "da("}
+# NOT linewise: content shares the open/close line, so it stays charwise (regression guard).
+{"name": "ci_paren_multiline_inline_open", "lines": ["foo(bar", "baz)qux"], "keys": "ci(Z<Esc>"}
+{"name": "ci_paren_single_line", "lines": ["foo(bar)baz"], "keys": "f(ci(Z<Esc>"}
+{"name": "ci_brace_indented_inner", "lines": ["fn(){", "    body", "}"], "keys": "jci{X<Esc>"}
+#     visual-mode operators ----------------------------------------------------------------------
+{"name": "visual_iw_delete", "lines": ["foo bar"], "keys": "viwd"}
+{"name": "visual_line_delete", "lines": ["a", "b", "c"], "keys": "Vjd"}
+{"name": "visual_block_delete", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjld"}
+#     operator-forced blockwise CHANGE (`c<C-v>{motion}{text}<Esc>`): delete the block column then
+#     replicate the typed text down every row — same semantics as Visual-block `c`. -----------------
+{"name": "c_forced_block_replicate", "lines": ["abc", "def", "ghi"], "keys": "c<C-v>2jX<Esc>"}
+{"name": "c_forced_block_short_row", "lines": ["abc", "d", "ghi"], "keys": "c<C-v>2jX<Esc>"}
+{"name": "c_forced_block_multichar", "lines": ["abc", "def", "ghi"], "keys": "c<C-v>2jXY<Esc>"}
+{"name": "c_forced_block_wide_1row", "lines": ["abcd", "efgh"], "keys": "c<C-v>2lX<Esc>"}
+#     operators on empty / single-char / last line ------------------------------------------------
+{"name": "x_on_empty_line", "lines": [""], "keys": "x"}
+{"name": "dw_on_empty_line", "lines": [""], "keys": "dw"}
+{"name": "dd_on_last_line", "lines": ["alpha", "beta"], "keys": "Gdd"}
+{"name": "j_past_last_line", "lines": ["alpha", "beta"], "keys": "Gj"}
+#     ROUND 2 sweep — visual/text-object/count/dot-repeat corners --------------------------------
+#     char-search with counts
+{"name": "d2fx_count_find", "lines": ["axbxcxd"], "keys": "d2fx"}
+#     tag + sentence + more text objects
+{"name": "dit_tag_inner", "lines": ["<a>hi</a>"], "keys": "fhdit"}
+{"name": "dat_tag_around", "lines": ["x<b>hi</b>y"], "keys": "fhdat"}
+#     tag objects: nesting, count-expands-outward, attrs, cursor-on-tag, change, multiline ---------
+{"name": "dit_tag_nested_inner", "lines": ["<a><b>x</b></a>"], "keys": "fxdit"}
+{"name": "dat_tag_nested", "lines": ["<a><b>x</b></a>"], "keys": "fxdat"}
+{"name": "dit_tag_count_outer", "lines": ["<a><b>x</b></a>"], "keys": "fx2dit"}
+{"name": "dat_tag_count_outer", "lines": ["<a><b>x</b></a>"], "keys": "fx2dat"}
+{"name": "cit_tag_inner", "lines": ["<div>hello</div>"], "keys": "fhcitZ<Esc>"}
+{"name": "dat_tag_attrs", "lines": ["<a href=\"x\">hi</a>"], "keys": "fhdat"}
+{"name": "dit_tag_on_open", "lines": ["<div>hello</div>"], "keys": "ldit"}
+{"name": "dit_tag_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jdit"}
+{"name": "yat_tag_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jyat"}
+# `dat` on a whole-line block is the ONE documented tag divergence: nvim DELETES linewise here
+# (regtype V), while ruse — one span for d/y/c, matching nvim's own charwise `yat`/`cat` — is
+# charwise. The buffer text is identical; only the register TYPE differs. Kept as an honest finding.
+{"name": "dat_tag_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jdat"}
+{"name": "vit_tag_delete", "lines": ["<div>hello</div>"], "keys": "fhvitd"}
+{"name": "vat_tag_delete", "lines": ["<div>hello</div>"], "keys": "fhvatd"}
+{"name": "das_sentence_around", "lines": ["One. Two. Three."], "keys": "wdas"}
+{"name": "dis_sentence_inner", "lines": ["One. Two. Three."], "keys": "wdis"}
+{"name": "ci_angle_inner", "lines": ["a<bcd>e"], "keys": "f<ci<Z<Esc>"}
+#     visual-mode operators
+{"name": "v_iw_change", "lines": ["foo bar"], "keys": "viwcZ<Esc>"}
+{"name": "v_aw_delete", "lines": ["foo bar baz"], "keys": "wvawd"}
+{"name": "V_line_yank_paste", "lines": ["one", "two"], "keys": "Vyp"}
+{"name": "v_gU_upcase", "lines": ["foo bar"], "keys": "vllgU"}
+{"name": "v_tilde_toggle", "lines": ["FooBar"], "keys": "vlll~"}
+{"name": "v_ip_paragraph", "lines": ["a", "b", "", "c"], "keys": "vipd"}
+{"name": "v_swap_ends_o", "lines": ["hello"], "keys": "lvllohd"}
+#     blockwise insert / append
+{"name": "block_insert_I", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jjIX<Esc>"}
+{"name": "block_append_A", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jj$AX<Esc>"}
+#     dot-repeat corners
+{"name": "dot_repeats_ciw", "lines": ["foo bar baz"], "keys": "ciwX<Esc>w."}
+{"name": "dot_repeats_A_append", "lines": ["a", "b"], "keys": "A!<Esc>j."}
+#     paste geometry corners
+{"name": "gp_moves_after", "lines": ["one", "two"], "keys": "yygpx"}
+{"name": "numbered_reg_after_dd", "lines": ["a", "b", "c"], "keys": "ddjdd\"1p"}
+#     ROUND 3 sweep — counts, marks, line-case, idioms ------------------------------------------
+#     operator to a named mark (charwise ` / linewise ')
+{"name": "d_backtick_mark_charwise", "lines": ["abc def ghi"], "keys": "wmawd`a"}
+{"name": "d_quote_mark_linewise", "lines": ["one", "two", "three", "four"], "keys": "majjd'a"}
+{"name": "c_backtick_mark_change", "lines": ["abc def ghi"], "keys": "wmawc`aZ<Esc>"}
+#     case/shift/reindent operators to a named mark (this change) — set mark `a`, move, operate.
+#     case: charwise ` honours the [cursor,mark) span; linewise ' spans whole lines.
+{"name": "gU_backtick_mark_charwise", "lines": ["abc def ghi"], "keys": "wmawgU`a"}
+{"name": "gu_backtick_mark_down", "lines": ["ABC DEF GHI"], "keys": "wwmabgu`a"}
+{"name": "g_tilde_backtick_mark", "lines": ["aBcDeF"], "keys": "mallg~`a"}
+{"name": "gU_quote_mark_linewise", "lines": ["one two", "three four", "five six"], "keys": "majjgU'a"}
+{"name": "gu_quote_mark_linewise", "lines": ["ONE", "TWO", "THREE"], "keys": "majjgu'a"}
+#     shift: ALWAYS linewise regardless of `/' — spans cursor line .. mark line. Config-dependent.
+{"name": "shift_right_backtick_mark", "lines": ["a", "b", "c"], "keys": "majj>`a", "setup": "set shiftwidth=4 expandtab"}
+{"name": "shift_right_quote_mark", "lines": ["a", "b", "c"], "keys": "majj>'a", "setup": "set shiftwidth=4 expandtab"}
+{"name": "shift_left_backtick_mark", "lines": ["    a", "    b", "    c"], "keys": "majj<`a", "setup": "set shiftwidth=4 expandtab"}
+{"name": "shift_right_mark_above", "lines": ["a", "b", "c"], "keys": "jjmakk>`a", "setup": "set shiftwidth=4 expandtab"}
+#     NOTE: `=`a` (reindent to a mark) is NOT fixtured here — ruse's `=` is a bracket-depth reindent,
+#     while nvim's `=` under `-u NONE` (equalprg/indentexpr empty, nocindent) is plain autoindent, so
+#     they legitimately diverge (the same reason no `=`-motion fixture exists). Verified by a core unit
+#     test (reindent_to_mark) against ruse's own `=`-over-motion semantics instead.
+#     counted text objects
+#     counted actions
+{"name": "count_3J_join", "lines": ["a", "b", "c", "d"], "keys": "3J"}
+{"name": "count_2cc_change", "lines": ["one", "two", "three"], "keys": "2ccX<Esc>"}
+#     operator to a mark (linewise ' vs charwise `)
+#     line-case operators
+{"name": "gUU_line_upcase", "lines": ["foo bar"], "keys": "gUU"}
+{"name": "g_tilde_tilde_line", "lines": ["FooBar"], "keys": "g~~"}
+#     quote-object corners
+{"name": "ci_dquote_empty", "lines": ["say \"\" now"], "keys": "f\"ci\"Z<Esc>"}
+{"name": "di_dquote_before", "lines": ["x \"hi\" y"], "keys": "di\""}
+#     classic idioms
+{"name": "ddp_swap_lines", "lines": ["one", "two"], "keys": "ddp"}
+{"name": "xp_transpose_chars", "lines": ["ab"], "keys": "xp"}
+#     percentage jump + count %
+#     counted text objects
+{"name": "d2aw_count_object", "lines": ["foo bar baz qux"], "keys": "d2aw"}
+{"name": "count_2daw", "lines": ["foo bar baz qux"], "keys": "2daw"}
+{"name": "d2iw_count_inner", "lines": ["foo bar baz"], "keys": "d2iw"}
+{"name": "d3iw_count_inner", "lines": ["foo bar baz"], "keys": "d3iw"}
+{"name": "d2aW_count_big", "lines": ["foo.bar baz qux"], "keys": "d2aW"}
+{"name": "c2iw_count_change", "lines": ["foo bar baz"], "keys": "c2iwZ<Esc>"}
+#     {count}% percentage jump
+{"name": "percent_jump_50", "lines": ["a", "b", "c", "d"], "keys": "50%x"}
+{"name": "percent_jump_100", "lines": ["a", "b", "c", "d"], "keys": "100%x"}
+{"name": "percent_jump_25", "lines": ["a", "b", "c", "d"], "keys": "25%x"}
+{"name": "d_percent_jump_linewise", "lines": ["a", "b", "c", "d"], "keys": "d50%"}
+#     bare w/W at end-of-line: no next word -> rest ON the last char (Normal can't rest past it)
+{"name": "w_last_word_rests_on_last_char", "lines": ["abc def"], "keys": "wwx"}
+{"name": "w_single_word_rests_on_last_char", "lines": ["abc"], "keys": "wx"}
+{"name": "bigw_last_word_rests_on_last_char", "lines": ["foo.bar baz"], "keys": "WWx"}
+#     ROUND 4 sweep — replace mode / case-over-object / search-motion op / sentences / indent ------
+#     Replace mode (R)
+{"name": "replace_mode_overwrites", "lines": ["abcdef"], "keys": "RXYZ<Esc>"}
+{"name": "replace_mode_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"}
+{"name": "replace_mode_backspace_restores", "lines": ["abcdef"], "keys": "RXY<BS><BS><Esc>"}
+#     case operators over a text object
+{"name": "gU_inner_word", "lines": ["foo bar"], "keys": "gUiw"}
+{"name": "gu_a_word", "lines": ["FOO BAR"], "keys": "guaw"}
+{"name": "g_tilde_inner_word", "lines": ["FooBar baz"], "keys": "g~iw"}
+{"name": "gU_a_paragraph", "lines": ["one two", "three"], "keys": "gUip"}
+#     case operators over a motion
+{"name": "gU_to_eol", "lines": ["foo bar"], "keys": "gU$"}
+{"name": "gu_word_motion", "lines": ["FOO BAR"], "keys": "guw"}
+#     sentence motions
+{"name": "d_sentence_fwd", "lines": ["One two. Three four."], "keys": "d)"}
+{"name": "sentence_back", "lines": ["One. Two three."], "keys": "$(x"}
+#     paragraph object around
+{"name": "dap_around_paragraph", "lines": ["a", "b", "", "c"], "keys": "dap"}
+#     gi resume insert
+{"name": "gi_resume_insert", "lines": ["abc"], "keys": "iX<Esc>llgiY<Esc>"}
+#     increment edge cases
+{"name": "increment_hex_ff", "lines": ["0xff"], "keys": "<C-a>"}
+{"name": "increment_negative_wraps", "lines": ["-1"], "keys": "<C-a>"}
+{"name": "increment_binary", "lines": ["0b101"], "keys": "<C-a>"}
+#     Visual CTRL-A / g CTRL-A — per-line and successive (sequence) increment over a selection
+{"name": "visual_increment_column", "lines": ["0", "0", "0"], "keys": "VG<C-a>"}
+{"name": "visual_seq_increment_run", "lines": ["0", "0", "0"], "keys": "VGg<C-a>"}
+{"name": "visual_seq_increment_count", "lines": ["0", "0", "0"], "keys": "VG2g<C-a>"}
+{"name": "visual_seq_skip_blank", "lines": ["0", "", "0", "0"], "keys": "VGg<C-a>"}
+{"name": "visual_seq_skip_nonumber", "lines": ["0", "abc", "0"], "keys": "VGg<C-a>"}
+{"name": "visual_increment_leading_zero", "lines": ["007", "008"], "keys": "VG<C-a>"}
+{"name": "visual_seq_negatives", "lines": ["-3", "-3"], "keys": "VGg<C-a>"}
+{"name": "visual_seq_decrement", "lines": ["5", "5", "5"], "keys": "VGg<C-x>"}
+{"name": "visual_seq_first_line_no_number", "lines": ["abc", "5", "5"], "keys": "VGg<C-a>"}
+{"name": "block_seq_increment", "lines": ["x0", "x0", "x0"], "keys": "l<C-v>jjg<C-a>"}
+{"name": "block_increment_covers_number", "lines": ["07", "08"], "keys": "<C-v>jl<C-a>"}
+#     #717 CTRL-A/CTRL-X number formats (nvim do_addsub / vim_str2nr, default nrformats=bin,hex)
+{"name": "addsub_dec_huge_saturates", "lines": ["123456789012345678901234567890123456789012345"], "keys": "<C-a>"}
+{"name": "addsub_dec_huge_neg_saturates", "lines": ["-123456789012345678901234567890123456789012345"], "keys": "<C-a>"}
+{"name": "addsub_dec_huge_decrement", "lines": ["123456789012345678901234567890123456789012345"], "keys": "<C-x>"}
+{"name": "addsub_dec_u64_max_wraps", "lines": ["18446744073709551615"], "keys": "<C-a>"}
+{"name": "addsub_dec_neg_u64_max_decrement", "lines": ["-18446744073709551615"], "keys": "<C-x>"}
+{"name": "addsub_dec_i64_max_plus_one", "lines": ["9223372036854775807"], "keys": "<C-a>"}
+{"name": "addsub_dec_zero_decrement", "lines": ["0"], "keys": "<C-x>"}
+{"name": "addsub_dec_neg_count", "lines": ["-3"], "keys": "5<C-a>"}
+{"name": "addsub_dec_neg_decrement", "lines": ["-3"], "keys": "<C-x>"}
+{"name": "addsub_dec_leading_zero", "lines": ["007"], "keys": "<C-a>"}
+{"name": "addsub_dec_leading_zero_carry", "lines": ["099"], "keys": "<C-a>"}
+{"name": "addsub_dec_neg_leading_zero_to_zero", "lines": ["-01"], "keys": "<C-a>"}
+{"name": "addsub_dec_leading_zero_neg", "lines": ["000"], "keys": "<C-x>"}
+{"name": "addsub_dec_cursor_mid_run", "lines": ["x 12345 y"], "keys": "4l<C-a>"}
+{"name": "addsub_dec_dot_repeat", "lines": ["5 9"], "keys": "3<C-a>w."}
+{"name": "addsub_hex_upper", "lines": ["0xAB"], "keys": "<C-a>"}
+{"name": "addsub_hex_upper_prefix", "lines": ["0X0B"], "keys": "<C-a>"}
+{"name": "addsub_hex_upper_prefix_digits", "lines": ["0X19"], "keys": "<C-a>"}
+{"name": "addsub_hex_lower_prefix_upper_digit", "lines": ["0x9F"], "keys": "<C-a>"}
+{"name": "addsub_hex_mixed_last_upper", "lines": ["0xaB"], "keys": "<C-a>"}
+{"name": "addsub_hex_mixed_last_lower", "lines": ["0xAb"], "keys": "<C-a>"}
+{"name": "addsub_hex_lower_x_upper_ab", "lines": ["0Xab"], "keys": "<C-a>"}
+{"name": "addsub_hex_width", "lines": ["0x00ff"], "keys": "<C-a>"}
+{"name": "addsub_hex_width_decrement", "lines": ["0x0100"], "keys": "<C-x>"}
+{"name": "addsub_hex_wrap_down", "lines": ["0x0"], "keys": "<C-x>"}
+{"name": "addsub_hex_wrap_up", "lines": ["0xffffffffffffffff"], "keys": "<C-a>"}
+{"name": "addsub_hex_overflow_saturates", "lines": ["0xffffffffffffffffffff"], "keys": "<C-a>"}
+{"name": "addsub_hex_cursor_on_digits", "lines": ["0xff"], "keys": "$<C-a>"}
+{"name": "addsub_hex_cursor_on_x", "lines": ["a 0x1f"], "keys": "3l<C-a>"}
+{"name": "addsub_hex_minus_not_sign", "lines": ["-0x10"], "keys": "<C-a>"}
+{"name": "addsub_hex_minus_not_sign_dec", "lines": ["-0x10"], "keys": "<C-x>"}
+{"name": "addsub_hex_count", "lines": ["0xfe"], "keys": "3<C-a>"}
+{"name": "addsub_hex_dot_repeat", "lines": ["0xAF"], "keys": "<C-a>."}
+{"name": "addsub_hex_no_digit_after_x", "lines": ["0xg"], "keys": "<C-a>"}
+{"name": "addsub_bin_width", "lines": ["0b0011"], "keys": "<C-a>"}
+{"name": "addsub_bin_to_zero", "lines": ["0b10"], "keys": "2<C-x>"}
+{"name": "addsub_bin_wrap_down", "lines": ["0b0"], "keys": "<C-x>"}
+{"name": "addsub_bin_upper", "lines": ["0B1"], "keys": "<C-a>"}
+{"name": "addsub_bin_cursor_on_digits", "lines": ["0b101"], "keys": "$<C-a>"}
+{"name": "addsub_bin_minus_not_sign", "lines": ["-0b11"], "keys": "<C-a>"}
+{"name": "addsub_octal_o_is_decimal", "lines": ["0o17"], "keys": "<C-a>"}
+{"name": "addsub_octal_o_cursor_on_digits", "lines": ["0o17"], "keys": "$<C-a>"}
+{"name": "addsub_octal_leading_zero_is_decimal", "lines": ["017"], "keys": "<C-a>"}
+{"name": "addsub_vis_hex_upper", "lines": ["0xAB", "0x0f"], "keys": "Vj<C-a>"}
+{"name": "addsub_vis_seq_hex_width", "lines": ["0x00", "0x00", "0x00"], "keys": "VGg<C-a>"}
+{"name": "addsub_vis_from_x_is_decimal", "lines": ["0x19"], "keys": "lv$<C-a>"}
+{"name": "addsub_vis_mid_run", "lines": ["199"], "keys": "lv$<C-a>"}
+{"name": "addsub_vis_clip", "lines": ["12345"], "keys": "lvl<C-a>"}
+{"name": "addsub_vis_minus_outside", "lines": ["-5"], "keys": "lv<C-a>"}
+{"name": "addsub_vis_minus_inside", "lines": ["-5"], "keys": "v$<C-a>"}
+{"name": "addsub_vis_minus_to_zero", "lines": ["-1"], "keys": "v$<C-a>"}
+{"name": "addsub_vis_zero_to_minus", "lines": ["0"], "keys": "v<C-x>"}
+{"name": "addsub_vis_neg_hex", "lines": ["-0x10"], "keys": "v$<C-a>"}
+{"name": "addsub_vis_huge", "lines": ["123456789012345678901234567890123456789012345"], "keys": "V<C-a>"}
+{"name": "addsub_vis_octal_o", "lines": ["0o17"], "keys": "V<C-a>"}
+{"name": "addsub_block_hex_upper", "lines": ["0xAB", "0xCD"], "keys": "<C-v>j$<C-a>"}
+{"name": "addsub_block_clip", "lines": ["123", "456"], "keys": "l<C-v>j<C-a>"}
+{"name": "addsub_vis_dot_repeat", "lines": ["0x0f", "0x0f"], "keys": "V<C-a>j."}
+#     replace char across multibyte
+{"name": "replace_char_unicode", "lines": ["αβγ"], "keys": "lrx"}
+#     ROUND 4b — search-motion operators / blockwise / object aliases / register append
+{"name": "block_change_column", "lines": ["abc", "def", "ghi"], "keys": "\u0016jjcX\u001b"}
+{"name": "block_yank_paste", "lines": ["abc", "def"], "keys": "\u0016jly$p"}
+{"name": "dib_paren_alias", "lines": ["x(abc)y"], "keys": "fadib"}
+{"name": "dab_brace_alias", "lines": ["x{abc}y"], "keys": "fadaB"}
+{"name": "cip_inner_paragraph", "lines": ["one", "two", "", "three"], "keys": "cipZ<Esc>"}
+{"name": "register_append_uppercase", "lines": ["one", "two"], "keys": "\"ayyj\"Ayyk\"ap"}
+#     operator + search motion (d/c/y followed by /pat<CR>) — already implemented; confirm parity
+{"name": "d_search_motion", "lines": ["foo bar baz"], "keys": "d/baz<CR>"}
+{"name": "y_search_then_paste", "lines": ["foo bar baz"], "keys": "y/bar<CR>P"}
+{"name": "c_search_motion", "lines": ["foo bar baz"], "keys": "c/baz<CR>Z<Esc>"}
+#     blockwise $A on ragged lines
+{"name": "block_append_ragged", "lines": ["a", "abc", "ab"], "keys": "<C-v>jj$AX<Esc>"}
+{"name": "block_change_column_notation", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjcX<Esc>"}
+#     ROUND 6 — indent/shift/format (config-dependent), replace-with-newline, quote/tag corners
+{"name": "shift_right_motion_2lines", "lines": ["a", "b", "c"], "keys": ">j", "setup": "set shiftwidth=4 expandtab"}
+{"name": "shift_left_dedents", "lines": ["    ab"], "keys": "<<", "setup": "set shiftwidth=4 expandtab"}
+{"name": "shift_right_paragraph", "lines": ["a", "b", "", "c"], "keys": ">ip", "setup": "set shiftwidth=4 expandtab"}
+{"name": "gq_reflow_paragraph_79", "lines": ["word word word word word word word word word word word word word word word word word word word word"], "keys": "gqip"}
+#     replace char with a newline (splits the line)
+{"name": "replace_char_with_newline", "lines": ["abcdef"], "keys": "llr<CR>"}
+#     quote / tag object corners
+{"name": "ci_squote_adjacent", "lines": ["'a' 'b'"], "keys": "ci'Z<Esc>"}
+{"name": "cit_tag_inner_short", "lines": ["<p>hi</p>"], "keys": "fhcitZ<Esc>"}
+{"name": "di_backtick_quote", "lines": ["x `code` y"], "keys": "fcdi`"}
+{"name": "da_squote_around", "lines": ["say 'hi' ok"], "keys": "fhda'"}
+#     daw on trailing punctuation
+{"name": "daw_before_punct", "lines": ["foo, bar"], "keys": "daw"}
+#     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
+{"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"}
+{"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"}
+{"name": "dw_unicode", "lines": ["héllo wörld"], "keys": "dw"}
+{"name": "tilde_unicode", "lines": ["αβ"], "keys": "~"}
+{"name": "di_dquote_unicode", "lines": ["say \"héllo\" now"], "keys": "di\""}
+#     delimiter nesting ---------------------------------------------------------------------------
+{"name": "di_paren_nested_outer", "lines": ["(a(b)c)"], "keys": "di("}
+{"name": "di_paren_nested_inner", "lines": ["(a(b)c)"], "keys": "f(di("}
+{"name": "da_paren_innermost", "lines": ["(a(b)c)"], "keys": "fbda("}
+#     visual mode ---------------------------------------------------------------------------------
+{"name": "viwd_visual_inner_word", "lines": ["foo bar baz"], "keys": "wviwd"}
+{"name": "Vd_visual_line", "lines": ["alpha", "beta"], "keys": "Vd"}
+{"name": "vjd_visual_charwise_lines", "lines": ["hello", "world"], "keys": "vjd"}
+{"name": "v_dollar_y", "lines": ["hello"], "keys": "v$y"}
+#     paste geometry ------------------------------------------------------------------------------
+{"name": "yy_p_last_line", "lines": ["one", "two"], "keys": "Gyyp"}
+{"name": "x_then_p", "lines": ["abc"], "keys": "xp"}
+#     count edges ---------------------------------------------------------------------------------
+{"name": "count_5x_past_eol", "lines": ["abc"], "keys": "5x"}
+{"name": "count_3dd_past_last", "lines": ["alpha", "beta"], "keys": "3dd"}
+# --- op-family expansion (impl/corpus-visual-paste): new op FAMILIES chosen to surface parity
+#     divergences. Edge cases of IMPLEMENTED ops dominate; a single probe documents each op ruse
+#     does not implement yet. Every `expect` is still oracle-captured, never hand-written.
+#     VISUAL editing (edge cases of the implemented v/V + selection operators) -------------------
+{"name": "Vjd_visual_linewise", "lines": ["alpha", "beta", "gamma"], "keys": "Vjd"}
+# visual-LINEWISE change (`V…c`) must behave like `cc` over the range: replace the whole selected
+# lines with ONE empty line, KEEP the separator to the following line (never merge the next line in),
+# and enter Insert. Regression net for the "collapses the line separator" fix (issue #435), paired
+# with the `cc`/`2cc` linewise-change and `vjc` charwise-change probes below.
+{"name": "Vjc_visual_linewise_change", "lines": ["abc", "beta", "gamma"], "keys": "VjcX<Esc>"}
+{"name": "Vc_visual_linewise_change_one", "lines": ["abc", "beta", "gamma"], "keys": "VcX<Esc>"}
+{"name": "VGc_visual_linewise_change_all", "lines": ["abc", "beta", "gamma"], "keys": "VGcX<Esc>"}
+{"name": "Vjjc_visual_linewise_change_three", "lines": ["abc", "beta", "gamma"], "keys": "VjjcX<Esc>"}
+{"name": "cc_linewise_change", "lines": ["abc", "beta", "gamma"], "keys": "ccX<Esc>"}
+{"name": "count_cc_linewise_change", "lines": ["abc", "beta", "gamma"], "keys": "2ccX<Esc>"}
+{"name": "vjc_charwise_change_no_regress", "lines": ["abc", "beta", "gamma"], "keys": "vjcX<Esc>"}
+{"name": "Vjd_delete_no_regress", "lines": ["abc", "beta", "gamma"], "keys": "Vjd"}
+{"name": "vey_visual_yank_to_word_end", "lines": ["hello world"], "keys": "vey"}
+{"name": "v_dollar_d_visual", "lines": ["hello world"], "keys": "v$d"}
+{"name": "viwc_visual_change_text", "lines": ["foo bar baz"], "keys": "wviwcNEW<Esc>"}
+#     VISUAL probes (ops ruse does not implement: `o` swap-ends, `gv` reselect) ------------------
+{"name": "visual_o_swap_then_extend", "lines": ["abcde"], "keys": "lllvhold"}
+{"name": "gv_reselect", "lines": ["hello world"], "keys": "viwygvd"}
+#     PASTE geometry (edge cases of the implemented p/P) -----------------------------------------
+{"name": "yl_p_charwise_after", "lines": ["abc"], "keys": "ylp"}
+{"name": "yl_P_charwise_before", "lines": ["abc"], "keys": "ylP"}
+{"name": "yy_P_linewise_above", "lines": ["one", "two"], "keys": "yyP"}
+{"name": "charwise_paste_at_eol", "lines": ["abc"], "keys": "yl$p"}
+{"name": "dd_p_linewise_put", "lines": ["one", "two", "three"], "keys": "ddp"}
+{"name": "count_2p_charwise", "lines": ["abc"], "keys": "yl2p"}
+#     CHAR-SEARCH operators (edge cases of the implemented f/F/t/T + ; under an operator) --------
+{"name": "dtx_till_forward", "lines": ["abcxdef"], "keys": "dtx"}
+{"name": "dfx_find_forward", "lines": ["abcxdef"], "keys": "dfx"}
+{"name": "ctx_change_text", "lines": ["abcxdef"], "keys": "ctxYZ<Esc>"}
+{"name": "dTx_till_backward", "lines": ["xabcd"], "keys": "$dTx"}
+{"name": "d_semicolon_repeat_under_op", "lines": ["a.b.c.d"], "keys": "f.d;"}
+#     LINE-operator synonyms — mostly probes for ops ruse does not implement (D/C/Y), plus `cc` ---
+{"name": "cc_change_line", "lines": ["  hello", "world"], "keys": "ccNEW<Esc>"}
+{"name": "D_delete_to_eol", "lines": ["hello world"], "keys": "wD"}
+{"name": "C_change_to_eol", "lines": ["hello world"], "keys": "wCX<Esc>"}
+{"name": "Y_yank_line", "lines": ["hello", "world"], "keys": "Yp"}
+{"name": "S_change_line", "lines": ["  hello", "world"], "keys": "SNEW<Esc>"}
+# --- COMPOSITE corpus (impl/corpus-composite): multi-step editing SESSIONS (6-20 keystrokes) whose
+#     whole point is CROSS-COMMAND STATE — one command's effect (dot-register, unnamed register,
+#     cursor, mode) carried into the next. The atomic (1-2 op) fixtures above cannot surface an
+#     INTERACTION bug; these can. Every `expect` is still oracle-captured, never hand-written.
+#     DOT-REPEAT chains (`.` replays the last change; verify dd/insert repeatability via the oracle) --
+{"name": "dot_ciw_repeat_word", "lines": ["foo bar baz"], "keys": "ciwX<Esc>w."}
+{"name": "dot_x_across_lines", "lines": ["abc", "def"], "keys": "xj."}
+{"name": "dot_dd_repeat", "lines": ["a", "b", "c"], "keys": "dd."}
+{"name": "dot_A_append_repeat", "lines": ["foo", "bar"], "keys": "A;<Esc>j."}
+{"name": "dot_shift_repeat", "lines": ["a", "b"], "keys": ">>j.", "setup": "set shiftwidth=4 expandtab"}
+{"name": "dot_dw_twice", "lines": ["one two three four"], "keys": "dw.."}
+#     COUNT accumulation interacting with a later command / dot --------------------------------------
+{"name": "count_d2w_then_dot", "lines": ["a b c d e"], "keys": "d2w."}
+{"name": "count_3x_then_dot", "lines": ["abcdefgh"], "keys": "3x."}
+{"name": "count_2dd_then_p", "lines": ["a", "b", "c", "d"], "keys": "2ddp"}
+#     REGISTER reuse across ops (unnamed register survives motions; `"a` is a NAMED-register probe) ---
+{"name": "reg_dw_word_paste_before", "lines": ["one two three"], "keys": "dwwP"}
+{"name": "reg_dd_overwrite_then_paste", "lines": ["1", "2", "3", "4"], "keys": "ddjddp"}
+{"name": "reg_named_yank_paste", "lines": ["foo bar"], "keys": "\"ayiw$\"ap"}
+{"name": "reg_named_yy_paste", "lines": ["one", "two"], "keys": "\"ayy\"ap"}
+{"name": "reg_named_dd_paste", "lines": ["one", "two"], "keys": "\"add\"ap"}
+{"name": "reg_append_uppercase", "lines": ["foo", "bar"], "keys": "\"Ayiwj\"Ayiw\"ap"}
+#     YANK REGISTER "0 (quote0): last yank, untouched by deletes; a NAMED yank does not set it ----------
+{"name": "reg0_yank_then_paste", "lines": ["ab cd"], "keys": "yiw$\"0p"}
+{"name": "reg0_survives_delete", "lines": ["foo bar"], "keys": "yiwwdiw\"0p"}
+{"name": "reg0_named_yank_leaves_it_empty", "lines": ["foo bar"], "keys": "\"ayiww\"0p"}
+#     MODE-TRANSITION sequences (selection/insert -> normal -> paste; append then insert-at-start) ----
+{"name": "mode_viwy_open_paste", "lines": ["hello"], "keys": "viwyo<Esc>p"}
+{"name": "mode_vjd_then_paste", "lines": ["abc", "def"], "keys": "vjdp"}
+{"name": "mode_append_then_insert_bol", "lines": ["mid"], "keys": "A!<Esc>0i?<Esc>"}
+#     FORCED MOTION WISE (o_v / o_V / o_CTRL-V): force charwise on a linewise motion, force linewise on
+#     a charwise motion, toggle a charwise motion's exclusive/inclusive edge, and force blockwise. ------
+{"name": "forced_dvj_charwise", "lines": ["hello", "world"], "keys": "dvj"}
+{"name": "forced_dvk_charwise", "lines": ["hello", "world"], "keys": "jdvk"}
+{"name": "forced_dVe_linewise", "lines": ["hello world"], "keys": "dVe"}
+{"name": "forced_dVw_linewise", "lines": ["hello world"], "keys": "dVw"}
+{"name": "forced_dvw_toggle_inclusive", "lines": ["hello world"], "keys": "dvw"}
+{"name": "forced_dve_toggle_exclusive", "lines": ["hello world"], "keys": "dve"}
+{"name": "forced_dv_dollar_toggle", "lines": ["hello world"], "keys": "dv$"}
+{"name": "forced_dV_paragraph", "lines": ["one", "two", "", "three"], "keys": "dV}"}
+{"name": "forced_yvj_then_paste", "lines": ["hello", "world"], "keys": "yvjP"}
+#     BLOCKWISE VISUAL (CTRL-V) — F-025/F-029/F-023 slice 1: a column-aligned rectangle. Yank/delete
+#     capture per-row slices into a blockwise register; `p`/`P` drop the block back as a rectangle; the
+#     operator-pending `CTRL-V` forces a blockwise operator (`d<C-v>j`). Byte/char columns (ASCII here).
+{"name": "block_delete_2x2", "lines": ["abc", "def", "ghi"], "keys": "<C-v>ljd"}
+{"name": "block_delete_1col_3rows", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjd"}
+{"name": "block_yank_paste_before", "lines": ["abc", "def", "ghi"], "keys": "<C-v>ljyP"}
+{"name": "block_yank_paste_after_1col", "lines": ["abc", "def"], "keys": "<C-v>jyp"}
+{"name": "forced_d_ctrl_v_j_blockwise", "lines": ["abc", "def"], "keys": "d<C-v>j"}
+#     BLOCKWISE over wide, composing and tabbed text (#909): the block is in screen cells, so a wide
+#     char half inside it, a combining sequence, a ZWJ cluster and a tab each decide the row's slice.
+{"name": "block_d_cjk_rows", "lines": ["가나다", "라마바", "사아자"], "keys": "l<C-v>jd"}
+{"name": "block_d_cjk_over_ascii", "lines": ["abcdef", "가나다", "ghijkl"], "keys": "l<C-v>jjld"}
+{"name": "block_d_ascii_over_cjk", "lines": ["가나다", "abcdef", "라마바"], "keys": "<C-v>jjd"}
+{"name": "block_y_p_cjk", "lines": ["가나다", "라마바"], "keys": "<C-v>jy$p"}
+{"name": "block_d_combining", "lines": ["éái", "xyz"], "keys": "l<C-v>jd"}
+{"name": "block_I_combining", "lines": ["éab", "cde"], "keys": "l<C-v>jIX<Esc>"}
+{"name": "block_d_zwj_cluster", "lines": ["a👨\u200d👩b", "cdefg"], "keys": "l<C-v>jd"}
+{"name": "block_d_tab_row", "lines": ["\tab", "1234cd"], "keys": "<C-v>jd", "setup": "set tabstop=4 noexpandtab"}
+{"name": "block_A_dollar_cjk", "lines": ["가", "abc", "나다"], "keys": "<C-v>jj$AZ<Esc>"}
+{"name": "block_c_cjk", "lines": ["가나다", "라마바"], "keys": "l<C-v>jcZ<Esc>"}
+#     BLOCKWISE INSERT-REPLICATE (slice 2): `I`/`A`/`c` type on the top row and replicate the typed text
+#     down every block row on <Esc> (`A` pads short lines; `c` deletes the block first). ----------------
+{"name": "block_insert_I_replicate", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjIX<Esc>"}
+{"name": "block_append_A_replicate", "lines": ["abc", "def"], "keys": "<C-v>jAX<Esc>"}
+{"name": "block_change_c_replicate", "lines": ["abc", "def"], "keys": "<C-v>jcX<Esc>"}
+{"name": "block_append_A_pads_short", "lines": ["ab", "c"], "keys": "<C-v>ljAX<Esc>"}
+#     BLOCKWISE INSERT DOT-REPEAT: `.` rebuilds a block of the SAME width x height at the caret and
+#     re-applies the same I/A/c with the same typed text (nvim reuses the geometry, positioned at the
+#     cursor). Count on `.` is ignored for block insert; rows clamp at end-of-buffer. -------------------
+{"name": "block_I_dot", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jIX<Esc>jj."}
+{"name": "block_A_dot", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jllAX<Esc>jj."}
+{"name": "block_c_dot", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jlcXY<Esc>jj."}
+{"name": "block_I_dot_at_col", "lines": ["aaaaaa", "bbbbbb", "cccccc", "dddddd"], "keys": "<C-v>jIX<Esc>jjll."}
+{"name": "block_c_dot_at_col", "lines": ["aaaaaa", "bbbbbb", "cccccc", "dddddd", "eeeeee"], "keys": "<C-v>jllcZ<Esc>jjj."}
+{"name": "block_A_dot_moved", "lines": ["aaaaaa", "bbbbbb", "cccccc", "dddddd"], "keys": "<C-v>jlAQ<Esc>jjl."}
+{"name": "block_I_dot_count_ignored", "lines": ["aaaa", "bbbb", "cccc"], "keys": "<C-v>IX<Esc>j2."}
+{"name": "block_I_dot_eof_clamp", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jjIZ<Esc>Gk."}
+{"name": "block_A_dollar_dot", "lines": ["aa", "bbbb", "c", "dddd"], "keys": "<C-v>j$AZ<Esc>jj."}
+#     CURSWANT — the sticky desired column. `j`/`k` keep the wanted column across a SHORT interior line
+#     instead of collapsing to its end; `$` sets curswant to MAXCOL so `j`/`k` ride each line's last char.
+# Blockwise over a short interior line: curswant keeps the block full-width (was a probe; now verified).
+{"name": "block_ragged_short_line", "lines": ["abcd", "x", "efgh"], "keys": "l<C-v>lljjd"}
+# Plain `j` through a short line restores the wanted column on the next long line ('c' col2 -> 'n' col2).
+{"name": "curswant_j_through_short_line", "lines": ["abc", "x", "lmnop"], "keys": "lljjrY"}
+# `$` then `j`: the cursor rides each line's END (last char), not a fixed column.
+{"name": "curswant_dollar_rides_ends", "lines": ["ab", "wxyz", "c"], "keys": "$jrY"}
+#     REPLACE MODE (R): overwrite policy + <BS> restores the overwritten char / deletes an appended one.
+{"name": "replace_basic_overwrite", "lines": ["hello"], "keys": "Rxy<Esc>"}
+{"name": "replace_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"}
+{"name": "replace_backspace_restores", "lines": ["hello"], "keys": "Rxy<BS><BS><Esc>"}
+{"name": "replace_backspace_deletes_appended", "lines": ["ab"], "keys": "RXYZ<BS><Esc>"}
+#     A count before `R`/`gR` re-types the replacement that many times, still overwriting (#1155); `.`
+#     repeats it with the same count, `N.` with N.
+{"name": "replace_count_single", "lines": ["abcdefghij"], "keys": "05Rx<Esc>"}
+{"name": "replace_count_pair", "lines": ["abcdefghij"], "keys": "03Rxy<Esc>"}
+{"name": "replace_count_single_dot", "lines": ["abcdefghij"], "keys": "05Rx<Esc>."}
+{"name": "replace_count_pair_dot", "lines": ["abcdefghij"], "keys": "03Rxy<Esc>."}
+{"name": "replace_count_dot_next_line", "lines": ["abcdefghij", "abcdefghij"], "keys": "03Rxy<Esc>j0."}
+{"name": "replace_count_dot_new_count", "lines": ["abcdefghij", "abcdefghij"], "keys": "03Rxy<Esc>j02."}
+{"name": "replace_count_backspace", "lines": ["abcdefghij"], "keys": "03Rxyz<BS><Esc>"}
+{"name": "replace_count_past_eol", "lines": ["abcdefghij"], "keys": "07l3Rxy<Esc>"}
+{"name": "replace_count_undo", "lines": ["abcdefghij"], "keys": "03Rxy<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "gr_count_pair", "lines": ["abcdefghij"], "keys": "03gRxy<Esc>"}
+#     #727 probes: count R, <BS> over replaced/appended chars and past the start, <CR>, multibyte, arrows.
+{"name": "r727_count_single_x", "lines": ["abcdef"], "keys": "3RX<Esc>"}
+{"name": "r727_count_ab", "lines": ["abcdefgh"], "keys": "3Rab<Esc>"}
+{"name": "r727_past_eol_mid", "lines": ["abc"], "keys": "lRXYZW<Esc>"}
+{"name": "r727_bs_replaced_and_appended", "lines": ["ab"], "keys": "RXYZW<BS><BS><BS><Esc>"}
+{"name": "r727_bs_all_appended", "lines": ["ab"], "keys": "RXYZW<BS><BS><BS><BS><Esc>"}
+{"name": "r727_bs_past_start", "lines": ["abcdef"], "keys": "llRX<BS><BS><BS><Esc>"}
+{"name": "r727_bs_past_start_type", "lines": ["abcdef"], "keys": "llRX<BS><BS>Y<Esc>"}
+{"name": "r727_cr", "lines": ["abcdef"], "keys": "lRX<CR>Y<Esc>"}
+{"name": "r727_cr_bs_bs", "lines": ["abc"], "keys": "RX<CR><BS><BS><Esc>"}
+{"name": "r727_cr_bs", "lines": ["abc"], "keys": "RX<CR><BS><Esc>"}
+{"name": "r727_cr_bs_three", "lines": ["abc"], "keys": "RX<CR>Y<BS><BS><BS><Esc>"}
+{"name": "r727_multibyte", "lines": ["éèêz"], "keys": "RXY<Esc>"}
+{"name": "r727_multibyte_bs", "lines": ["éèêz"], "keys": "RXY<BS><Esc>"}
+{"name": "r727_onto_multibyte", "lines": ["abc"], "keys": "Réè<BS><Esc>"}
+{"name": "r727_count_bs", "lines": ["abcdefgh"], "keys": "3Rab<BS><Esc>"}
+{"name": "r727_count_bs_all", "lines": ["abcdefgh"], "keys": "3Rab<BS><BS><BS><Esc>"}
+{"name": "r727_count_dot", "lines": ["abcdefghijkl", "abcdefghijkl"], "keys": "2Rab<Esc>j0."}
+{"name": "r727_count_undo", "lines": ["abcdefgh"], "keys": "3Rab<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "r727_undo_plain", "lines": ["abcdef"], "keys": "Rxyz<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "r727_left_bs", "lines": ["abcd"], "keys": "Rxy<Left><Left><BS><Esc>"}
+{"name": "r727_left_bs_one", "lines": ["abcd"], "keys": "Rxy<Left><BS><Esc>"}
+{"name": "r727_left_type_bs", "lines": ["abcd"], "keys": "Rxy<Left>Z<BS><Esc>"}
+{"name": "r727_left_dot", "lines": ["abcd", "abcd"], "keys": "Rxy<Left>Z<Esc>j0."}
+{"name": "r727_left_undo", "lines": ["abcd"], "keys": "Rxy<Left>Z<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "r727_right_type", "lines": ["abcde"], "keys": "Rx<Right>Y<BS><BS><Esc>"}
+{"name": "r727_end_type", "lines": ["abcde"], "keys": "Rx<End>YZ<BS><Esc>"}
+{"name": "r727_home_type", "lines": ["abcde"], "keys": "lllRx<Home>Y<Esc>"}
+{"name": "r727_down_type", "lines": ["abcde", "fghij"], "keys": "Rx<Down>Y<BS><BS><Esc>"}
+{"name": "r727_cr_indent", "lines": ["  abcdef"], "keys": "wlRX<CR>Y<Esc>"}
+{"name": "r727_cr_indent_bs", "lines": ["  abcdef"], "keys": "wlRX<CR><BS><BS><Esc>"}
+{"name": "r727_cr_eol", "lines": ["ab"], "keys": "lRXY<CR>Z<BS><BS><BS><Esc>"}
+{"name": "r727_cr_dot", "lines": ["abcdef", "abcdef"], "keys": "lRX<CR>Y<Esc>j0."}
+{"name": "r727_cr_undo", "lines": ["abcdef"], "keys": "lRX<CR>Y<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "r727_cr_twice_bs", "lines": ["abcdef"], "keys": "RX<CR><CR>Y<BS><BS><BS><Esc>"}
+{"name": "r727_gr_cr", "lines": ["abcdef"], "keys": "lgRX<CR>Y<Esc>"}
+{"name": "r727_gr_cr_bs", "lines": ["abc"], "keys": "gRX<CR><BS><BS><Esc>"}
+{"name": "r727_count_cr", "lines": ["abcdef"], "keys": "2RX<CR>Y<Esc>"}
+{"name": "r727_gr_cr_next", "lines": ["abcdef", "ghij"], "keys": "lgRX<CR>Y<Esc>"}
+{"name": "r727_gr_cr_next_bs", "lines": ["abcdef", "ghij"], "keys": "lgRX<CR><BS><Esc>"}
+{"name": "r727_gr_cr_next_bs2", "lines": ["abcdef", "ghij"], "keys": "lgRX<CR>Y<BS><BS><BS><Esc>"}
+{"name": "r727_gr_cr_indent", "lines": ["  abcdef"], "keys": "wlgRX<CR>Y<Esc>"}
+{"name": "r727_gr_cr_indent_next", "lines": ["  abcdef", "ghij"], "keys": "wlgRX<CR>Y<Esc>"}
+{"name": "r727_gr_cr_undo", "lines": ["abcdef", "ghij"], "keys": "lgRX<CR>Y<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "r727_cr_blanks_after", "lines": ["ab  cd"], "keys": "lRX<CR>Y<Esc>"}
+{"name": "r727_cr_blanks_after_bs", "lines": ["ab  cd"], "keys": "lRX<CR><BS><BS><Esc>"}
+{"name": "r727_cr_indent_bs_one", "lines": ["  abcdef"], "keys": "wlRX<CR><BS><Esc>"}
+{"name": "r727_cr_indent_wide", "lines": ["          abc"], "keys": "wRX<CR><BS><BS><BS><BS><Esc>", "setup": "set shiftwidth=4 expandtab"}
+{"name": "r727_gr_left_bs", "lines": ["abcd"], "keys": "gRxy<Left><BS><Esc>"}
+#     VIRTUAL REPLACE (gR): tab-aware overwrite. Without tabs it is identical to R. Over a <Tab> the
+#     typed char is inserted before the tab (shrinking it) until its last virtual column, then replaces
+#     it — preserving the on-screen layout. `set tabstop=4` matches ruse's editor.tab_width default so
+#     the virtual-column arithmetic aligns; `noexpandtab` keeps a literal <Tab> in the buffer.
+{"name": "gr_basic_overwrite", "lines": ["hello"], "keys": "gRxy<Esc>"}
+{"name": "gr_past_eol_appends", "lines": ["ab"], "keys": "gRXYZ<Esc>"}
+{"name": "gr_backspace_restores", "lines": ["hello"], "keys": "gRxy<BS><BS><Esc>"}
+{"name": "gr_over_tab_shrinks", "lines": ["a\tb"], "keys": "lgRXY<Esc>", "setup": "set tabstop=4 noexpandtab"}
+{"name": "gr_consumes_tab_fully", "lines": ["a\tb"], "keys": "lgRXYZ<Esc>", "setup": "set tabstop=4 noexpandtab"}
+{"name": "gr_over_tab_then_overwrite", "lines": ["a\tb"], "keys": "lgRXYZW<Esc>", "setup": "set tabstop=4 noexpandtab"}
+{"name": "gr_over_tab_backspace_regrows", "lines": ["a\tb"], "keys": "lgRX<BS><Esc>", "setup": "set tabstop=4 noexpandtab"}
+#     `gI` — insert at column 1 (byte col 0), BEFORE all indentation (unlike `I` = first non-blank).
+#     `{count}gI` repeats the typed text like the other insert-entries. `<Tab>` here is layout only; the
+#     inserted text is plain chars, so the result is tabstop-independent (no setup needed).
+{"name": "gI_insert_column_zero", "lines": ["\thello"], "keys": "gIX<Esc>", "setup": "set noexpandtab"}
+{"name": "gI_before_space_indent", "lines": ["  ab"], "keys": "gIX<Esc>"}
+{"name": "gI_count_repeats_text", "lines": ["\thello"], "keys": "3gIx<Esc>", "setup": "set noexpandtab"}
+#     `gr{char}` — CLASSIC-Vim virtual-replace of ONE (or `{count}`) char, then back to Normal (the one-
+#     shot of `gR`, as `r` is to `R`). NOTE: nvim 0.11+ maps `gr`/`grn`/`gra`/`grr` to LSP by default, but
+#     under `-u NONE` those maps are absent, so bare `gr{char}` here is the classic built-in. Tab-aware:
+#     over a multi-column <Tab> the char inserts before it, preserving the following column.
+{"name": "grchar_one_char", "lines": ["abcdef"], "keys": "lgrX"}
+{"name": "grchar_count", "lines": ["abcdef"], "keys": "3grZ"}
+{"name": "grchar_past_eol_appends", "lines": ["ab"], "keys": "4grX"}
+{"name": "grchar_over_tab", "lines": ["\tX"], "keys": "grA", "setup": "set tabstop=4 noexpandtab"}
+{"name": "grchar_count_over_tab", "lines": ["\tX"], "keys": "2grA", "setup": "set tabstop=4 noexpandtab"}
+#     #1347: a count never starts with `0` (`0` is the line-start motion), so `$0grX` is `$`, `0`, `grX`
+#     and `$0rX` is `$`, `0`, `rX`; a `0` after a digit is part of the count (`10grX` overruns and appends).
+{"name": "r1347_zero_then_gr", "lines": ["abcdef"], "keys": "$0grX"}
+{"name": "r1347_zero_then_r", "lines": ["abcdef"], "keys": "$0rX"}
+{"name": "r1347_count_ten_gr", "lines": ["ab"], "keys": "10grX"}
+# (No `R`-then-`u` fixture: the oracle sets the buffer via set_lines, which is NOT an undo boundary, so
+#  `u` undoes past the initial content to empty — an oracle artifact, not Vim behavior. R+undo is covered
+#  by a core unit test instead.)
+#     INSERT `CTRL-O` (i_CTRL-O): run ONE Normal command from Insert, then return to Insert. Observable
+#     via the resulting text+cursor. (CTRL-G u — undo-break — is NOT observable here for the same
+#     set_lines-is-not-an-undo-boundary reason as R+undo, so it is a core unit test, not a fixture.)
+#     ruse implements the one-shot by routing the next key(s) through the Normal grammar while the core
+#     stays in Insert (every Normal cmd inherits st.mode; the Normal-only cursor clamp is gated off).
+{"name": "ctrl_o_x_delete", "lines": ["hello"], "keys": "i<C-o>xEND<Esc>"}
+{"name": "ctrl_o_word_motion", "lines": ["foo bar"], "keys": "i<C-o>wX<Esc>"}
+# i_CTRL-O's EOL APPEND-COLUMN (curswant): after `$` (or an `A` whose append intent survives a `dd`),
+# the return-to-insert caret rests at end-of-line so the next char appends. curswant == MAXCOL parks the
+# Insert caret at the append position; a one-shot edit like `dd` preserves that intent (was a probe pair;
+# now verified). Note: `A<C-o>h` (append then a horizontal move) needs the append->last-char pull-back on
+# entering the one-shot, which is a separate refinement — not fixtured here.
+{"name": "ctrl_o_dollar_append", "lines": ["hi"], "keys": "i<C-o>$X<Esc>"}
+{"name": "ctrl_o_dd_delete_line", "lines": ["alpha", "beta"], "keys": "A<C-o>ddX<Esc>"}
+{"name": "ctrl_o_j_rides_to_append", "lines": ["ab", "cd"], "keys": "A<C-o>jX<Esc>"}
+{"name": "ctrl_o_zero_resets_append", "lines": ["alpha", "beta"], "keys": "A<C-o>0X<Esc>"}
+#     DOT-REPEAT around i_CTRL-O (#795): CTRL-O ENDS the insert for redo (Vim's ins_esc), the one-shot
+#     command is classified as a Normal command, and text typed after the return starts a FRESH `i`
+#     change (Vim's stop_arrow resets the redo buffer to `1i`); the entry count is dropped.
+{"name": "dot_ctrl_o_motion_then_text", "lines": ["x", "y"], "keys": "iab<C-o>0cd<Esc>j."}
+# (`iab<C-o>ucd<Esc>j.` is pinned in apps/tui/tests/dot_repeat.rs: set_lines is not an undo boundary.)
+{"name": "dot_ctrl_o_count_dropped", "lines": ["x"], "keys": "3iab<C-o>hcd<Esc>"}
+{"name": "dot_ctrl_o_no_text_keeps_insert", "lines": ["x", "y"], "keys": "iab<C-o>0<Esc>j."}
+{"name": "dot_ctrl_o_append_then_text", "lines": ["abc", "def"], "keys": "Aab<C-o>0cd<Esc>j."}
+{"name": "dot_ctrl_o_x_then_text", "lines": ["abc", "def"], "keys": "iab<C-o>xcd<Esc>j."}
+{"name": "dot_ctrl_o_x_is_last_change", "lines": ["abc", "def"], "keys": "iab<C-o>x<Esc>j."}
+{"name": "dot_ctrl_o_change_kept", "lines": ["abc", "def"], "keys": "ciwZ<C-o>0<Esc>j."}
+{"name": "dot_ctrl_o_twice", "lines": ["abc", "def"], "keys": "iab<C-o>0cd<C-o>0ef<Esc>j0."}
+{"name": "dot_ctrl_o_count_on_dot", "lines": ["abc", "def"], "keys": "2iab<C-o>0cd<Esc>j03."}
+{"name": "dot_ctrl_g_u_keeps_one_change", "lines": ["abc", "def"], "keys": "iab<C-g>ucd<Esc>j0."}
+#     DOT-REPEAT of commands that fell into the change_kind / with_count wildcards (#793).
+{"name": "dot_search_delete", "lines": ["aXbXcXdXe"], "keys": "xd/X<CR>."}
+{"name": "dot_search_change", "lines": ["aXbXcXdXe"], "keys": "c/X<CR>Q<Esc>l."}
+{"name": "dot_op_to_mark_char", "lines": ["abcdefghij"], "keys": "xlmalld`all."}
+{"name": "dot_op_to_mark_line", "lines": ["a", "b", "c", "d", "e", "f"], "keys": "majj>'ajj.", "setup": "set shiftwidth=4 expandtab"}
+{"name": "dot_change_to_mark", "lines": ["foo bar baz qux"], "keys": "mawwc`aZ<Esc>."}
+{"name": "dot_replace_mode", "lines": ["abcdef", "ghijkl"], "keys": "xRXY<Esc>j0."}
+{"name": "dot_gi_insert", "lines": ["abc", "def"], "keys": "iX<Esc>jgiY<Esc>j."}
+{"name": "dot_count_join", "lines": ["a", "b", "c", "d", "e", "f", "g"], "keys": "J3."}
+{"name": "dot_count_join_nospace", "lines": ["a", "b", "c", "d", "e", "f", "g"], "keys": "gJ3."}
+{"name": "dot_count_increment", "lines": ["1 x"], "keys": "<C-a>5."}
+{"name": "dot_count_decrement", "lines": ["9 x"], "keys": "<C-x>5."}
+#     DOT-REPEAT of a Visual change (#794): `.` re-applies the operator to the same AMOUNT of text at the
+#     cursor (`:help visual-repeat`): same char count within a line, same line count linewise, same
+#     line count + end column for multi-line charwise. A count on `.` is ignored.
+{"name": "dot_visual_delete", "lines": ["abcdefgh"], "keys": "vld."}
+{"name": "dot_visual_line_delete", "lines": ["a", "b", "c", "d", "e"], "keys": "Vd."}
+{"name": "dot_visual_change", "lines": ["abcdefgh"], "keys": "vlcX<Esc>l."}
+{"name": "dot_visual_replace_char", "lines": ["abcdefgh"], "keys": "vlrxll."}
+{"name": "dot_visual_upcase", "lines": ["abcdefgh"], "keys": "vlUll."}
+{"name": "dot_visual_toggle_case", "lines": ["abcdefgh"], "keys": "vl~ll."}
+{"name": "dot_visual_multiline_char", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "lvjd."}
+{"name": "dot_visual_block_delete", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jld."}
+{"name": "dot_visual_count_ignored", "lines": ["abcdefghijklmnop"], "keys": "vlld3."}
+{"name": "dot_visual_line_count_ignored", "lines": ["a", "b", "c", "d", "e", "f", "g", "h"], "keys": "Vjd2."}
+#     MIXED realistic refactors (navigate then edit; find-delimiter then change-inner) ---------------
+{"name": "refactor_2word_change_end", "lines": ["aa bb cc dd"], "keys": "2wceHELLO<Esc>0"}
+{"name": "refactor_find_paren_change_inner", "lines": ["foo(bar)baz"], "keys": "f(ci(X<Esc>"}
+#     SEARCH probe (one, per brief): `/` is not wired into the parity comparator's drive loop --------
+{"name": "search_then_daw_probe", "lines": ["hello world foo"], "keys": "/world<CR>daw"}
+# --- SEARCH corpus (impl/parity-search-drive): the comparator now drives `/pattern<CR>` by
+#     collecting the minibuffer pattern and applying SearchNext (mirroring main.rs). These exercise
+#     bare search moves, `n` repeat, and — as probes — search-as-operator-motion and a count prefix,
+#     which ruse's engine resets on `/` (findings if divergent). Every `expect` is oracle-captured.
+{"name": "search_word_move", "lines": ["hello world foo"], "keys": "/world<CR>"}
+{"name": "search_then_daw", "lines": ["hello world foo"], "keys": "/foo<CR>daw"}
+{"name": "search_next_n", "lines": ["foo bar foo bar foo"], "keys": "/foo<CR>n"}
+# PROBE — `d/pat<CR>` (search as an operator motion): ruse's engine resets the armed operator when
+# `/` opens the search line, so it performs a bare move where Vim deletes up to the match. Divergence
+# is the expected finding; the comparator stays green (divergence is data, never a failure).
+{"name": "search_as_dmotion", "lines": ["hello world foo"], "keys": "d/world<CR>"}
+# PROBE — `2/pat<CR>` (count before search = go to the Nth match in Vim): ruse resets the count on
+# `/`, so it lands on the FIRST match. Documented divergence.
+{"name": "search_count_prefix", "lines": ["foo bar foo bar foo"], "keys": "2/foo<CR>"}
+# --- SECTION motions (feat/section-motions): `]]`/`[[` seek a `{` (or form-feed) in column 0; `][`/`[]`
+#     seek a `}` (or form-feed). Exclusive motions → operators are linewise via the exclusive-linewise
+#     rule (shared with `d}`). Bare moves rest on the target line's first non-blank; clamp to the
+#     last/first line at the buffer edges. Every `expect` is oracle-captured from nvim v0.12.4.
+#     (Two nvim EOF quirks are DELIBERATELY not fixtured — a section-FORWARD operator running off the end
+#     of the file makes nvim's delete linewise-through-EOF but its yank charwise; ruse uses one span for
+#     d/y so both stop at the last line. Documented divergence in the change record.)
+{"name": "section_fwd_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "]]"}
+{"name": "section_fwd_count_clamps", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "2]]"}
+{"name": "section_end_fwd_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "]["}
+{"name": "section_back_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "G[["}
+{"name": "section_end_back_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "G[]"}
+{"name": "section_fwd_eof_first_non_blank", "lines": ["{", "  a", "    xy"], "keys": "]]"}
+{"name": "section_fwd_form_feed", "lines": ["aaa", "\f", "bbb"], "keys": "]]"}
+{"name": "section_end_fwd_form_feed", "lines": ["aaa", "\f", "bbb"], "keys": "]["}
+{"name": "section_fwd_skips_indented_brace", "lines": ["a", " {", "b", "{", "c"], "keys": "]]"}
+{"name": "d_section_fwd_linewise", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "d]]"}
+{"name": "d_section_end_fwd_linewise", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "d]["}
+{"name": "y_section_fwd_linewise", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "y]]"}
+{"name": "d_section_back_linewise", "lines": ["x", "{", "a", "}", "{", "b", "}"], "keys": "5Gd[["}
+{"name": "d_section_end_back_linewise", "lines": ["x", "{", "a", "}", "{", "b", "}"], "keys": "6Gd[]"}
+{"name": "y_section_back", "lines": ["x", "{", "a", "}", "{", "b", "}"], "keys": "6Gy[["}
+{"name": "d_section_back_bof_noop", "lines": ["x", "{", "a", "}"], "keys": "d[["}
+{"name": "section_fwd_from_mid", "lines": ["{", "a", "}", "{", "b", "}"], "keys": "jd]]"}
+# --- UNMATCHED-PAREN/BRACE motions (feat/unmatched-paren-motions): `[(`/`])` jump to the enclosing
+#     unmatched `(`/`)`; `[{`/`]}` to the enclosing unmatched `{`/`}`. Count steps out nesting levels.
+#     All four are EXCLUSIVE charwise (verified: `d])` does NOT eat the `)`, unlike `d%`), and take Vim's
+#     exclusive-linewise reduction when the target sits in column 0. Every `expect` is oracle-captured.
+#     bare moves ---------------------------------------------------------------------------------------
+{"name": "unmatched_paren_back_bare", "lines": ["(abcdef)"], "keys": "3l[("}
+{"name": "unmatched_paren_fwd_bare", "lines": ["(abcdef)"], "keys": "3l])"}
+{"name": "unmatched_brace_back_bare", "lines": ["{abcdef}"], "keys": "3l[{"}
+{"name": "unmatched_brace_fwd_bare", "lines": ["{abcdef}"], "keys": "3l]}"}
+#     nesting + count ----------------------------------------------------------------------------------
+{"name": "unmatched_paren_back_nested_inner", "lines": ["(a(b)c)"], "keys": "3l[("}
+{"name": "unmatched_paren_back_count_out_two", "lines": ["(a(b)c)"], "keys": "3l2[("}
+{"name": "unmatched_brace_fwd_nested_inner", "lines": ["{a{b}c}"], "keys": "3l]}"}
+{"name": "unmatched_brace_fwd_count_out_two", "lines": ["{a{b}c}"], "keys": "3l2]}"}
+#     cursor on the bracket itself → no-op; no enclosing bracket → no-op --------------------------------
+{"name": "unmatched_paren_back_on_open_noop", "lines": ["(abc)"], "keys": "[("}
+{"name": "unmatched_paren_fwd_on_close_noop", "lines": ["(abc)"], "keys": "$])"}
+{"name": "unmatched_paren_back_none_noop", "lines": ["abcdef"], "keys": "3l[("}
+#     multiline ----------------------------------------------------------------------------------------
+{"name": "unmatched_paren_back_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "2G0[("}
+{"name": "unmatched_paren_fwd_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "2G0])"}
+#     operators — exclusive charwise -------------------------------------------------------------------
+{"name": "d_unmatched_paren_back", "lines": ["(abcdef)"], "keys": "3ld[("}
+{"name": "d_unmatched_paren_fwd", "lines": ["(abcdef)"], "keys": "3ld])"}
+{"name": "y_unmatched_paren_fwd", "lines": ["(abcdef)"], "keys": "3ly])"}
+{"name": "c_unmatched_brace_fwd", "lines": ["{abcdef}"], "keys": "3lc]}X<Esc>"}
+{"name": "d_unmatched_brace_back", "lines": ["{abcdef}"], "keys": "3ld[{"}
+#     operator exclusive-linewise reduction at a column-0 target ----------------------------------------
+{"name": "d_unmatched_paren_fwd_linewise", "lines": ["foo(", "bar", ")baz"], "keys": "2G0d])"}
+#     operator no-op (no enclosing bracket) ------------------------------------------------------------
+{"name": "d_unmatched_paren_fwd_noop", "lines": ["abcdef"], "keys": "3ld])"}
+#     visual mode — selection is inclusive of both ends ------------------------------------------------
+{"name": "visual_unmatched_paren_fwd_delete", "lines": ["(abcdef)"], "keys": "3lv])d"}
+{"name": "visual_unmatched_paren_back_delete", "lines": ["(abcdef)"], "keys": "3lv[(d"}
+# --- METHOD (brace-block) motions (feat/method-motions): `]m`/`[m` next/prev method START (a `{`);
+#     `]M`/`[M` next/prev method END (a `}`). A faithful port of Vim's `nv_bracket_block` — pure brace
+#     navigation (ruse has no language model). Count-aware; exclusive charwise under an operator, sharing
+#     the exclusive-linewise reduction with the section / unmatched-brace motions (a column-0 landing
+#     deletes whole lines). VERIFIED against nvim v0.12.4 on flat / class / nested layouts. DIVERGENCE
+#     (documented non-goal, NO fixtures): braces inside string literals and comments are NOT skipped
+#     (ruse has no syntax model); nvim's `findmatch` skips them.
+#     CLASS = a two-method class; FLAT = top-level `{}` blocks.
+{"name": "method_start_fwd_bare", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "]m"}
+{"name": "method_start_fwd_count2", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2]m"}
+{"name": "method_start_fwd_count3", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "3]m"}
+{"name": "method_start_fwd_count4_class_close", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "4]m"}
+{"name": "method_end_fwd_bare", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "]M"}
+{"name": "method_end_fwd_count2", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2]M"}
+{"name": "method_start_fwd_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j]m"}
+{"name": "method_start_back_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j[m"}
+{"name": "method_end_fwd_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j]M"}
+{"name": "method_end_back_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j[M"}
+{"name": "method_start_back_count2_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j2[m"}
+{"name": "method_start_fwd_flat_top_level", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "]m"}
+{"name": "method_start_fwd_flat_count2_close", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "2]m"}
+{"name": "method_start_fwd_no_brace_noop", "lines": ["abc", "def"], "keys": "]m"}
+# operators — charwise mid-line landings and column-0 linewise reductions.
+{"name": "d_method_start_fwd_charwise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jd]m"}
+{"name": "d_method_end_back_charwise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jd[M"}
+{"name": "d_method_start_fwd_count4_linewise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "d4]m"}
+{"name": "d_method_start_fwd_flat_linewise", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "d2]m"}
+{"name": "y_method_end_fwd", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "y]M"}
+{"name": "c_method_start_fwd", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jc]mZ<Esc>"}
+#     change/yank marks `[ `] '[ '] (issue #428) — the marks bound the last changed/yanked text.
+#     `[ / `] jump charwise to the first/last char; '[ / '] jump linewise to the first non-blank.
+{"name": "yank_word_mark_start", "lines": ["foo bar baz"], "keys": "wyiw$`["}
+{"name": "yank_word_mark_end", "lines": ["foo bar baz"], "keys": "wyiw0`]"}
+{"name": "insert_mark_start", "lines": ["abc"], "keys": "ihello<Esc>0`["}
+{"name": "insert_mark_end", "lines": ["abc"], "keys": "ihello<Esc>0`]"}
+{"name": "insert_mid_mark_end", "lines": ["abcdef"], "keys": "lliXY<Esc>0`]"}
+{"name": "put_line_mark_start", "lines": ["one", "two", "three"], "keys": "ddp`["}
+{"name": "put_line_mark_end", "lines": ["one", "two", "three"], "keys": "ddp`]"}
+{"name": "delete_char_mark_start", "lines": ["abcdef"], "keys": "llx`["}
+{"name": "delete_char_mark_end", "lines": ["abcdef"], "keys": "llx`]"}
+{"name": "replace_char_mark_end", "lines": ["abcdef"], "keys": "llrZ`]"}
+{"name": "quote_mark_start_line", "lines": ["  aa", "  bb", "cc"], "keys": "ggVjy'["}
+{"name": "quote_mark_end_line", "lines": ["  aa", "  bb", "cc"], "keys": "ggVjy']"}
+{"name": "multiline_change_mark_start", "lines": ["alpha", "beta", "gamma"], "keys": "2ccabc<Esc>`["}
+{"name": "multiline_change_mark_end", "lines": ["alpha", "beta", "gamma"], "keys": "2ccabc<Esc>`]"}
+{"name": "linewise_yank_mark_end", "lines": ["one", "two"], "keys": "yy`]"}
+{"name": "open_line_mark_start", "lines": ["abc"], "keys": "ohi<Esc>`["}
+{"name": "open_line_mark_end", "lines": ["abc"], "keys": "ohi<Esc>`]"}
+#     VISUAL-SELECTION marks `< `> '< '> (issue #451) — set when Visual/Select is LEFT (Esc AND
+#     operator-completion), backed by the SAME depth-1 store as `gv`. Backtick = charwise (start/end
+#     char of the selection); quote = linewise (first non-blank of the first/last selected line).
+#     Charwise selection: `< = word start, `> = word end.
+{"name": "visual_mark_start_charwise", "lines": ["foo bar baz"], "keys": "wviw<Esc>`<"}
+{"name": "visual_mark_end_charwise", "lines": ["foo bar baz"], "keys": "wviw<Esc>`>"}
+#     Linewise selection: `< = col 0 of first line, `> = last char of last line; '<//'> = first non-blank.
+{"name": "visual_mark_start_line_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>'<"}
+{"name": "visual_mark_end_line_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>'>"}
+{"name": "visual_mark_start_backtick_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>`<"}
+{"name": "visual_mark_end_backtick_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>`>"}
+#     Marks reflect the selection AFTER an operator too (`viwd` sets `<`/`>` around the deleted region).
+{"name": "visual_mark_start_after_operator", "lines": ["foo bar baz"], "keys": "wviwd`<"}
+{"name": "visual_mark_end_after_operator", "lines": ["foo bar baz"], "keys": "wviwd`>"}
+#     Blockwise selection: `< = top corner, `> = bottom corner (byte-min/max of the two ends).
+{"name": "visual_mark_start_blockwise", "lines": ["abcde", "fghij", "klmno"], "keys": "l<C-v>jl<Esc>`<"}
+{"name": "visual_mark_end_blockwise", "lines": ["abcde", "fghij", "klmno"], "keys": "l<C-v>jl<Esc>`>"}
+#     gv restores the last selection AND its kind: linewise `gvd` deletes whole lines; block `gvd` deletes
+#     the block; a mark jump before `gv` does not disturb the store (`< then gvd still deletes the word).
+{"name": "gv_reselect_linewise", "lines": ["one", "two", "three"], "keys": "Vjygvd"}
+{"name": "gv_reselect_blockwise", "lines": ["abcde", "fghij", "klmno"], "keys": "l<C-v>jl<Esc>gvd"}
+{"name": "gv_after_mark_jump", "lines": ["foo bar baz"], "keys": "wviw<Esc>`<gvd"}
+#     BACKWARD SEARCH `?` (issue #431) — `?pat` lands on the match BEFORE the cursor (wrapping to end
+#     of buffer); `n`/`N` repeat RELATIVE to the last search's direction; `?` is an EXCLUSIVE motion
+#     under an operator. The `/foo` cases are forward-`n`/`N` REGRESSION guards. Cursor homes to {1,0},
+#     so each fixture first moves (`$`) to set up a match to the LEFT of the cursor.
+{"name": "back_search_prev_match", "lines": ["foo bar foo baz"], "keys": "$?foo<CR>"}
+{"name": "back_search_wraps_to_end", "lines": ["bar foo baz"], "keys": "?foo<CR>"}
+{"name": "back_search_then_n_backward", "lines": ["foo x foo x foo"], "keys": "$?foo<CR>n"}
+{"name": "back_search_then_N_forward", "lines": ["foo x foo x foo"], "keys": "$?foo<CR>N"}
+{"name": "fwd_search_then_n_forward", "lines": ["foo x foo x foo"], "keys": "/foo<CR>n"}
+{"name": "fwd_search_then_N_backward", "lines": ["foo x foo x foo"], "keys": "/foo<CR>N"}
+{"name": "back_search_count", "lines": ["foo x foo x foo x end"], "keys": "$2?foo<CR>"}
+{"name": "d_back_search_exclusive", "lines": ["foo bar baz qux"], "keys": "$d?bar<CR>"}
+{"name": "c_back_search_exclusive", "lines": ["foo bar baz qux"], "keys": "$c?bar<CR>Z<Esc>"}
+{"name": "y_back_search_then_paste", "lines": ["foo bar baz qux"], "keys": "$y?bar<CR>P"}
+{"name": "empty_back_search_reuses_pattern", "lines": ["foo bar foo baz"], "keys": "/bar<CR>$?<CR>"}
+#     SEARCH OFFSETS (#475) — `/pat/e`, `/pat/s+N`, `/pat/+N`, `?pat?…`, `n`/`N` reapply, operator
+#     wiseness (`e` inclusive, `s` exclusive, line offsets linewise). All verified against nvim
+#     v0.12.4 headless; the LINE offset lands on COLUMN 0 (Vim "column 1"), NOT the first non-blank —
+#     and nvim's `-u NONE` `nostartofline` puts a linewise-delete cursor at column 0 too, matching ruse.
+{"name": "so_end", "lines": ["hello world foo"], "keys": "/foo/e<CR>"}
+{"name": "so_end_minus", "lines": ["hello world foo"], "keys": "/foo/e-1<CR>"}
+{"name": "so_start", "lines": ["hello world foo"], "keys": "/foo/s<CR>"}
+{"name": "so_start_plus", "lines": ["hello world foo"], "keys": "/foo/s+2<CR>"}
+{"name": "so_start_minus", "lines": ["hello world foo"], "keys": "/foo/s-1<CR>"}
+{"name": "so_begin_synonym", "lines": ["hello world foo"], "keys": "/foo/b<CR>"}
+{"name": "so_end_crosses_line", "lines": ["ab foo", "cd ef"], "keys": "/foo/e+1<CR>"}
+{"name": "so_line_down", "lines": ["a foo b", "c d", "e f"], "keys": "/foo/+1<CR>"}
+{"name": "so_line_up", "lines": ["a b", "c foo d", "e f"], "keys": "/foo/-1<CR>"}
+{"name": "so_count_end", "lines": ["fooXfooZfoo"], "keys": "2/foo/e<CR>"}
+{"name": "so_n_reapplies_end", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>n"}
+{"name": "so_n_reapplies_start_minus", "lines": ["abc foo def foo xyz"], "keys": "/foo/s-1<CR>n"}
+{"name": "so_N_reapplies_end", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>N"}
+{"name": "so_back_end", "lines": ["foo bar foo baz"], "keys": "$?foo?e<CR>"}
+{"name": "so_d_end_inclusive", "lines": ["hello world foo"], "keys": "d/foo/e<CR>"}
+{"name": "so_d_start_exclusive", "lines": ["hello world foo"], "keys": "d/foo/s<CR>"}
+{"name": "so_d_line_linewise", "lines": ["a foo", "b", "c", "d"], "keys": "d/foo/+1<CR>"}
+{"name": "so_y_end_paste", "lines": ["hello world foo"], "keys": "y/foo/e<CR>P"}
+{"name": "so_c_end", "lines": ["hello world foo"], "keys": "c/foo/e<CR>Z<Esc>"}
+{"name": "so_d_back_end_inclusive", "lines": ["third foobar line"], "keys": "$d?foobar?e<CR>"}
+{"name": "so_empty_reuse_offset", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>//<CR>"}
+{"name": "so_empty_new_offset", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>//s<CR>"}
+# Modifier handling (#598, #599, #1059): a CTRL chord is bound or inert, never its bare letter. A chord
+# nvim BEEPS on also flushes the rest of the fed keys, so those fixtures end at the chord and observe the
+# cursor (interactively the next typed key would still run).
+{"name": "chord_normal_c_k_inert", "lines": ["ab", "cd"], "keys": "jl<C-k>"}
+{"name": "chord_normal_c_s_inert", "lines": ["abc"], "keys": "l<C-s>x"}
+{"name": "chord_normal_c_h_left", "lines": ["abc"], "keys": "ll<C-h>x"}
+{"name": "chord_normal_c_j_down", "lines": ["ab", "cd"], "keys": "<C-j>x"}
+{"name": "chord_normal_c_n_down", "lines": ["ab", "cd", "ef"], "keys": "2<C-n>x"}
+{"name": "chord_op_d_c_j_linewise", "lines": ["a", "b", "c"], "keys": "d<C-j>"}
+{"name": "chord_op_d_c_h", "lines": ["abc"], "keys": "ld<C-h>"}
+{"name": "chord_op_d_c_k_aborts", "lines": ["ab", "cd"], "keys": "jd<C-k>"}
+{"name": "chord_op_d_c_q_blockwise", "lines": ["abc", "def"], "keys": "d<C-q>j"}
+{"name": "chord_visual_c_k_inert", "lines": ["abcd", "efgh"], "keys": "jvl<C-k>"}
+{"name": "chord_visual_c_p_up", "lines": ["abcd", "efgh"], "keys": "jv<C-p>d"}
+{"name": "chord_find_c_a_aborts", "lines": ["xa"], "keys": "f<C-a>"}
+{"name": "chord_g_c_e_aborts", "lines": ["ab cd"], "keys": "$g<C-e>"}
+{"name": "chord_insert_c_h_backspace", "lines": ["x"], "keys": "iab<C-h>c<Esc>"}
+{"name": "chord_insert_c_j_newline", "lines": ["x"], "keys": "ia<C-j>b<Esc>"}
+{"name": "chord_insert_c_s_inert", "lines": ["x"], "keys": "ia<C-s>b<Esc>"}
+{"name": "chord_insert_c_rbracket_inert", "lines": ["x"], "keys": "ia<C-]>b<Esc>"}
+{"name": "chord_insert_c_q_literal", "lines": ["x"], "keys": "i<C-q>065<Esc>"}
+# Session intercepts must leave a key to the engine while it waits for one (#679), drop the count and
+# armed operator they consume (#850), and the macro layer must not take an argument `q`/`@` (#851).
+{"name": "icpt_find_z", "lines": ["abc [z zHLq&@ xyz"], "keys": "fzx"}
+{"name": "icpt_find_H", "lines": ["abc [z zHLq&@ xyz", "next"], "keys": "fHx"}
+{"name": "icpt_find_L", "lines": ["abc [z zHLq&@ xyz", "next"], "keys": "fLx"}
+{"name": "icpt_find_q", "lines": ["abc [z zHLq&@ xyz"], "keys": "fqx"}
+{"name": "icpt_find_at", "lines": ["abc [z zHLq&@ xyz"], "keys": "f@x"}
+{"name": "icpt_find_amp", "lines": ["abc [z zHLq&@ xyz"], "keys": "f&x"}
+{"name": "icpt_till_z", "lines": ["abc [z zHLq&@ xyz"], "keys": "tzx"}
+{"name": "icpt_back_find_z", "lines": ["abc [z zHLq&@ xyz"], "keys": "$Fzx"}
+{"name": "icpt_find_bracket_then_zz", "lines": ["abc [z zHLq&@ xyz"], "keys": "f[zzx"}
+{"name": "icpt_replace_H", "lines": ["abc"], "keys": "rH"}
+{"name": "icpt_replace_M", "lines": ["abc"], "keys": "rM"}
+{"name": "icpt_replace_q", "lines": ["abc"], "keys": "rqx"}
+{"name": "icpt_replace_at", "lines": ["abc"], "keys": "r@x"}
+{"name": "icpt_replace_amp", "lines": ["abc"], "keys": "r&"}
+{"name": "icpt_replace_bracket_zz", "lines": ["abc"], "keys": "r[zzx"}
+{"name": "icpt_dfL_multiline", "lines": ["abLdef", "line2", "line3", "line4 c", "line5 d"], "keys": "dfL"}
+{"name": "icpt_dtM", "lines": ["abMdef", "line2", "line3"], "keys": "dtM"}
+{"name": "icpt_ctL", "lines": ["abLdef", "line2"], "keys": "ctLX<Esc>"}
+{"name": "icpt_dtq", "lines": ["abqdef"], "keys": "dtq"}
+{"name": "icpt_dtz", "lines": ["abcz def"], "keys": "dtz"}
+{"name": "icpt_dfq", "lines": ["abqdef"], "keys": "dfq"}
+{"name": "icpt_mark_z", "lines": ["abc def"], "keys": "mzw`zx"}
+{"name": "icpt_register_q", "lines": ["abc"], "keys": "\"qyy\"qP"}
+{"name": "icpt_register_z", "lines": ["abc"], "keys": "\"zyy\"zp"}
+{"name": "icpt_visual_replace_z", "lines": ["abc"], "keys": "vlrz"}
+{"name": "icpt_visual_find_z_d", "lines": ["abcz def"], "keys": "vfzd"}
+{"name": "icpt_gqj", "lines": ["aa", "bb", "cc"], "keys": "gqj"}
+{"name": "icpt_gqq_count", "lines": ["aa", "bb", "cc"], "keys": "2gqq"}
+{"name": "icpt_gqq_count_mid", "lines": ["aa", "bb", "cc", "dd"], "keys": "j3gqq"}
+{"name": "icpt_gqgq", "lines": ["aa", "bb", "cc"], "keys": "gqgq"}
+{"name": "icpt_g_amp", "lines": ["a a", "a a"], "keys": ":s/a/b/g<CR>g&"}
+{"name": "icpt_amp_count", "lines": ["a a", "a a", "a a"], "keys": ":s/a/b/<CR>j2&"}
+# `&` keeps the last `:s` flags in nvim (`&-default` is `:&&<CR>`), so `g` replaces every match (#700).
+{"name": "icpt_amp_keeps_flags", "lines": ["a a", "a a"], "keys": ":s/a/b/g<CR>j&"}
+{"name": "icpt_amp_count_keeps_flags", "lines": ["a a", "a a", "a a"], "keys": ":s/a/b/g<CR>j2&"}
+# `&` is a mapping to an Ex command, so `.` does not repeat it: it repeats the change before (#700).
+{"name": "icpt_amp_then_dot_no_change", "lines": ["a a", "a a", "a a"], "keys": ":s/a/b/g<CR>j&j."}
+{"name": "icpt_amp_then_dot_repeats_x", "lines": ["xa a", "a a", "a a"], "keys": "x:s/a/b/g<CR>j&j."}
+{"name": "icpt_amp_count_past_end", "lines": ["a a", "a a", "a a"], "keys": ":s/a/b/<CR>j5&"}
+{"name": "icpt_count_zz", "lines": ["alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta"], "keys": "5zzx"}
+{"name": "icpt_count_zz_keeps_column", "lines": ["alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta"], "keys": "lll5zzx"}
+{"name": "icpt_count_zt", "lines": ["alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta", "alpha beta"], "keys": "j3ztx"}
+{"name": "icpt_count_z_cr", "lines": ["  alpha beta", "  alpha beta", "  alpha beta", "  alpha beta", "  alpha beta", "  alpha beta", "  alpha beta", "  alpha beta", "  alpha beta", "  alpha beta"], "keys": "lll3z<CR>x"}
+{"name": "icpt_count_q_dropped", "lines": ["foo bar baz"], "keys": "3qaxq"}
+{"name": "icpt_count_q_stop_dropped", "lines": ["foo bar baz"], "keys": "qax3qx"}
+{"name": "icpt_record_find_q", "lines": ["abqcq"], "keys": "qqfqxq"}
+{"name": "icpt_record_insert_q", "lines": ["alpha"], "keys": "qaiq<Esc>q"}
+{"name": "icpt_record_stop_in_visual", "lines": ["alpha beta"], "keys": "qavlqx"}

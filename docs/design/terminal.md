@@ -1,3 +1,14 @@
+---
+doc: terminal
+project: ruse
+title: "Terminal buffer (F-011) — design"
+summary: >
+  Design of the terminal buffer (F-011, CAP-TERMINAL): the PTY (DEP-PTY) and VT parser (DEP-TERM-PARSER)
+  layers, and the landed and planned slices.
+audience: [maintainers, contributors, llm-agents]
+status: draft
+---
+
 # Terminal buffer (F-011) — design
 
 Status: **slices 1–2 landed** (unix VT grid). Slices 2b/3/4 planned. Owner capability: `CAP-TERMINAL`,
