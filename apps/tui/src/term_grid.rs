@@ -21,6 +21,12 @@ use crate::screen::CellStyle;
 /// Off-screen rows kept above the visible screen (viewing them is slice 2b). Bounds memory.
 const SCROLLBACK_MAX: usize = 1000;
 
+/// OSC body bytes handed to vte per OSC; the rest of a longer one is dropped (#1779). vte's `std` build keeps
+/// the OSC in an unbounded `Vec`, so a child that opens an OSC and never ends it would grow it without limit.
+/// tmux bounds OSC/DCS/APC strings at 1 MiB (`INPUT_BUF_DEFAULT_SIZE`), which leaves room for an OSC 52
+/// clipboard payload; this matches it.
+const OSC_MAX: usize = 1 << 20;
+
 /// Combining marks kept per cell; further marks are dropped (#780). xterm keeps 2 by default (up to 10 with
 /// `combiningChars`); 8 covers stacked diacritics and Hebrew points with cantillation and still bounds a cell.
 const COMBINING_MAX: usize = 8;
@@ -825,10 +831,45 @@ impl Perform for Grid {
 /// alone, so the grid can tell it from an encoded U+0080..=U+009F and print U+FFFD for it (#1750). vte
 /// executes either as a C1 control only in its ground state; in any other state the byte reaches no
 /// `execute`, so the mark is inert there. Splitting at a UTF-8 chunk boundary does not change what vte does.
+///
+/// Last, it bounds an OSC (#1779): it follows vte's state as far as OSC entry and exit ([`OscTrack`]) and
+/// gives vte at most [`OSC_MAX`] body bytes of one OSC, dropping the rest up to the terminator, which still
+/// reaches vte. vte then dispatches the OSC cut at the cap; the grid ignores every OSC, so this only bounds
+/// memory. A grid that comes to act on an OSC must not act on one cut at the cap.
 pub struct ChunkParser {
     parser: vte::Parser,
     carry: [u8; 3],
     carry_len: usize,
+    osc: OscTrack,
+    osc_max: usize,
+}
+
+/// vte's parser state, as far as it decides where an OSC starts and ends. Every vte state goes to Escape on
+/// ESC (0x1B); from Escape, `]` starts an OSC, C0 controls (but CAN and SUB), DEL, ESC and 0x80..=0xFF keep
+/// Escape, and any other byte leaves it. An OSC ends at BEL, CAN, SUB or ESC (vte-0.15.0 `advance_esc`,
+/// `advance_osc_string`, `anywhere`). Other states never enter an OSC except through Escape.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum OscTrack {
+    Other,
+    Escape,
+    /// Inside an OSC, with this many body bytes given to vte.
+    Osc(usize),
+}
+
+impl OscTrack {
+    /// The state after `byte`, and whether vte gets `byte`: `false` for an OSC body byte past `max`.
+    fn step(self, byte: u8, max: usize) -> (OscTrack, bool) {
+        use OscTrack::*;
+        match (self, byte) {
+            (_, 0x1b) => (Escape, true),
+            (Osc(_), 0x07 | 0x18 | 0x1a) => (Other, true),
+            (Osc(n), _) if n >= max => (Osc(n), false),
+            (Osc(n), _) => (Osc(n + 1), true),
+            (Escape, b']') => (Osc(0), true),
+            (Escape, 0x00..=0x17 | 0x19 | 0x1c..=0x1f | 0x7f..=0xff) => (Escape, true),
+            _ => (Other, true),
+        }
+    }
 }
 
 impl Default for ChunkParser {
@@ -843,6 +884,26 @@ impl ChunkParser {
             parser: vte::Parser::new(),
             carry: [0; 3],
             carry_len: 0,
+            osc: OscTrack::Other,
+            osc_max: OSC_MAX,
+        }
+    }
+
+    /// Hand `bytes` to vte, without the OSC body bytes past the cap.
+    fn feed(&mut self, grid: &mut Grid, bytes: &[u8]) {
+        let mut start = 0;
+        for (i, &b) in bytes.iter().enumerate() {
+            let (next, keep) = self.osc.step(b, self.osc_max);
+            self.osc = next;
+            if !keep {
+                if start < i {
+                    self.parser.advance(grid, &bytes[start..i]);
+                }
+                start = i + 1;
+            }
+        }
+        if start < bytes.len() {
+            self.parser.advance(grid, &bytes[start..]);
         }
     }
 
@@ -878,17 +939,17 @@ impl ChunkParser {
             let bad = chunk.invalid();
             if let [b @ 0x80..=0x9F] = bad {
                 if start < pos {
-                    self.parser.advance(grid, &bytes[start..pos]);
+                    self.feed(grid, &bytes[start..pos]);
                 }
                 grid.lone_c1 = true;
-                self.parser.advance(grid, std::slice::from_ref(b));
+                self.feed(grid, std::slice::from_ref(b));
                 grid.lone_c1 = false;
                 start = pos + 1;
             }
             pos += bad.len();
         }
         if start < bytes.len() {
-            self.parser.advance(grid, &bytes[start..]);
+            self.feed(grid, &bytes[start..]);
         }
     }
 }
@@ -956,6 +1017,34 @@ mod tests {
         parser.advance(&mut fixed, &bytes[1..]);
         assert_eq!(fixed.cursor(), whole.cursor());
         assert_eq!(row_text(&fixed, 1), row_text(&whole, 1));
+    }
+
+    /// #1779: an OSC body past the cap is dropped up to its terminator, and what follows parses as if the
+    /// whole OSC had reached vte, however the stream is split.
+    #[test]
+    fn an_osc_past_the_cap_is_cut_and_parsing_resumes() {
+        let mut track = OscTrack::Other;
+        let mut fed = 0;
+        for &b in b"\x1b]0;abcdefgh" {
+            let (next, keep) = track.step(b, 4);
+            track = next;
+            fed += keep as usize;
+        }
+        assert_eq!(track, OscTrack::Osc(4));
+        assert_eq!(fed, 2 + 4, "ESC ] and four body bytes");
+        let bytes = b"\x1b]0;abcdefgh\x07ok\x1b]2;long title\x1b\\!\x1b\x00]9;xyz\x07?";
+        let mut whole = Grid::new(1, 6);
+        feed(&mut whole, bytes);
+        assert_eq!(row_text(&whole, 0), "ok!?  ");
+        for cut in 0..=bytes.len() {
+            let mut g = Grid::new(1, 6);
+            let mut parser = ChunkParser::new();
+            parser.osc_max = 4;
+            parser.advance(&mut g, &bytes[..cut]);
+            parser.advance(&mut g, &bytes[cut..]);
+            assert_eq!(row_text(&g, 0), "ok!?  ", "cut at {cut}");
+            assert_eq!(g.cursor(), whole.cursor(), "cut at {cut}");
+        }
     }
 
     fn row_text(grid: &Grid, row: u16) -> String {
@@ -1313,6 +1402,7 @@ mod tests {
             proptest::sample::select(b"M78cDEH".to_vec()).prop_map(|c| vec![0x1b, c]),
             Just(b"\x1b[?1049h".to_vec()),
             Just(b"\x1b[?1049l".to_vec()),
+            Just(b"\x1b]0;".to_vec()),
             proptest::sample::select(vec![
                 "\u{4e2d}",
                 "\u{301}",
@@ -1340,6 +1430,7 @@ mod tests {
         ) {
             let mut g = Grid::new(size.0, size.1);
             let mut parser = ChunkParser::new();
+            parser.osc_max = 8; // reach the OSC cap (#1779)
             for (bytes, resize) in parts {
                 parser.advance(&mut g, &bytes);
                 if let Some((r, c)) = resize {
@@ -1354,6 +1445,32 @@ mod tests {
                     }
                 }
             }
+        }
+
+        /// Cutting OSC bodies at the cap changes no grid, since the grid ignores OSC (#1779): any stream, cut
+        /// at a tiny cap, gives the grid it gives uncut.
+        #[test]
+        fn the_osc_cap_changes_no_grid(
+            parts in proptest::collection::vec(chunk(), 0..24),
+            max in 0usize..6,
+        ) {
+            let bytes = parts.concat();
+            let mut cut = Grid::new(4, 6);
+            let mut parser = ChunkParser::new();
+            parser.osc_max = max;
+            parser.advance(&mut cut, &bytes);
+            let mut raw = Grid::new(4, 6);
+            let mut uncut = ChunkParser::new();
+            uncut.osc_max = usize::MAX;
+            uncut.advance(&mut raw, &bytes);
+            let cells = |g: &Grid| {
+                (0..4u16)
+                    .flat_map(|r| (0..6u16).map(move |c| (r, c)))
+                    .map(|(r, c)| g.cell(r, c).map(|(t, s)| (t.to_string(), *s)))
+                    .collect::<Vec<_>>()
+            };
+            proptest::prop_assert_eq!(cells(&cut), cells(&raw));
+            proptest::prop_assert_eq!(cut.cursor(), raw.cursor());
         }
     }
 }

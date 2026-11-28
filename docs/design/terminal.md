@@ -62,7 +62,9 @@ colors, truecolor, bold/underline/italic/reverse); erase `ED`/`EL`; **alt-screen
 the main screen) so vim/htop don't corrupt it; `RI`/index scrolling; `?25` cursor visibility; settable tab
 stops (`HTS`, `TBC` 0/3, `CHT`, `CBT`; every 8 columns after `RIS`; a resize keeps the stops on kept columns
 and gives new columns the default stops, as libvterm does). Off-screen rows accumulate in a bounded
-scrollback (paging UI = slice 2b), readable oldest first through `Grid::scrollback` / `scrollback_row`.
+scrollback (paging UI = slice 2b), readable oldest first through `Grid::scrollback` / `scrollback_row`. The grid
+ignores OSC; `ChunkParser` hands vte at most 1 MiB of one OSC body (tmux's bound) and drops the rest up to the
+terminator, so a child that opens an OSC and never ends it cannot grow ruse's memory (#1779).
 
 `screen::Cell` gained a `CellStyle` (bg + bold/underline/italic on top of fg/reverse); `flush_diff` emits the
 extra SGR lazily. The renderer paints a terminal window from its grid (`paint_grid`) and places the terminal's
