@@ -1172,3 +1172,32 @@ related:
   signature).
 - Refs: [RFC-0028](../docs/rfc/accepted/RFC-0028-trace-exact-text-and-result-hash.md), RFC-0020, RFC-0012,
   D-061, D-034, D-039, F-022, DET-003, INV-ADDITIVE, INV-FAIL-BOUNDED, DEP-CRYPTO-HASH, #721, #1264.
+
+## D-070 — Acceptance criteria and capabilities are linked to the tests that prove them · decided (design)
+- **Decision:** Each PRD acceptance criterion gets a permanent id `F-NNN.ACk` (`{id, text}` items), k being
+  its current 1-based position frozen at conversion, then never renumbered or reused; the existing positional
+  prose refs (39, 25 with a feature id in 20 files) are checked against their criterion's text and rewritten
+  to `F-0NN.ACN` in code and living docs (a bare `acceptance #N` gets its feature by hand); historical records
+  (DECISIONS.md, accepted RFCs) stay as written. A Rust test is linked
+  only on the test: a `// covers: <F-NNN.ACk | CAP-*>` line directly above a `#[test]`/`#[tokio::test]` fn,
+  collected by a scanner. The spec side carries only non-Rust evidence: a criterion's `verify` may name a
+  parity fixture as `path#fixture-name`, which must exist and not be a known divergence. `gov check` FAILS a
+  marker that cites an unknown id or binds to a non-test or `#[ignore]` fn; a CI slice later cross-checks the
+  runnable `cargo test -- --list` on both platforms. Every criterion of every `status: done` feature is linked
+  or waived; the criteria not yet linked when this lands carry `waiver: legacy-unlinked (#1321)` in PRD.yaml,
+  and the `acceptance_unlinked` bucket in `spec/parity/ratchet.yaml` counts those marks and may only fall.
+  Capabilities are covered through their `prd:` features or a `covers: CAP-*` marker. Measurements and
+  options: [RFC-0029](../docs/rfc/accepted/RFC-0029-spec-test-links.md).
+- **Approved by the maintainer 2026-11-28** (every RFC recommendation): criterion ids `F-NNN.ACk` with k the
+  current position frozen at conversion (1A); Rust links only as test-side `// covers:` markers, spec-side
+  refs only for corpus fixtures, and a named fixture counts as a criterion link (2A); a static gate in
+  `gov check` now and a `cargo test -- --list` cross-check in CI later (3B); the done rule for every done
+  feature with per-criterion `legacy-unlinked` waivers counted by the `acceptance_unlinked` ratchet (4A);
+  capabilities covered through `prd:` or `covers: CAP-*`, the capability `status` field deferred to slice 5
+  (5A). Left open for the slice that needs them: whether a non-legacy (hand-reviewed) waiver is allowed, and
+  whether design requirements join (after #1705).
+- **Re-evaluate if:** a proc-macro or test-harness crate is admitted for another reason (an attribute form
+  becomes free); nextest or stable libtest JSON is adopted (per-test pass evidence becomes cheap); the spec
+  generator (D-022, #982) lands.
+- Refs: [RFC-0029](../docs/rfc/accepted/RFC-0029-spec-test-links.md), D-022, D-033, D-034, RA-TEST-030,
+  RA-RUSE-010, #1321, #1705, #989, #886, #884.
