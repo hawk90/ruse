@@ -18,7 +18,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr;
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -123,11 +123,18 @@ pub const READ_CHUNK: usize = 4096;
 /// How often a reader blocked on a full channel re-checks whether `Drop` asked it to stop.
 const FULL_RETRY: Duration = Duration::from_millis(10);
 
-/// How long the child may act on SIGHUP before the reaper escalates to SIGKILL (#771).
-const HANGUP_GRACE: Duration = Duration::from_millis(500);
-/// How long the reaper waits to reap the child after SIGKILL before it gives up (a process stuck in an
-/// uninterruptible sleep cannot be reaped; leaking that zombie beats freezing the editor).
-const KILL_GRACE: Duration = Duration::from_secs(2);
+/// How a closed terminal's child is ended (#771): `SIGHUP` (after the master closes, as when a terminal
+/// emulator window closes), then `SIGKILL` after 0.5 s; given up on 2 s after that.
+const HANGUP: &crate::reap::Escalation = &[
+    crate::reap::Step {
+        signal: libc::SIGHUP,
+        grace: Duration::from_millis(500),
+    },
+    crate::reap::Step {
+        signal: libc::SIGKILL,
+        grace: crate::reap::KILL_GRACE,
+    },
+];
 
 /// A shell running on a Unix PTY. Owns the master fd (as a [`File`]), the reader thread, and the write end
 /// of the reader's wake pipe; `Drop` stops the reader, closes the master, hangs up the child, and hands it
@@ -264,181 +271,18 @@ impl Drop for UnixPty {
         //    terminal emulator window closes.
         drop(self.master.take());
         // 3. Hang up the child's process group (forkpty made the child a session leader, so its pgid is its
-        //    pid), then hand it to the reaper, which gives it a moment, SIGKILLs the group and reaps it.
-        //    `trap '' HUP` does not survive this.
-        let pid = self.child_pid;
-        signal_child(pid, libc::SIGHUP);
-        if !reaper::hand_off(pid) {
-            // No reaper thread could be started: reap here, bounded, as before #1775.
-            reap_bounded(pid);
-        }
+        //    pid) and hand it to the reaper, which gives it a moment, SIGKILLs the group and reaps it
+        //    (#1774). `trap '' HUP` does not survive this.
+        crate::reap::end_in_background(self.child_pid, HANGUP);
     }
-}
-
-/// Wait out the hangup grace, SIGKILL the group if the child is still there, and reap it, giving up after
-/// the kill grace. The synchronous fallback for when no reaper thread can be started.
-fn reap_bounded(pid: libc::pid_t) {
-    if reap_within(pid, HANGUP_GRACE) {
-        return;
-    }
-    signal_child(pid, libc::SIGKILL);
-    let _ = reap_within(pid, KILL_GRACE);
 }
 
 /// Wait (at most one full escalation, plus slack) for every child handed to the reaper to be reaped or
 /// given up on. Called once at exit, after the terminals are dropped, so a child that ignores SIGHUP is
 /// still SIGKILLed before the editor exits, as when `Drop` did it inline (#1775).
 pub fn finish_reaping() {
-    reaper::wait_idle(HANGUP_GRACE + KILL_GRACE + Duration::from_millis(100));
-}
-
-/// The one reaper thread (#1775): `Drop` hands it each hung-up child, and it runs the bounded
-/// HUP-then-KILL escalation for all of them at once, off the event loop. Started on the first hand-off and
-/// kept for the life of the process, so closing any number of terminals costs one thread.
-mod reaper {
-    use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-    use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
-    use std::time::{Duration, Instant};
-
-    use super::{signal_child, HANGUP_GRACE, KILL_GRACE};
-
-    /// How often the reaper polls `waitpid` while it has children in hand.
-    const POLL: Duration = Duration::from_millis(5);
-
-    /// The reaper's inbox, or `None` when its thread could not be started.
-    static INBOX: OnceLock<Option<Sender<libc::pid_t>>> = OnceLock::new();
-    /// Children handed off and not yet reaped or given up on.
-    static PENDING: Mutex<usize> = Mutex::new(0);
-    /// Signalled whenever `PENDING` drops.
-    static IDLE: Condvar = Condvar::new();
-
-    /// Give `pid` (already sent SIGHUP) to the reaper. `false` when there is no reaper thread, so the
-    /// caller must reap it itself.
-    pub(super) fn hand_off(pid: libc::pid_t) -> bool {
-        let inbox = INBOX.get_or_init(|| {
-            let (tx, rx) = mpsc::channel();
-            std::thread::Builder::new()
-                .name("pty-reaper".into())
-                .spawn(move || run(&rx))
-                .ok()
-                .map(|_| tx)
-        });
-        let Some(tx) = inbox else {
-            return false;
-        };
-        *PENDING.lock().unwrap_or_else(PoisonError::into_inner) += 1;
-        if tx.send(pid).is_ok() {
-            return true;
-        }
-        done(); // the reaper is gone (it never exits, but never leak the count)
-        false
-    }
-
-    /// Block until no handed-off child is pending, or `limit` passes.
-    pub(super) fn wait_idle(limit: Duration) {
-        let pending = PENDING.lock().unwrap_or_else(PoisonError::into_inner);
-        let _ = IDLE
-            .wait_timeout_while(pending, limit, |n| *n > 0)
-            .unwrap_or_else(PoisonError::into_inner);
-    }
-
-    /// One child handed off: reaped, or given up on.
-    fn done() {
-        let mut n = PENDING.lock().unwrap_or_else(PoisonError::into_inner);
-        *n = n.saturating_sub(1);
-        IDLE.notify_all();
-    }
-
-    /// Where one child stands in the escalation.
-    struct Child {
-        pid: libc::pid_t,
-        /// Whether it has been sent SIGKILL (the SIGHUP came from `Drop`).
-        killed: bool,
-        /// When the current grace period ends.
-        deadline: Instant,
-    }
-
-    /// Whether `pid` is reaped now (or is no longer our child), without blocking.
-    fn reaped(pid: libc::pid_t) -> bool {
-        let mut status = 0;
-        // SAFETY: `pid` is our own child; `status` is a valid out-pointer; WNOHANG never blocks.
-        let r = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
-        // `r < 0` is ECHILD (nothing left to reap) or EINTR, which the next poll retries.
-        r == pid
-            || (r < 0 && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted)
-    }
-
-    /// The reaper loop: take new children, reap the ones that exited, SIGKILL the ones whose hangup grace
-    /// ran out, and give up on the ones that outlast the kill grace (a process stuck in an uninterruptible
-    /// sleep cannot be reaped; leaking that zombie beats holding it forever).
-    fn run(inbox: &Receiver<libc::pid_t>) {
-        let mut children: Vec<Child> = Vec::new();
-        loop {
-            let next = if children.is_empty() {
-                inbox.recv().map_err(|_| RecvTimeoutError::Disconnected)
-            } else {
-                inbox.recv_timeout(POLL)
-            };
-            match next {
-                Ok(pid) => children.push(Child {
-                    pid,
-                    killed: false,
-                    deadline: Instant::now() + HANGUP_GRACE,
-                }),
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) if children.is_empty() => return,
-                Err(RecvTimeoutError::Disconnected) => std::thread::sleep(POLL),
-            }
-            let now = Instant::now();
-            children.retain_mut(|c| {
-                if reaped(c.pid) {
-                    done();
-                    return false;
-                }
-                if now < c.deadline {
-                    return true;
-                }
-                if c.killed {
-                    done(); // give up: the zombie leaks
-                    return false;
-                }
-                signal_child(c.pid, libc::SIGKILL);
-                c.killed = true;
-                c.deadline = now + KILL_GRACE;
-                true
-            });
-        }
-    }
-}
-
-/// Send `sig` to the child's process group and to the child itself (in case it left its group).
-fn signal_child(pid: libc::pid_t, sig: libc::c_int) {
-    // SAFETY: `pid` is our own child and the leader of its own process group; kill touches no memory.
-    unsafe {
-        libc::kill(-pid, sig);
-        libc::kill(pid, sig);
-    }
-}
-
-/// Poll `waitpid(pid, WNOHANG)` until the child is reaped or `limit` passes. `true` once it is reaped (or is
-/// no longer our child), `false` on timeout.
-fn reap_within(pid: libc::pid_t, limit: Duration) -> bool {
-    let deadline = Instant::now() + limit;
-    loop {
-        let mut status = 0;
-        // SAFETY: `pid` is our own child; `status` is a valid out-pointer.
-        let r = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
-        if r == pid {
-            return true;
-        }
-        if r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-            return true; // ECHILD: nothing left to reap
-        }
-        if Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    let escalation: Duration = HANGUP.iter().map(|s| s.grace).sum();
+    crate::reap::finish_background(escalation + Duration::from_millis(100));
 }
 
 /// A close-on-exec pipe `(read end, write end)` that wakes the reader thread when the write end closes.
@@ -596,6 +440,7 @@ mod lifecycle_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     /// #603: a C0 punctuation chord reaches the child as its control byte, also in the `CTRL-4`..`CTRL-7`
     /// form crossterm decodes from a legacy terminal, never as the bare digit.
@@ -768,7 +613,7 @@ mod tests {
         let gone = t.gone_after.expect("the reaper never reaped the child");
         // It ignored SIGHUP, so only the SIGKILL after the grace ended it: the escalation is unchanged.
         assert!(
-            gone >= HANGUP_GRACE - Duration::from_millis(50),
+            gone >= HANGUP[0].grace - Duration::from_millis(50),
             "the child went after {gone:?}, before the hangup grace"
         );
     }

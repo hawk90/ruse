@@ -351,9 +351,14 @@ pub enum CancelReason { Superseded, DeadlineMissed, Shutdown, BudgetRevoked, Deg
    sends the cancel request / on grace-timeout `SIGTERM` then `SIGKILL`. The process's CPU is metered and its
    slot freed. *Shipped today, before the scheduler:* the blocking shell-outs (`:!`, `:r !`, `:w !`, the
    `:{range}!` / `!` / `gq` / `=` filters, `apps/tui/src/shell.rs`) poll the same user-interrupt checkpoint
-   while they wait; CTRL-C sends `SIGKILL` to the shell's own process group at once (no grace step yet),
-   reaps it, and leaves the buffer unchanged. Their output is capped (4 MiB, or 8× a filter's input), past
-   which the command is killed and the output reported truncated (a filter refuses it instead) (#855).
+   while they wait; CTRL-C sends `SIGTERM` to the shell's own process group, then `SIGKILL` if the shell is
+   still there after 2 s (nvim's `proc_stop` and `KILL_TIMEOUT_MS`), reaps it, and leaves the buffer
+   unchanged (#855, #1748). Like nvim, the wait blocks until the shell is gone, so a cancelled filter never
+   races the buffer. Their output is capped (4 MiB, or 8× a filter's input), past which the command is ended
+   the same way and the output reported truncated (a filter refuses it instead) (#855). The caps stay
+   constants, not options: nvim has no cap at all, and an option would need the config loader, which does
+   not exist yet (#1748). The wait-signal-kill-reap steps live in one helper, `apps/tui/src/reap.rs`,
+   shared with the terminal's PTY child and the clipboard tools (#1774).
 3. **WASM plugin instances** (post-MVP, D-004/D-009) — `cancel` bumps the wasmtime **epoch** (fuel
    interruption), so a spinning guest is unwound at the next epoch boundary rather than trusted to poll.
 

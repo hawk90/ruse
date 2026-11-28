@@ -52,6 +52,9 @@ pub(crate) mod lsp;
 // F-011 PTY-backed terminal buffer (slice 1) — unix-only (forkpty via `libc`); other targets stub `:terminal`.
 #[cfg(unix)]
 pub(crate) mod pty;
+// Ending a child process: wait, signal, kill and reap, on the caller's thread or the reaper's (#1774).
+#[cfg(unix)]
+pub(crate) mod reap;
 pub(crate) mod recover;
 // F-017 remote runtime (slice 1): client↔agent transport foundation — a versioned, capability-negotiated
 // framed protocol over a `ruse agent` subprocess (local pipe today; SSH later). Structurally mirrors `lsp/`.

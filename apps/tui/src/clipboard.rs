@@ -28,6 +28,20 @@ use ruse_core::Clipboard;
 /// How long a clipboard read may take before the tool is killed and the read yields `None`.
 pub const READ_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// How a clipboard tool that ran out of time is ended (#1774): `SIGTERM`, then `SIGKILL` after 100 ms. The
+/// grace is short because the user is already waiting on `"+p`.
+#[cfg(unix)]
+const TOOL_END: &crate::reap::Escalation = &[
+    crate::reap::Step {
+        signal: libc::SIGTERM,
+        grace: Duration::from_millis(100),
+    },
+    crate::reap::Step {
+        signal: libc::SIGKILL,
+        grace: crate::reap::KILL_GRACE,
+    },
+];
+
 /// A `(program, args)` clipboard command.
 type Tool = (&'static str, &'static [&'static str]);
 
@@ -121,13 +135,14 @@ impl Clipboard for SystemClipboard {
 /// grandchild cannot block the read past `timeout`. `None` also on a spawn failure or a non-zero exit.
 fn read_bounded((prog, args): Tool, timeout: Duration) -> Option<Vec<u8>> {
     let deadline = Instant::now() + timeout;
-    let mut child = Command::new(prog)
+    let mut command = Command::new(prog);
+    command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+        .stderr(Stdio::null());
+    own_group(&mut command);
+    let mut child = command.spawn().ok()?;
     let Some(mut stdout) = child.stdout.take() else {
         kill(&mut child);
         return None;
@@ -142,21 +157,64 @@ fn read_bounded((prog, args): Tool, timeout: Duration) -> Option<Vec<u8>> {
         kill(&mut child);
         return None;
     };
-    // Stdout hit EOF; the tool normally exits right after. Poll for its status within what is left of the
+    // Stdout hit EOF; the tool normally exits right after. Wait for its status within what is left of the
     // deadline rather than a blocking `wait`.
+    let left = deadline.saturating_duration_since(Instant::now());
+    wait_or_end(&mut child, left)?.success().then_some(bytes)
+}
+
+/// Start the tool in its own process group, so ending it also ends what it started.
+#[cfg(unix)]
+fn own_group(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn own_group(_command: &mut Command) {}
+
+/// Wait up to `timeout` for `child` to exit; past it, end it ([`TOOL_END`]) and reap it. Its status when
+/// it exited in time, `None` otherwise.
+#[cfg(unix)]
+fn wait_or_end(child: &mut Child, timeout: Duration) -> Option<std::process::ExitStatus> {
+    let Ok(pid) = libc::pid_t::try_from(child.id()) else {
+        kill(child);
+        return None;
+    };
+    crate::reap::wait_or_end(pid, timeout, TOOL_END)
+}
+
+#[cfg(not(unix))]
+fn wait_or_end(child: &mut Child, timeout: Duration) -> Option<std::process::ExitStatus> {
+    let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => return status.success().then_some(bytes),
+            Ok(Some(status)) => return Some(status),
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(2)),
             _ => {
-                kill(&mut child);
+                kill(child);
                 return None;
             }
         }
     }
 }
 
-/// Kill and reap `child`, ignoring errors (it may already have exited).
+/// End and reap `child` now, ignoring errors (it may already have exited).
+#[cfg(unix)]
+fn kill(child: &mut Child) {
+    match libc::pid_t::try_from(child.id()) {
+        Ok(pid) => {
+            let _ = crate::reap::end(pid, TOOL_END);
+        }
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+/// End and reap `child` now, ignoring errors (it may already have exited).
+#[cfg(not(unix))]
 fn kill(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
