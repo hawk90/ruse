@@ -317,7 +317,11 @@ test had missed:
 - **Coverage-guided fuzzing.** `fuzz/` is a separate cargo-fuzz workspace (excluded from the root build,
   `DEP-LIBFUZZER`) with targets for keystroke sessions, document operations, key decoding, trace parsing,
   journal replay, the terminal grid and the LSP framing; `fuzz.yml` runs each for 15 minutes weekly on
-  nightly. A crash input is reduced and committed as a regression test or proptest seed.
+  nightly. Each target has a committed seed corpus, `fuzz/corpus/<target>/`: a handful of named seeds, each
+  kept by `cargo fuzz cmin`; the SHA-1-named inputs a run adds stay untracked (#1319). A PR with a Rust
+  change also runs the advisory `fuzz-smoke` job of `ci.yml`: every target built with ASan as `fuzz.yml`
+  builds it and run for 20 seconds from its seeds. A crash input is reduced and committed as a regression
+  test or proptest seed.
 
 Still deferred: the O(A+E) cost bound as a performance property, and the fault-injection and
 replay-corpus layers.
@@ -792,13 +796,36 @@ transformation pipeline stays dumpable (§3.2).
 - **Assert on codes and IDs, not sentences** — error codes, command IDs, revisions, status enum states
   ([stability-and-observability.md §2.1,§11.1](../design/stability-and-observability.md)).
 - **Quarantine carries an expiry + owner** ([ci-cd-and-release.md §13](ci-cd-and-release.md)); a muted test
-  is a tracked debt, not a silent skip.
+  is a tracked debt, not a silent skip. The list is machine-checked; see "Test quarantine" below.
 - **Integer overflow is a bug in every profile.** Release builds wrap silently (no `overflow-checks`), so
   arithmetic on user-sized inputs (counts, columns, offsets) saturates or checks explicitly rather than
   relying on the debug-only panic; the suite also runs under `--release` on `main`/weekly (`rust-release`,
   [ci-cd-and-release.md §1](ci-cd-and-release.md), #899).
 - **Golden/protocol payloads are frozen once published** — a changed byte is a signal, reviewed as a
   breaking change, not silently re-recorded.
+
+### Test quarantine — `tests/quarantine.yaml` (#1320)
+
+Every `#[ignore]`d Rust test is a quarantine entry. `python3 tools/ruse.py gov quarantine` (run by `gov check`,
+so by `verify` and CI) enforces it:
+
+| Rule | Fails when |
+|---|---|
+| Listed | An `#[ignore]` under `crates/` or `apps/` has no entry. Entries are keyed `<repo-relative file>::<fn name>`. |
+| Cited | The attribute is a bare `#[ignore]`, or its `#[ignore = "..."]` reason does not cite the entry's issue as `#<n>`. |
+| Live | An entry names no `#[ignore]`d test. Removing the `#[ignore]` means removing the entry. |
+| Complete | An entry lacks `test`, `reason`, `issue` (an issue number), `owner` or `expires` (`YYYY-MM-DD`). |
+| Expiring | `expires` is before today. It warns within 14 days of the date. |
+
+- **Issue.** It names the open issue that ends the quarantine: fix the test, replace it, or give it a CI job.
+  The checker does not ask GitHub whether the issue is open, so the check stays offline and deterministic. When
+  that issue closes, the entry and the `#[ignore]` go with it.
+- **Owner.** `maintainer` until the project has more than one. The owner renews or removes the entry.
+- **Renewal.** At expiry, fix the test, or move `expires` forward in a PR that says why the test is still
+  ignored. A renewal is a reviewed change, never a silent bump.
+- **Scope.** Manual probes (timing printouts, tests that need rust-analyzer or an SSH host) are quarantined
+  too. "Not run in CI" is the debt being tracked, whatever the reason.
+- Format: `#[ignore = "<why>; quarantined in tests/quarantine.yaml (#<issue>)"]`.
 
 ---
 

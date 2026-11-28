@@ -1,7 +1,8 @@
 # Coverage-guided fuzz targets (#920, testing-and-benchmarks.md §1.2). Its own workspace (excluded from the
 # root one): cargo-fuzz needs nightly and sanitizer flags, so the default `cargo build`/`test`/`clippy` never
-# compile it and PRs pay nothing. Run one target with `cargo +nightly fuzz run <target>` from the repo root;
-# the scheduled `fuzz` workflow runs each for a capped time. DEP-LIBFUZZER in spec/dependencies.yaml.
+# compile it. Run one target with `cargo +nightly fuzz run <target>` from the repo root; it starts from the
+# seeds in `corpus/<target>/` (#1319). The PR `fuzz-smoke` job (ci.yml) runs each for 20 seconds, the
+# scheduled `fuzz` workflow for a capped 15 minutes. DEP-LIBFUZZER in spec/dependencies.yaml.
 [package]
 name = "ruse-fuzz"
 version = "0.0.0"

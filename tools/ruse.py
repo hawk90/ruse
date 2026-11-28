@@ -15,7 +15,7 @@ spec/ (change-kinds.yaml, PRD/POLICY/...), never in a Makefile or here.
   verify           run only the checks the diff needs; record evidence
   spec validate    run spec-validate.py + change-workflow extensions
   spec generate    (P1) regenerate derived spec artifacts
-  docs check       anchor / frontmatter / normative-leak hygiene
+  docs check       anchor / frontmatter / normative-leak hygiene, module-layout counts (--write)
   arch deps        crate dependency contract (architecture.yaml) + cycles (ARCH-LAYER-001)
   gov check        run every governance checker (auto-discovered tools/gov/*.py)
   gov <checker>    one governance checker (e.g. gov waivers)

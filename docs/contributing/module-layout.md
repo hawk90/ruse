@@ -3,10 +3,9 @@ doc: module-layout
 project: ruse
 title: "ruse — Module Layout and Test-File Conventions"
 summary: >
-  How Rust source is laid out in crates/core and apps/tui, as the codebase already does it (measured
-  2026-11-28, not a new rule). A module with children uses `x.rs` + `x/` (34 non-test module directories);
-  the 16 `x/mod.rs` directories are older and are not renamed. Unit tests sit in an inline
-  `#[cfg(test)] mod tests`, or in an out-of-line file whose name is `tests.rs` or `<topic>_tests.rs`;
+  How Rust source is laid out in crates/core and apps/tui, as the codebase already does it (measured,
+  not a new rule). A module with children uses `x.rs` + `x/`; the 16 `x/mod.rs` directories are older
+  and are not renamed. Unit tests sit in an inline `#[cfg(test)] mod tests`, or in an out-of-line file whose name is `tests.rs` or `<topic>_tests.rs`;
   integration tests are one file per target under `<crate>/tests/`. Covers RA-STRUCT-025 and RA-STRUCT-026.
 audience: [maintainers, contributors, llm-agents]
 status: draft
@@ -22,20 +21,20 @@ related:
 # ruse — Module Layout and Test-File Conventions
 
 This file writes down what the code already does. Each rule gives the measured count it rests on and the
-known exceptions. It does not ask for existing files to be renamed or moved. Counts were taken on
-2026-11-28 (after v0.2.3) with `find crates apps -name '*.rs'` and `grep`.
+known exceptions. It does not ask for existing files to be renamed or moved. The counts are
+re-measured by `python3 tools/ruse.py docs check` (see [Re-measuring](#re-measuring)).
 
 ## Rules (summary)
 
 | # | Rule | Evidence |
 | --- | --- | --- |
-| L1 | A module with child files is `x.rs` + `x/`. Do not create a new `x/mod.rs`. | 34 of 50 non-test module directories; every directory added since v0.2.2 |
+| L1 | A module with child files is `x.rs` + `x/`. Do not create a new `x/mod.rs`. | 37 of 53 non-test module directories; every directory added since v0.2.2 |
 | L2 | Leave the existing `x/mod.rs` directories as they are. Move one only as part of a split of that module that you are making anyway. | 16 directories, listed below |
-| T1 | A small test module stays inline: `#[cfg(test)] mod tests { ... }` at the end of the file. | 95 files |
-| T2 | An out-of-line test file of module `x` is `x/tests.rs`, declared by `#[cfg(test)] mod tests;`. | 20 files (2 of them T3 hubs) |
-| T3 | Several topic suites for one module are `<topic>_tests.rs`, each declared by that module with `#[cfg(test)] mod <topic>_tests;`. | 23 files beside the module, 34 under a test directory |
+| T1 | A small test module stays inline: `#[cfg(test)] mod tests { ... }` at the end of the file. | 96 files |
+| T2 | An out-of-line test file of module `x` is `x/tests.rs`, declared by `#[cfg(test)] mod tests;`. | 21 files (2 of them T3 hubs) |
+| T3 | Several topic suites for one module are `<topic>_tests.rs`, each declared by that module with `#[cfg(test)] mod <topic>_tests;`. | 26 files beside the module, 34 under a test directory |
 | T4 | Every out-of-line unit-test file name is `tests.rs` or ends in `_tests.rs`. | all but 3 helper files |
-| T5 | An integration test is one file per target in `<crate>/tests/`, named for the behavior it covers; shared helpers are `tests/<name>/mod.rs`. | 9 targets in `crates/core`, 70 in `apps/tui` |
+| T5 | An integration test is one file per target in `<crate>/tests/`, named for the behavior it covers; shared helpers are `tests/<name>/mod.rs`. | one target per file in each crate |
 
 ## Module layout
 
@@ -48,12 +47,12 @@ Measured module directories (a directory under `src/` holding `.rs` files):
 
 | Crate | `x.rs` + `x/` (non-test) | `x.rs` + `x/` (test-only) | `x/mod.rs` |
 | --- | --- | --- | --- |
-| `crates/core` | 11 | 2 (`editor/tests`, `workspace/tests`) | 8 |
-| `apps/tui` | 23 | 1 (`input/unit_tests`) | 8 |
-| Total | 34 | 3 | 16 |
+| `crates/core` | 12 | 2 (`editor/tests`, `workspace/tests`) | 8 |
+| `apps/tui` | 25 | 1 (`input/unit_tests`) | 8 |
+| Total | 37 | 3 | 16 |
 
 - All 15 module directories added in v0.2.2 use `x.rs` + `x/` (v0.2.2 review, RA-STRUCT-026). v0.2.3 added
-  none.
+  none; v0.2.4 added 2 (`editor/substitute`, `persist/codec`), both `x.rs` + `x/`.
 - A module tree may mix the two forms: `editor/mod.rs` has children `editor/commit.rs` + `editor/commit/`.
   That is expected while L2 holds.
 
@@ -80,14 +79,13 @@ how many topics it covers. Moving tests out of line is not required by the size 
 ### T1: inline `mod tests`
 
 `#[cfg(test)] mod tests { use super::*; ... }` at the end of the file. This is the default and the most
-common form: 95 files (`crates/core` 26, `apps/tui` 69).
+common form.
 
 ### T2: `tests.rs`
 
 When the test module outgrows the file, move it to `tests.rs` in the module's directory and declare it
-with `#[cfg(test)] mod tests;`. So for `folds.rs` the file is `folds/tests.rs`. 20 files
-(`crates/core` 7, `apps/tui` 13), e.g. `persist/journal/writer/tests.rs`. Two of them
-(`editor/tests.rs`, `workspace/tests.rs`) are T3 hubs.
+with `#[cfg(test)] mod tests;`. So for `folds.rs` the file is `folds/tests.rs`, e.g.
+`persist/journal/writer/tests.rs`. Two of them (`editor/tests.rs`, `workspace/tests.rs`) are T3 hubs.
 
 ### T3: `<topic>_tests.rs`
 
@@ -95,8 +93,9 @@ When one module's tests split by topic, each topic is a child module `<topic>_te
 module under test. Two shapes are in use:
 
 - **Beside the module's other children**: `ui/render.rs` declares `caret_tests`, `window_tests`, ... in
-  `ui/render/`. 23 files, all in `apps/tui` (`app/dispatch/`, `highlight/`, `input/`, `input/ex/`,
-  `input/set_cmd/`, `ui/render/`). A module may also keep a `tests.rs` next to them (`app/dispatch/`).
+  `ui/render/`. All in `apps/tui` (`app/dispatch/`, `app/session/`, `highlight/`, `input/`,
+  `input/ex/`, `input/set_cmd/`, `persist/rj01/`, `ui/render/`). A module may also keep a `tests.rs` next to them
+  (`app/dispatch/`).
 - **Under a test hub**: a hub module file declares one `<topic>_tests` per topic in its own directory.
   Used when a module has many topic suites.
 
@@ -116,11 +115,11 @@ other name is measured as production code.
 
 Known exceptions, test-only modules with other names (each declared under `#[cfg(test)]`):
 
-| File | Lines | Role |
-| --- | --- | --- |
-| `crates/core/src/editor/ex_cmd/samples.rs` | 221 | sample `ExCmd` values shared with `command/tests.rs` |
-| `apps/tui/src/input/keymap_check.rs` | 101 | keymap consistency checks |
-| `apps/tui/src/persist/atomic/fault.rs` | 33 | fault injection for atomic-write tests |
+| File | Role |
+| --- | --- |
+| `crates/core/src/editor/ex_cmd/samples.rs` | sample `ExCmd` values shared with `command/tests.rs` |
+| `apps/tui/src/input/keymap_check.rs` | keymap consistency checks |
+| `apps/tui/src/persist/atomic/fault.rs` | fault injection for atomic-write tests |
 
 No source file is named `test.rs`.
 
@@ -129,9 +128,9 @@ No source file is named `test.rs`.
 ### T5: `<crate>/tests/`
 
 - One file per Cargo test target, named for the behavior it covers (`file_roundtrip.rs`,
-  `reference_model.rs`). `crates/core/tests/` has 9 targets; `apps/tui/tests/` has 70.
-- In `apps/tui/tests/`, a target that drives the real binary through a pseudo-terminal starts with `pty_`
-  (26 files). Targets for one Vim behavior family start with `vim_` (7 files).
+  `reference_model.rs`).
+- In `apps/tui/tests/`, a target that drives the real binary through a pseudo-terminal starts with `pty_`.
+  Targets for one Vim behavior family start with `vim_`.
 - Shared helpers are `tests/<name>/mod.rs` (`apps/tui/tests/support/mod.rs`,
   `apps/tui/tests/parity_ratchet/mod.rs`), included with `mod support;`. This is the one place `mod.rs` is
   the rule: Cargo builds every `tests/*.rs` as its own target, so a helper written as `tests/support.rs`
@@ -139,11 +138,10 @@ No source file is named `test.rs`.
 - A submodule of a single target uses `x.rs` + `x/` (`crates/core/tests/pattern_oracle.rs` with
   `pattern_oracle/cases.rs`).
 - A proptest regression file sits beside its target and is committed (`properties.proptest-regressions`).
-  4 files.
 - Fixtures go in `apps/tui/tests/fixtures/`.
 
 Benches are one file per target in `<crate>/benches/`, named for what they measure (`edit_apply.rs`,
-`journal_replay.rs`): 6 in each crate.
+`journal_replay.rs`).
 
 ## Re-measuring
 
@@ -157,4 +155,17 @@ find crates/*/src apps/*/src -name tests.rs | wc -l                 # T2 and hub
 find crates/*/src apps/*/src -name '*_tests.rs' | wc -l             # T3
 ```
 
-Update the counts here when a module directory or a test hub is added.
+`python3 tools/ruse.py docs check` re-measures this file with the same definitions
+(`tools/rusekit/docs/module_layout.py`):
+
+- **Errors** (fail CI): the structure the rules name. The L2 lists must name exactly the `x/mod.rs`
+  directories (and the `x/mod.rs` counts must match them), the T3 directory list must name exactly the
+  directories with a `<topic>_tests.rs` beside a module, the hub table must list exactly the test hubs, and
+  "all but N helper files" must match the T4 table. These change only when a PR breaks or extends a rule,
+  and that PR updates this file.
+- **Warnings** (advisory): the volatile tallies (the evidence column, the module-directory table, topic
+  files per hub). Adding a file makes them drift; `python3 tools/ruse.py docs check --write` rewrites them
+  in place when someone wants them current.
+
+When you reword a sentence that carries a count, update its pattern in `CLAIMS` too: a claim whose text no
+longer matches is an error.

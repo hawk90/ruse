@@ -4,6 +4,8 @@
 # Rust-relevant path changed — the skip still reports success.
 # `rust-macos` is advisory (not required): clippy + test on macOS, because platform-specific code
 # (pty/forkpty, terminal) can be clean on Linux and broken on macOS. Same Rust-relevance gate.
+# `fuzz-smoke` is advisory (not required): each cargo-fuzz target built with ASan and run for 20 seconds from
+# its committed seed corpus (#1319). Same Rust-relevance gate; the long runs are the weekly fuzz.yml.
 # `rust-release` is advisory (not required) and NOT run on PRs: `cargo test --workspace --release` on push
 # to main, weekly, and on demand (#899) — shipped binaries are built with the release profile, so its
 # codegen (optimiser; `debug_assertions` and `overflow-checks` off) must be tested too.
@@ -38,13 +40,13 @@ jobs:
           echo "have=$have" >> "$GITHUB_OUTPUT"
           # PRs: run the heavy Rust steps only when Rust-relevant paths moved. Fail SAFE — if the fetch or
           # the diff fails, run them (#888: a piped `git diff | grep` read a failed diff as "no Rust change").
-          # Other events always run. The pattern also covers lint/format/cargo config and fuzz targets.
+          # Other events always run. The pattern also covers lint/format/cargo/deny config and fuzz targets.
           rust=1
           if [ "$EVENT" = "pull_request" ]; then
             if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null \
                && changed=$(git diff --name-only FETCH_HEAD HEAD); then
               if printf '%s\n' "$changed" \
-                   | grep -qE '^(crates|apps|tests|fuzz|\.cargo)/|Cargo\.(toml|lock)$|^rust-toolchain|^\.?(clippy|rustfmt)\.toml$|^\.github/workflows/ci\.yml$|^spec/(architecture|dependencies)\.yaml$'; then
+                   | grep -qE '^(crates|apps|tests|fuzz|\.cargo)/|Cargo\.(toml|lock)$|^rust-toolchain|^\.?(clippy|rustfmt)\.toml$|^deny\.toml$|^\.github/workflows/ci\.yml$|^spec/(architecture|dependencies)\.yaml$'; then
                 rust=1
               else
                 rust=0
@@ -81,7 +83,8 @@ jobs:
       # Fuzz targets compile (#1330): `fuzz/` is its own workspace, so the steps above never build it, and
       # the targets drifted from the API unnoticed until the weekly fuzz run. A check on stable with the
       # `fuzzing` cfg the targets need; its own target dir, because the cfg would invalidate the shared one.
-      # The same command as the `fuzz-check` step of spec/verification.yaml.
+      # The same command as the `fuzz-check` step of spec/verification.yaml. The sanitizer build and a short
+      # run of each target are the `fuzz-smoke` job below (#1319).
       - name: fuzz targets compile
         if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo check --locked --manifest-path fuzz/Cargo.toml --all-targets --target-dir target/fuzz-check --config 'build.rustflags=["--cfg","fuzzing"]'
@@ -120,6 +123,48 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  fuzz-smoke:
+    # PR fuzz smoke (#1319): every cargo-fuzz target built the way the weekly fuzz.yml builds it (nightly,
+    # ASan, gnu target — the musl cargo-fuzz binary's default triple cannot link a sanitizer, #1357), then
+    # run for 20 seconds from its committed seed corpus (fuzz/corpus/<target>/). The `fuzz targets compile`
+    # step above is the fast stable check; this one catches a sanitizer-only build break and a crash a seed
+    # reaches. Advisory, like rust-macos; the 15-minute runs stay weekly. Same install pins as fuzz.yml.
+    needs: rust
+    if: needs.rust.outputs.rust == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FUZZ_TRIPLE: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
+        with: { toolchain: nightly, cache: false, build-warnings: allow }
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: cargo-fuzz@0.13.1
+      - name: build fuzz targets (ASan)
+        run: cargo +nightly fuzz build --target "$FUZZ_TRIPLE"
+      # Every target runs even when an earlier one fails, so one PR run reports all of them.
+      - name: fuzz each target for 20 seconds
+        run: |
+          failed=""
+          for t in $(cargo +nightly fuzz list); do
+            echo "::group::$t"
+            cargo +nightly fuzz run --target "$FUZZ_TRIPLE" "$t" -- \
+              -max_total_time=20 -timeout=30 -rss_limit_mb=2048 || failed="$failed $t"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::fuzz smoke failed:$failed (inputs in the fuzz-smoke-artifacts upload)"
+            exit 1
+          fi
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: fuzz-smoke-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
 
   rust-release:
     # Release-profile test suite (#899). Never on pull_request, so it can neither block nor slow a PR.
