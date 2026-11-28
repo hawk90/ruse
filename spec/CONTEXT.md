@@ -48,27 +48,33 @@ F-015 tree-sitter highlight + injections + indent · F-017 remote (SSH transport
 F-031 rich Markdown/Org rendering. Not started: F-016 plugins, F-018 GUI (parked), F-019 marketplace,
 F-020 AI agent, F-021 debugger, F-032 buffer arena (design decided, D-057). Exact state: [PRD.yaml](PRD.yaml) + `git log --grep F-0NN`.
 
-## Core invariants (must hold)
-Registry: [reference-invariants.md](../docs/invariants/reference-invariants.md).
+## Core invariants
+Registry: [reference-invariants.md](../docs/invariants/reference-invariants.md), whose markers win over this list.
+An unmarked ID holds in today's code. *not yet enforced* = the code has no mechanism yet: it binds new code,
+but no design may cite it as holding. *partly* = only part holds; the registry names which.
 - Document does not depend on View; no single global mutable state; long-lived references are typed handles.
-  (INV-DOC-VIEW, INV-NO-GLOBAL-STATE, INV-HANDLE)
+  (INV-DOC-VIEW, INV-NO-GLOBAL-STATE, INV-HANDLE *partly*)
 - A Document's text is empty or ends in `\n`; the file's final newline is `'endofline'`. (INV-TEXT-TERMINATED)
 - All document mutations go through Transactions with revision + origin, each undoable by logical unit;
-  ephemeral/streaming buffers are the stated exception. (INV-TXN, INV-ORIGIN, INV-UNDO, INV-BUFFER-KIND)
+  ephemeral/streaming buffers are the stated exception. (INV-TXN, INV-ORIGIN, INV-UNDO;
+  INV-BUFFER-KIND *not yet enforced*: there is no buffer-kind type, every Document is editable)
 - Positions are typed; long-lived positions are anchors. (INV-POS-TYPED, INV-ANCHOR)
 - Commands are semantic IDs decoupled from keys; profiles never share a key space; key resolution is two axes
-  (scope, provenance). (INV-CMD-SEMANTIC, INV-PROFILE-ISOLATION, INV-PRIORITY)
-- Plugins are isolated over a versioned protocol; never touch core types. (INV-PLUGIN-NO-CORE,
-  INV-PLUGIN-ISOLATED, INV-PROTOCOL-VERSIONED)
+  (scope, provenance). (INV-CMD-SEMANTIC, INV-PROFILE-ISOLATION,
+  INV-PRIORITY *partly*)
+- Plugins are isolated over a versioned protocol; never touch core types. All three *not yet enforced*: no
+  plugin host exists (F-016 planned). (INV-PLUGIN-NO-CORE, INV-PLUGIN-ISOLATED, INV-PROTOCOL-VERSIONED)
 - Core is a single-threaded deterministic executor; stale async results dropped; one scheduler owns background
-  work. (INV-ASYNC-ORDER, INV-SCHED-1)
+  work. (INV-ASYNC-ORDER; INV-SCHED-1 *not yet enforced*: no central scheduler exists, D-018)
 - Expected failures = typed errors; impossible states = asserts; log once at boundaries; blast radius is
-  bounded; status is a per-component state machine. (INV-ERR-CLASS, INV-FAIL-BOUNDED, INV-STATUS)
+  bounded; status is a per-component state machine. (INV-ERR-CLASS *partly*, INV-FAIL-BOUNDED;
+  INV-STATUS *not yet enforced*: the Health Registry is deferred, D-040)
 - Capabilities/features degrade, they do not disappear. (INV-CAP-DEGRADE)
 - Contracts are independent of implementation types; evolution is additive; Stable needs ≥2 independent users.
-  (INV-CONTRACT-FIRST, INV-ADDITIVE, INV-PROMOTION)
+  (INV-CONTRACT-FIRST, INV-ADDITIVE; INV-PROMOTION *not yet enforced*: no API has a Stable tier yet)
 - Render target: one semantic Render Tree, a render profile pinned per client-view, queries return snapshots.
-  (INV-RENDER-IR, INV-RENDER-PROFILE, INV-QUERY-SNAPSHOT; the render IR itself is deferred, D-039)
+  (INV-RENDER-PROFILE, INV-QUERY-SNAPSHOT; INV-RENDER-IR *not yet enforced*: there is no Render Tree, the
+  render IR is deferred by D-039)
 - No code executes before a workspace-trust decision. (INV-TRUST-1)
 - Deferred by D-039, kept for when it is re-earned: the client/remote type boundary. (INV-REMOTE-FIRST)
 - One fact, one home: state in spec/ YAML, prose in docs/, generated files not hand-edited. (ENG-DOC-001)
@@ -101,8 +107,14 @@ F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 - The recovery journal is per-transaction RJ01 records in the state dir. (D-064)
 - Buffer text is line-terminated; the final newline is `'endofline'`. (D-065)
 - File encodings are decoded at the tui persist boundary; default `fileencodings` is `ucs-bom,utf-8`. (D-066)
+  Shipped: slice 1 of RFC-0025 only (codec + RJ01 journal schema 1.2, no user-visible change); `'fenc'`/`'fencs'`,
+  detection, `++enc` (slice 2) and the Emacs coding-system commands (slice 3) are not built.
 - Undo is bounded by `'undolevels'` and a 256 MiB budget; search stops at the first match; highlighting has a budget. (D-067)
+  Shipped: slice 1 of RFC-0026 only (the undo bound, `editor.undolevels` / `editor.undo_max_bytes`); the
+  stop-at-first-match search (slice 2), highlight budget (slice 3) and Emacs large-file question (slice 4) are not built.
 - The bottom is the bar plus `'cmdheight'` (default 1) message rows; listing output goes through one pager. (D-068)
+  Shipped: slice 1 of RFC-0027 only (`'cmdheight'` and one bottom layout); `'shortmess'` (slice 2), the output
+  rows and pager (slice 3) and `'messagesopt'` (slice 4) are not built.
 - Document ≠ View ownership; positions are anchor-based; one positions-history model. (D-003, D-023, D-027)
 - Command IDs are stable, namespaced contracts; Stable API needs 2 independent users. (D-006, D-010)
 - Parity levels are graded and weighted; the Emacs census baseline is its scope list. (D-007, D-044)
