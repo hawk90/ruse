@@ -51,7 +51,7 @@ while (x)\nx--;\nreturn x;\n}\n\n";
 /// `=G` over a 10k-line C file (#1163):
 /// `cargo test -p ruse-core cindent_eq_cost -- --ignored --nocapture`.
 #[test]
-#[ignore = "timing probe"]
+#[ignore = "timing probe; quarantined in tests/quarantine.yaml (#910)"]
 #[allow(clippy::print_stdout)] // the timings are the output
 fn cindent_eq_cost() {
     let src = big_c(10_000);
