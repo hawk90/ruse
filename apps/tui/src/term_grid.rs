@@ -284,11 +284,12 @@ impl Grid {
                 }
                 self.erase_span(self.cy, 0, self.cx + 1);
             }
-            2 | 3 => {
+            2 => {
                 for r in 0..self.rows {
                     self.erase_span(r, 0, self.cols);
                 }
             }
+            3 => self.scrollback.clear(), // xterm "erase saved lines": the screen stays (#781)
             _ => {}
         }
     }
@@ -820,6 +821,22 @@ mod tests {
         assert_eq!(g.cursor(), (1, 1));
         feed(&mut g, b"\x1b[?25l\x1b[?2004h"); // DECRST / DECSET still apply
         assert!(!g.cursor_visible() && g.bracketed_paste());
+    }
+
+    /// #781: `CSI 3 J` erases the scrollback only; `CSI 2 J` erases the screen only.
+    #[test]
+    fn ed3_clears_only_the_scrollback() {
+        let mut g = Grid::new(2, 3);
+        feed(&mut g, b"aaa\r\nbbb\r\nccc"); // one row scrolled off
+        assert_eq!(g.scrollback.len(), 1);
+        feed(&mut g, b"\x1b[3J");
+        assert!(g.scrollback.is_empty());
+        assert_eq!(row_text(&g, 0), "bbb");
+        assert_eq!(row_text(&g, 1), "ccc");
+        feed(&mut g, b"\r\nddd\x1b[2J"); // scroll one more off, then erase the screen
+        assert_eq!(g.scrollback.len(), 1);
+        assert_eq!(row_text(&g, 0), "   ");
+        assert_eq!(row_text(&g, 1), "   ");
     }
 
     /// One piece of hostile terminal output: a CSI/ESC sequence with arbitrary (often huge) parameters, a
