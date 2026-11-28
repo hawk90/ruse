@@ -55,8 +55,10 @@ Terminal output lands in a **VT screen grid** (`apps/tui/src/term_grid.rs`): a `
 `vte::Perform` so `Terminal::drain` feeds raw PTY bytes straight into the `vte` parser. Coverage: printable +
 wrap + CR/LF/BS/TAB; cursor `CUP`/`CUU`/`CUD`/`CUF`/`CUB`/`CHA`/`VPA` + save/restore; `SGR` (16 + bright
 colors, truecolor, bold/underline/italic/reverse); erase `ED`/`EL`; **alt-screen** (`?1049h/l` — stash/restore
-the main screen) so vim/htop don't corrupt it; `RI`/index scrolling; `?25` cursor visibility. Off-screen rows
-accumulate in a bounded scrollback (paging UI = slice 2b).
+the main screen) so vim/htop don't corrupt it; `RI`/index scrolling; `?25` cursor visibility; settable tab
+stops (`HTS`, `TBC` 0/3, `CHT`, `CBT`; every 8 columns after `RIS`; a resize keeps the stops on kept columns
+and gives new columns the default stops, as libvterm does). Off-screen rows accumulate in a bounded
+scrollback (paging UI = slice 2b), readable oldest first through `Grid::scrollback` / `scrollback_row`.
 
 `screen::Cell` gained a `CellStyle` (bg + bold/underline/italic on top of fg/reverse); `flush_diff` emits the
 extra SGR lazily. The renderer paints a terminal window from its grid (`paint_grid`) and places the terminal's
