@@ -279,6 +279,14 @@ impl Workspace {
         let doc = self.docs[slot].take().expect("doc live");
         let mut st = self.lend(doc, view);
         let out = f(&mut st, self.clipboard.as_mut());
+        // PUSH the `"+`/`"*` mirror to the OS clipboard only when this call WROTE it (a `"+y`/`"+d`, or
+        // `:y +` on any lend path). A paste reads the register and never writes it, so `"+p` leaves the OS
+        // clipboard (and any rich data another app put there) alone (#755). `from_utf8_lossy` keeps a
+        // non-UTF-8 buffer from ever panicking the write.
+        if st.take_clipboard_written() {
+            let bytes = st.registers().clipboard().text().to_vec();
+            self.clipboard.set(&String::from_utf8_lossy(&bytes));
+        }
         let (doc, view) = self.reclaim(st);
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -345,8 +353,8 @@ impl Workspace {
             // pending register is `+`/`*` (a `"+y`/`"+p`/`"+d`), or it is an `i_CTRL-R` insert directly from
             // `+`/`*`. The OS clipboard is an impure side effect, so it is synced HERE (the orchestration
             // boundary), never in the pure planner: PULL the external clipboard into the mirror slot before
-            // the command so a paste reflects what another app copied, then PUSH the mirror slot out after so
-            // a yank/delete propagates.
+            // the command so a paste reflects what another app copied. The PUSH of a yank/delete happens in
+            // `with_view`, only when the command wrote the mirror.
             let touches_clipboard =
                 crate::register::RegisterStore::is_clipboard(st.pending_register())
                     || matches!(
@@ -359,13 +367,6 @@ impl Workspace {
                 None
             };
             let effects = apply_command(st, cmd);
-            if touches_clipboard {
-                // The mirror slot now holds the yanked/deleted bytes (a paste leaves it unchanged, so the
-                // push is idempotent). `String::from_utf8_lossy` keeps a non-UTF-8 buffer from ever
-                // panicking the write.
-                let bytes = st.registers().clipboard().text().to_vec();
-                clipboard.set(&String::from_utf8_lossy(&bytes));
-            }
             (effects, pulled)
         });
         let (effects, pulled) = effects;

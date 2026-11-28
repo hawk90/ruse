@@ -91,6 +91,132 @@ fn clipboard_delete_line_cuts_to_the_provider() {
     assert_eq!(w.focused().doc.bytes(), b"beta\n", "the line is cut out");
 }
 
+/// A clipboard double that RECORDS every `set` (so a test can tell "not written" from "written the same
+/// text") and serves a fixed `get` — `None` models an unreadable clipboard (no reader, non-UTF-8, timeout).
+#[derive(Clone, Default)]
+struct RecordingClipboard {
+    external: Option<String>,
+    sets: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl RecordingClipboard {
+    fn reading(external: Option<&str>) -> RecordingClipboard {
+        RecordingClipboard {
+            external: external.map(str::to_string),
+            ..RecordingClipboard::default()
+        }
+    }
+
+    fn sets(&self) -> Vec<String> {
+        self.sets.lock().expect("clipboard mutex").clone()
+    }
+}
+
+impl crate::Clipboard for RecordingClipboard {
+    fn get(&self) -> Option<String> {
+        self.external.clone()
+    }
+    fn set(&self, text: &str) {
+        self.sets
+            .lock()
+            .expect("clipboard mutex")
+            .push(text.to_string());
+    }
+}
+
+fn paste_after() -> Command {
+    Command::Paste {
+        after: true,
+        count: 1,
+        move_after: false,
+    }
+}
+
+/// #755: `"+p` reads the clipboard and never writes it (a put sets no register in Vim), so the provider
+/// sees no `set` — the external app keeps ownership and any rich data it put there.
+#[test]
+fn clipboard_paste_never_writes_the_provider() {
+    let clip = RecordingClipboard::reading(Some("from app"));
+    let mut w = Workspace::new(b"xy\n".to_vec());
+    w.set_clipboard(Box::new(clip.clone()));
+    w.apply(&Command::SetRegister(Some('+')));
+    w.apply(&paste_after());
+    assert_eq!(
+        w.focused().doc.bytes(),
+        b"xfrom appy\n",
+        "the paste still lands"
+    );
+    assert_eq!(
+        clip.sets(),
+        Vec::<String>::new(),
+        "\"+p must not write the OS clipboard"
+    );
+}
+
+/// #755: with an unreadable clipboard, `"*p` pastes the session's mirror but must not push that stale
+/// mirror over whatever the OS clipboard holds.
+#[test]
+fn clipboard_paste_with_unreadable_clipboard_does_not_push_the_stale_mirror() {
+    let clip = RecordingClipboard::reading(None);
+    let mut w = Workspace::new(b"hello\n".to_vec());
+    w.set_clipboard(Box::new(clip.clone()));
+    w.apply(&Command::SetRegister(Some('+')));
+    w.apply(&Command::Yank(1, Mo::InnerWord)); // "+yiw
+    assert_eq!(clip.sets(), vec!["hello".to_string()]);
+    w.apply(&Command::SetRegister(Some('*')));
+    w.apply(&paste_after()); // "*p
+    assert_eq!(
+        w.focused().doc.bytes(),
+        b"hhelloello\n",
+        "the mirror is what pastes"
+    );
+    assert_eq!(
+        clip.sets(),
+        vec!["hello".to_string()],
+        "the paste adds no write"
+    );
+}
+
+/// #755: `i_CTRL-R +` inserts from the clipboard without writing it.
+#[test]
+fn insert_register_from_clipboard_never_writes_the_provider() {
+    let clip = RecordingClipboard::reading(Some("abc"));
+    let mut w = Workspace::new(b"\n".to_vec());
+    w.set_clipboard(Box::new(clip.clone()));
+    w.apply(&Command::InsertRegister('+'));
+    assert_eq!(w.focused().doc.bytes(), b"abc\n");
+    assert_eq!(clip.sets(), Vec::<String>::new());
+}
+
+/// A clipboard yank writes every time, even of the bytes already there (Vim re-owns the selection).
+#[test]
+fn clipboard_yank_writes_each_time() {
+    let clip = RecordingClipboard::reading(Some("hello"));
+    let mut w = Workspace::new(b"hello\n".to_vec());
+    w.set_clipboard(Box::new(clip.clone()));
+    for _ in 0..2 {
+        w.apply(&Command::SetRegister(Some('+')));
+        w.apply(&Command::Yank(1, Mo::InnerWord));
+    }
+    assert_eq!(clip.sets(), vec!["hello".to_string(), "hello".to_string()]);
+}
+
+/// `:y +` (an Ex yank, not a pending-register command) writes the clipboard too; an unnamed `:y` does not.
+#[test]
+fn ex_yank_into_clipboard_writes_the_provider() {
+    let clip = RecordingClipboard::reading(None);
+    let mut w = Workspace::new(b"alpha\nbeta\n".to_vec());
+    w.set_clipboard(Box::new(clip.clone()));
+    w.yank_lines_into(crate::SubRange::CurrentLine, Some('+'));
+    assert_eq!(clip.sets(), vec!["alpha\n".to_string()]);
+    w.yank_lines_into(crate::SubRange::CurrentLine, None);
+    assert_eq!(
+        clip.sets().len(),
+        1,
+        "an unnamed :y leaves the clipboard alone"
+    );
+}
+
 /// Graceful degradation: with the default [`NoClipboard`], `"+p` pastes nothing and never panics.
 #[test]
 fn clipboard_absent_is_a_graceful_noop() {
