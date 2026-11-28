@@ -518,6 +518,13 @@ impl Perform for Grid {
     }
 
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, action: char) {
+        // The parser collects a private marker (`?`, `>`, `=`, `<`) and intermediate bytes (` `, `!`, `$`, …)
+        // into `intermediates`. The only such form handled is `CSI ? … h|l` (DECSET/DECRST); any other is a
+        // different control and must not run as the plain CSI — `CSI > 4 ; 2 m` (XTMODKEYS) is not SGR
+        // underline, `CSI > 1 u` (kitty keyboard) is not restore-cursor (#776).
+        if !intermediates.is_empty() && !(intermediates == b"?" && matches!(action, 'h' | 'l')) {
+            return;
+        }
         let ps: Vec<u16> = params.iter().flatten().copied().collect();
         let first = ps.first().copied().unwrap_or(0);
         let n = first.max(1);
@@ -781,6 +788,38 @@ mod tests {
             assert_eq!(g.cursor(), (row, 3), "after {moves:?}");
             assert_eq!(g.cell(row, 3).map(|(t, _)| t), Some("X"), "after {moves:?}");
         }
+    }
+
+    /// #776: a CSI with a private marker or intermediate the grid does not handle is ignored, instead of
+    /// running as the plain CSI with the same final byte.
+    #[test]
+    fn unhandled_private_and_intermediate_csi_are_ignored() {
+        let mut g = Grid::new(3, 6);
+        feed(&mut g, b"\x1b[2;2H\x1b[s\x1b[1;1H"); // saved cursor (1,1), cursor home
+        for seq in [
+            &b"\x1b[>4;2m"[..], // XTMODKEYS, not SGR 4 (underline)
+            b"\x1b[>1u",        // kitty keyboard push, not SCORC
+            b"\x1b[=1u",        // kitty keyboard set, not SCORC
+            b"\x1b[<u",         // kitty keyboard pop, not SCORC
+            b"\x1b[?1s",        // XTSAVE, not SCOSC
+            b"\x1b[?1r",        // XTRESTORE, not DECSTBM
+            b"\x1b[?2J",        // DECSED, not ED
+            b"\x1b[?2K",        // DECSEL, not EL
+            b"\x1b[2 q",        // DECSCUSR, not a cursor move
+            b"\x1b[!p",         // DECSTR, not handled
+            b"\x1b[>c",         // secondary DA
+        ] {
+            feed(&mut g, b"\x1b[1;1Hab");
+            feed(&mut g, seq);
+            feed(&mut g, b"c");
+            assert_eq!(row_text(&g, 0), "abc   ", "after {seq:?}");
+            let (_, style) = g.cell(0, 2).unwrap();
+            assert!(!style.underline, "after {seq:?}");
+        }
+        feed(&mut g, b"\x1b[u"); // the saved cursor is still (1,1): no marker form overwrote it
+        assert_eq!(g.cursor(), (1, 1));
+        feed(&mut g, b"\x1b[?25l\x1b[?2004h"); // DECRST / DECSET still apply
+        assert!(!g.cursor_visible() && g.bracketed_paste());
     }
 
     /// One piece of hostile terminal output: a CSI/ESC sequence with arbitrary (often huge) parameters, a
