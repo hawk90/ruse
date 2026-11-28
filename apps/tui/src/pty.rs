@@ -1,7 +1,9 @@
 //! Unix pseudo-terminal (F-011 slice 1). `UnixPty::spawn` forks a shell attached to a PTY and streams its
-//! output over an `mpsc` channel from a dedicated reader thread — the async seam that lets the editor render
-//! shell output without blocking on a keypress. Unix-only (via the `libc` we already depend on, like the
-//! F-010 capability probe); Windows ConPTY is a later slice behind the same [`Pty`] boundary (`DEP-PTY`).
+//! output over a bounded `mpsc` channel from a dedicated reader thread — the async seam that lets the editor
+//! render shell output without blocking on a keypress. The bound is the backpressure (#770): when the editor
+//! falls behind, the reader stops reading, the PTY fills, and the child blocks in `write`. Unix-only (via
+//! the `libc` we already depend on, like the F-010 capability probe); Windows ConPTY is a later slice behind
+//! the same [`Pty`] boundary (`DEP-PTY`).
 //!
 //! `unsafe` is confined to this module. `forkpty` sets the child's controlling terminal up itself, so the
 //! child only needs an `execvp`; the shell `CString` is built in the PARENT before the fork so that nothing
@@ -14,7 +16,7 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -66,6 +68,14 @@ pub trait Pty {
     /// Tell the child its window is now `rows × cols` (so it reflows / re-renders). F-011 slice 2.
     fn resize(&mut self, rows: u16, cols: u16) -> io::Result<()>;
 }
+
+/// Output chunks (each at most [`READ_CHUNK`] bytes) the channel holds before the reader blocks (#770): a
+/// flooding child can queue at most 256 KiB here ahead of the editor, plus the kernel's own PTY buffer.
+pub const CHANNEL_CHUNKS: usize = 64;
+/// The reader's read size, and so the largest chunk on the channel.
+pub const READ_CHUNK: usize = 4096;
+/// How often a reader blocked on a full channel re-checks whether `Drop` asked it to stop.
+const FULL_RETRY: Duration = Duration::from_millis(10);
 
 /// How long `Drop` lets the child act on SIGHUP before it escalates to SIGKILL (#771).
 const HANGUP_GRACE: Duration = Duration::from_millis(500);
@@ -143,7 +153,7 @@ impl UnixPty {
         // PARENT: keep the master; the child inherited it but it is close-on-exec so it is already gone there.
         // SAFETY: `master` is a fresh, owned fd returned by forkpty.
         let master = unsafe { File::from_raw_fd(master) };
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(CHANNEL_CHUNKS);
         let reader_fd = master.try_clone()?;
         let reader = spawn_reader(reader_fd, wake_rx, tx);
         Ok((
@@ -262,6 +272,36 @@ fn wake_pipe() -> io::Result<(File, File)> {
     Ok((r, w))
 }
 
+/// Whether `wake` fires (the write end closed) within `limit`: the reader's sleep while the channel is full.
+fn woken_within(wake: RawFd, limit: Duration) -> bool {
+    let mut fd = libc::pollfd {
+        fd: wake,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let ms = libc::c_int::try_from(limit.as_millis()).unwrap_or(libc::c_int::MAX);
+    // SAFETY: `fd` is one initialised pollfd. An EINTR just ends this sleep early; the caller retries.
+    let r = unsafe { libc::poll(&mut fd, 1, ms) };
+    r > 0 && fd.revents != 0
+}
+
+/// Queue `chunk` on the bounded channel, blocking while it is full (the backpressure, #770) but never past
+/// a wake from `Drop`. `false` when the reader should stop: woken, or the receiver is gone.
+fn send_chunk(tx: &SyncSender<Vec<u8>>, mut chunk: Vec<u8>, wake: RawFd) -> bool {
+    loop {
+        match tx.try_send(chunk) {
+            Ok(()) => return true,
+            Err(TrySendError::Disconnected(_)) => return false,
+            Err(TrySendError::Full(c)) => {
+                if woken_within(wake, FULL_RETRY) {
+                    return false;
+                }
+                chunk = c;
+            }
+        }
+    }
+}
+
 /// Block until `fd` is readable (or hung up) or `wake` fires. `Ok(true)` when `fd` is ready, `Ok(false)` when
 /// woken to stop.
 fn wait_readable(fd: RawFd, wake: RawFd) -> io::Result<bool> {
@@ -296,19 +336,20 @@ fn wait_readable(fd: RawFd, wake: RawFd) -> io::Result<bool> {
     }
 }
 
-/// Read the PTY master in a dedicated thread, forwarding output chunks to `tx`. Ends on EOF (child exit), on
-/// a wake from `Drop` (the wake pipe's write end closed), or once the receiver is dropped; dropping `tx` on
-/// exit disconnects the channel, signalling the session.
-fn spawn_reader(mut fd: File, wake: File, tx: Sender<Vec<u8>>) -> JoinHandle<()> {
+/// Read the PTY master in a dedicated thread, forwarding output chunks to the bounded `tx`; while the channel
+/// is full it stops reading, so the child blocks on a full PTY (#770). Ends on EOF (child exit), on a wake
+/// from `Drop` (the wake pipe's write end closed), or once the receiver is dropped; dropping `tx` on exit
+/// disconnects the channel, signalling the session.
+fn spawn_reader(mut fd: File, wake: File, tx: SyncSender<Vec<u8>>) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; READ_CHUNK];
         // Stops when woken by Drop (`Ok(false)`) or when poll itself fails.
         while let Ok(true) = wait_readable(fd.as_raw_fd(), wake.as_raw_fd()) {
             match fd.read(&mut buf) {
                 Ok(0) => break, // EOF: the child closed the tty
                 Ok(n) => {
-                    if tx.send(buf[..n].to_vec()).is_err() {
-                        break; // session dropped the receiver
+                    if !send_chunk(&tx, buf[..n].to_vec(), wake.as_raw_fd()) {
+                        break; // woken by Drop, or the session dropped the receiver
                     }
                 }
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -349,6 +390,37 @@ mod tests {
             }
         }
         false
+    }
+
+    /// #770: a child that floods output while nobody drains fills the bounded channel and then blocks;
+    /// the channel never holds more than `CHANNEL_CHUNKS`, and `Drop` still returns while the reader is
+    /// parked on the full channel.
+    #[test]
+    fn a_flood_fills_the_bounded_channel_and_then_blocks() {
+        let Ok((pty, rx)) = UnixPty::spawn_argv(&["/bin/sh", "-c", "yes"], 24, 80) else {
+            return; // no PTY available (sandbox)
+        };
+        // Let the flood run with no consumer: the reader must park once the channel is full.
+        std::thread::sleep(Duration::from_millis(500));
+        let mut queued = 0;
+        while rx.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert!(queued > 0, "the flood produced nothing");
+        // The reader may slip in one more chunk while we drained, so allow CHANNEL_CHUNKS + 1.
+        assert!(
+            queued <= CHANNEL_CHUNKS + 1,
+            "{queued} chunks queued past the bound {CHANNEL_CHUNKS}"
+        );
+        // Park the reader on a full channel again, then drop with the receiver still alive.
+        std::thread::sleep(Duration::from_millis(200));
+        let start = Instant::now();
+        drop(pty);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "Drop hung on a full channel"
+        );
+        drop(rx);
     }
 
     /// Spawn `script` under `sh -c`, wait for it to print `READY`, drop the PTY, and return how long the drop

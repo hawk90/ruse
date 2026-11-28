@@ -8,21 +8,108 @@
 #![cfg(unix)]
 
 use std::sync::mpsc::{Receiver, TryRecvError};
+use std::time::{Duration, Instant};
 
 use vte::Parser;
 
 use crate::pty::{Pty, UnixPty};
 use crate::term_grid::Grid;
 
-/// A live terminal buffer: its PTY, the output channel, the VT parser, and the screen grid.
+/// How much output one [`Terminal::drain`] may feed the VT parser (#770). A child that floods output (`yes`)
+/// no longer keeps the event loop in `drain`: the rest waits for the next tick, so keys (CTRL-C, `:q!`) still
+/// get read. The backlog stays bounded: the PTY channel holds `pty::CHANNEL_CHUNKS` chunks and [`Output`]
+/// at most one partly fed chunk, and past that the reader stops and the child blocks on a full PTY.
+#[derive(Clone, Copy, Debug)]
+pub struct DrainBudget {
+    /// Bytes fed per tick at most.
+    pub bytes: usize,
+    /// Wall time per tick: checked between slices, so one tick overshoots by at most one slice.
+    pub time: Duration,
+}
+
+/// The per-tick budget the session uses. Parsing is the slow side: each scrolled line copies the whole
+/// grid, so a flood of `y\n` on a 50×200 grid parses at ~100 µs a line (64 KiB in ~2 s, measured in a
+/// release build). The time cap is therefore what normally binds; the byte cap bounds a tick when parsing
+/// is cheap.
+pub const DRAIN_BUDGET: DrainBudget = DrainBudget {
+    bytes: 64 * 1024,
+    time: Duration::from_millis(8),
+};
+
+/// The parser is fed in slices of at most this many bytes, so the time budget can stop a tick inside a
+/// 4 KiB chunk (a slice of `y\n` on a 50×200 grid is ~9 ms in a release build).
+const DRAIN_SLICE: usize = 256;
+
+/// The PTY output side of a terminal: the channel, the chunk being fed (kept across ticks when a budget
+/// stops mid-chunk), and whether the child has exited.
+struct Output {
+    rx: Receiver<Vec<u8>>,
+    chunk: Vec<u8>,
+    /// Bytes of `chunk` already fed.
+    at: usize,
+    /// Set once the channel disconnects (child exited) and the backlog is fed. Guards `send` (no writes to
+    /// a dead child) and makes the `[process exited]` line appear exactly once; the buffer stays as a
+    /// readable screen until closed.
+    exited: bool,
+}
+
+impl Output {
+    fn new(rx: Receiver<Vec<u8>>) -> Output {
+        Output {
+            rx,
+            chunk: Vec::new(),
+            at: 0,
+            exited: false,
+        }
+    }
+
+    /// One drain tick (#770): feed queued output to the parser in slices until it runs out or `budget` is
+    /// spent; a tick always feeds at least one slice when output is pending, so a flood still progresses.
+    /// A disconnect appends `[process exited]` once and sets `exited`; it is only seen after the backlog,
+    /// so the last output lands first. `true` if anything changed.
+    fn drain_into(&mut self, parser: &mut Parser, grid: &mut Grid, budget: DrainBudget) -> bool {
+        let start = Instant::now();
+        let mut fed = 0usize;
+        let mut changed = false;
+        while fed < budget.bytes && (fed == 0 || start.elapsed() < budget.time) {
+            if self.at == self.chunk.len() {
+                match self.rx.try_recv() {
+                    Ok(chunk) => {
+                        self.chunk = chunk;
+                        self.at = 0;
+                        continue;
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        if !self.exited {
+                            self.exited = true;
+                            parser.advance(grid, b"\r\n[process exited]\r\n");
+                            changed = true;
+                        }
+                        break;
+                    }
+                }
+            }
+            let end = self
+                .chunk
+                .len()
+                .min(self.at + DRAIN_SLICE)
+                .min(self.at + (budget.bytes - fed));
+            parser.advance(grid, &self.chunk[self.at..end]);
+            fed += end - self.at;
+            self.at = end;
+            changed = true;
+        }
+        changed
+    }
+}
+
+/// A live terminal buffer: its PTY, the output side, the VT parser, and the screen grid.
 pub struct Terminal {
     pty: UnixPty,
-    rx: Receiver<Vec<u8>>,
+    out: Output,
     parser: Parser,
     grid: Grid,
-    /// Set once the channel disconnects (child exited). Guards `send` (no writes to a dead child) and makes
-    /// the `[process exited]` line appear exactly once; the buffer stays as a readable screen until closed.
-    exited: bool,
 }
 
 impl Terminal {
@@ -31,21 +118,20 @@ impl Terminal {
         let (pty, rx) = UnixPty::spawn(rows, cols)?;
         Ok(Terminal {
             pty,
-            rx,
+            out: Output::new(rx),
             parser: Parser::new(),
             grid: Grid::new(rows, cols),
-            exited: false,
         })
     }
 
     /// Whether the child still runs (Emacs's `confirm-kill-processes` asks about it, #619).
     pub fn is_running(&self) -> bool {
-        !self.exited
+        !self.out.exited
     }
 
     /// Forward keystroke bytes to the child (Terminal mode). A dead child silently drops them.
     pub fn send(&mut self, bytes: &[u8]) {
-        if !self.exited {
+        if !self.out.exited {
             let _ = self.pty.write(bytes);
         }
     }
@@ -56,29 +142,11 @@ impl Terminal {
         self.send(&bytes);
     }
 
-    /// Drain all pending output into the grid via the VT parser. Returns `true` if anything changed (new
-    /// output or the child just exited) so the caller knows to re-render.
+    /// Drain pending output into the grid via the VT parser, within [`DRAIN_BUDGET`] per call. Returns
+    /// `true` if anything changed (new output or the child just exited) so the caller knows to re-render.
     pub fn drain(&mut self) -> bool {
-        let mut changed = false;
-        loop {
-            match self.rx.try_recv() {
-                Ok(chunk) => {
-                    self.parser.advance(&mut self.grid, &chunk);
-                    changed = true;
-                }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    if !self.exited {
-                        self.exited = true;
-                        self.parser
-                            .advance(&mut self.grid, b"\r\n[process exited]\r\n");
-                        changed = true;
-                    }
-                    break;
-                }
-            }
-        }
-        changed
+        self.out
+            .drain_into(&mut self.parser, &mut self.grid, DRAIN_BUDGET)
     }
 
     /// The VT screen grid (for the renderer).
@@ -139,6 +207,59 @@ mod tests {
         assert!(!grid.bracketed_paste());
         parser.advance(&mut grid, b"\x1b[?2004h\x1bc");
         assert!(!grid.bracketed_paste(), "RIS resets the mode");
+    }
+
+    /// `n` full chunks queued behind a disconnected sender (the child "exited" behind the backlog).
+    fn backlog(n: usize) -> Output {
+        let (tx, rx) = std::sync::mpsc::sync_channel(n);
+        for _ in 0..n {
+            tx.send(vec![b'y'; crate::pty::READ_CHUNK]).unwrap();
+        }
+        Output::new(rx)
+    }
+
+    /// #770: one drain tick feeds the parser at most the byte budget however much is queued; the rest waits
+    /// for later ticks, and the exit notice comes only after the backlog.
+    #[test]
+    fn a_drain_tick_is_bounded_by_the_byte_budget() {
+        let budget = DrainBudget {
+            bytes: DRAIN_BUDGET.bytes,
+            time: Duration::from_secs(3600),
+        };
+        let per_tick = budget.bytes / crate::pty::READ_CHUNK;
+        let (mut parser, mut grid) = (Parser::new(), Grid::new(4, 10));
+
+        // One tick takes exactly the budget's worth and leaves the rest queued.
+        let mut out = backlog(3 * per_tick);
+        assert!(out.drain_into(&mut parser, &mut grid, budget));
+        assert!(!out.exited);
+        assert_eq!(out.rx.try_iter().count(), 2 * per_tick);
+
+        // Draining the whole backlog takes three ticks; the fourth sees the disconnect.
+        let mut out = backlog(3 * per_tick);
+        for _ in 0..3 {
+            assert!(out.drain_into(&mut parser, &mut grid, budget));
+            assert!(!out.exited, "exit reported before the backlog drained");
+        }
+        assert!(out.drain_into(&mut parser, &mut grid, budget));
+        assert!(out.exited);
+        assert!(!out.drain_into(&mut parser, &mut grid, budget));
+    }
+
+    /// #770: a spent time budget stops a tick after one slice, inside the chunk; the next tick resumes there.
+    #[test]
+    fn a_drain_tick_is_bounded_by_the_time_budget() {
+        let budget = DrainBudget {
+            bytes: DRAIN_BUDGET.bytes,
+            time: Duration::ZERO,
+        };
+        let (mut parser, mut grid) = (Parser::new(), Grid::new(4, 10));
+        let mut out = backlog(2);
+        assert!(out.drain_into(&mut parser, &mut grid, budget));
+        assert_eq!(out.at, DRAIN_SLICE, "one slice per tick");
+        assert!(out.drain_into(&mut parser, &mut grid, budget));
+        assert_eq!(out.at, 2 * DRAIN_SLICE, "the next tick resumes mid-chunk");
+        assert_eq!(out.rx.try_iter().count(), 1);
     }
 
     fn grid_contains(grid: &Grid, needle: &str) -> bool {
