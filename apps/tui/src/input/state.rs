@@ -103,8 +103,9 @@ impl NormalState {
 
 /// A SUSPENDED layer awaiting return (KL-OBL-5): while a one-shot command is borrowed to run in
 /// another namespace, this records the ADDRESS to resume — *whence* control came. `i_CTRL-O` suspends
-/// Insert to run one Normal command (`resume: Insert`); `t_CTRL-\ CTRL-O` (deferred, no terminal
-/// buffers yet) is the SAME construct with `resume: Terminal`. A flat boolean edge cannot record
+/// Insert to run one Normal command (`resume: Insert`); `t_CTRL-\ CTRL-O` is the SAME construct with
+/// `resume: Terminal` (#1733), except that the frontend, not `reset`, ends it: its one command can
+/// span several engine completions (a `:` line, a `v` selection). A flat boolean edge cannot record
 /// whence; a stack of these can, and nests for free.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct Suspended {

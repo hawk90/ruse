@@ -433,8 +433,40 @@ impl InputEngine {
         self.normal = NormalState::default();
         // A borrowed one-shot command is consumed the instant it completes (every completion runs
         // through here): pop its return address off the activation stack, resuming the layer it came
-        // from (KL-OBL-5). A no-op when no one-shot is in flight (the stack is empty).
-        self.activations.pop();
+        // from (KL-OBL-5). A no-op when no one-shot is in flight (the stack is empty). A Terminal return
+        // address is not popped here: its one command may span several engine completions (`v`…`<Esc>`,
+        // `:`…`<CR>`), so the frontend resumes it at the next clean boundary (#1733).
+        if self
+            .activations
+            .last()
+            .is_some_and(|a| a.resume == Ns::Insert)
+        {
+            self.activations.pop();
+        }
+    }
+
+    /// `t_CTRL-\_CTRL-O` (#1733): push a one-shot activation whose RETURN ADDRESS is Terminal (KL-OBL-5),
+    /// the second case of the construct `i_CTRL-O` opened. The frontend has just put the view in
+    /// Terminal-Normal; the next keys resolve through the Normal grammar (a count, register or operator
+    /// survives between keys, as in an Insert one-shot) until the frontend sees the command finished.
+    pub fn begin_terminal_one_shot(&mut self) {
+        self.reset();
+        self.finish_terminal_one_shot();
+        self.activations.push(Suspended {
+            resume: Ns::Terminal,
+        });
+    }
+
+    /// Whether a `t_CTRL-\_CTRL-O` one-shot is in flight (its Terminal return address is on the stack).
+    #[must_use]
+    pub fn in_terminal_one_shot(&self) -> bool {
+        self.activations.iter().any(|a| a.resume == Ns::Terminal)
+    }
+
+    /// Drop the Terminal return address: the one-shot finished (the frontend resumes Terminal mode) or
+    /// was abandoned (`CTRL-\ CTRL-N`, an `i` that resumed Terminal itself, focus left the terminal).
+    pub fn finish_terminal_one_shot(&mut self) {
+        self.activations.retain(|a| a.resume != Ns::Terminal);
     }
 
     /// Take the pending Normal count (0 if none) and clear the transient state. For a frontend intercept

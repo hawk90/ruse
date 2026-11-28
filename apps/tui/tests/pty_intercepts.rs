@@ -350,3 +350,67 @@ fn terminal_escape_arms_under_legacy_encoding() {
     ed.keys("\u{1c}\u{e}:q!\r");
     assert_eq!(ed.exit_status(), 0, "`:q!` went to the shell");
 }
+
+// ---- `CTRL-\ CTRL-O`: one Normal command from Terminal mode (#1733) -----------------------------------
+
+/// In a `:terminal`, start the shell line `echo ok > out.txt`, typing `CTRL-\ CTRL-O` (legacy encoding:
+/// 0x1c 0x0f) and `cmd` in the middle of it. `out.txt` holds `ok` only if no key of `cmd` reached the
+/// shell and Terminal mode resumed once `cmd` finished.
+fn terminal_after_one_shot(cmd: &str) -> Vec<u8> {
+    let dir = Scratch::new();
+    let out = dir.path("out.txt");
+    let mut ed = Editor::start(&dir, &[]);
+    // A live terminal never goes quiet, so each settle runs to the harness's limit: type it all at once.
+    ed.keys(&format!(":terminal\recho \u{1c}\u{f}{cmd}ok > out.txt\r"));
+    support::wait_for_file(&out, b"ok\n")
+}
+
+// nvim 0.12.6 (`nvim --clean`, a `:terminal`): `CTRL-\ CTRL-O` shows mode `ntT`, and once the one command
+// ends (a motion, a counted or registered yank, `<Esc>`, a `:` line's `<CR>`, a `v` selection's `<Esc>`, or
+// an `i` that is itself the mode change) the mode is `t` again.
+
+#[test]
+fn ctrl_backslash_ctrl_o_motion_resumes_terminal() {
+    assert_eq!(terminal_after_one_shot("k"), b"ok\n");
+}
+
+#[test]
+fn ctrl_backslash_ctrl_o_counted_operator_resumes_terminal() {
+    assert_eq!(terminal_after_one_shot("2yk"), b"ok\n");
+}
+
+#[test]
+fn ctrl_backslash_ctrl_o_registered_yank_resumes_terminal() {
+    // `a` is the register name here, not the Terminal-Normal `a` that resumes Terminal.
+    assert_eq!(terminal_after_one_shot("\"ayy"), b"ok\n");
+}
+
+#[test]
+fn ctrl_backslash_ctrl_o_escape_resumes_terminal() {
+    assert_eq!(terminal_after_one_shot(ESC), b"ok\n");
+}
+
+#[test]
+fn ctrl_backslash_ctrl_o_command_line_resumes_terminal_after_enter() {
+    assert_eq!(terminal_after_one_shot(":noh\r"), b"ok\n");
+}
+
+#[test]
+fn ctrl_backslash_ctrl_o_visual_resumes_terminal_after_its_escape() {
+    // Terminal waits for the selection to end: `l` is a Visual motion, not shell input.
+    assert_eq!(terminal_after_one_shot("vl\u{1b}"), b"ok\n");
+}
+
+#[test]
+fn ctrl_backslash_ctrl_o_insert_resumes_terminal() {
+    assert_eq!(terminal_after_one_shot("i"), b"ok\n");
+}
+
+/// nvim: `CTRL-\ CTRL-N` inside the one-shot (`ntT`) leaves plain Terminal-Normal (`nt`), so `:q!` quits.
+#[test]
+fn ctrl_backslash_ctrl_n_inside_the_one_shot_stays_in_terminal_normal() {
+    let dir = Scratch::new();
+    let mut ed = Editor::start(&dir, &[]);
+    ed.keys(":terminal\r\u{1c}\u{f}\u{1c}\u{e}:q!\r");
+    assert_eq!(ed.exit_status(), 0, "`:q!` went to the shell");
+}
