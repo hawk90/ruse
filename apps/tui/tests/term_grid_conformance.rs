@@ -81,6 +81,20 @@ fixtures! {
     backspace_stops_at_column_zero: (1, 4, b"\x08\x08a") => ["a   "] @ (0, 1);
     tab_stops_every_eight_columns: (1, 12, b"a\tb") => ["a       b   "] @ (0, 9);
     tab_stops_at_the_right_margin: (1, 10, b"\t\tx") => ["         x"] @ (0, 9);
+    // Settable tab stops (#1751), checked against libvterm (nvim 0.12 `:terminal`).
+    hts_sets_a_tab_stop: (1, 12, b"\x1b[4G\x1bH\r\tx") => ["   x        "] @ (0, 4);
+    hts_after_an_intermediate_is_a_charset_designator: (1, 12, b"\x1b[4G\x1b(H\r\tx") => ["        x   "] @ (0, 9);
+    tbc_clears_the_stop_at_the_cursor: (1, 20, b"\x1b[9G\x1b[g\r\tx") => ["                x   "] @ (0, 17);
+    tbc_3_clears_every_stop: (1, 12, b"\x1b[3g\tx") => ["           x"] @ (0, 11);
+    tbc_with_another_parameter_is_ignored: (1, 20, b"\x1b[9G\x1b[2g\r\tx") => ["        x           "] @ (0, 9);
+    ris_restores_the_default_tab_stops: (1, 12, b"\x1b[3g\x1bc\tx") => ["        x   "] @ (0, 9);
+    cht_moves_forward_n_stops: (1, 20, b"\x1b[3G\x1bH\x1b[1G\x1b[2Ix") => ["        x           "] @ (0, 9);
+    cht_past_the_last_stop_stops_at_the_margin: (1, 10, b"\x1b[9Ix") => ["         x"] @ (0, 9);
+    cbt_moves_back_n_stops: (1, 20, b"\x1b[19G\x1b[2Zx") => ["        x           "] @ (0, 9);
+    cbt_without_a_stop_goes_to_column_zero: (1, 10, b"ab\x1b[3g\x1b[Zx") => ["xb        "] @ (0, 1);
+    cbt_cancels_the_pending_wrap: (2, 10, b"abcdefghij\x1b[Zx") => ["abcdefghxj", "          "] @ (0, 9);
+    // HT keeps a pending wrap, so the next printable wraps (libvterm).
+    tab_at_the_pending_wrap_keeps_it: (2, 10, b"abcdefghij\tx") => ["abcdefghij", "x         "] @ (1, 1);
     bel_and_other_c0_are_ignored: (1, 4, b"a\x07\x00\x01b") => ["ab  "] @ (0, 2);
 
     // --- cursor addressing ---
@@ -103,7 +117,7 @@ fixtures! {
     ed0_erases_to_the_end_of_screen: (3, 3, b"abc\r\ndef\r\nghi\x1b[2;2H\x1b[J") => ["abc", "d  ", "   "] @ (1, 1);
     ed1_erases_to_the_cursor_inclusive: (3, 3, b"abc\r\ndef\r\nghi\x1b[2;2H\x1b[1J") => ["   ", "  f", "ghi"] @ (1, 1);
     ed2_erases_the_screen_and_keeps_the_cursor: (2, 3, b"abc\r\nde\x1b[2J") => ["   ", "   "] @ (1, 2);
-    // xterm "erase saved lines": CSI 3 J clears the scrollback only (#781).
+    // xterm "erase saved lines": CSI 3 J clears the scrollback only (#781); see `ed3_clears_the_scrollback`.
     ed3_keeps_the_screen: (2, 3, b"abc\r\nde\x1b[3J") => ["abc", "de "] @ (1, 2);
     ech_erases_in_place: (1, 5, b"abcde\x1b[2G\x1b[2X") => ["a  de"] @ (0, 1);
     ech_clamps_at_the_right_margin: (1, 4, b"abcd\x1b[2G\x1b[99X") => ["a   "] @ (0, 1);
@@ -185,6 +199,59 @@ fixtures! {
     dcs_is_consumed: (1, 4, b"\x1bP1$r0m\x1b\\ok") => ["ok  "] @ (0, 2);
     can_aborts_a_csi: (1, 4, b"\x1b[2\x18J") => ["J   "] @ (0, 1);
     c0_inside_a_csi_executes: (2, 4, b"ab\x1b[1\rC") => ["ab  ", "    "] @ (0, 1);
+}
+
+/// Tab stops on the columns a resize keeps survive it; the columns it adds get the default stops (libvterm:
+/// a 10-column screen with every stop cleared, widened to 20, tabs from column 0 to 16) (#1751).
+#[test]
+fn resize_keeps_tab_stops_and_defaults_new_columns() {
+    let mut g = feed(1, 10, b"\x1b[3g\x1b[4G\x1bH");
+    g.resize(1, 20);
+    ChunkParser::new().advance(&mut g, b"\r\t\tx");
+    assert_eq!(screen(&g), ["   ".to_string() + &" ".repeat(13) + "x   "]);
+    let mut g = feed(1, 20, b"\x1b[3g\x1b[4G\x1bH");
+    g.resize(1, 10);
+    ChunkParser::new().advance(&mut g, b"\r\tx");
+    assert_eq!(screen(&g), ["   x      "]);
+}
+
+/// The scrollback, oldest first, rendered like [`screen`].
+fn scrollback(g: &Grid) -> Vec<String> {
+    g.scrollback()
+        .map(|row| {
+            (0..row.width())
+                .filter_map(|c| row.cell(c).map(|(t, _)| if t.is_empty() { " " } else { t }))
+                .collect()
+        })
+        .collect()
+}
+
+/// Rows that scroll off the top go to the scrollback in order, keep their style, and `CSI 3 J` clears it
+/// while the screen stays (#781, #1751).
+#[test]
+fn ed3_clears_the_scrollback() {
+    let g = feed(2, 3, "a\x1b[31m中\x1b[m\r\nbbb\r\nccc\r\nd".as_bytes());
+    assert_eq!(scrollback(&g), ["a中", "bbb"]);
+    assert_eq!(g.scrollback_len(), 2);
+    let first = g.scrollback_row(0).expect("oldest row");
+    assert_eq!(first.cell(1).unwrap().1.fg, Color::AnsiValue(1));
+    assert!(first.cell(2).is_none(), "the right half of the wide glyph");
+    assert!(g.scrollback_row(2).is_none());
+    assert_eq!(
+        g.scrollback().next_back().map(|r| r.cell(0).unwrap().0),
+        Some("b")
+    );
+    let mut g = g;
+    ChunkParser::new().advance(&mut g, b"\x1b[3J");
+    assert!(scrollback(&g).is_empty());
+    assert_eq!(screen(&g), ["ccc", "d  "]);
+}
+
+/// The alternate screen keeps no scrollback.
+#[test]
+fn alt_screen_scrolls_keep_no_scrollback() {
+    let g = feed(2, 2, b"\x1b[?1049ha\r\nb\r\nc\r\nd");
+    assert_eq!(g.scrollback_len(), 0);
 }
 
 // --- chunk-split regressions (#1765), found by `chunk_split_is_equivalent_to_one_feed` ---
@@ -438,7 +505,7 @@ fn piece() -> impl Strategy<Value = Vec<u8>> {
     let csi = (
         prop_oneof![Just(""), Just("?"), Just(">")],
         proptest::collection::vec(param, 0..5),
-        proptest::sample::select(b"HfABCDGdJKLM@PXrmsuhl".to_vec()),
+        proptest::sample::select(b"HfABCDGdJKLM@PXrmsuhlgIZ".to_vec()),
     )
         .prop_map(|(lead, ps, act)| {
             let mut b = format!("\x1b[{lead}{}", ps.join(";")).into_bytes();
@@ -451,7 +518,7 @@ fn piece() -> impl Strategy<Value = Vec<u8>> {
         3 => csi,
         1 => osc,
         1 => Just(b"\x1bP1$r0m\x1b\\".to_vec()),
-        1 => proptest::sample::select(b"M78c".to_vec()).prop_map(|c| vec![0x1b, c]),
+        1 => proptest::sample::select(b"M78cH".to_vec()).prop_map(|c| vec![0x1b, c]),
         3 => proptest::sample::select(vec![
             "a", "xyz", "\u{4e2d}", "\u{e9}", "\u{301}", "\u{1f600}", "\t", "\r\n", "\n", "\x08",
         ])

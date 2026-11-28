@@ -5,7 +5,7 @@
 //!
 //! Scope (slice 2): printable + wrap + CR/LF/BS/TAB; cursor CUP/CUU/CUD/CUF/CUB/CHA/VPA + save/restore; SGR
 //! (16 + bright colors, truecolor, bold/underline/italic/reverse); erase ED/EL; alt-screen (`?1049h/l`);
-//! RI/index scrolling; `?25` cursor visibility. Deferred to 2b: scrollback PAGING UI (rows accumulate here),
+//! RI/index scrolling; `?25` cursor visibility; settable tab stops (HTS/TBC/CHT/CBT). Deferred to 2b: scrollback PAGING UI (rows accumulate here),
 //! scroll regions, insert/delete char/line, mouse. `vte` decodes UTF-8 itself, so `print` receives `char`.
 
 #![cfg(unix)]
@@ -48,6 +48,35 @@ impl GridCell {
 /// One screen row of `cols` cells.
 type Row = Vec<GridCell>;
 
+/// The cell as the painter sees it: `None` for the right half of a wide glyph.
+fn visible(c: &GridCell) -> Option<(&str, &CellStyle)> {
+    (!c.continuation).then_some((c.text.as_str(), &c.style))
+}
+
+/// A read-only view of one grid row, for readers outside the grid (the scrollback, #1751).
+#[derive(Clone, Copy)]
+pub struct RowView<'a> {
+    cells: &'a [GridCell],
+}
+
+impl<'a> RowView<'a> {
+    /// The row's width in cells. A scrollback row keeps the width the screen had when it scrolled off.
+    pub fn width(&self) -> u16 {
+        self.cells.len() as u16
+    }
+
+    /// The cell at `col` as `(text, style)`, with [`Grid::cell`]'s meaning: `None` for a continuation cell
+    /// or past the row's end, an empty string for a blank.
+    pub fn cell(&self, col: u16) -> Option<(&'a str, &'a CellStyle)> {
+        self.cells.get(col as usize).and_then(visible)
+    }
+}
+
+/// xterm's initial tab stops (`TabReset`): every 8 columns.
+fn default_tab_stop(col: usize) -> bool {
+    col.is_multiple_of(8)
+}
+
 /// A blank screen: `rows` rows of `cols` default cells.
 fn blank_screen(rows: u16, cols: u16) -> Vec<Row> {
     vec![vec![GridCell::default(); cols as usize]; rows as usize]
@@ -77,6 +106,9 @@ pub struct Grid {
     /// The child turned bracketed paste on (`CSI ? 2004 h`): a paste forwarded to it is wrapped in
     /// `CSI 200 ~` / `CSI 201 ~` (#600).
     bracketed_paste: bool,
+    /// `tabs[c]`: column `c` has a tab stop. Set by HTS, cleared by TBC, every 8 columns after RIS (#1751).
+    /// One set for both screens, as in xterm.
+    tabs: Vec<bool>,
     /// [`ChunkParser`] is feeding a lone 0x80..=0x9F byte (not a UTF-8 encoded U+0080..=U+009F). vte
     /// executes such a byte as an 8-bit C1 control; xterm in UTF-8 mode does not take 8-bit C1 and prints
     /// U+FFFD for the malformed byte, so [`Grid::execute`] prints that while this is set (#1750).
@@ -110,6 +142,7 @@ impl Grid {
             wrap_next: false,
             cursor_visible: true,
             bracketed_paste: false,
+            tabs: (0..cols as usize).map(default_tab_stop).collect(),
             lone_c1: false,
         }
     }
@@ -136,11 +169,23 @@ impl Grid {
     /// The cell at `(row, col)` as `(text, style)`, or `None` for a continuation cell or out of bounds — the
     /// painter skips those. Blank cells return an empty string (paint a space with the cell's background).
     pub fn cell(&self, row: u16, col: u16) -> Option<(&str, &CellStyle)> {
-        let c = self.at(row, col)?;
-        if c.continuation {
-            return None;
-        }
-        Some((c.text.as_str(), &c.style))
+        self.at(row, col).and_then(visible)
+    }
+
+    /// How many rows the scrollback holds (at most 1000). The alternate screen keeps none.
+    pub fn scrollback_len(&self) -> usize {
+        self.scrollback.len()
+    }
+
+    /// Scrollback row `index`, oldest first (`0` is the oldest kept row, `scrollback_len() - 1` the row
+    /// that scrolled off last, just above screen row 0). `None` past the end.
+    pub fn scrollback_row(&self, index: usize) -> Option<RowView<'_>> {
+        self.scrollback.get(index).map(|cells| RowView { cells })
+    }
+
+    /// Every scrollback row, oldest first; `.rev()` walks up from the screen.
+    pub fn scrollback(&self) -> impl DoubleEndedIterator<Item = RowView<'_>> + ExactSizeIterator {
+        self.scrollback.iter().map(|cells| RowView { cells })
     }
 
     fn at(&self, row: u16, col: u16) -> Option<&GridCell> {
@@ -164,6 +209,10 @@ impl Grid {
         if let Some(alt) = self.alt.as_mut() {
             alt.cells = remap(&alt.cells, rows, cols);
         }
+        // Tab stops on the kept columns survive; new columns get the default stops (libvterm, VTE).
+        let old = self.tabs.len();
+        self.tabs.truncate(cols as usize);
+        self.tabs.extend((old..cols as usize).map(default_tab_stop));
         self.rows = rows;
         self.cols = cols;
         self.cx = self.cx.min(cols - 1);
@@ -328,9 +377,44 @@ impl Grid {
         }
     }
 
-    fn tab(&mut self) {
-        let next = (self.cx / 8 + 1) * 8;
-        self.cx = next.min(self.cols - 1);
+    /// HT / CHT: move to the `n`th next tab stop; with no stop left, to the right margin (xterm).
+    fn tab_forward(&mut self, n: u16) {
+        for _ in 0..n {
+            let from = self.cx as usize + 1;
+            match self
+                .tabs
+                .get(from..)
+                .and_then(|t| t.iter().position(|&s| s))
+            {
+                Some(i) => self.cx = (from + i) as u16,
+                None => {
+                    self.cx = self.cols - 1;
+                    return;
+                }
+            }
+        }
+    }
+
+    /// CBT: move to the `n`th previous tab stop; with no stop left, to column 0.
+    fn tab_backward(&mut self, n: u16) {
+        for _ in 0..n {
+            match self.tabs[..self.cx as usize].iter().rposition(|&s| s) {
+                Some(c) => self.cx = c as u16,
+                None => {
+                    self.cx = 0;
+                    return;
+                }
+            }
+        }
+    }
+
+    /// TBC: `0` clears the stop at the cursor column, `3` clears every stop; other values do nothing.
+    fn clear_tab_stops(&mut self, mode: u16) {
+        match mode {
+            0 => self.tabs[self.cx as usize] = false,
+            3 => self.tabs.fill(false),
+            _ => {}
+        }
     }
 
     /// Erase the cells `[from, to)` on row `row` to a blank carrying the current style. A wide glyph cut by
@@ -462,6 +546,7 @@ impl Grid {
         self.wrap_next = false;
         self.cursor_visible = true;
         self.bracketed_paste = false;
+        self.tabs = (0..self.cols as usize).map(default_tab_stop).collect();
         self.cells = blank_screen(self.rows, self.cols);
     }
 
@@ -615,7 +700,7 @@ impl Perform for Grid {
         match byte {
             0x0a..=0x0c => self.line_feed(), // LF / VT / FF
             0x0d => self.carriage_return(),
-            0x09 => self.tab(),
+            0x09 => self.tab_forward(1),
             0x08 => {
                 self.cx = self.cx.saturating_sub(1);
                 self.wrap_next = false;
@@ -642,7 +727,7 @@ impl Perform for Grid {
         }
         // Any cursor movement cancels a pending wrap (xterm, VT100): `abcd` at the right margin then `CHA 2`
         // must overwrite column 2, not wrap first (#775). DECSTBM homes the cursor, so it counts too.
-        if matches!(action, 'A' | 'B' | 'C' | 'D' | 'G' | 'd' | 'r' | 'u') {
+        if matches!(action, 'A' | 'B' | 'C' | 'D' | 'G' | 'd' | 'r' | 'u' | 'Z') {
             self.wrap_next = false;
         }
         match action {
@@ -659,6 +744,9 @@ impl Perform for Grid {
             'D' => self.cx = self.cx.saturating_sub(n),
             'G' => self.cx = (n - 1).min(self.cols - 1),
             'd' => self.cy = (n - 1).min(self.rows - 1),
+            'I' => self.tab_forward(n),  // CHT
+            'Z' => self.tab_backward(n), // CBT
+            'g' => self.clear_tab_stops(first),
             'J' => self.erase_in_display(first),
             'K' => self.erase_in_line(first),
             'L' => self.insert_lines(n),
@@ -699,8 +787,10 @@ impl Perform for Grid {
         }
     }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, byte: u8) {
+    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
         match byte {
+            // HTS; with an intermediate, `H` is a charset designator (`ESC ( H` is Swedish NRCS).
+            b'H' if intermediates.is_empty() => self.tabs[self.cx as usize] = true,
             b'M' => self.reverse_index(),
             b'7' => self.saved = Some((self.cy, self.cx)),
             b'8' => {
@@ -1211,7 +1301,7 @@ mod tests {
         let csi = (
             prop_oneof![Just(""), Just("?")],
             proptest::collection::vec(param, 0..6),
-            proptest::sample::select(b"HfABCDGdJKLM@PXrmsuhlST".to_vec()),
+            proptest::sample::select(b"HfABCDGdJKLM@PXrmsuhlSTgIZ".to_vec()),
         )
             .prop_map(|(lead, ps, act)| {
                 let mut b = format!("\x1b[{lead}{}", ps.join(";")).into_bytes();
@@ -1220,7 +1310,7 @@ mod tests {
             });
         prop_oneof![
             csi,
-            proptest::sample::select(b"M78cDE".to_vec()).prop_map(|c| vec![0x1b, c]),
+            proptest::sample::select(b"M78cDEH".to_vec()).prop_map(|c| vec![0x1b, c]),
             Just(b"\x1b[?1049h".to_vec()),
             Just(b"\x1b[?1049l".to_vec()),
             proptest::sample::select(vec![
