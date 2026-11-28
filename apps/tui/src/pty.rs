@@ -199,18 +199,22 @@ impl UnixPty {
         // PARENT: keep the master; the child inherited it but it is close-on-exec so it is already gone there.
         // SAFETY: `master` is a fresh, owned fd returned by forkpty.
         let master = unsafe { File::from_raw_fd(master) };
+        // Own the child BEFORE anything else can fail (#1754): from here every early return drops `pty`,
+        // whose `Drop` hangs the child up, kills it if it must, and reaps it. `reader` stays `None` until
+        // the reader thread exists, which `Drop` handles.
+        let mut pty = UnixPty {
+            master: Some(master),
+            child_pid: pid,
+            reader: None,
+            wake: Some(wake_tx),
+        };
         let (tx, rx) = mpsc::sync_channel(CHANNEL_CHUNKS);
-        let reader_fd = master.try_clone()?;
-        let reader = spawn_reader(reader_fd, wake_rx, tx);
-        Ok((
-            UnixPty {
-                master: Some(master),
-                child_pid: pid,
-                reader: Some(reader),
-                wake: Some(wake_tx),
-            },
-            rx,
-        ))
+        let reader_fd = match pty.master.as_ref() {
+            Some(m) => fault(FaultPoint::CloneMaster).and_then(|()| m.try_clone())?,
+            None => return Err(io::ErrorKind::BrokenPipe.into()),
+        };
+        pty.reader = Some(spawn_reader(reader_fd, wake_rx, tx)?);
+        Ok((pty, rx))
     }
 }
 
@@ -386,23 +390,67 @@ fn wait_readable(fd: RawFd, wake: RawFd) -> io::Result<bool> {
 /// is full it stops reading, so the child blocks on a full PTY (#770). Ends on EOF (child exit), on a wake
 /// from `Drop` (the wake pipe's write end closed), or once the receiver is dropped; dropping `tx` on exit
 /// disconnects the channel, signalling the session.
-fn spawn_reader(mut fd: File, wake: File, tx: SyncSender<Vec<u8>>) -> JoinHandle<()> {
-    std::thread::spawn(move || {
-        let mut buf = [0u8; READ_CHUNK];
-        // Stops when woken by Drop (`Ok(false)`) or when poll itself fails.
-        while let Ok(true) = wait_readable(fd.as_raw_fd(), wake.as_raw_fd()) {
-            match fd.read(&mut buf) {
-                Ok(0) => break, // EOF: the child closed the tty
-                Ok(n) => {
-                    if !send_chunk(&tx, buf[..n].to_vec(), wake.as_raw_fd()) {
-                        break; // woken by Drop, or the session dropped the receiver
+/// A failed thread spawn is an error (never a panic, unlike `thread::spawn`), so the caller can reap the
+/// child (#1754).
+fn spawn_reader(mut fd: File, wake: File, tx: SyncSender<Vec<u8>>) -> io::Result<JoinHandle<()>> {
+    fault(FaultPoint::SpawnReader)?;
+    std::thread::Builder::new()
+        .name("pty-reader".into())
+        .spawn(move || {
+            let mut buf = [0u8; READ_CHUNK];
+            // Stops when woken by Drop (`Ok(false)`) or when poll itself fails.
+            while let Ok(true) = wait_readable(fd.as_raw_fd(), wake.as_raw_fd()) {
+                match fd.read(&mut buf) {
+                    Ok(0) => break, // EOF: the child closed the tty
+                    Ok(n) => {
+                        if !send_chunk(&tx, buf[..n].to_vec(), wake.as_raw_fd()) {
+                            break; // woken by Drop, or the session dropped the receiver
+                        }
                     }
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(_) => break, // master closed / I/O error (Linux: EIO once the slave is gone)
                 }
-                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(_) => break, // master closed / I/O error (Linux: EIO once the slave is gone)
             }
-        }
-    })
+        })
+}
+
+/// The steps after `forkpty` that can fail, so a test can make each fail on demand (#1754): the fd limit
+/// cannot reach them, because `forkpty` itself needs at least as many fds as the clone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FaultPoint {
+    /// `try_clone` of the master for the reader.
+    CloneMaster,
+    /// Spawning the reader thread.
+    SpawnReader,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The step that fails on this thread's next spawn, consumed when it fires.
+    static FAULT: std::cell::Cell<Option<FaultPoint>> = const { std::cell::Cell::new(None) };
+}
+
+/// Make `point` fail on this thread's next spawn (test-only fault injection, #1754).
+#[cfg(test)]
+fn inject_fault(point: FaultPoint) {
+    FAULT.with(|f| f.set(Some(point)));
+}
+
+/// `Err` when a test injected a fault at `point`; always `Ok` outside tests.
+#[cfg(test)]
+fn fault(point: FaultPoint) -> io::Result<()> {
+    if FAULT.with(|f| f.get()) == Some(point) {
+        FAULT.with(|f| f.set(None));
+        return Err(io::Error::other(format!("injected fault at {point:?}")));
+    }
+    Ok(())
+}
+
+/// `Err` when a test injected a fault at `point`; always `Ok` outside tests.
+#[cfg(not(test))]
+#[inline]
+fn fault(_point: FaultPoint) -> io::Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]
