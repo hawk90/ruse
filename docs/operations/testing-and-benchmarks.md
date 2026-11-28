@@ -317,7 +317,11 @@ test had missed:
 - **Coverage-guided fuzzing.** `fuzz/` is a separate cargo-fuzz workspace (excluded from the root build,
   `DEP-LIBFUZZER`) with targets for keystroke sessions, document operations, key decoding, trace parsing,
   journal replay, the terminal grid and the LSP framing; `fuzz.yml` runs each for 15 minutes weekly on
-  nightly. A crash input is reduced and committed as a regression test or proptest seed.
+  nightly. Each target has a committed seed corpus, `fuzz/corpus/<target>/`: a handful of named seeds, each
+  kept by `cargo fuzz cmin`; the SHA-1-named inputs a run adds stay untracked (#1319). A PR with a Rust
+  change also runs the advisory `fuzz-smoke` job of `ci.yml`: every target built with ASan as `fuzz.yml`
+  builds it and run for 20 seconds from its seeds. A crash input is reduced and committed as a regression
+  test or proptest seed.
 
 Still deferred: the O(A+E) cost bound as a performance property, and the fault-injection and
 replay-corpus layers.
