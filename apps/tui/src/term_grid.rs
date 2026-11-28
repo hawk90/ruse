@@ -491,16 +491,18 @@ impl Grid {
                 49 => self.style.bg = Color::Reset,
                 90..=97 => self.style.fg = Color::AnsiValue((code - 90 + 8) as u8),
                 100..=107 => self.style.bg = Color::AnsiValue((code - 100 + 8) as u8),
-                38 | 48 => {
+                // 58 is the underline colour (VTE, kitty): it takes its parameters as 38/48 do, so they are
+                // not read as SGR codes of their own (#1742); the cell model has no field for the colour.
+                38 | 48 | 58 => {
                     let ps: Vec<u16> = groups[i..]
                         .iter()
                         .map(|g| g.first().copied().unwrap_or(0))
                         .collect();
                     let (color, adv) = ext_color(&ps);
-                    if code == 38 {
-                        self.style.fg = color;
-                    } else {
-                        self.style.bg = color;
+                    match code {
+                        38 => self.style.fg = color,
+                        48 => self.style.bg = color,
+                        _ => {}
                     }
                     i += adv;
                     continue;
@@ -525,7 +527,7 @@ fn remap(old: &[GridCell], old_rows: u16, old_cols: u16, rows: u16, cols: u16) -
     out
 }
 
-/// Parse a legacy `;`-form extended-colour SGR at `ps[0] == 38|48`: `;5;n` → 256-colour, `;2;r;g;b` →
+/// Parse a legacy `;`-form extended-colour SGR at `ps[0] == 38|48|58`: `;5;n` → 256-colour, `;2;r;g;b` →
 /// truecolor. Returns the colour and how many params it consumed (so the SGR loop can skip them), tolerating
 /// short/garbled sequences. The `:` form is parsed by [`colon_color`].
 fn ext_color(ps: &[u16]) -> (Color, usize) {
