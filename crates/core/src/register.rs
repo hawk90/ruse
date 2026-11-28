@@ -186,6 +186,13 @@ pub struct RegisterStore {
     /// with through its injected [`Clipboard`](crate::clipboard::Clipboard). For v0 `+` and `*` are the SAME
     /// slot (correct on macOS/Windows; on X11 `*` is really the PRIMARY selection — an accepted v0 divergence).
     clipboard: Register,
+    /// Whether an in-session write ([`RegisterStore::write`], so a `"+y`/`"+d`/`:y +`) filled the clipboard
+    /// mirror since the last [`RegisterStore::take_clipboard_written`]. The [`Workspace`](crate::Workspace)
+    /// pushes the mirror to the OS clipboard only then, so a paste (`"+p`), which reads the register and
+    /// never writes it, never writes the OS clipboard (#755). A pull from the OS
+    /// ([`RegisterStore::set_clipboard_from_external`]) and a trace restore ([`RegisterStore::set_slot`]) do
+    /// not set it.
+    clipboard_written: bool,
     /// The expression register `"=` (`:help quote=`): unlike every other slot its contents are not yanked or
     /// deleted text but the (already-evaluated) result of an expression. The frontend collects the
     /// expression string via a prompt, the editor evaluates it (`crate::expr`) and stores the formatted
@@ -225,6 +232,7 @@ impl Default for RegisterStore {
             small_delete: Register::default(),
             blackhole: Register::default(),
             clipboard: Register::default(),
+            clipboard_written: false,
             expr: Register::default(),
             special: SpecialRegisters::default(),
         }
@@ -236,6 +244,12 @@ impl RegisterStore {
     #[must_use]
     pub fn new() -> RegisterStore {
         RegisterStore::default()
+    }
+
+    /// Whether a write filled the `"+`/`"*` mirror since the last call, clearing the flag (see
+    /// [`RegisterStore::clipboard_written`](RegisterStore)): the signal to push the mirror to the OS.
+    pub fn take_clipboard_written(&mut self) -> bool {
+        std::mem::take(&mut self.clipboard_written)
     }
 
     /// The unnamed register (the last write, whatever slot it targeted).
@@ -461,6 +475,7 @@ impl RegisterStore {
             // (Vim: a yank/delete fills the unnamed register regardless of which register was named).
             Some('+') | Some('*') => {
                 self.clipboard = reg;
+                self.clipboard_written = true;
                 self.unnamed = self.clipboard.clone();
             }
             Some(c) => {

@@ -81,6 +81,12 @@ impl EditorState {
         self.view.registers.set_clipboard_from_external(bytes);
     }
 
+    /// Whether a write filled the `"+`/`"*` mirror since the last call, clearing the flag (see
+    /// [`RegisterStore::take_clipboard_written`]).
+    pub fn take_clipboard_written(&mut self) -> bool {
+        self.view.registers.take_clipboard_written()
+    }
+
     /// Sync the four read-only special registers `"/ ": ". "%` from frontend state ahead of a
     /// register-reading command, so `"/p` / `C-r :` / `".p` / `"%p` resolve to the live values (see
     /// [`RegisterStore::set_special`](crate::register::RegisterStore::set_special)).
