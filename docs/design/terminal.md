@@ -34,7 +34,11 @@ source and the loop multiplexing that renders it. The feature is intentionally s
 
 - **PTY** (`apps/tui/src/pty.rs`, unix-only): `UnixPty::spawn` uses `libc::forkpty` — the shell `CString` is
   built in the parent so nothing between fork and exec allocates (async-signal-safety; the editor may already
-  be multi-threaded). A dedicated reader thread streams master-fd output over an `mpsc` channel; the channel
+  be multi-threaded). Before `execvp` the child puts every signal back to its default action and empties
+  its signal mask (#1796), as libuv does for an nvim job: an ignored signal and the mask survive exec, and
+  the Rust runtime ignores SIGPIPE, so `yes | head` would otherwise never kill its producer. The shell-outs
+  and the clipboard tools spawn through `std::process::Command`, which resets SIGPIPE and the mask itself.
+  A dedicated reader thread streams master-fd output over an `mpsc` channel; the channel
   disconnects on EOF (child exit). `Drop` wakes and joins the reader, closes the master, sends `SIGHUP`, and
   hands the child to one process-wide reaper thread (`apps/tui/src/reap.rs`, shared with the shell-outs and
   the clipboard tools, #1774), so closing a terminal (`:bd!`) never waits on the child (#1775). The reaper SIGKILLs a child still there after 0.5 s, reaps it (`waitpid`), and gives up after 2 s

@@ -287,6 +287,15 @@ mod tests {
             .unwrap_or(false)
     }
 
+    /// #1796: unlike the PTY's `forkpty`, `std::process::Command` puts SIGPIPE (which the Rust runtime
+    /// ignores) back to its default and empties the signal mask before exec, so a `:!` pipeline's producer
+    /// is killed by SIGPIPE (status 141) once its reader exits.
+    #[test]
+    fn a_shell_pipeline_producer_dies_of_sigpipe() {
+        let out = capture("(yes; echo \"yes=$?\" >&2) | head -n1 >/dev/null; :").expect("sh runs");
+        assert_eq!(out.text.trim(), format!("yes={}", 128 + libc::SIGPIPE));
+    }
+
     #[test]
     fn capture_reads_command_stdout() {
         let out = capture("printf 'a\\nb\\n'").expect("printf runs");
