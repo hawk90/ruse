@@ -184,6 +184,7 @@ impl UnixPty {
             .collect();
         // The reader's wake pipe (close-on-exec), made before the fork like everything else that allocates.
         let (wake_rx, wake_tx) = wake_pipe()?;
+        let empty_mask = empty_sigset();
 
         let mut winsize = libc::winsize {
             ws_row: rows,
@@ -205,7 +206,9 @@ impl UnixPty {
             // async-signal-safe calls here. `c_args`/`c_argv` live at the same COW addresses as the parent;
             // the wake pipe is close-on-exec, so the exec'd program never holds it.
             // SAFETY: c_argv is NUL-terminated and points at valid CStrings; on success execvp never returns.
+            // `reset_signals` makes only async-signal-safe calls on a mask built before the fork.
             unsafe {
+                reset_signals(&empty_mask);
                 libc::execvp(c_prog.as_ptr(), c_argv.as_ptr());
                 libc::_exit(127); // exec failed (e.g. no such shell)
             }
@@ -291,6 +294,39 @@ impl Drop for UnixPty {
 pub fn finish_reaping() {
     let escalation: Duration = HANGUP.iter().map(|s| s.grace).sum();
     crate::reap::finish_background(escalation + Duration::from_millis(100));
+}
+
+/// The highest signal number [`reset_signals`] resets: past every platform's last one (Linux real-time
+/// signals end at 64, macOS at 31). Numbers a platform lacks or reserves just fail with `EINVAL`.
+const LAST_SIGNAL: libc::c_int = 64;
+
+/// An empty signal set, built in the parent so the child does not have to.
+fn empty_sigset() -> libc::sigset_t {
+    // SAFETY: a zeroed sigset_t is a valid value to hand sigemptyset, which then initialises it.
+    unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        set
+    }
+}
+
+/// In the forked child, before exec: put every signal back to its default action and unblock them all
+/// (#1796), as nvim's libuv does for a job (`uv__process_child_init`). An ignored disposition and the
+/// signal mask survive `execve`: the Rust runtime ignores SIGPIPE, so without this `yes | head` in a
+/// terminal never ends, and a signal ignored when ruse started (`nohup`) or blocked on the forking thread
+/// would reach the shell too. Handled signals (SIGTERM/SIGHUP/SIGINT in `signals.rs`, crossterm's SIGWINCH)
+/// are reset by exec anyway. SIGKILL and SIGSTOP cannot be changed, and those calls fail harmlessly.
+///
+/// # Safety
+/// Call only in the child between fork and exec: `signal` and `sigprocmask` are async-signal-safe, and
+/// nothing here allocates.
+unsafe fn reset_signals(empty: &libc::sigset_t) {
+    for sig in 1..=LAST_SIGNAL {
+        // SAFETY: per this function's contract; an invalid or fixed signal number returns an error.
+        unsafe { libc::signal(sig, libc::SIG_DFL) };
+    }
+    // SAFETY: `empty` is an initialised set; per this function's contract.
+    unsafe { libc::sigprocmask(libc::SIG_SETMASK, empty, ptr::null_mut()) };
 }
 
 /// A close-on-exec pipe `(read end, write end)` that wakes the reader thread when the write end closes.
@@ -704,5 +740,102 @@ mod tests {
         };
         assert!(t.took < Duration::from_secs(5), "Drop took {:?}", t.took);
         assert!(t.gone_after.is_some(), "the shell survived Drop");
+    }
+
+    /// Everything `rx` delivers until the child closes the PTY, or `limit` passes.
+    fn read_all(rx: &Receiver<Vec<u8>>, limit: Duration) -> String {
+        let deadline = Instant::now() + limit;
+        let mut out = Vec::new();
+        while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+            match rx.recv_timeout(left) {
+                Ok(chunk) => out.extend_from_slice(&chunk),
+                Err(_) => break,
+            }
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    /// #1796: the Rust runtime ignores SIGPIPE, and an ignored signal survives exec, so in a terminal the
+    /// producer of `yes | head -n1` got EPIPE instead of being killed: a producer that ignores write
+    /// errors spins forever, and `yes` itself exits 1 rather than 141 (128 + SIGPIPE). The child now
+    /// starts with SIGPIPE at its default, so the pipeline ends promptly with `yes` killed by SIGPIPE.
+    #[test]
+    fn a_pipeline_ends_when_its_reader_exits() {
+        let script = "(yes; echo \"yes=$?\" >&2) | head -n1; echo DONE";
+        let Ok((_pty, rx)) = UnixPty::spawn_argv(&["/bin/sh", "-c", script], 24, 80) else {
+            return; // no PTY available (sandbox)
+        };
+        let out = read_all(&rx, Duration::from_secs(5));
+        assert!(out.contains("DONE"), "yes | head -n1 did not end: {out:?}");
+        let status = 128 + libc::SIGPIPE;
+        assert!(
+            out.contains(&format!("yes={status}")),
+            "yes was not killed by SIGPIPE: {out:?}"
+        );
+    }
+
+    /// Prints the signals (1..=31) the process ignores and the ones it blocks, as `ign=[..] blk=[..]`.
+    /// Perl reads both from the kernel on Linux and macOS alike; it ignores SIGFPE itself.
+    const DISPOSITIONS_PL: &str = r#"use Config; use POSIX ();
+my @n = split ' ', $Config{sig_name};
+my $m = POSIX::SigSet->new; POSIX::sigprocmask(POSIX::SIG_BLOCK(), undef, $m);
+my (@i, @b);
+for my $k (1..31) { my $s = $n[$k]; next unless defined $s;
+  push @i, $s if ($SIG{$s} // '') eq 'IGNORE';
+  push @b, $s if $m->ismember($k); }
+print "ign=[@i] blk=[@b]\n";"#;
+
+    /// #1796: whatever ruse ignores (SIGPIPE, from the Rust runtime; SIGUSR2 here stands in for a signal
+    /// ignored when ruse started) or blocks on the spawning thread (SIGUSR1) reaches the child at its
+    /// default and unblocked, as in nvim.
+    #[test]
+    fn the_child_starts_with_default_dispositions_and_no_blocked_signals() {
+        let perl = std::process::Command::new("perl")
+            .args(["-e", "1"])
+            .stdin(std::process::Stdio::null())
+            .status();
+        if !perl.is_ok_and(|s| s.success()) {
+            return; // no perl to report the child's dispositions
+        }
+        // SAFETY: plain libc calls with valid arguments; SIGUSR2 is not used by this test binary, and the
+        // mask change is on this thread only and undone below.
+        let old_mask = unsafe {
+            libc::signal(libc::SIGUSR2, libc::SIG_IGN);
+            let mut block: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut block);
+            libc::sigaddset(&mut block, libc::SIGUSR1);
+            let mut old: libc::sigset_t = std::mem::zeroed();
+            libc::pthread_sigmask(libc::SIG_BLOCK, &block, &mut old);
+            old
+        };
+        let spawned = UnixPty::spawn_argv(&["perl", "-e", DISPOSITIONS_PL], 24, 80);
+        // SAFETY: restores SIGUSR2 and this thread's mask from the value saved above.
+        unsafe {
+            libc::signal(libc::SIGUSR2, libc::SIG_DFL);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &old_mask, ptr::null_mut());
+        }
+        let Ok((_pty, rx)) = spawned else {
+            return; // no PTY available (sandbox)
+        };
+        let out = read_all(&rx, Duration::from_secs(5));
+        let line = out
+            .lines()
+            .find(|l| l.starts_with("ign="))
+            .unwrap_or_else(|| panic!("no report from the child: {out:?}"));
+        let ignored = line
+            .split_once("ign=[")
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .map(|(names, _)| names.split_whitespace().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for sig in ["PIPE", "USR2"] {
+            assert!(
+                !ignored.contains(&sig),
+                "SIG{sig} is ignored in the child: {line}"
+            );
+        }
+        assert!(
+            line.contains("blk=[]"),
+            "the child inherited a blocked signal: {line}"
+        );
     }
 }
