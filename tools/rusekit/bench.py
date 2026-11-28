@@ -24,6 +24,9 @@ LINE = re.compile(r"^(\S+)\s+time:\s+\[[\d.]+ \w+\s+([\d.]+) (\w+)\s+[\d.]+ \w+\
 UNIT = {"ps": 1e-12, "ns": 1e-9, "us": 1e-6, "µs": 1e-6, "ms": 1e-3, "s": 1.0}
 # A regression must be this many times slower than baseline to warn (machine-relative; loose on purpose).
 THRESHOLD = 2.0
+# Wall-clock cap on the whole `cargo bench` run (build + every case), so a hung child cannot hang the tool.
+# Generous: a cold workspace build plus all cases fits well inside it. Override with `--timeout`.
+TIMEOUT_SECS = 3600
 
 
 def to_seconds(value: float, unit: str) -> float:
@@ -49,6 +52,8 @@ def main(argv=None) -> int:
                     help="compare the run to spec/perf-baseline.yaml and warn on regressions")
     ap.add_argument("--measurement-time", default="2",
                     help="criterion measurement seconds per case (default 2 — a quick relative run)")
+    ap.add_argument("--timeout", type=float, default=TIMEOUT_SECS,
+                    help=f"kill `cargo bench` after this many seconds (default {TIMEOUT_SECS})")
     args = ap.parse_args(argv or [])
 
     render.heading("ruse bench (workspace benchmarks)")
@@ -56,7 +61,12 @@ def main(argv=None) -> int:
     # bench profile would otherwise run under the std harness that rejects criterion's flags.
     cmd = ["cargo", "bench", "--workspace", "--benches", "--",
            "--warm-up-time", "0.3", "--measurement-time", args.measurement_time]
-    proc = subprocess.run(cmd, cwd=repo.ROOT, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, cwd=repo.ROOT, capture_output=True, text=True, timeout=args.timeout)
+    except subprocess.TimeoutExpired:
+        render.fail(f"`{' '.join(cmd)}` timed out after {args.timeout:g}s — killed (raise --timeout if the "
+                    "run is legitimately slow)")
+        return 124
     results: dict[str, tuple[float, str, str]] = {}
     for line in proc.stdout.splitlines():
         m = LINE.match(line)
