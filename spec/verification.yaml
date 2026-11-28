@@ -36,4 +36,6 @@ steps:
 ci_only:
   "detect": "CI job plumbing: decides whether the rust job's steps run for this diff"
   "install smoke": "installs the binary into a temporary prefix; local verify must not install anything"
+  "build fuzz targets (ASan)": "needs nightly, cargo-fuzz and a sanitizer-capable gnu target (#1319, #1357); fuzz-check is the local compile check of the same targets"
+  "fuzz each target for 20 seconds": "the PR fuzz smoke over fuzz/corpus (#1319): nightly + cargo-fuzz + ASan, and a timed run is not a deterministic verify step"
   "cargo test --workspace --release": "release-profile tests run on pushes only (#899), never on a PR or locally"
