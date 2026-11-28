@@ -281,11 +281,10 @@ impl Workspace {
         let out = f(&mut st, self.clipboard.as_mut());
         // PUSH the `"+`/`"*` mirror to the OS clipboard only when this call WROTE it (a `"+y`/`"+d`, or
         // `:y +` on any lend path). A paste reads the register and never writes it, so `"+p` leaves the OS
-        // clipboard (and any rich data another app put there) alone (#755). `from_utf8_lossy` keeps a
-        // non-UTF-8 buffer from ever panicking the write.
+        // clipboard (and any rich data another app put there) alone (#755). The register's bytes go as they
+        // are, so non-UTF-8 text reaches the clipboard unaltered (#1736).
         if st.take_clipboard_written() {
-            let bytes = st.registers().clipboard().text().to_vec();
-            self.clipboard.set(&String::from_utf8_lossy(&bytes));
+            self.clipboard.set(st.registers().clipboard().text());
         }
         let (doc, view) = self.reclaim(st);
         self.docs[slot] = Some(doc);

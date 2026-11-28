@@ -118,12 +118,13 @@ impl Clipboard for SystemClipboard {
         String::from_utf8(bytes).ok()
     }
 
-    fn set(&self, text: &str) {
+    fn set(&self, bytes: &[u8]) {
         let Some(tool) = self.writer else {
             return; // no clipboard tool → graceful no-op
         };
-        // A failed or timed-out copy leaves the clipboard as it was; the register still holds the text.
-        let _ = write_bounded(tool, text.as_bytes(), WRITE_TIMEOUT);
+        // The register's bytes as they are (#1736). A failed or timed-out copy leaves the clipboard as it
+        // was; the register still holds the text.
+        let _ = write_bounded(tool, bytes, WRITE_TIMEOUT);
     }
 }
 

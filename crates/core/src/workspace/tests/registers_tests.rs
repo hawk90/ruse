@@ -13,7 +13,7 @@ fn clipboard_yank_word_reaches_the_provider() {
     w.apply(&Command::Yank(1, Mo::InnerWord));
     assert_eq!(
         clip.contents().as_deref(),
-        Some("hello"),
+        Some(&b"hello"[..]),
         "\"+yiw pushes the word to the OS clipboard"
     );
     assert_eq!(
@@ -65,7 +65,7 @@ fn clipboard_linewise_round_trip_preserves_geometry() {
     w.set_clipboard(Box::new(clip.clone()));
     w.apply(&Command::SetRegister(Some('+')));
     w.apply(&Command::Yank(1, Mo::Line)); // "+yy
-    assert_eq!(clip.contents().as_deref(), Some("alpha\n"));
+    assert_eq!(clip.contents().as_deref(), Some(&b"alpha\n"[..]));
     w.apply(&Command::SetRegister(Some('+')));
     w.apply(&Command::Paste {
         after: true,
@@ -87,7 +87,7 @@ fn clipboard_delete_line_cuts_to_the_provider() {
     w.set_clipboard(Box::new(clip.clone()));
     w.apply(&Command::SetRegister(Some('+')));
     w.apply(&Command::Delete(1, Mo::Line)); // "+dd
-    assert_eq!(clip.contents().as_deref(), Some("alpha\n"));
+    assert_eq!(clip.contents().as_deref(), Some(&b"alpha\n"[..]));
     assert_eq!(w.focused().doc.bytes(), b"beta\n", "the line is cut out");
 }
 
@@ -96,7 +96,7 @@ fn clipboard_delete_line_cuts_to_the_provider() {
 #[derive(Clone, Default)]
 struct RecordingClipboard {
     external: Option<String>,
-    sets: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    sets: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>,
 }
 
 impl RecordingClipboard {
@@ -107,7 +107,7 @@ impl RecordingClipboard {
         }
     }
 
-    fn sets(&self) -> Vec<String> {
+    fn sets(&self) -> Vec<Vec<u8>> {
         self.sets.lock().expect("clipboard mutex").clone()
     }
 }
@@ -116,11 +116,11 @@ impl crate::Clipboard for RecordingClipboard {
     fn get(&self) -> Option<String> {
         self.external.clone()
     }
-    fn set(&self, text: &str) {
+    fn set(&self, bytes: &[u8]) {
         self.sets
             .lock()
             .expect("clipboard mutex")
-            .push(text.to_string());
+            .push(bytes.to_vec());
     }
 }
 
@@ -148,7 +148,7 @@ fn clipboard_paste_never_writes_the_provider() {
     );
     assert_eq!(
         clip.sets(),
-        Vec::<String>::new(),
+        Vec::<Vec<u8>>::new(),
         "\"+p must not write the OS clipboard"
     );
 }
@@ -162,7 +162,7 @@ fn clipboard_paste_with_unreadable_clipboard_does_not_push_the_stale_mirror() {
     w.set_clipboard(Box::new(clip.clone()));
     w.apply(&Command::SetRegister(Some('+')));
     w.apply(&Command::Yank(1, Mo::InnerWord)); // "+yiw
-    assert_eq!(clip.sets(), vec!["hello".to_string()]);
+    assert_eq!(clip.sets(), vec![b"hello".to_vec()]);
     w.apply(&Command::SetRegister(Some('*')));
     w.apply(&paste_after()); // "*p
     assert_eq!(
@@ -172,7 +172,7 @@ fn clipboard_paste_with_unreadable_clipboard_does_not_push_the_stale_mirror() {
     );
     assert_eq!(
         clip.sets(),
-        vec!["hello".to_string()],
+        vec![b"hello".to_vec()],
         "the paste adds no write"
     );
 }
@@ -185,7 +185,7 @@ fn insert_register_from_clipboard_never_writes_the_provider() {
     w.set_clipboard(Box::new(clip.clone()));
     w.apply(&Command::InsertRegister('+'));
     assert_eq!(w.focused().doc.bytes(), b"abc\n");
-    assert_eq!(clip.sets(), Vec::<String>::new());
+    assert_eq!(clip.sets(), Vec::<Vec<u8>>::new());
 }
 
 /// A clipboard yank writes every time, even of the bytes already there (Vim re-owns the selection).
@@ -198,7 +198,23 @@ fn clipboard_yank_writes_each_time() {
         w.apply(&Command::SetRegister(Some('+')));
         w.apply(&Command::Yank(1, Mo::InnerWord));
     }
-    assert_eq!(clip.sets(), vec!["hello".to_string(), "hello".to_string()]);
+    assert_eq!(clip.sets(), vec![b"hello".to_vec(), b"hello".to_vec()]);
+}
+
+/// #1736: a `"+` yank of non-UTF-8 bytes reaches the provider byte for byte, not lossily replaced.
+#[test]
+fn clipboard_yank_of_non_utf8_bytes_reaches_the_provider_unaltered() {
+    let line = b"caf\xe9 \xff\xfe ok\n";
+    let clip = RecordingClipboard::reading(None);
+    let mut w = Workspace::new(line.to_vec());
+    w.set_clipboard(Box::new(clip.clone()));
+    w.yank_lines_into(crate::SubRange::CurrentLine, Some('+')); // :y +
+    assert_eq!(w.register_bytes(Some('+')), line);
+    assert_eq!(clip.sets(), vec![line.to_vec()]);
+    // A pending-register yank (`"+y$`) goes through the same push.
+    w.apply(&Command::SetRegister(Some('+')));
+    w.apply(&Command::Yank(1, Mo::LineEnd));
+    assert_eq!(clip.sets().get(1), Some(&line[..line.len() - 1].to_vec()));
 }
 
 /// `:y +` (an Ex yank, not a pending-register command) writes the clipboard too; an unnamed `:y` does not.
@@ -208,7 +224,7 @@ fn ex_yank_into_clipboard_writes_the_provider() {
     let mut w = Workspace::new(b"alpha\nbeta\n".to_vec());
     w.set_clipboard(Box::new(clip.clone()));
     w.yank_lines_into(crate::SubRange::CurrentLine, Some('+'));
-    assert_eq!(clip.sets(), vec!["alpha\n".to_string()]);
+    assert_eq!(clip.sets(), vec![b"alpha\n".to_vec()]);
     w.yank_lines_into(crate::SubRange::CurrentLine, None);
     assert_eq!(
         clip.sets().len(),
