@@ -117,6 +117,8 @@ F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
   rows and pager (slice 3) and `'messagesopt'` (slice 4) are not built.
 - Trace lines that would not read back exactly are written as `line_hex`; `:trace save` records a `result_hash=` that `--replay` checks. (D-069)
   Slices not yet shipped: the structural save check and `line_hex` (slices 1–2, #721) and the result hash (slice 3, #1264) are not built.
+- Acceptance criteria get permanent ids `F-NNN.ACk`; tests link them with `// covers:`; done criteria are linked or `legacy-unlinked` waived, ratcheted. (D-070)
+  Slices not yet shipped: no criterion ids, scanner, gate or `acceptance_unlinked` bucket exist yet (RFC-0029 slice 1 is next).
 - Document ≠ View ownership; positions are anchor-based; one positions-history model. (D-003, D-023, D-027)
 - Command IDs are stable, namespaced contracts; Stable API needs 2 independent users. (D-006, D-010)
 - Parity levels are graded and weighted; the Emacs census baseline is its scope list. (D-007, D-044)

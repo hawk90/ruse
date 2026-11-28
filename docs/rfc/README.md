@@ -70,6 +70,7 @@ row says which decision did it. Each RFC is in exactly one row below.
 | [RFC-0026](accepted/RFC-0026-large-file-safety.md) | Large-file safety: bounded undo, stop-at-first-match search, a highlight budget | D-067 | approved 2026-11-28 | [persistence-and-recovery](../design/persistence-and-recovery.md) |
 | [RFC-0027](accepted/RFC-0027-cmdheight-shortmess-pager.md) | The message area: 'cmdheight', 'shortmess' flags and one pager for listing output | D-068 | approved 2026-11-28 | [render-and-frontends](../design/render-and-frontends.md) |
 | [RFC-0028](accepted/RFC-0028-trace-exact-text-and-result-hash.md) | Exact free text and a result hash in the trace (amends RFC-0020) | D-069 | approved 2026-11-28 | [command-engine §7.3](../design/command-engine.md) |
+| [RFC-0029](accepted/RFC-0029-spec-test-links.md) | Acceptance criteria and capabilities are linked to the tests that prove them | D-070 | approved 2026-11-28 | [spec-validate](../operations/spec-validate.md) |
 
 ## Rejected (do-not-relitigate)
 
