@@ -369,7 +369,7 @@ fn a_failure_after_fork_reaps_the_child() {
 
 /// #1754: when a step after `forkpty` fails (the master clone, or the reader thread spawn), `spawn_argv`
 /// returns the error and the forked child is gone, not left running or as a zombie, and no fd leaks. The
-/// child ignores SIGHUP, so this also covers the SIGKILL escalation on the error path.
+/// child ignores SIGHUP and SIGTERM, so this also covers the SIGKILL escalation on the error path (#1788).
 #[test]
 fn a_failure_after_fork_reaps_the_child_probe() {
     if !probing("a_failure_after_fork_reaps_the_child_probe") {
@@ -386,7 +386,7 @@ fn a_failure_after_fork_reaps_the_child_probe() {
     let fds = open_fds().len();
     for point in [FaultPoint::CloneMaster, FaultPoint::SpawnReader] {
         inject_fault(point);
-        let spawned = UnixPty::spawn_argv(&["/bin/sh", "-c", "trap '' HUP; sleep 30"], 24, 80);
+        let spawned = UnixPty::spawn_argv(&["/bin/sh", "-c", "trap '' HUP TERM; sleep 30"], 24, 80);
         let err = spawned.err().expect("the injected fault fails the spawn");
         assert!(
             err.to_string().contains("injected fault"),
