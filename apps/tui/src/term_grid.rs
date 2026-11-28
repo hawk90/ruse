@@ -509,7 +509,10 @@ impl Perform for Grid {
             0x0a..=0x0c => self.line_feed(), // LF / VT / FF
             0x0d => self.carriage_return(),
             0x09 => self.tab(),
-            0x08 => self.cx = self.cx.saturating_sub(1),
+            0x08 => {
+                self.cx = self.cx.saturating_sub(1);
+                self.wrap_next = false;
+            }
             _ => {} // BEL and other C0: ignore
         }
     }
@@ -522,6 +525,11 @@ impl Perform for Grid {
         // Mode 2004 may share a DECSET/DECRST with other modes (`CSI ? 1049 ; 2004 h`).
         if private && matches!(action, 'h' | 'l') && ps.contains(&2004) {
             self.bracketed_paste = action == 'h';
+        }
+        // Any cursor movement cancels a pending wrap (xterm, VT100): `abcd` at the right margin then `CHA 2`
+        // must overwrite column 2, not wrap first (#775). DECSTBM homes the cursor, so it counts too.
+        if matches!(action, 'A' | 'B' | 'C' | 'D' | 'G' | 'd' | 'r' | 'u') {
+            self.wrap_next = false;
         }
         match action {
             'H' | 'f' => {
@@ -582,6 +590,7 @@ impl Perform for Grid {
             b'M' => self.reverse_index(),
             b'7' => self.saved = Some((self.cy, self.cx)),
             b'8' => {
+                self.wrap_next = false;
                 if let Some((r, c)) = self.saved {
                     self.cy = r.min(self.rows - 1);
                     self.cx = c.min(self.cols - 1);
@@ -741,6 +750,37 @@ mod tests {
         assert_eq!(g.cursor(), (2, 4));
         feed(&mut g, b"\x1b[1;2Hxyz\x1b[1;2H\x1b[65535X");
         assert_eq!(row_text(&g, 0), "a    ");
+    }
+
+    /// #775: a pending wrap at the right margin is cancelled by any cursor movement, so the next printable
+    /// lands where the cursor was moved to instead of wrapping onto the next row first.
+    #[test]
+    fn cursor_movement_cancels_the_pending_wrap() {
+        for (moves, want) in [
+            (&b"\x1b[2G"[..], "aXcd"),                   // CHA
+            (b"\x08", "abXd"),                           // BS
+            (b"\x1b[D", "abXd"),                         // CUB
+            (b"\x1b[C", "abcX"),                         // CUF (already at the margin)
+            (b"\x1b[1;1H\x1b7\x1b[1;4H\x1b8", "Xbcd"),   // DECRC
+            (b"\x1b[1;1H\x1b[s\x1b[1;4H\x1b[u", "Xbcd"), // SCORC
+            (b"\x1b[r", "Xbcd"),                         // DECSTBM homes the cursor
+        ] {
+            let mut g = Grid::new(2, 4);
+            feed(&mut g, b"abcd");
+            feed(&mut g, moves);
+            feed(&mut g, b"X");
+            assert_eq!(row_text(&g, 0), want, "after {moves:?}");
+            assert_eq!(row_text(&g, 1), "    ", "after {moves:?}: no wrap");
+        }
+        // CUU / CUD / VPA on the last column: the next printable overwrites that column on the new row.
+        for (moves, row) in [(&b"\x1b[A"[..], 0), (b"\x1b[B", 2), (b"\x1b[3d", 2)] {
+            let mut g = Grid::new(3, 4);
+            feed(&mut g, b"\x1b[2;1Habcd");
+            feed(&mut g, moves);
+            feed(&mut g, b"X");
+            assert_eq!(g.cursor(), (row, 3), "after {moves:?}");
+            assert_eq!(g.cell(row, 3).map(|(t, _)| t), Some("X"), "after {moves:?}");
+        }
     }
 
     /// One piece of hostile terminal output: a CSI/ESC sequence with arbitrary (often huge) parameters, a
