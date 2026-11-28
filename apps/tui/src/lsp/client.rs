@@ -388,7 +388,7 @@ mod tests {
     // Run: `cargo test -p ruse-tui --lib -- --ignored live_diagnostics_hover_format_and_rename`. Requires
     // `rustup component add rust-analyzer`.
     #[test]
-    #[ignore = "spawns a real rust-analyzer; run with --ignored"]
+    #[ignore = "spawns a real rust-analyzer; run with --ignored; quarantined in tests/quarantine.yaml (#911)"]
     fn live_lsp_pipeline() {
         use crate::lsp::protocol::{
             code_action_params, completion_params, formatting_params, parse_completion,

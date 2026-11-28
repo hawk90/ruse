@@ -893,7 +893,7 @@ mod tests {
     /// with no top-level line for the window to start at. Run with
     /// `cargo test --release -p ruse-tui --lib indent_tree_cost -- --ignored --nocapture`.
     #[test]
-    #[ignore]
+    #[ignore = "timing probe; quarantined in tests/quarantine.yaml (#910)"]
     #[allow(clippy::print_stdout)] // the timings are the output
     fn indent_tree_cost() {
         use std::time::Instant;

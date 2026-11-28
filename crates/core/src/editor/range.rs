@@ -897,7 +897,7 @@ mod grapheme_end_tests {
     /// #1163: measuring a long line with tabs under 'vartabstop' against plain 'tabstop':
     /// `cargo test -p ruse-core vts_long_line_cost -- --ignored --nocapture`.
     #[test]
-    #[ignore = "timing probe"]
+    #[ignore = "timing probe; quarantined in tests/quarantine.yaml (#910)"]
     #[allow(clippy::print_stdout)] // the timings are the output
     fn vts_long_line_cost() {
         let line = "ab\tcd\t".repeat(50_000); // 300k bytes, 100k tabs
