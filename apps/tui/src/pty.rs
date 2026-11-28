@@ -166,8 +166,18 @@ impl UnixPty {
         Self::spawn_argv(&[shell.as_str()], rows, cols)
     }
 
+    /// Whether the child has exited (#1738), whatever output it left queued. It is not reaped here: its
+    /// zombie stays for `Drop` to hand to the reaper, so the pid cannot be reused while this handle lives.
+    pub fn has_exited(&self) -> bool {
+        !matches!(crate::reap::peek(self.child_pid), Ok(None))
+    }
+
     /// Fork `argv` (`argv[0]` looked up on `PATH`) on a fresh PTY sized `rows × cols`.
-    fn spawn_argv(argv: &[&str], rows: u16, cols: u16) -> io::Result<(UnixPty, Receiver<Vec<u8>>)> {
+    pub(crate) fn spawn_argv(
+        argv: &[&str],
+        rows: u16,
+        cols: u16,
+    ) -> io::Result<(UnixPty, Receiver<Vec<u8>>)> {
         // Build argv in the PARENT: no allocation may happen between fork and exec.
         let c_args = argv
             .iter()

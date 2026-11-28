@@ -122,7 +122,7 @@ pub(crate) fn end(pid: libc::pid_t, escalation: &Escalation) -> Option<ExitStatu
 /// Whether `pid` has exited, WITHOUT reaping it (`waitid` with `WNOWAIT`, on Linux and macOS alike). The
 /// unreaped zombie keeps both its pid and its process group id from being reused, so the group can still be
 /// signalled safely afterwards. `Ok(None)` while it runs; `Err` when it is not (or no longer) our child.
-fn peek(pid: libc::pid_t) -> io::Result<Option<ExitStatus>> {
+pub(crate) fn peek(pid: libc::pid_t) -> io::Result<Option<ExitStatus>> {
     let id = libc::id_t::try_from(pid).map_err(|_| io::Error::from_raw_os_error(libc::ECHILD))?;
     loop {
         // SAFETY: a zeroed siginfo_t is a valid out-value; waitid only writes it.

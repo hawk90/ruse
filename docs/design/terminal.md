@@ -48,6 +48,10 @@ source and the loop multiplexing that renders it. The feature is intentionally s
   `Pty` is a trait so a future Windows ConPTY impl (slice 3) slots in without touching the session.
 - **Terminal state** (`apps/tui/src/term_buffer.rs`): a session-side `Terminal` owns the PTY, the receiver,
   and a VT `Grid` with a **bounded** scrollback. `drain()` feeds pending output to the `vte` parser, which drives the grid.
+  The `[process exited]` notice is drawn once the output backlog has drained, but `is_running()` (asked by
+  `confirm-kill-processes`) reports the child itself: `UnixPty::has_exited` checks it with `waitid(WNOWAIT)`
+  and leaves the zombie for the reaper, so an exited child with output still queued no longer counts as
+  running (#1738).
 - **Loop multiplex** (`apps/tui/src/app/session/event_loop.rs`; the poll timeout in `session/frame.rs`): gated so the common case is unchanged. With **no**
   terminal and no live language server, the loop keeps the pure blocking `event::read()` (no spin). With a terminal live, it `drain`s each
   frame and uses `event::poll(TERM_TICK_MS ≈ 33ms)` — a key is handled if ready, otherwise the loop re-renders

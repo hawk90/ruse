@@ -127,9 +127,11 @@ impl Terminal {
         })
     }
 
-    /// Whether the child still runs (Emacs's `confirm-kill-processes` asks about it, #619).
+    /// Whether the child still runs (Emacs's `confirm-kill-processes` asks about it, #619). The child's own
+    /// state, not the output's (#1738): an exited child stops counting at once, while its queued output
+    /// and the `[process exited]` notice after it are still drained tick by tick.
     pub fn is_running(&self) -> bool {
-        !self.out.exited
+        !self.out.exited && !self.pty.has_exited()
     }
 
     /// Forward keystroke bytes to the child (Terminal mode). A dead child silently drops them.
@@ -302,6 +304,49 @@ mod tests {
         assert!(
             grid_contains(term.grid(), "ruse_pty_ok"),
             "grid missing echo output"
+        );
+    }
+
+    /// #1738: a child that exits with output still queued stops counting as running at once; the backlog
+    /// and then the exit notice are drawn afterwards.
+    #[test]
+    fn an_exited_child_with_a_backlog_is_not_running() {
+        // One write, small enough to fit in the channel however the PTY splits it into reads, so the child
+        // exits with all of it still queued (nothing drains until the loop below).
+        let argv = [
+            "/bin/sh",
+            "-c",
+            "head -c 3000 /dev/zero | tr '\\0' y; printf LAST",
+        ];
+        let Ok((pty, rx)) = UnixPty::spawn_argv(&argv, 24, 80) else {
+            return; // no PTY available (sandbox)
+        };
+        let mut term = Terminal {
+            pty,
+            out: Output::new(rx),
+            parser: ChunkParser::new(),
+            grid: Grid::new(24, 80),
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while term.is_running() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!term.is_running(), "the child never exited");
+        assert!(
+            !term.out.exited,
+            "nothing was drained, so the output is queued and no notice drawn"
+        );
+        while !term.out.exited && Instant::now() < deadline {
+            term.drain();
+        }
+        assert!(term.out.exited, "the backlog never drained");
+        assert!(
+            grid_contains(term.grid(), "LAST"),
+            "the last output is drawn"
+        );
+        assert!(
+            grid_contains(term.grid(), "[process exited]"),
+            "the notice follows the output"
         );
     }
 }
