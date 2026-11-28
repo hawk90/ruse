@@ -1,7 +1,9 @@
 import unittest
 
 from . import _support  # noqa: F401
-from rusekit.docs.check import slugify, headings_slugs, stale_source_paths  # noqa: E402
+from rusekit.docs.check import (  # noqa: E402
+    defines_item, headings_slugs, slugify, stale_source_paths,
+)
 
 
 class TestDocsCheckSlugs(unittest.TestCase):
@@ -49,6 +51,47 @@ class TestDocsCheckSourcePaths(unittest.TestCase):
 
     def test_a_path_inside_another_path_is_not_a_source_path(self):
         self.assertEqual(self.stale("vendor/crates/foo.rs, x.apps/y"), [])
+
+    def test_a_regex_pattern_is_not_a_path(self):
+        # spec/change-kinds.yaml writes `'^apps/tui/src/remote/protocol\.rs$'`
+        self.assertEqual(self.stale(r"pattern: '^apps/tui/src/remote/protocol\.rs$'"), [])
+
+    def test_a_yaml_evidence_list_is_checked_like_prose(self):
+        text = "    evidence:\n      - apps/tui/src/app/session.rs::run\n      - apps/tui/src/gone.rs::x\n"
+        self.assertEqual(self.stale(text), [(3, "apps/tui/src/gone.rs")])
+
+
+class TestDocsCheckItemRefs(unittest.TestCase):
+    SOURCE = {
+        "apps/tui/src/app/session.rs": "pub struct Session;\n#[test]\nfn runs_to_exit() {}\n"
+                                       "pub(crate) const MAX: usize = 1;\nmod tests {}\n",
+    }
+
+    def stale(self, text):
+        live = set(self.SOURCE) | {"crates/core/src/editor/ex_cmd", "docs/x.md"}
+        return stale_source_paths(text, live.__contains__,
+                                  lambda path, name: defines_item(self.SOURCE[path], name))
+
+    def test_a_declared_item_passes(self):
+        text = ("apps/tui/src/app/session.rs::Session apps/tui/src/app/session.rs::runs_to_exit "
+                "apps/tui/src/app/session.rs::MAX apps/tui/src/app/session.rs::tests")
+        self.assertEqual(self.stale(text), [])
+
+    def test_a_missing_item_is_reported_as_path_and_name(self):
+        text = "- apps/tui/src/app/session.rs::torn_header_tail_is_discarded"
+        self.assertEqual(self.stale(text),
+                         [(1, "apps/tui/src/app/session.rs::torn_header_tail_is_discarded")])
+
+    def test_only_the_first_segment_is_checked(self):
+        self.assertEqual(self.stale("apps/tui/src/app/session.rs::Session::not_checked"), [])
+
+    def test_a_line_suffix_or_a_directory_is_not_an_item_reference(self):
+        self.assertEqual(self.stale("apps/tui/src/app/session.rs:12 crates/core/src/editor/ex_cmd::x"), [])
+
+    def test_a_name_must_be_declared_not_merely_mentioned(self):
+        self.assertFalse(defines_item("let x = Session::new(); // fn_like", "fn_like"))
+        self.assertFalse(defines_item("fn runs_to_exit_twice() {}", "runs_to_exit"))
+        self.assertTrue(defines_item("macro_rules! oracle { () => {} }", "oracle"))
 
 
 if __name__ == "__main__":
