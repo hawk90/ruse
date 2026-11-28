@@ -1,0 +1,41 @@
+# Test quarantine — every `#[ignore]`d Rust test in the workspace, with an owner and an expiry (#1320).
+#
+# Checked by `python3 tools/ruse.py gov quarantine` (part of `gov check`): every `#[ignore]` under crates/ and
+# apps/ needs an entry here, its `#[ignore = "..."]` reason cites the entry's issue as `#<n>`, every entry
+# names an ignored test that exists, and an entry past `expires` fails. Rules:
+# docs/operations/testing-and-benchmarks.md "Test quarantine".
+#
+# test:    <repo-relative file>::<fn name>
+# reason:  why it is ignored (what it needs, or what it is for)
+# issue:   the open issue that ends the quarantine (fix, replace, or move it to a CI job)
+# owner:   who renews or removes the entry
+# expires: YYYY-MM-DD — on that date the entry fails until it is renewed or removed
+
+version: 1
+
+quarantine:
+  - test: crates/core/src/editor/range.rs::vts_long_line_cost
+    reason: Manual timing probe ('vartabstop' cost on a 300k-byte line); prints timings, asserts nothing.
+    issue: 910
+    owner: maintainer
+    expires: 2027-03-01
+  - test: crates/core/src/editor/cindent/tests.rs::cindent_eq_cost
+    reason: Manual timing probe (`=G` over a 10k-line C file); prints timings, asserts nothing.
+    issue: 910
+    owner: maintainer
+    expires: 2027-03-01
+  - test: apps/tui/src/indent.rs::indent_tree_cost
+    reason: Manual timing probe (indent tree on big files, run in release); prints timings, asserts nothing.
+    issue: 910
+    owner: maintainer
+    expires: 2027-03-01
+  - test: apps/tui/src/lsp/client.rs::live_lsp_pipeline
+    reason: Spawns a real rust-analyzer; CI has none. A scripted fake LSP peer replaces it as the CI guard.
+    issue: 911
+    owner: maintainer
+    expires: 2027-03-01
+  - test: apps/tui/tests/agent_ssh.rs::ssh_handshakes_and_reads_a_remote_file
+    reason: Needs a reachable SSH host with `ruse` on PATH (RUSE_SSH_TEST_HOST); no CI job sets one.
+    issue: 916
+    owner: maintainer
+    expires: 2027-03-01
