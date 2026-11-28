@@ -22,41 +22,87 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// Encode a key event as the bytes a terminal expects on the child's stdin (F-011 slice 1, line mode):
-/// printable chars (UTF-8), Enter/Tab/Backspace/Esc, `Ctrl-<letter>` control codes, and the common
-/// arrow/Home/End/Delete escape sequences. `None` for keys with no terminal encoding.
+/// Encode a key event as the bytes xterm sends on the child's stdin (F-011, normal cursor-key mode):
+/// printable chars (UTF-8), Enter/Tab/Backspace/Esc, `Ctrl-<key>` control codes, `Alt` as an ESC prefix
+/// (xterm `metaSendsEscape`), and the cursor/editing/function keys as their CSI / SS3 sequences, with the
+/// xterm modifier parameter (`CSI 1;<mod> A`, `CSI 5;<mod> ~`) when Shift/Alt/Ctrl is held (#784).
+/// `None` for keys with no terminal encoding.
 pub fn encode_key(key: KeyEvent) -> Option<Vec<u8>> {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-    let utf8 = |c: char| {
-        let mut b = [0u8; 4];
-        c.encode_utf8(&mut b).as_bytes().to_vec()
-    };
-    let bytes = match key.code {
-        KeyCode::Char(c) if ctrl => {
-            let lc = c.to_ascii_lowercase();
-            if lc.is_ascii_alphabetic() {
-                vec![lc as u8 - b'a' + 1] // C-a = 0x01 … C-z = 0x1a
-            } else {
-                // The other C0 chords as their control byte (`C-@`/`C-Space` = NUL, `C-\` = 0x1c, also when
-                // a legacy terminal delivered it as `C-4`), never as the bare char (#603).
-                crate::keys::encode(key).unwrap_or_else(|| utf8(c))
-            }
+    let mods = key.modifiers;
+    let shift = mods.contains(KeyModifiers::SHIFT);
+    let alt = mods.contains(KeyModifiers::ALT);
+    let ctrl = mods.contains(KeyModifiers::CONTROL);
+    // xterm's modifier parameter: 1 + Shift(1) + Alt(2) + Ctrl(4); 1 means "no modifier".
+    let param = 1 + u8::from(shift) + 2 * u8::from(alt) + 4 * u8::from(ctrl);
+    // `<intro><final>` unmodified (`CSI A`, `SS3 P`), `CSI 1;<mod><final>` modified.
+    let letter = |intro: &[u8], fin: u8| {
+        if param == 1 {
+            [intro, &[fin]].concat()
+        } else {
+            format!("\x1b[1;{param}{}", fin as char).into_bytes()
         }
+    };
+    // `CSI <n>~` unmodified, `CSI <n>;<mod>~` modified.
+    let tilde = |n: u8| {
+        if param == 1 {
+            format!("\x1b[{n}~").into_bytes()
+        } else {
+            format!("\x1b[{n};{param}~").into_bytes()
+        }
+    };
+    // The keys below whose Alt form is the plain form behind an ESC; Shift is already in a char's case.
+    let base = match key.code {
+        // A chord with no control byte (`C-1`, `C-.`) sends the plain char, as xterm does by default.
+        KeyCode::Char(c) if ctrl => ctrl_byte(c).map_or_else(|| utf8(c), |b| vec![b]),
         KeyCode::Char(c) => utf8(c),
         KeyCode::Enter => vec![b'\r'],
+        KeyCode::Tab if shift => return Some(b"\x1b[Z".to_vec()),
         KeyCode::Tab => vec![b'\t'],
         KeyCode::Backspace => vec![0x7f],
         KeyCode::Esc => vec![0x1b],
-        KeyCode::Up => b"\x1b[A".to_vec(),
-        KeyCode::Down => b"\x1b[B".to_vec(),
-        KeyCode::Right => b"\x1b[C".to_vec(),
-        KeyCode::Left => b"\x1b[D".to_vec(),
-        KeyCode::Home => b"\x1b[H".to_vec(),
-        KeyCode::End => b"\x1b[F".to_vec(),
-        KeyCode::Delete => b"\x1b[3~".to_vec(),
+        KeyCode::BackTab => return Some(b"\x1b[Z".to_vec()),
+        KeyCode::Up => return Some(letter(b"\x1b[", b'A')),
+        KeyCode::Down => return Some(letter(b"\x1b[", b'B')),
+        KeyCode::Right => return Some(letter(b"\x1b[", b'C')),
+        KeyCode::Left => return Some(letter(b"\x1b[", b'D')),
+        KeyCode::Home => return Some(letter(b"\x1b[", b'H')),
+        KeyCode::End => return Some(letter(b"\x1b[", b'F')),
+        KeyCode::F(n @ 1..=4) => return Some(letter(b"\x1bO", b'P' + (n - 1))),
+        KeyCode::Insert => return Some(tilde(2)),
+        KeyCode::Delete => return Some(tilde(3)),
+        KeyCode::PageUp => return Some(tilde(5)),
+        KeyCode::PageDown => return Some(tilde(6)),
+        KeyCode::F(n @ 5..=12) => {
+            return Some(tilde([15, 17, 18, 19, 20, 21, 23, 24][usize::from(n - 5)]))
+        }
         _ => return None,
     };
-    Some(bytes)
+    Some(if alt {
+        [&[0x1b], &base[..]].concat()
+    } else {
+        base
+    })
+}
+
+fn utf8(c: char) -> Vec<u8> {
+    let mut b = [0u8; 4];
+    c.encode_utf8(&mut b).as_bytes().to_vec()
+}
+
+/// The C0 byte xterm sends for `Ctrl-<c>`, also in the `Ctrl-2`..`Ctrl-8` form crossterm decodes from a
+/// legacy terminal (#603); `None` for a char with no control byte.
+fn ctrl_byte(c: char) -> Option<u8> {
+    Some(match c.to_ascii_lowercase() {
+        lc @ 'a'..='z' => lc as u8 - b'a' + 1, // C-a = 0x01 … C-z = 0x1a
+        ' ' | '@' | '2' => 0x00,
+        '[' | '3' => 0x1b,
+        '\\' | '4' => 0x1c,
+        ']' | '5' => 0x1d,
+        '^' | '6' => 0x1e,
+        '_' | '7' | '/' => 0x1f,
+        '?' | '8' => 0x7f,
+        _ => return None,
+    })
 }
 
 /// The platform PTY boundary (`DEP-PTY` exit strategy). Slice 1 ships only [`UnixPty`]; a future ConPTY impl
@@ -375,6 +421,57 @@ mod tests {
         assert_eq!(ctrl('5'), Some(vec![0x1d]));
         assert_eq!(ctrl(']'), Some(vec![0x1d]));
         assert_eq!(ctrl('7'), Some(vec![0x1f]));
+    }
+
+    /// #784: each chord reaches the child as xterm (normal cursor-key mode) sends it — Alt as an ESC
+    /// prefix, modified cursor keys in the `CSI 1;<mod>` form, and the editing/function keys that used to
+    /// be dropped.
+    #[test]
+    fn key_chords_forward_as_xterm_sequences() {
+        let (n, s, a, c) = (
+            KeyModifiers::NONE,
+            KeyModifiers::SHIFT,
+            KeyModifiers::ALT,
+            KeyModifiers::CONTROL,
+        );
+        let cases: &[(KeyCode, KeyModifiers, &[u8])] = &[
+            (KeyCode::Char('b'), n, b"b"),
+            (KeyCode::Char('B'), s, b"B"),
+            (KeyCode::Char('b'), a, b"\x1bb"),
+            (KeyCode::Char('B'), a | s, b"\x1bB"),
+            (KeyCode::Char('.'), a, b"\x1b."),
+            (KeyCode::Char('b'), a | c, b"\x1b\x02"),
+            (KeyCode::Char('1'), c, b"1"), // no control byte: never the macro register's 0x80 tag
+            (KeyCode::Char('/'), c, b"\x1f"),
+            (KeyCode::Enter, a, b"\x1b\r"),
+            (KeyCode::Backspace, a, b"\x1b\x7f"),
+            (KeyCode::Up, n, b"\x1b[A"),
+            (KeyCode::Up, s, b"\x1b[1;2A"),
+            (KeyCode::Left, c, b"\x1b[1;5D"),
+            (KeyCode::Right, a, b"\x1b[1;3C"),
+            (KeyCode::Down, c | s, b"\x1b[1;6B"),
+            (KeyCode::Home, n, b"\x1b[H"),
+            (KeyCode::End, s, b"\x1b[1;2F"),
+            (KeyCode::BackTab, s, b"\x1b[Z"),
+            (KeyCode::Tab, s, b"\x1b[Z"),
+            (KeyCode::Insert, n, b"\x1b[2~"),
+            (KeyCode::Delete, n, b"\x1b[3~"),
+            (KeyCode::Delete, c, b"\x1b[3;5~"),
+            (KeyCode::PageUp, n, b"\x1b[5~"),
+            (KeyCode::PageDown, s, b"\x1b[6;2~"),
+            (KeyCode::F(1), n, b"\x1bOP"),
+            (KeyCode::F(4), n, b"\x1bOS"),
+            (KeyCode::F(1), s, b"\x1b[1;2P"),
+            (KeyCode::F(5), n, b"\x1b[15~"),
+            (KeyCode::F(10), n, b"\x1b[21~"),
+            (KeyCode::F(11), n, b"\x1b[23~"),
+            (KeyCode::F(12), c, b"\x1b[24;5~"),
+        ];
+        for &(code, mods, want) in cases {
+            let got = encode_key(KeyEvent::new(code, mods));
+            assert_eq!(got.as_deref(), Some(want), "{code:?} + {mods:?}");
+        }
+        assert_eq!(encode_key(KeyEvent::new(KeyCode::F(13), n)), None);
     }
 
     /// Read `rx` until the output contains `needle` or `limit` passes; whether it was seen.
