@@ -35,7 +35,12 @@ source and the loop multiplexing that renders it. The feature is intentionally s
 - **PTY** (`apps/tui/src/pty.rs`, unix-only): `UnixPty::spawn` uses `libc::forkpty` — the shell `CString` is
   built in the parent so nothing between fork and exec allocates (async-signal-safety; the editor may already
   be multi-threaded). A dedicated reader thread streams master-fd output over an `mpsc` channel; the channel
-  disconnects on EOF (child exit). `Drop` hangs up (`SIGHUP`), reaps (`waitpid`), and joins the reader.
+  disconnects on EOF (child exit). `Drop` wakes and joins the reader, closes the master, sends `SIGHUP`, and
+  hands the child to one process-wide reaper thread, so closing a terminal (`:bd!`) never waits on the child
+  (#1775). The reaper SIGKILLs a child still there after 0.5 s, reaps it (`waitpid`), and gives up after 2 s
+  more (an unkillable zombie leaks rather than holding the reaper). At exit the editor waits for the reaper
+  (`pty::finish_reaping`) so no child outlives it. A failure after `forkpty` (the master clone, the reader
+  thread spawn) drops the half-built PTY, so the child is still hung up and reaped (#1754).
   `Pty` is a trait so a future Windows ConPTY impl (slice 3) slots in without touching the session.
 - **Terminal state** (`apps/tui/src/term_buffer.rs`): a session-side `Terminal` owns the PTY, the receiver,
   and a VT `Grid` with a **bounded** scrollback. `drain()` feeds pending output to the `vte` parser, which drives the grid.
