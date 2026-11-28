@@ -10,7 +10,8 @@
 //! - a listed name is no fixture in the corpus, or is listed twice.
 //!
 //! So the list can only shrink unless someone edits it in review. File format: one fixture name per line;
-//! `#` starts a comment; blank lines are ignored.
+//! `#` starts a comment; blank lines are ignored. Each entry is `name # #<issue>: reason`, citing the open
+//! issue that fixes it (#1583, `check_issue_refs`).
 
 use std::collections::BTreeSet;
 
@@ -29,6 +30,39 @@ pub fn parse(body: &str) -> Result<Vec<String>, String> {
         names.push(name.to_string());
     }
     Ok(names)
+}
+
+/// The issue number an entry's reason cites: the reason must start with `#<digits>:` (the open issue
+/// that fixes the entry). `None` when it does not.
+pub fn cited_issue(line: &str) -> Option<u32> {
+    let (_, reason) = line.split_once('#')?;
+    let digits = reason.trim_start().strip_prefix('#')?;
+    let (number, _) = digits.split_once(':')?;
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    number.parse().ok()
+}
+
+/// Check that every entry of a known-divergences body cites its open issue as `name # #<issue>: reason`
+/// (#1583). Whether the cited issue is still open needs the network; `tools/parity/divergence_issues.py`
+/// checks that.
+pub fn check_issue_refs(body: &str) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for (i, line) in body.lines().enumerate() {
+        let name = line.split('#').next().unwrap_or("").trim();
+        if !name.is_empty() && cited_issue(line).is_none() {
+            errors.push(format!(
+                "line {}: `{name}` names no issue; write `{name} # #<open issue>: reason`",
+                i + 1
+            ));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
+    }
 }
 
 /// Check one comparator run against the allowed list. `fixtures` is every fixture name in the corpus,
@@ -69,6 +103,9 @@ pub fn enforce(path: &str, fixtures: &[&str], divergent: &[String]) {
     let body = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("cannot read known-divergence list {path}: {e}"));
     let allowed = parse(&body).unwrap_or_else(|e| panic!("{path}: {e}"));
+    if let Err(e) = check_issue_refs(&body) {
+        panic!("{path}: every entry names its open issue (#1583):\n{e}");
+    }
     if let Err(e) = check(&allowed, fixtures, divergent) {
         panic!("parity ratchet failed against {path}:\n{e}");
     }

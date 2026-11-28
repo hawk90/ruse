@@ -30,6 +30,9 @@ from rusekit import render, repo  # noqa: E402
 
 UPSTREAMS = "spec/parity/upstreams.yaml"
 CACHE = "parity"   # under repo.cache_root()
+# Wall-clock cap per git call, so a stalled network fetch cannot hang the tool. Sized for the depth-1 fetch
+# of a large upstream (Emacs) on a slow link; the local calls finish in well under a second.
+GIT_TIMEOUT_SECS = 600
 
 
 def load_upstreams() -> dict:
@@ -42,7 +45,13 @@ def cache_dir(editor: str) -> str:
 
 
 def _run(args: list[str], cwd: str) -> tuple[int, str]:
-    p = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    """(exit code, stdout+stderr). A call past GIT_TIMEOUT_SECS is killed and reported as exit 124."""
+    try:
+        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=GIT_TIMEOUT_SECS)
+    except subprocess.TimeoutExpired:
+        msg = f"`{' '.join(args)}` timed out after {GIT_TIMEOUT_SECS:g}s — killed"
+        render.warn(msg)
+        return 124, msg
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
