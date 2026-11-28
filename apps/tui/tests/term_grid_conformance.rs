@@ -215,6 +215,34 @@ fn resize_keeps_tab_stops_and_defaults_new_columns() {
     assert_eq!(screen(&g), ["   x      "]);
 }
 
+/// A resize that cuts a wide glyph at the new right edge blanks its left half with the glyph's pen, as
+/// xterm and VTE do; a glyph the new width still holds whole is kept (#1785). The alternate screen and the
+/// stashed main screen are cut alike.
+#[test]
+fn resize_blanks_a_wide_glyph_it_cuts() {
+    let mut g = feed(2, 12, "\x1b[1;10H\x1b[44m中\x1b[m\x1b[2;9H文".as_bytes());
+    g.resize(2, 10);
+    assert_eq!(screen(&g), ["          ", "        文"]);
+    assert_eq!(
+        g.cell(0, 9).unwrap().1.bg,
+        Color::AnsiValue(4),
+        "the glyph's pen"
+    );
+    assert_eq!(lone_wide_half(&g), None);
+
+    let mut g = feed(1, 12, "\x1b[1;10H中\x1b[?1049h\x1b[1;10H文".as_bytes());
+    g.resize(1, 10);
+    assert_eq!(screen(&g), ["          "]);
+    ChunkParser::new().advance(&mut g, b"\x1b[?1049l");
+    assert_eq!(screen(&g), ["          "]);
+
+    // A 1-column screen holds a wide glyph alone; widened, the glyph has no right half and is blanked.
+    let mut g = feed(1, 1, "中".as_bytes());
+    assert_eq!(screen(&g), ["中"]);
+    g.resize(1, 3);
+    assert_eq!(screen(&g), ["   "]);
+}
+
 /// The scrollback, oldest first, rendered like [`screen`].
 fn scrollback(g: &Grid) -> Vec<String> {
     g.scrollback()
