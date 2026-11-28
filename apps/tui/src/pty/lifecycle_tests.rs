@@ -1,7 +1,7 @@
 //! PTY child-lifecycle and leak checks for the `:terminal` PTY (#915): after `UnixPty` is dropped, its
 //! file descriptors, reader thread and child process are all gone, whether the child was still running,
-//! exited on its own, or failed to exec; spawning under fd exhaustion fails cleanly; resize reaches the
-//! child. The `Drop`-timing and backpressure cases live in `pty.rs`'s own `tests` module (#770, #771).
+//! exited on its own, or failed to exec; spawning under fd exhaustion fails cleanly, and so does a failure
+//! after the fork (#1754); resize reaches the child. The `Drop`-timing and backpressure cases live in `pty.rs`'s own `tests` module (#770, #771).
 //!
 //! Counting the process's fds and threads is only exact with nothing else running, but the unit-test
 //! binary runs many tests in parallel threads. So each counting probe re-runs this test binary with only
@@ -12,7 +12,7 @@ use std::process::Command;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::{Duration, Instant};
 
-use super::{Pty, UnixPty};
+use super::{inject_fault, FaultPoint, Pty, UnixPty};
 
 /// Set (to the probe's name) in the isolated child test process that runs one counting probe.
 const PROBE_ENV: &str = "RUSE_PTY_LEAK_PROBE";
@@ -349,6 +349,52 @@ fn spawn_under_fd_exhaustion_fails_cleanly_probe() {
         outcomes.iter().take(2).all(|&(_, ok)| !ok),
         "spawn succeeded with fewer than 2 free fds: {outcomes:?}"
     );
+}
+
+/// Outer half of [`a_failure_after_fork_reaps_the_child_probe`].
+#[test]
+fn a_failure_after_fork_reaps_the_child() {
+    if std::env::var_os(PROBE_ENV).is_some() {
+        return; // this copy runs only its probe
+    }
+    run_isolated("a_failure_after_fork_reaps_the_child_probe");
+}
+
+/// #1754: when a step after `forkpty` fails (the master clone, or the reader thread spawn), `spawn_argv`
+/// returns the error and the forked child is gone, not left running or as a zombie, and no fd leaks. The
+/// child ignores SIGHUP, so this also covers the SIGKILL escalation on the error path.
+#[test]
+fn a_failure_after_fork_reaps_the_child_probe() {
+    if !probing("a_failure_after_fork_reaps_the_child_probe") {
+        return;
+    }
+    if UnixPty::spawn_argv(&["/bin/sh", "-c", "exit 0"], 24, 80).is_err() {
+        // No PTY available (sandbox): nothing to probe.
+        return;
+    }
+    assert!(
+        settles_to(true, no_children_left),
+        "warm-up child not reaped"
+    );
+    let fds = open_fds().len();
+    for point in [FaultPoint::CloneMaster, FaultPoint::SpawnReader] {
+        inject_fault(point);
+        let spawned = UnixPty::spawn_argv(&["/bin/sh", "-c", "trap '' HUP; sleep 30"], 24, 80);
+        let err = spawned.err().expect("the injected fault fails the spawn");
+        assert!(
+            err.to_string().contains("injected fault"),
+            "{point:?}: unexpected error {err}"
+        );
+        assert!(
+            settles_to(true, no_children_left),
+            "{point:?}: the forked child is left behind"
+        );
+        let after = settles_to(fds, || open_fds().len());
+        assert_eq!(
+            after, fds,
+            "{point:?}: fds leaked ({fds} before, {after} after)"
+        );
+    }
 }
 
 /// `resize` reaches the child: `stty size` reports the new window after `TIOCSWINSZ`.
