@@ -7,7 +7,8 @@
 //!
 //! The wait can be cancelled (#855, scheduler.md §8): while the shell runs, the editor thread polls the
 //! user-interrupt checkpoint ([`ruse_core::interrupt::breakcheck`], CTRL-C in the TUI). On an interrupt the
-//! shell's whole process group (it runs in its own) is killed and reaped, and the helper returns
+//! shell's whole process group (it runs in its own) gets `SIGTERM`, then `SIGKILL` if it is still there
+//! after 2 s, as in nvim (#1748), and is reaped ([`crate::reap::SHELL`]); the helper returns
 //! [`ShellError::Interrupted`], so a cancelled filter or read leaves the buffer as it was. The captured
 //! output is bounded too: past [`MAX_OUTPUT`] the command is killed and its output kept up to the cap,
 //! reported as truncated; a filter, whose output replaces lines, refuses a truncated result instead.
@@ -19,7 +20,7 @@ use std::fmt;
 #[cfg(unix)]
 use std::io::{Read, Write};
 #[cfg(unix)]
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
 /// The most output a shell command may hand back to `:!`, `:r !` or `:w !`: past it the command is killed
 /// and what it wrote up to the cap is kept, marked [`ShellOutput::truncated`].
@@ -136,8 +137,9 @@ pub fn filter(cmd: &str, input: &[u8]) -> Result<ShellOutput, ShellError> {
 
 /// The shared unix `sh -c` runner: spawn the shell in its own process group with stdout and stderr on ONE
 /// pipe, optionally feed `input` to stdin from a writer thread (dropping it to send EOF), drain the output
-/// from a reader thread, and wait, polling the interrupt checkpoint all along: CTRL-C kills the group and
-/// returns [`ShellError::Interrupted`]. Output past `limit` bytes kills the group too and comes back cut to
+/// from a reader thread, and wait, polling the interrupt checkpoint all along: CTRL-C ends the group
+/// (`SIGTERM`, then `SIGKILL`) and returns [`ShellError::Interrupted`]. Output past `limit` bytes ends the
+/// group too and comes back cut to
 /// `limit`, marked truncated. A non-zero exit is still `Ok` — Vim inserts / filters whatever the command
 /// produced and only reports `shell returned {n}` — unless the shell could not be spawned. stderr must not
 /// be inherited: it would land on the editor's own terminal, under the TUI.
@@ -166,6 +168,13 @@ fn run(cmd: &str, input: Option<&[u8]>, limit: usize) -> Result<ShellOutput, She
     // the shell (and anything it started) has closed its output.
     drop(command);
     let mut child = spawned.map_err(ShellError::Spawn)?;
+    // The shell leads its own group, so its pid names the group too. From here the helpers in
+    // `crate::reap` wait on and reap it by pid; `child` is never waited on.
+    let Ok(pid) = libc::pid_t::try_from(child.id()) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(ShellError::Spawn(std::io::Error::other("pid out of range")));
+    };
     // Feed stdin from a thread while the output is drained: writing all of it first deadlocks once the
     // input outgrows the pipe buffers, because a command like `cat` blocks writing output nobody reads (#854).
     let feeder = match (input, child.stdin.take()) {
@@ -205,33 +214,34 @@ fn run(cmd: &str, input: Option<&[u8]>, limit: usize) -> Result<ShellOutput, She
                 if chunk.len() > room {
                     out.extend_from_slice(&chunk[..room]);
                     truncated = true;
-                    kill_group(&mut child);
                     break;
                 }
                 out.extend_from_slice(&chunk);
             }
             Ok(Err(e)) => {
-                kill_group(&mut child);
+                stop(pid);
                 return Err(ShellError::Wait(e));
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
         if ruse_core::interrupt::breakcheck() {
-            kill_group(&mut child);
+            stop(pid);
             return Err(ShellError::Interrupted);
         }
     }
     // The output is closed, but the shell may still run (`exec >&-; sleep 9`), so the wait polls too.
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(ShellError::Wait)? {
-            break status;
-        }
-        if ruse_core::interrupt::breakcheck() {
-            kill_group(&mut child);
+    let code = if truncated {
+        // Past the cap: end the command; its status is whatever the signal left (`None` if killed).
+        stop(pid).and_then(|s| s.code())
+    } else {
+        let waited = crate::reap::wait(pid, None, ruse_core::interrupt::breakcheck)
+            .map_err(ShellError::Wait)?;
+        let Some(status) = waited else {
+            stop(pid);
             return Err(ShellError::Interrupted);
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
+        };
+        status.code()
     };
     if let (Some(handle), false) = (feeder, truncated) {
         // The writer returns once its input is written or the pipe is closed; it holds no result.
@@ -240,22 +250,17 @@ fn run(cmd: &str, input: Option<&[u8]>, limit: usize) -> Result<ShellOutput, She
     Ok(ShellOutput {
         text: String::from_utf8_lossy(&out).into_owned(),
         raw: out,
-        code: status.code(),
+        code,
         truncated,
     })
 }
 
-/// Kill the shell's process group (the shell leads it) and reap the shell, so no zombie stays behind.
+/// End the shell's process group (the shell leads it) and reap the shell, so no zombie stays behind:
+/// `SIGTERM` first, so the command can clean up, then `SIGKILL` after the grace, as nvim does (#1748).
+/// Returns the shell's exit status, `None` when it was given up on.
 #[cfg(unix)]
-fn kill_group(child: &mut Child) {
-    if let Ok(pgid) = libc::pid_t::try_from(child.id()) {
-        // SAFETY: `killpg` only sends a signal. The group is the one `process_group(0)` made for the shell,
-        // and the shell is not reaped yet, so its id still names that group.
-        unsafe {
-            libc::killpg(pgid, libc::SIGKILL);
-        }
-    }
-    let _ = child.wait();
+fn stop(pid: libc::pid_t) -> Option<std::process::ExitStatus> {
+    crate::reap::end(pid, crate::reap::SHELL)
 }
 
 #[cfg(not(unix))]
@@ -456,6 +461,38 @@ mod tests {
             "the background `sleep` {pid} outlived the interrupt"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #1748: CTRL-C sends SIGTERM first, so a command that traps it can clean up (here: remove its temp
+    /// file) and exit within the grace, before any SIGKILL; nvim's `proc_stop` does the same.
+    #[test]
+    fn an_interrupt_lets_the_command_clean_up_on_sigterm() {
+        let dir = std::env::temp_dir().join(format!("ruse-shell-1748-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmp = dir.join("lock");
+        let cmd = format!(
+            "touch '{0}'; trap 'rm -f \"{0}\"; exit 0' TERM; while :; do sleep 0.05; done",
+            tmp.display()
+        );
+        let (got, took) = interrupted(|| capture(&cmd));
+        assert!(matches!(got, Err(ShellError::Interrupted)), "{got:?}");
+        assert!(
+            took < Duration::from_secs(2),
+            "the trap ran within the grace, so no SIGKILL wait: {took:?}"
+        );
+        assert!(!tmp.exists(), "the SIGTERM trap never cleaned up");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #1748: a command that ignores SIGTERM is still ended: SIGKILL follows once the grace runs out.
+    #[test]
+    fn an_interrupt_kills_a_command_that_ignores_sigterm() {
+        let (got, took) = interrupted(|| capture("trap '' TERM; sleep 30"));
+        assert!(matches!(got, Err(ShellError::Interrupted)), "{got:?}");
+        assert!(
+            took >= Duration::from_secs(2) && took < Duration::from_secs(6),
+            "SIGKILL comes after the 2 s grace: {took:?}"
+        );
     }
 
     /// #855: the wait after the command closed its output is interruptible too.
