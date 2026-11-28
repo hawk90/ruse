@@ -405,6 +405,11 @@ fn parity_emacs_corpus_through_real_keys() {
         .map(|fx| fx["name"].as_str().expect("name"))
         .collect();
     let allowed = parity_ratchet::parse(KEY_PATH_DIVERGENCES).expect("the key-path list parses");
+    if let Err(e) = parity_ratchet::check_issue_refs(KEY_PATH_DIVERGENCES) {
+        panic!(
+            "tests/parity/emacs/known-key-divergences.txt: every entry names its open issue:\n{e}"
+        );
+    }
     if let Err(e) = parity_ratchet::check(&allowed, &names, &divergent) {
         panic!("emacs key-path ratchet (tests/parity/emacs/known-key-divergences.txt):\n{e}");
     }
