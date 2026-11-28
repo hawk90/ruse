@@ -2,8 +2,9 @@
 #   deep-properties — the whole test suite with every proptest scaled up (`RUSE_PROPTEST_SCALE`; blocks on the
 #                     default config read `PROPTEST_CASES`). A failure uploads the new `*.proptest-regressions`
 #                     lines, which are committed with the fix (testing-and-benchmarks.md §1.2).
-#   fuzz            — each cargo-fuzz target in `fuzz/` (its own workspace, nightly + ASan) for a capped time.
-#                     A crash uploads `fuzz/artifacts/`; reproduce with `cargo +nightly fuzz run <target> <file>`.
+#   fuzz            — each cargo-fuzz target in `fuzz/` (its own workspace, nightly + ASan, gnu target) for a
+#                     capped time. A crash uploads `fuzz/artifacts/`; reproduce with
+#                     `cargo +nightly fuzz run --target x86_64-unknown-linux-gnu <target> <file>`.
 # Security (docs/operations/ci-cd-and-release.md §11): actions pinned by SHA, read-only token.
 name: fuzz
 on:
@@ -45,6 +46,8 @@ jobs:
   fuzz:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      FUZZ_TRIPLE: x86_64-unknown-linux-gnu
     strategy:
       fail-fast: false
       matrix:
@@ -53,12 +56,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with: { toolchain: nightly, cache: false, build-warnings: allow }
+      # The prebuilt cargo-fuzz is a musl binary, and cargo-fuzz defaults `--target` to its own triple, so
+      # without an explicit gnu target every build failed with "sanitizer is incompatible with statically
+      # linked libc" (#1357). Every cargo-fuzz call below passes `--target "$FUZZ_TRIPLE"`.
       - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-fuzz@0.13.1
+      - name: build ${{ matrix.target }} (ASan)
+        run: cargo +nightly fuzz build --target "$FUZZ_TRIPLE" ${{ matrix.target }}
       - name: fuzz ${{ matrix.target }} for 15 minutes
         run: >-
-          cargo +nightly fuzz run ${{ matrix.target }} --
+          cargo +nightly fuzz run --target "$FUZZ_TRIPLE" ${{ matrix.target }} --
           -max_total_time=900 -timeout=30 -rss_limit_mb=2048
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
