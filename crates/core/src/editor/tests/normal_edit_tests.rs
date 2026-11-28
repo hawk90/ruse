@@ -237,6 +237,35 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn increment_below_the_first_line_reads_the_whole_number() {
+        // #1714 (fuzz `key_session`): the number's read length was taken from the line-relative length
+        // minus the ABSOLUTE line start, so below the first line it came out short or empty — an empty
+        // span panicked, a short one changed only the leading digits. nvim v0.12.6 ground truth: the
+        // `i1714` parity fixtures.
+        let st = run(
+            "🇰🇷漢字\n1",
+            &[Command::Move(1, Motion::Down), Command::IncrementNumber(9)],
+        );
+        assert_eq!(text(&st), "🇰🇷漢字\n10");
+        assert_eq!(st.cursor().0, 16, "cursor on the last digit of the result");
+        let st = run(
+            "x\n12345",
+            &[Command::Move(1, Motion::Down), Command::IncrementNumber(1)],
+        );
+        assert_eq!(text(&st), "x\n12346");
+        let st = run(
+            "abc\ndef\n -7 y",
+            &[Command::Move(2, Motion::Down), Command::IncrementNumber(-1)],
+        );
+        assert_eq!(text(&st), "abc\ndef\n -8 y");
+        let st = run(
+            "x\na 0x0f",
+            &[Command::Move(1, Motion::Down), Command::IncrementNumber(3)],
+        );
+        assert_eq!(text(&st), "x\na 0x12");
+    }
+
+    #[test]
     fn increment_handles_sign_and_decrement_and_noop() {
         // Decrement below zero grows a '-' sign.
         let st = run("0", &[Command::IncrementNumber(-3)]);
