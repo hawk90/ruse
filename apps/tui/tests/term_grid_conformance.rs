@@ -151,9 +151,13 @@ fixtures! {
     // --- invalid UTF-8 (vte decodes; xterm shows U+FFFD for a malformed sequence) ---
     invalid_byte_prints_a_replacement: (1, 4, b"a\xffb") => ["a\u{fffd}b "] @ (0, 3);
     truncated_sequence_then_ascii_prints_a_replacement: (1, 4, b"a\xe4\xb8b") => ["a\u{fffd}b "] @ (0, 3);
-    // vte executes a lone 0x80..=0x9F byte as an 8-bit C1 control and the grid ignores it, so the byte
-    // vanishes; xterm in UTF-8 mode does not take 8-bit C1 and shows U+FFFD for the malformed byte.
-    // (the lone 0x80..=0x9F case is the quarantined `lone_continuation_byte_prints_a_replacement` below)
+    // xterm in UTF-8 mode does not take 8-bit C1 controls: a lone 0x80..=0x9F byte is malformed UTF-8 and
+    // shows U+FFFD (#1750). An encoded U+0080..=U+009F is still a C1 control, which the grid ignores.
+    lone_continuation_byte_prints_a_replacement: (1, 4, b"\x80a") => ["\u{fffd}a  "] @ (0, 2);
+    lone_8bit_csi_is_not_a_csi: (1, 6, b"\x9b1mab") => ["\u{fffd}1mab "] @ (0, 5);
+    lone_c1_after_a_rejected_lead_prints_two_replacements:
+        (1, 4, b"\xe0\x85a") => ["\u{fffd}\u{fffd}a "] @ (0, 3);
+    encoded_c1_is_a_control_not_a_replacement: (1, 4, "a\u{85}b".as_bytes()) => ["ab  "] @ (0, 2);
 
     // --- OSC, DCS, and other strings are consumed, never printed ---
     osc_title_terminated_by_bel: (1, 4, b"\x1b]0;title\x07ab") => ["ab  "] @ (0, 2);
@@ -165,12 +169,6 @@ fixtures! {
     dcs_is_consumed: (1, 4, b"\x1bP1$r0m\x1b\\ok") => ["ok  "] @ (0, 2);
     can_aborts_a_csi: (1, 4, b"\x1b[2\x18J") => ["J   "] @ (0, 1);
     c0_inside_a_csi_executes: (2, 4, b"ab\x1b[1\rC") => ["ab  ", "    "] @ (0, 1);
-}
-
-#[test]
-#[ignore = "#1750: a lone 0x80..=0x9F byte is dropped as C1, not shown as U+FFFD"]
-fn lone_continuation_byte_prints_a_replacement() {
-    check(1, 4, b"\x80a", &["\u{fffd}a  "], (0, 2));
 }
 
 // --- chunk-split regressions (#1765), found by `chunk_split_is_equivalent_to_one_feed` ---

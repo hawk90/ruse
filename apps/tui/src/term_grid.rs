@@ -67,6 +67,10 @@ pub struct Grid {
     /// The child turned bracketed paste on (`CSI ? 2004 h`): a paste forwarded to it is wrapped in
     /// `CSI 200 ~` / `CSI 201 ~` (#600).
     bracketed_paste: bool,
+    /// [`ChunkParser`] is feeding a lone 0x80..=0x9F byte (not a UTF-8 encoded U+0080..=U+009F). vte
+    /// executes such a byte as an 8-bit C1 control; xterm in UTF-8 mode does not take 8-bit C1 and prints
+    /// U+FFFD for the malformed byte, so [`Grid::execute`] prints that while this is set (#1750).
+    lone_c1: bool,
 }
 
 /// The saved main-screen state during alternate-screen mode.
@@ -96,6 +100,7 @@ impl Grid {
             wrap_next: false,
             cursor_visible: true,
             bracketed_paste: false,
+            lone_c1: false,
         }
     }
 
@@ -588,6 +593,10 @@ impl Perform for Grid {
     }
 
     fn execute(&mut self, byte: u8) {
+        if self.lone_c1 {
+            self.print('\u{fffd}');
+            return;
+        }
         match byte {
             0x0a..=0x0c => self.line_feed(), // LF / VT / FF
             0x0d => self.carriage_return(),
@@ -706,6 +715,11 @@ impl Perform for Grid {
 /// of the next piece. vte's partial path is then never taken. Holding bytes back is safe in any parser
 /// state: vte sees the same bytes in the same order. A stream that ends inside a sequence prints nothing
 /// for it either way.
+///
+/// It also splits each piece around a lone 0x80..=0x9F byte and marks the grid while vte takes that byte
+/// alone, so the grid can tell it from an encoded U+0080..=U+009F and print U+FFFD for it (#1750). vte
+/// executes either as a C1 control only in its ground state; in any other state the byte reaches no
+/// `execute`, so the mark is inert there. Splitting at a UTF-8 chunk boundary does not change what vte does.
 pub struct ChunkParser {
     parser: vte::Parser,
     carry: [u8; 3],
@@ -744,9 +758,33 @@ impl ChunkParser {
     fn advance_whole_chars(&mut self, grid: &mut Grid, bytes: &[u8]) {
         let keep = incomplete_utf8_tail(bytes);
         let (now, later) = bytes.split_at(bytes.len() - keep);
-        self.parser.advance(grid, now);
+        self.advance_marking_lone_c1(grid, now);
         self.carry[..keep].copy_from_slice(later);
         self.carry_len = keep;
+    }
+
+    /// Feed `bytes`, giving each lone 0x80..=0x9F byte to vte in an `advance` of its own with
+    /// [`Grid::lone_c1`] set.
+    fn advance_marking_lone_c1(&mut self, grid: &mut Grid, bytes: &[u8]) {
+        let mut start = 0;
+        let mut pos = 0;
+        for chunk in bytes.utf8_chunks() {
+            pos += chunk.valid().len();
+            let bad = chunk.invalid();
+            if let [b @ 0x80..=0x9F] = bad {
+                if start < pos {
+                    self.parser.advance(grid, &bytes[start..pos]);
+                }
+                grid.lone_c1 = true;
+                self.parser.advance(grid, std::slice::from_ref(b));
+                grid.lone_c1 = false;
+                start = pos + 1;
+            }
+            pos += bad.len();
+        }
+        if start < bytes.len() {
+            self.parser.advance(grid, &bytes[start..]);
+        }
     }
 }
 
