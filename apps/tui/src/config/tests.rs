@@ -328,21 +328,9 @@ fn the_content_hash_is_stable_and_covers_paths_and_bytes() {
 /// bounds, and the other way round.
 #[test]
 fn schema_matches_spec() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spec/config-schema.yaml");
-    let text = std::fs::read_to_string(path).unwrap();
-    let settings = text.split("\nsettings:\n").nth(1).unwrap();
     let mut seen = Vec::new();
-    for line in settings.lines() {
-        let Some(rest) = line.strip_prefix("  ") else {
-            continue;
-        };
-        if rest.starts_with(' ') || rest.starts_with('#') {
-            continue;
-        }
-        let Some((name, body)) = rest.split_once(':') else {
-            continue;
-        };
-        let fields = flow_fields(body.trim());
+    for (name, fields) in spec_settings() {
+        let name = name.as_str();
         let def = key_def(name).unwrap_or_else(|| panic!("{name} missing from SCHEMA"));
         let f = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
         let ty = match def.ty {
@@ -387,6 +375,28 @@ fn schema_matches_spec() {
             def.key
         );
     }
+}
+
+/// Every key of `spec/config-schema.yaml`'s `settings:` block, in order, with its flow-mapping fields
+/// (each key is one line, `  name: { type: …, default: …, … }`).
+pub(crate) fn spec_settings() -> Vec<(String, Vec<(String, String)>)> {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spec/config-schema.yaml");
+    let text = std::fs::read_to_string(path).unwrap();
+    let settings = text.split("\nsettings:\n").nth(1).unwrap();
+    let mut out = Vec::new();
+    for line in settings.lines() {
+        let Some(rest) = line.strip_prefix("  ") else {
+            continue;
+        };
+        if rest.starts_with(' ') || rest.starts_with('#') {
+            continue;
+        }
+        let Some((name, body)) = rest.split_once(':') else {
+            continue;
+        };
+        out.push((name.to_string(), flow_fields(body.trim())));
+    }
+    out
 }
 
 /// The `name: value` fields of a one-line YAML flow mapping `{ a: 1, b: [x, y], c: "d, e" }`.

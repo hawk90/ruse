@@ -396,6 +396,15 @@ generalize to any oracle:
   closes that gap. It installs the nvim and Emacs pinned in `spec/parity/upstreams.yaml` (release URL and
   sha256), runs both selftests, recaptures both corpora and fails on any difference from the committed
   ones. It is not a required check.
+- **Fixture inputs are data, not code (#1590).** The human-authored half of each fixture (`name`, `lines`,
+  `keys`, and optional `setup`, `file`, `observe`, `folds`, `topline`, `bytes`) lives in
+  `tools/parity/fixtures/nvim/*.jsonl`: one JSON object per line, `#` comment lines and blank lines allowed.
+  JSON strings keep tabs, ESC and other control bytes, trailing spaces and a `bytes` fixture's Latin-1 chars
+  exactly; write control and invisible chars as `\uXXXX`. **Append rule:** new fixtures go to
+  `i<issue>.jsonl` for their issue (create it if needed), so parallel PRs do not append to one file; the
+  `NN-legacy.jsonl` files hold the fixtures that predate the split and are edited in place but never
+  appended to. `oracle.py` loads `NN-*.jsonl` by name, then `i<issue>.jsonl` by issue number, and refuses
+  any other file name; the corpus keeps that order.
 - **Every `expect` is ORACLE-CAPTURED, never hand-written.** For v0 the corpus uses a compact JSON-in-YAML
   form (`{name, lines, keys, expect:{text,cursor,registers…}}`) rather than the full schema above.
 - **Config-dependent ops** (indent `>>`, etc.) carry a per-fixture `setup` ex-command so nvim runs under

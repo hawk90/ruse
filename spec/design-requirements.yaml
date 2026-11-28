@@ -315,7 +315,7 @@ items:
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
     notes: >-
-      RJ01 records (RFC-0023 §2, D-064): magic, schema_ver 1.0, kind, CRC32C over the header and the
+      RJ01 records (RFC-0023 §2, D-064): magic, schema_ver 1.2, kind, CRC32C over the header and the
       payload, end magic. Records are appended; compaction and a journal changed under the writer rewrite it
       whole by temp + fsync + rename. Replay stops at the first bad record and reports the lost tail.
   - id: PERSIST-004
@@ -1629,7 +1629,8 @@ items:
       - Fault-injection CI (disk full, permission loss, crash, packet loss, truncated journal)
       - Quarantined tests carry expiry + owner
     evidence:
-      - apps/tui/src/persist/journal.rs::torn_header_tail_is_discarded
+      - apps/tui/src/persist/rj01.rs::a_torn_last_record_at_every_offset_replays_the_prefix
+      - apps/tui/tests/journal_torn_write.rs::the_crash_path_truncates_a_torn_tail_before_it_appends
       - docs/operations/ci-cd-and-release.md
     legacy_ids:
       - DR-OPS-3
