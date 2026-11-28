@@ -1,7 +1,10 @@
 //! PTY child-lifecycle and leak checks for the `:terminal` PTY (#915): after `UnixPty` is dropped, its
 //! file descriptors, reader thread and child process are all gone, whether the child was still running,
-//! exited on its own, or failed to exec; spawning under fd exhaustion fails cleanly, and so does a failure
-//! after the fork (#1754); resize reaches the child. The `Drop`-timing and backpressure cases live in `pty.rs`'s own `tests` module (#770, #771).
+//! exited on its own, or failed to exec (the reaper thread reaps the child shortly after `Drop` returns,
+//! #1775); spawning under fd exhaustion fails cleanly, and so does a failure after the fork (#1754); resize
+//! reaches the child. The `Drop`-timing and backpressure cases live in `pty.rs`'s own `tests` module (#770,
+//! #771, #1775). The one reaper thread is started by each probe's warm-up spawn, so the thread baseline
+//! already counts it.
 //!
 //! Counting the process's fds and threads is only exact with nothing else running, but the unit-test
 //! binary runs many tests in parallel threads. So each counting probe re-runs this test binary with only
@@ -203,8 +206,9 @@ fn spawn_and_drop(how: Ending) {
         reader_ended(&rx),
         "{how:?}: reader thread still connected after Drop"
     );
+    // The reaper thread reaps it shortly after `Drop` returns (#1775).
     assert!(
-        gone(pid),
+        settles_to(true, || gone(pid)),
         "{how:?}: child {pid} left behind (running or zombie)"
     );
 }
@@ -248,7 +252,7 @@ fn fds_threads_and_children_return_to_baseline_probe() {
         for how in endings {
             spawn_and_drop(how);
             assert!(
-                no_children_left(),
+                settles_to(true, no_children_left),
                 "round {round}, {how:?}: a child is left unreaped"
             );
         }
@@ -333,7 +337,10 @@ fn spawn_under_fd_exhaustion_fails_cleanly_probe() {
                 reader_ended(&rx),
                 "free={free}: reader still connected after Drop"
             );
-            assert!(gone(pid), "free={free}: child {pid} left behind");
+            assert!(
+                settles_to(true, || gone(pid)),
+                "free={free}: child {pid} left behind"
+            );
         }
         assert!(
             settles_to(true, no_children_left),

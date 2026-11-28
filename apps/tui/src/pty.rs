@@ -123,15 +123,16 @@ pub const READ_CHUNK: usize = 4096;
 /// How often a reader blocked on a full channel re-checks whether `Drop` asked it to stop.
 const FULL_RETRY: Duration = Duration::from_millis(10);
 
-/// How long `Drop` lets the child act on SIGHUP before it escalates to SIGKILL (#771).
+/// How long the child may act on SIGHUP before the reaper escalates to SIGKILL (#771).
 const HANGUP_GRACE: Duration = Duration::from_millis(500);
-/// How long `Drop` waits to reap the child after SIGKILL before it gives up (a process stuck in an
+/// How long the reaper waits to reap the child after SIGKILL before it gives up (a process stuck in an
 /// uninterruptible sleep cannot be reaped; leaking that zombie beats freezing the editor).
 const KILL_GRACE: Duration = Duration::from_secs(2);
 
 /// A shell running on a Unix PTY. Owns the master fd (as a [`File`]), the reader thread, and the write end
-/// of the reader's wake pipe; `Drop` stops the reader, closes the master, hangs up the child, and reaps it,
-/// all bounded in time, so a child that ignores SIGHUP cannot freeze the editor (#771).
+/// of the reader's wake pipe; `Drop` stops the reader, closes the master, hangs up the child, and hands it
+/// to the reaper thread, which kills it if it must and reaps it, so a child that ignores SIGHUP cannot
+/// freeze the editor (#771, #1775).
 pub struct UnixPty {
     /// `None` only inside `Drop`, which closes it before hanging up the child.
     master: Option<File>,
@@ -248,8 +249,8 @@ impl Pty for UnixPty {
 }
 
 impl Drop for UnixPty {
-    /// Bounded teardown (#771): nothing here may block on the child, because it runs on the main thread
-    /// when a terminal buffer closes (`:bd!`) as well as at exit.
+    /// Bounded teardown that never waits on the child (#771, #1775): it runs on the main thread when a
+    /// terminal buffer closes (`:bd!`) as well as at exit, so the grace periods run on the reaper thread.
     fn drop(&mut self) {
         // 1. Stop the reader. Closing the wake pipe's write end wakes its `poll`, so it exits even while a
         //    background process still holds the slave (on Linux a master read only fails with EIO once EVERY
@@ -263,14 +264,150 @@ impl Drop for UnixPty {
         //    terminal emulator window closes.
         drop(self.master.take());
         // 3. Hang up the child's process group (forkpty made the child a session leader, so its pgid is its
-        //    pid), give it a moment, then SIGKILL the group and reap. `trap '' HUP` does not survive this.
+        //    pid), then hand it to the reaper, which gives it a moment, SIGKILLs the group and reaps it.
+        //    `trap '' HUP` does not survive this.
         let pid = self.child_pid;
         signal_child(pid, libc::SIGHUP);
-        if reap_within(pid, HANGUP_GRACE) {
-            return;
+        if !reaper::hand_off(pid) {
+            // No reaper thread could be started: reap here, bounded, as before #1775.
+            reap_bounded(pid);
         }
-        signal_child(pid, libc::SIGKILL);
-        let _ = reap_within(pid, KILL_GRACE);
+    }
+}
+
+/// Wait out the hangup grace, SIGKILL the group if the child is still there, and reap it, giving up after
+/// the kill grace. The synchronous fallback for when no reaper thread can be started.
+fn reap_bounded(pid: libc::pid_t) {
+    if reap_within(pid, HANGUP_GRACE) {
+        return;
+    }
+    signal_child(pid, libc::SIGKILL);
+    let _ = reap_within(pid, KILL_GRACE);
+}
+
+/// Wait (at most one full escalation, plus slack) for every child handed to the reaper to be reaped or
+/// given up on. Called once at exit, after the terminals are dropped, so a child that ignores SIGHUP is
+/// still SIGKILLed before the editor exits, as when `Drop` did it inline (#1775).
+pub fn finish_reaping() {
+    reaper::wait_idle(HANGUP_GRACE + KILL_GRACE + Duration::from_millis(100));
+}
+
+/// The one reaper thread (#1775): `Drop` hands it each hung-up child, and it runs the bounded
+/// HUP-then-KILL escalation for all of them at once, off the event loop. Started on the first hand-off and
+/// kept for the life of the process, so closing any number of terminals costs one thread.
+mod reaper {
+    use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+    use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
+    use std::time::{Duration, Instant};
+
+    use super::{signal_child, HANGUP_GRACE, KILL_GRACE};
+
+    /// How often the reaper polls `waitpid` while it has children in hand.
+    const POLL: Duration = Duration::from_millis(5);
+
+    /// The reaper's inbox, or `None` when its thread could not be started.
+    static INBOX: OnceLock<Option<Sender<libc::pid_t>>> = OnceLock::new();
+    /// Children handed off and not yet reaped or given up on.
+    static PENDING: Mutex<usize> = Mutex::new(0);
+    /// Signalled whenever `PENDING` drops.
+    static IDLE: Condvar = Condvar::new();
+
+    /// Give `pid` (already sent SIGHUP) to the reaper. `false` when there is no reaper thread, so the
+    /// caller must reap it itself.
+    pub(super) fn hand_off(pid: libc::pid_t) -> bool {
+        let inbox = INBOX.get_or_init(|| {
+            let (tx, rx) = mpsc::channel();
+            std::thread::Builder::new()
+                .name("pty-reaper".into())
+                .spawn(move || run(&rx))
+                .ok()
+                .map(|_| tx)
+        });
+        let Some(tx) = inbox else {
+            return false;
+        };
+        *PENDING.lock().unwrap_or_else(PoisonError::into_inner) += 1;
+        if tx.send(pid).is_ok() {
+            return true;
+        }
+        done(); // the reaper is gone (it never exits, but never leak the count)
+        false
+    }
+
+    /// Block until no handed-off child is pending, or `limit` passes.
+    pub(super) fn wait_idle(limit: Duration) {
+        let pending = PENDING.lock().unwrap_or_else(PoisonError::into_inner);
+        let _ = IDLE
+            .wait_timeout_while(pending, limit, |n| *n > 0)
+            .unwrap_or_else(PoisonError::into_inner);
+    }
+
+    /// One child handed off: reaped, or given up on.
+    fn done() {
+        let mut n = PENDING.lock().unwrap_or_else(PoisonError::into_inner);
+        *n = n.saturating_sub(1);
+        IDLE.notify_all();
+    }
+
+    /// Where one child stands in the escalation.
+    struct Child {
+        pid: libc::pid_t,
+        /// Whether it has been sent SIGKILL (the SIGHUP came from `Drop`).
+        killed: bool,
+        /// When the current grace period ends.
+        deadline: Instant,
+    }
+
+    /// Whether `pid` is reaped now (or is no longer our child), without blocking.
+    fn reaped(pid: libc::pid_t) -> bool {
+        let mut status = 0;
+        // SAFETY: `pid` is our own child; `status` is a valid out-pointer; WNOHANG never blocks.
+        let r = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+        // `r < 0` is ECHILD (nothing left to reap) or EINTR, which the next poll retries.
+        r == pid
+            || (r < 0 && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted)
+    }
+
+    /// The reaper loop: take new children, reap the ones that exited, SIGKILL the ones whose hangup grace
+    /// ran out, and give up on the ones that outlast the kill grace (a process stuck in an uninterruptible
+    /// sleep cannot be reaped; leaking that zombie beats holding it forever).
+    fn run(inbox: &Receiver<libc::pid_t>) {
+        let mut children: Vec<Child> = Vec::new();
+        loop {
+            let next = if children.is_empty() {
+                inbox.recv().map_err(|_| RecvTimeoutError::Disconnected)
+            } else {
+                inbox.recv_timeout(POLL)
+            };
+            match next {
+                Ok(pid) => children.push(Child {
+                    pid,
+                    killed: false,
+                    deadline: Instant::now() + HANGUP_GRACE,
+                }),
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) if children.is_empty() => return,
+                Err(RecvTimeoutError::Disconnected) => std::thread::sleep(POLL),
+            }
+            let now = Instant::now();
+            children.retain_mut(|c| {
+                if reaped(c.pid) {
+                    done();
+                    return false;
+                }
+                if now < c.deadline {
+                    return true;
+                }
+                if c.killed {
+                    done(); // give up: the zombie leaks
+                    return false;
+                }
+                signal_child(c.pid, libc::SIGKILL);
+                c.killed = true;
+                c.deadline = now + KILL_GRACE;
+                true
+            });
+        }
     }
 }
 
@@ -571,9 +708,16 @@ mod tests {
         drop(rx);
     }
 
-    /// Spawn `script` under `sh -c`, wait for it to print `READY`, drop the PTY, and return how long the drop
-    /// took and whether the child is still alive afterwards. `None` when the environment denies a PTY.
-    fn drop_after_ready(script: &str) -> Option<(Duration, bool)> {
+    /// How the drop of one PTY went: how long `Drop` itself took, and how long after `Drop` began the child
+    /// was gone (reaped, not even a zombie), if it went within the patience limit.
+    struct Teardown {
+        took: Duration,
+        gone_after: Option<Duration>,
+    }
+
+    /// Spawn `script` under `sh -c`, wait for it to print `READY`, drop the PTY, and wait for the child to be
+    /// reaped. `None` when the environment denies a PTY.
+    fn drop_after_ready(script: &str) -> Option<Teardown> {
         let (pty, rx) = UnixPty::spawn_argv(&["/bin/sh", "-c", script], 24, 80).ok()?;
         assert!(
             wait_for(&rx, "READY", Duration::from_secs(5)),
@@ -583,20 +727,77 @@ mod tests {
         let start = Instant::now();
         drop(pty);
         let took = start.elapsed();
-        // SAFETY: signal 0 only probes whether `pid` exists.
-        let alive = unsafe { libc::kill(pid, 0) } == 0;
-        Some((took, alive))
+        let deadline = start + Duration::from_secs(10);
+        let gone_after = loop {
+            // SAFETY: signal 0 only probes whether `pid` exists; a zombie still does.
+            let r = unsafe { libc::kill(pid, 0) };
+            if r == -1 && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+                break Some(start.elapsed());
+            }
+            if Instant::now() >= deadline {
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        Some(Teardown { took, gone_after })
     }
 
     /// #771: a child that ignores SIGHUP no longer hangs `Drop` in a blocking `waitpid`: it is SIGKILLed after
     /// the grace period and reaped.
     #[test]
     fn drop_kills_a_child_that_ignores_sighup() {
-        let Some((took, alive)) = drop_after_ready("trap '' HUP; echo READY; sleep 30") else {
+        let Some(t) = drop_after_ready("trap '' HUP; echo READY; sleep 30") else {
             return; // no PTY available (sandbox)
         };
-        assert!(took < Duration::from_secs(5), "Drop took {took:?}");
-        assert!(!alive, "the child survived Drop");
+        assert!(t.took < Duration::from_secs(5), "Drop took {:?}", t.took);
+        assert!(t.gone_after.is_some(), "the child survived Drop");
+    }
+
+    /// #1775: closing a terminal whose child ignores SIGHUP returns at once; the hangup grace and the
+    /// SIGKILL run on the reaper thread, which still kills and reaps the child once the grace runs out.
+    #[test]
+    fn drop_returns_at_once_and_the_reaper_kills_a_child_that_ignores_sighup() {
+        let Some(t) = drop_after_ready("trap '' HUP; echo READY; sleep 30") else {
+            return; // no PTY available (sandbox)
+        };
+        assert!(
+            t.took < Duration::from_millis(50),
+            "Drop blocked for {:?}",
+            t.took
+        );
+        let gone = t.gone_after.expect("the reaper never reaped the child");
+        // It ignored SIGHUP, so only the SIGKILL after the grace ended it: the escalation is unchanged.
+        assert!(
+            gone >= HANGUP_GRACE - Duration::from_millis(50),
+            "the child went after {gone:?}, before the hangup grace"
+        );
+    }
+
+    /// #1775: at exit `finish_reaping` waits for the reaper, so a child that ignores SIGHUP is SIGKILLed and
+    /// reaped before the editor exits, never orphaned by it.
+    #[test]
+    fn finish_reaping_waits_out_the_escalation() {
+        let Ok((pty, rx)) = UnixPty::spawn_argv(
+            &["/bin/sh", "-c", "trap '' HUP; echo READY; sleep 30"],
+            24,
+            80,
+        ) else {
+            return; // no PTY available (sandbox)
+        };
+        assert!(
+            wait_for(&rx, "READY", Duration::from_secs(5)),
+            "child never got ready"
+        );
+        let pid = pty.child_pid;
+        drop(pty);
+        finish_reaping();
+        // SAFETY: signal 0 only probes whether `pid` exists; a zombie still does.
+        let r = unsafe { libc::kill(pid, 0) };
+        let err = io::Error::last_os_error().raw_os_error();
+        assert!(
+            r == -1 && err == Some(libc::ESRCH),
+            "the child outlived finish_reaping"
+        );
     }
 
     /// #771: a background job in its own process group that ignores SIGHUP keeps the slave open after the
@@ -605,10 +806,10 @@ mod tests {
     #[test]
     fn drop_returns_while_a_background_job_holds_the_slave() {
         let script = "set -m; (trap '' HUP; sleep 10) & trap '' HUP; echo READY; wait";
-        let Some((took, alive)) = drop_after_ready(script) else {
+        let Some(t) = drop_after_ready(script) else {
             return; // no PTY available (sandbox)
         };
-        assert!(took < Duration::from_secs(5), "Drop took {took:?}");
-        assert!(!alive, "the shell survived Drop");
+        assert!(t.took < Duration::from_secs(5), "Drop took {:?}", t.took);
+        assert!(t.gone_after.is_some(), "the shell survived Drop");
     }
 }
