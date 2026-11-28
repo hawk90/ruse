@@ -113,15 +113,17 @@ codecs; written files were checked with `xxd`. "Probed" means the line was obser
 
 `encoding_rs` 0.8.44 (`cargo info`; probed with a scratch program on 2026-11-28): license
 `(Apache-2.0 OR MIT) AND BSD-3-Clause`, `rust-version` 1.88 (the workspace's is 1.97), dependencies `cfg-if`,
-`scopeguard`, `multiversion_no_op` (the `simd-accel`, `serde`, `any_all_workaround`, `rustversion` features off).
+`scopeguard`, `multiversion_no_op`, `simdutf8` (the `simd-accel`, `serde`, `any_all_workaround`, `rustversion` features off).
 Its labels are the WHATWG Encoding Standard's:
 
 | Label | `Encoding::for_label` gives | What Vim means |
 |---|---|---|
 | `latin1`, `iso-8859-1`, `l1` | windows-1252 | ISO-8859-1 |
-| `utf-16`, `ucs-2` | UTF-16LE | big-endian |
+| `utf-16` | UTF-16LE | UTF-16BE |
+| `ucs-2` | UTF-16LE | UCS-2BE, its own encoding: no surrogate pairs |
 | `ucs-4`, `utf-32` | none | UTF-32BE |
-| `cp932`, `cp949`, `cp936`, `cp950`, `uhc`, `latin9`, `cp437` | none | iconv names |
+| `cp932`, `cp949`, `cp936`, `cp950`, `uhc`, `cp437` | none | iconv names |
+| `latin9` | none | `iso-8859-15` |
 | `euc-kr`, `windows-949`, `ks_c_5601-1987` | EUC-KR (decodes the UHC/cp949 extension too: `81 41` is `갂`) | `euc-kr` |
 
 Other facts: `windows-1252` decodes `0x80` as `€` and `0x81` as U+0081, and cannot encode U+0080
@@ -184,20 +186,22 @@ empty (evidence 32).
 
 ruse has one name table, in the codec module. Each row has a canonical name (what `:set fenc?` shows),
 the Vim aliases nvim folds to it (evidence 35), the Emacs coding-system names (§6), and a codec. Lookup is
-case-insensitive, with `_` the same as `-`.
+case-insensitive, with `_` the same as `-`. A name nvim keeps as given (`l1`, `windows-1252`, `cp932`, `uhc`,
+`macintosh`) is a canonical name of its own that shares its row's codec, so `:set fenc?` shows it as given.
 
 | Canonical | Aliases (Vim / Emacs) | Codec |
 |---|---|---|
 | `utf-8` | `utf8` / `utf-8`, `mule-utf-8` | std (validation only) |
-| `latin1` | `iso-8859-1`, `l1`, `latin-1` / `iso-latin-1`, `iso-8859-1`, `latin-1` | own: byte = code point (ISO-8859-1) |
-| `cp1252` | `windows-1252` / `windows-1252`, `cp1252` | `encoding_rs` windows-1252 |
-| `utf-16`, `utf-16le` | `ucs-2`, `ucs-2le`, `unicode` / `utf-16be`, `utf-16le` (+ `-with-signature`) | own encoder; `encoding_rs` decoder |
+| `latin1`, `l1` | `iso-8859-1`, `latin-1`, `ansi` / `iso-latin-1`, `iso-8859-1`, `latin-1` | own: byte = code point (ISO-8859-1) |
+| `cp1252`, `windows-1252` | / `windows-1252`, `cp1252` | `encoding_rs` windows-1252 |
+| `utf-16`, `utf-16le` | `utf-16be`, `utf16`, `utf16le` / `utf-16be`, `utf-16le` (+ `-with-signature`) | own, both directions |
+| `ucs-2`, `ucs-2le` | `ucs2`, `ucs-2be`, `unicode`, `ucs2le` / | own, both directions (the UTF-16 code without surrogate pairs) |
 | `ucs-4`, `ucs-4le` | `utf-32`, `utf-32le` / `utf-32be`, `utf-32le` | own, both directions |
-| `sjis` | `shift_jis`, `cp932` / `japanese-shift-jis`, `shift_jis`, `cp932` | `encoding_rs` Shift_JIS |
+| `sjis`, `cp932` | `shift_jis`, `pck` / `japanese-shift-jis`, `shift_jis`, `cp932` | `encoding_rs` Shift_JIS |
 | `euc-jp`, `iso-2022-jp` | / `japanese-iso-8bit`, `iso-2022-jp` | `encoding_rs` |
-| `cp949`, `euc-kr` | `uhc` / `korean-iso-8bit`, `euc-kr`, `cp949` | `encoding_rs` EUC-KR (§2.1) |
-| `cp936`, `gbk`, `gb18030`, `big5`, `cp950` | / `chinese-gbk`, `gbk`, `chinese-gb18030`, `big5`, `cp950` | `encoding_rs` GBK, gb18030, Big5 |
-| the other WHATWG single-byte sets | `iso-8859-N`, `koi8-r`, `koi8-u`, `cp125N`, `macintosh` | `encoding_rs` |
+| `cp949`, `euc-kr`, `uhc` | / `korean-iso-8bit`, `euc-kr`, `cp949` | `encoding_rs` EUC-KR (§2.1) |
+| `cp936`, `gb18030`, `big5`, `cp950` | `gbk` / `chinese-gbk`, `gbk`, `chinese-gb18030`, `big5`, `cp950` | `encoding_rs` GBK, gb18030, Big5 |
+| the other WHATWG single-byte sets: `iso-8859-N`, `koi8-r`, `koi8-u`, `cp125N`, `windows-125N`, `macroman`, `macintosh`, … | `latin2` … `latin9` (`latin9` is `iso-8859-15`), `mac`, … / | `encoding_rs` |
 
 **`latin1` is ISO-8859-1** (the maintainer's decision on #1292). `encoding_rs` maps the `latin1`,
 `iso-8859-1` and `l1` labels to windows-1252, because that is what the Web does. ruse never passes a user's
@@ -207,8 +211,9 @@ which every byte is the code point of the same value. So `latin1` decodes every 
 as `€` (evidence 3). An encoding is chosen only by its row, never by `for_label` alone, so the
 WHATWG-only traps (`utf-16` is little-endian there, `ucs-2` too) cannot reach the user either.
 
-The hand-written codecs are about 60 lines: ISO-8859-1 both ways, UTF-16BE/LE encoding (with surrogate pairs;
-`ucs-2` rows refuse a character above U+FFFF as unencodable), and UTF-32BE/LE both ways. Each is tested
+The hand-written codecs are about 60 lines: ISO-8859-1 both ways, UTF-16BE/LE both ways (with surrogate
+pairs; UCS-2 shares the code without them: a `ucs-2` row refuses a character above U+FFFF as unencodable and
+does not decode a surrogate in the file), and UTF-32BE/LE both ways. `encoding_rs` does no UTF-16. Each is tested
 against Python's codecs on the evidence files.
 
 **2.1 Names that are approximations.** These are recorded divergences:
@@ -217,8 +222,8 @@ against Python's codecs on the evidence files.
   (cp949) byte pair for a hangul syllable that strict EUC-KR lacks, where iconv's `euc-kr` would refuse it.
 - `sjis` is windows-31j (cp932), and `gbk` is cp936, as the WHATWG defines them. They are supersets of the
   strict sets.
-- ISO-2022 variants other than ISO-2022-JP, EBCDIC, and the iconv-only names (`cp437`, `latin9` as a name;
-  `iso-8859-15` works) are not offered.
+- ISO-2022 variants other than ISO-2022-JP, EBCDIC, and the iconv-only names (`cp437`) are not offered.
+  `latin9` works: nvim folds it to `iso-8859-15`, and so does ruse.
 
 **2.2 Unknown names.** nvim accepts any `'fenc'` and passes it to iconv; an unknown one reads and writes
 `[NOT converted]` (evidence 20). ruse has no iconv, so an unknown name is refused where it is given:
@@ -256,8 +261,17 @@ byte that is not part of a valid UTF-8 sequence is kept in the buffer and writte
 valid sequences are the file's own bytes, so read then write gives the file back. This is today's read
 path. It is checked by the existing property test `an_unmodified_buffer_writes_back_its_bytes`, whose
 alphabet includes `\xFF`, NUL and the BOM bytes (the 12 `persist::encoding` tests pass on this branch), and
-slice 2 adds the encodings to it. With a listed encoding the decode is exact both ways for every file ruse
-accepts in it (no malformed sequence, §3), so the round trip holds there as well.
+slice 2 adds the encodings to it.
+
+With a listed encoding the round trip holds because an entry accepts a file only when the decode is exact:
+no malformed sequence, and, for a multi-byte set, the decoded text encodes back to the file's bytes
+(`FileEncoding::decode_exact`, slice 1). A clean decode alone is not enough. `encoding_rs`'s multi-byte
+decoders accept sequences their encoders do not give back; counting two-byte sequences over all byte pairs
+(`encoding_rs` 0.8.44): Shift_JIS 2278 (for example `87 90` → `≒` → `81 E0`), Big5 3941, gb18030 130,
+EUC-JP 10 plus every JIS X 0212 triple, GBK 2, and some ISO-2022-JP escape forms. EUC-KR (cp949) and every
+single-byte set round-trip exactly. Such a file fails its `'fileencodings'` entry and falls through to the
+next one. What a forced `++enc` read of it does (keep the decode and warn, or refuse) is open for slice 2
+(Open questions).
 
 It does not guess. A list with `sjis` or `cp949` would read some files of another encoding as CJK, because both
 accept many high-byte sequences. The result then depends on the content, so such an encoding is listed only by
@@ -451,7 +465,8 @@ Slice 2 depends on slice 1, and slice 3 on slice 2.
 - **F-008 byte-preserve:** an unmodified buffer writes back its exact bytes. Under the default list every
   file is accepted (BOM, valid UTF-8, or the all-fail UTF-8 read with its invalid bytes kept), and kept bytes
   are written as they are (§3, §4), so the property holds for every file;
-  the round-trip property test gains the encodings.
+  the round-trip property test gains the encodings. A listed encoding accepts a file only when it decodes
+  exactly (§3); a forced `++enc` read in a multi-byte set that does not is open for slice 2.
 - **INV-TEXT-TERMINATED (D-065):** unchanged; line endings are found after decoding.
 - **INV-ADDITIVE (RFC-0023):** RJ01 1.2 only appends a field.
 - **INV-TXN / INV-UNDO:** `:set fenc=` is file-shape metadata, like `:set ff=`: not a transaction, and it
@@ -477,8 +492,9 @@ Slice 2 depends on slice 1, and slice 3 on slice 2.
 Decoding is of the same untrusted file bytes ruse already reads, bounded by the existing size checks (the
 large-file profile, Emacs `large-file-warning-threshold`). `encoding_rs` is fuzzed upstream and used by
 Firefox; ruse calls only its safe API. No name from a file chooses an encoding (no `coding:` cookie, §6),
-so a file cannot switch how it or another file is written. The supply-chain cost is one crate and three
-small dependencies (`cfg-if` and `scopeguard` are already in the tree; `multiversion_no_op` is new).
+so a file cannot switch how it or another file is written. The supply-chain cost is one crate and four
+small dependencies (`cfg-if` and `scopeguard` are already in the tree; `multiversion_no_op` and `simdutf8`
+0.1.5, MIT OR Apache-2.0, are new).
 
 ## Performance impact
 
@@ -560,5 +576,8 @@ Questions for the slices:
 
 - Slice 3: whether `C-x RET c` before `C-x C-s` keeps the coding system for later saves, and whether it makes the coding system "explicit" for later saves in ruse as
   in Emacs (`buffer-file-coding-system-explicit`'s cdr). To be probed before slice 3.
+- Slice 2: what a forced `++enc` read of a file that a multi-byte set decodes but does not encode back to
+  the same bytes does (§3): keep the decode and warn that a write changes those bytes, or refuse the read as
+  a conversion error. `'fileencodings'` entries already refuse such a file (slice 1).
 - Slice 2: nvim's exact message when `:set fenc=` is given in a `'nomodifiable'` buffer (§4.2 assumes E21,
   as for `:set ff=`; not probed).
