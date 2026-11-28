@@ -26,8 +26,9 @@ const SCROLLBACK_MAX: usize = 1000;
 const COMBINING_MAX: usize = 8;
 
 /// One grid cell: the (usually single-char) text, its style, and whether it is the right half of a wide glyph
-/// to the left (the painter skips continuations — the wide glyph already covered two columns).
-#[derive(Clone)]
+/// to the left (the painter skips continuations — the wide glyph already covered two columns). The default
+/// is a blank in the default style, the value `mem::take` leaves behind when a row moves to scrollback.
+#[derive(Clone, Default)]
 struct GridCell {
     text: String,
     style: CellStyle,
@@ -44,18 +45,27 @@ impl GridCell {
     }
 }
 
-/// The VT screen. Row-major `cells`; `cx`/`cy` are the cursor column/row; `style` is the active SGR.
+/// One screen row of `cols` cells.
+type Row = Vec<GridCell>;
+
+/// A blank screen: `rows` rows of `cols` default cells.
+fn blank_screen(rows: u16, cols: u16) -> Vec<Row> {
+    vec![vec![GridCell::default(); cols as usize]; rows as usize]
+}
+
+/// The VT screen. `cells` holds one [`Row`] per screen row, so a scroll moves row handles, not cells
+/// (#1739); `cx`/`cy` are the cursor column/row; `style` is the active SGR.
 pub struct Grid {
     rows: u16,
     cols: u16,
-    cells: Vec<GridCell>,
+    cells: Vec<Row>,
     cx: u16,
     cy: u16,
     style: CellStyle,
     saved: Option<(u16, u16)>,
     /// The stashed MAIN screen while the alternate screen is active (`?1049h`); `None` on the main screen.
     alt: Option<Box<AltState>>,
-    scrollback: VecDeque<Vec<GridCell>>,
+    scrollback: VecDeque<Row>,
     /// The vertical scroll region `[top, bottom]` (0-based inclusive), set by `DECSTBM` (CSI `r`). Scrolls
     /// (LF at the bottom margin, RI at the top, IL/DL) stay within it; default = the whole screen (slice 2b).
     scroll_top: u16,
@@ -75,7 +85,7 @@ pub struct Grid {
 
 /// The saved main-screen state during alternate-screen mode.
 struct AltState {
-    cells: Vec<GridCell>,
+    cells: Vec<Row>,
     cx: u16,
     cy: u16,
     style: CellStyle,
@@ -88,7 +98,7 @@ impl Grid {
         Grid {
             rows,
             cols,
-            cells: vec![GridCell::blank(CellStyle::default()); rows as usize * cols as usize],
+            cells: blank_screen(rows, cols),
             cx: 0,
             cy: 0,
             style: CellStyle::default(),
@@ -134,11 +144,11 @@ impl Grid {
     }
 
     fn at(&self, row: u16, col: u16) -> Option<&GridCell> {
-        (row < self.rows && col < self.cols).then(|| &self.cells[self.idx(row, col)])
+        (row < self.rows && col < self.cols).then(|| &self.cells[row as usize][col as usize])
     }
 
-    fn idx(&self, row: u16, col: u16) -> usize {
-        row as usize * self.cols as usize + col as usize
+    fn row_mut(&mut self, row: u16) -> &mut [GridCell] {
+        &mut self.cells[row as usize]
     }
 
     // --- resize (window geometry / PTY winsize change) ---
@@ -150,9 +160,9 @@ impl Grid {
         if rows == self.rows && cols == self.cols {
             return;
         }
-        self.cells = remap(&self.cells, self.rows, self.cols, rows, cols);
+        self.cells = remap(&self.cells, rows, cols);
         if let Some(alt) = self.alt.as_mut() {
-            alt.cells = remap(&alt.cells, self.rows, self.cols, rows, cols);
+            alt.cells = remap(&alt.cells, rows, cols);
         }
         self.rows = rows;
         self.cols = cols;
@@ -168,13 +178,13 @@ impl Grid {
     /// Before cell `(row, col)` is overwritten: if it is one half of a wide glyph, blank the other half, so the
     /// glyph does not survive as a stray half (#782).
     fn split_wide(&mut self, row: u16, col: u16) {
-        let i = self.idx(row, col);
-        if self.cells[i].continuation && col > 0 {
-            let left = i - 1;
-            self.cells[left] = GridCell::blank(self.cells[left].style);
+        let (cols, i) = (self.cols as usize, col as usize);
+        let line = self.row_mut(row);
+        if line[i].continuation && i > 0 {
+            line[i - 1] = GridCell::blank(line[i - 1].style);
         }
-        if col + 1 < self.cols && self.cells[i + 1].continuation {
-            self.cells[i + 1] = GridCell::blank(self.cells[i + 1].style);
+        if i + 1 < cols && line[i + 1].continuation {
+            line[i + 1] = GridCell::blank(line[i + 1].style);
         }
     }
 
@@ -185,10 +195,11 @@ impl Grid {
         if col == 0 || col >= self.cols {
             return;
         }
-        let i = self.idx(row, col);
-        if self.cells[i].continuation {
-            self.cells[i - 1] = GridCell::blank(self.style);
-            self.cells[i] = GridCell::blank(self.style);
+        let (style, i) = (self.style, col as usize);
+        let line = self.row_mut(row);
+        if line[i].continuation {
+            line[i - 1] = GridCell::blank(style);
+            line[i] = GridCell::blank(style);
         }
     }
 
@@ -200,17 +211,21 @@ impl Grid {
         if w == 2 && self.cx + 1 < self.cols {
             self.split_wide(self.cy, self.cx + 1);
         }
-        let i = self.idx(self.cy, self.cx);
-        self.cells[i] = GridCell {
+        let (style, wide, i) = (
+            self.style,
+            w == 2 && self.cx + 1 < self.cols,
+            self.cx as usize,
+        );
+        let line = self.row_mut(self.cy);
+        line[i] = GridCell {
             text: c.to_string(),
-            style: self.style,
+            style,
             continuation: false,
         };
-        if w == 2 && self.cx + 1 < self.cols {
-            let j = self.idx(self.cy, self.cx + 1);
-            self.cells[j] = GridCell {
+        if wide {
+            line[i + 1] = GridCell {
                 text: String::new(),
-                style: self.style,
+                style,
                 continuation: true,
             };
         }
@@ -232,8 +247,7 @@ impl Grid {
         if self.at(self.cy, col).is_some_and(|cell| cell.continuation) && col > 0 {
             col -= 1;
         }
-        let i = self.idx(self.cy, col);
-        let cell = &mut self.cells[i];
+        let cell = &mut self.cells[self.cy as usize][col as usize];
         if cell.text.chars().count() <= COMBINING_MAX {
             cell.text.push(c);
         }
@@ -254,53 +268,56 @@ impl Grid {
 
     /// Set all cells of row `r` to a blank carrying the current style.
     fn blank_row(&mut self, r: u16) {
-        for c in 0..self.cols {
-            let i = self.idx(r, c);
-            self.cells[i] = GridCell::blank(self.style);
+        let style = self.style;
+        self.row_mut(r).fill(GridCell::blank(style));
+    }
+
+    /// Move rows `top..=bottom` up by `n` (at most the span); the `n` rows freed at the bottom are blanked.
+    /// Rotating the slice of row handles moves `rows` pointers and clones no cell (#1739).
+    fn shift_rows_up(&mut self, top: u16, bottom: u16, n: u16) {
+        let n = n.min(bottom - top + 1);
+        self.cells[top as usize..=bottom as usize].rotate_left(n as usize);
+        for r in bottom + 1 - n..=bottom {
+            self.blank_row(r);
         }
     }
 
-    /// Copy row `src` onto row `dst` (used by the region-scroll / insert-line shifts).
-    fn copy_row(&mut self, src: u16, dst: u16) {
-        for c in 0..self.cols {
-            let (s, d) = (self.idx(src, c), self.idx(dst, c));
-            self.cells[d] = self.cells[s].clone();
+    /// Move rows `top..=bottom` down by `n` (at most the span); the `n` rows freed at the top are blanked.
+    fn shift_rows_down(&mut self, top: u16, bottom: u16, n: u16) {
+        let n = n.min(bottom - top + 1);
+        self.cells[top as usize..=bottom as usize].rotate_right(n as usize);
+        for r in top..top + n {
+            self.blank_row(r);
         }
     }
 
     /// Scroll the scroll region up by `n` rows: rows move toward the top margin, blank rows fill the bottom.
-    /// When the region is the full screen (main buffer), the departing top rows go to scrollback.
+    /// When the region is the full screen (main buffer), the departing top rows go to scrollback: each row is
+    /// moved out whole (`mem::take`), and the row evicted from a full scrollback is reused as its blank.
     fn scroll_region_up(&mut self, n: u16) {
         let (top, bottom) = (self.scroll_top, self.scroll_bottom);
+        let n = n.min(bottom - top + 1);
         let full = top == 0 && bottom == self.rows - 1 && self.alt.is_none();
-        for _ in 0..n {
-            if full {
-                let row: Vec<GridCell> = (0..self.cols)
-                    .map(|c| self.cells[self.idx(top, c)].clone())
-                    .collect();
-                self.scrollback.push_back(row);
+        if full {
+            for r in top..top + n {
+                let departing = std::mem::take(&mut self.cells[r as usize]);
+                self.scrollback.push_back(departing);
+                let mut reuse = None;
                 while self.scrollback.len() > SCROLLBACK_MAX {
-                    self.scrollback.pop_front();
+                    reuse = self.scrollback.pop_front();
                 }
+                // `shift_rows_up` blanks this row once it reaches the bottom; it only needs the width.
+                let mut row = reuse.unwrap_or_default();
+                row.resize(self.cols as usize, GridCell::default());
+                self.cells[r as usize] = row;
             }
-            for r in top..bottom {
-                self.copy_row(r + 1, r);
-            }
-            self.blank_row(bottom);
         }
+        self.shift_rows_up(top, bottom, n);
     }
 
     /// Scroll the scroll region down by `n` rows: rows move toward the bottom margin, blank rows fill the top.
     fn scroll_region_down(&mut self, n: u16) {
-        let (top, bottom) = (self.scroll_top, self.scroll_bottom);
-        for _ in 0..n {
-            let mut r = bottom;
-            while r > top {
-                self.copy_row(r - 1, r);
-                r -= 1;
-            }
-            self.blank_row(top);
-        }
+        self.shift_rows_down(self.scroll_top, self.scroll_bottom, n);
     }
 
     fn reverse_index(&mut self) {
@@ -325,10 +342,8 @@ impl Grid {
         }
         self.cut_wide_at(row, from);
         self.cut_wide_at(row, to);
-        for col in from..to {
-            let i = self.idx(row, col);
-            self.cells[i] = GridCell::blank(self.style);
-        }
+        let style = self.style;
+        self.row_mut(row)[from as usize..to as usize].fill(GridCell::blank(style));
     }
 
     fn erase_in_line(&mut self, mode: u16) {
@@ -370,15 +385,7 @@ impl Grid {
         if self.cy < self.scroll_top || self.cy > self.scroll_bottom {
             return;
         }
-        let n = n.min(self.scroll_bottom - self.cy + 1);
-        for _ in 0..n {
-            let mut r = self.scroll_bottom;
-            while r > self.cy {
-                self.copy_row(r - 1, r);
-                r -= 1;
-            }
-            self.blank_row(self.cy);
-        }
+        self.shift_rows_down(self.cy, self.scroll_bottom, n);
     }
 
     /// `DL` — delete `n` lines at the cursor row, pulling the rows below up within the scroll region; blank
@@ -387,13 +394,7 @@ impl Grid {
         if self.cy < self.scroll_top || self.cy > self.scroll_bottom {
             return;
         }
-        let n = n.min(self.scroll_bottom - self.cy + 1);
-        for _ in 0..n {
-            for r in self.cy..self.scroll_bottom {
-                self.copy_row(r + 1, r);
-            }
-            self.blank_row(self.scroll_bottom);
-        }
+        self.shift_rows_up(self.cy, self.scroll_bottom, n);
     }
 
     /// `ICH` — insert `n` blank cells at the cursor, shifting the rest of the line right (cells past the right
@@ -403,16 +404,10 @@ impl Grid {
         let row = self.cy;
         self.cut_wide_at(row, self.cx);
         self.cut_wide_at(row, self.cols - n);
-        let mut c = self.cols - 1;
-        while c >= self.cx + n {
-            let (src, dst) = (self.idx(row, c - n), self.idx(row, c));
-            self.cells[dst] = self.cells[src].clone();
-            c -= 1;
-        }
-        for c in self.cx..self.cx + n {
-            let i = self.idx(row, c);
-            self.cells[i] = GridCell::blank(self.style);
-        }
+        let (style, cx, n) = (self.style, self.cx as usize, n as usize);
+        let line = &mut self.row_mut(row)[cx..];
+        line.rotate_right(n); // the cells pushed past the right edge come round to the cursor, then blank
+        line[..n].fill(GridCell::blank(style));
     }
 
     /// `DCH` — delete `n` cells at the cursor, shifting the rest of the line left; blanks fill the right edge.
@@ -422,26 +417,18 @@ impl Grid {
         let row = self.cy;
         self.cut_wide_at(row, self.cx);
         self.cut_wide_at(row, self.cx + n);
-        for c in self.cx..self.cols - n {
-            let (src, dst) = (self.idx(row, c + n), self.idx(row, c));
-            self.cells[dst] = self.cells[src].clone();
-        }
-        // Blank the freed right edge directly: `erase_span` would read the stale cells there as a glyph to cut.
-        for c in self.cols - n..self.cols {
-            let i = self.idx(row, c);
-            self.cells[i] = GridCell::blank(self.style);
-        }
+        let (style, cx, n) = (self.style, self.cx as usize, n as usize);
+        let line = &mut self.row_mut(row)[cx..];
+        line.rotate_left(n); // the deleted cells come round to the right edge, then blank
+        let len = line.len();
+        line[len - n..].fill(GridCell::blank(style));
     }
 
     fn enter_alt_screen(&mut self) {
         if self.alt.is_some() {
             return;
         }
-        let blank = GridCell::blank(CellStyle::default());
-        let cells = std::mem::replace(
-            &mut self.cells,
-            vec![blank; self.rows as usize * self.cols as usize],
-        );
+        let cells = std::mem::replace(&mut self.cells, blank_screen(self.rows, self.cols));
         self.alt = Some(Box::new(AltState {
             cells,
             cx: self.cx,
@@ -475,9 +462,7 @@ impl Grid {
         self.wrap_next = false;
         self.cursor_visible = true;
         self.bracketed_paste = false;
-        for cell in &mut self.cells {
-            *cell = GridCell::blank(CellStyle::default());
-        }
+        self.cells = blank_screen(self.rows, self.cols);
     }
 
     /// Apply an SGR. `groups` holds one slice per `;`-separated parameter; a slice longer than one carries
@@ -544,14 +529,12 @@ impl Grid {
     }
 }
 
-/// Copy the top-left overlap of an `old_rows × old_cols` grid into a fresh `rows × cols` one (blanks fill
-/// the rest). No reflow — good enough for slice 2.
-fn remap(old: &[GridCell], old_rows: u16, old_cols: u16, rows: u16, cols: u16) -> Vec<GridCell> {
-    let mut out = vec![GridCell::blank(CellStyle::default()); rows as usize * cols as usize];
-    for r in 0..rows.min(old_rows) {
-        for c in 0..cols.min(old_cols) {
-            out[r as usize * cols as usize + c as usize] =
-                old[r as usize * old_cols as usize + c as usize].clone();
+/// Copy the top-left overlap of `old` into a fresh `rows × cols` screen (blanks fill the rest). No reflow — good enough for slice 2.
+fn remap(old: &[Row], rows: u16, cols: u16) -> Vec<Row> {
+    let mut out = blank_screen(rows, cols);
+    for (dst, src) in out.iter_mut().zip(old) {
+        for (d, s) in dst.iter_mut().zip(src) {
+            d.clone_from(s);
         }
     }
     out
@@ -1015,6 +998,38 @@ mod tests {
         assert_eq!(row_text(&g, 2).trim_end(), "b");
         feed(&mut g, b"\x1b[2;1H\x1b[M"); // delete it → b pulls back up
         assert_eq!(row_text(&g, 1).trim_end(), "b");
+    }
+
+    /// #1739: the row rotation keeps row order: scrollback gets the departing rows oldest first (moved, with
+    /// their text), and multi-line IL/DL/RI inside a region move each row by exactly `n`.
+    #[test]
+    fn row_shifts_keep_row_order() {
+        let mut g = Grid::new(3, 2);
+        feed(&mut g, b"a\r\nb\r\nc\r\nd\r\ne");
+        let back: Vec<String> = g
+            .scrollback
+            .iter()
+            .map(|row| row.iter().map(|c| c.text.as_str()).collect())
+            .collect();
+        assert_eq!(back, ["a", "b"]);
+        let rows = |g: &Grid| (0..g.rows).map(|r| row_text(g, r)).collect::<Vec<_>>();
+        assert_eq!(rows(&g), ["c ", "d ", "e "]);
+
+        let mut g = Grid::new(6, 1);
+        feed(
+            &mut g,
+            b"\x1b[1;1Ha\x1b[2;1Hb\x1b[3;1Hc\x1b[4;1Hd\x1b[5;1He\x1b[6;1Hf",
+        );
+        feed(&mut g, b"\x1b[2;5r\x1b[3;1H\x1b[2L"); // region rows 2..=5, IL 2 at row 3
+        assert_eq!(rows(&g), ["a", "b", " ", " ", "c", "f"]);
+        feed(&mut g, b"\x1b[2;1H\x1b[3M"); // DL 3 at row 2
+        assert_eq!(rows(&g), ["a", "c", " ", " ", " ", "f"]);
+        feed(&mut g, b"\x1b[2;1H\x1bM"); // RI at the top margin scrolls the region down
+        assert_eq!(rows(&g), ["a", " ", "c", " ", " ", "f"]);
+        assert!(
+            g.scrollback.is_empty(),
+            "a region scroll keeps no scrollback"
+        );
     }
 
     #[test]
