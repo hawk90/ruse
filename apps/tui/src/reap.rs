@@ -9,7 +9,9 @@
 //!
 //! [`end`] runs an escalation on the calling thread; [`end_in_background`] sends the first signal and hands
 //! the rest to one process-wide reaper thread, so closing a terminal never waits on its child (#1775).
-//! [`finish_background`] waits for that thread at exit.
+//! [`finish_background`] waits for that thread at exit. [`end_group`] (a cancelled `:!`, #1787) returns
+//! once the group leader exits and leaves the SIGKILL of what is left of its group, at the end of the grace,
+//! to that thread.
 //!
 //! The waits poll `waitpid(pid, WNOHANG)` on the raw pid, so they also serve a [`std::process::Child`]:
 //! once a helper here has reaped it, the caller must not wait on that `Child` again.
@@ -117,6 +119,77 @@ pub(crate) fn end(pid: libc::pid_t, escalation: &Escalation) -> Option<ExitStatu
     None
 }
 
+/// Whether `pid` has exited, WITHOUT reaping it (`waitid` with `WNOWAIT`, on Linux and macOS alike). The
+/// unreaped zombie keeps both its pid and its process group id from being reused, so the group can still be
+/// signalled safely afterwards. `Ok(None)` while it runs; `Err` when it is not (or no longer) our child.
+fn peek(pid: libc::pid_t) -> io::Result<Option<ExitStatus>> {
+    let id = libc::id_t::try_from(pid).map_err(|_| io::Error::from_raw_os_error(libc::ECHILD))?;
+    loop {
+        // SAFETY: a zeroed siginfo_t is a valid out-value; waitid only writes it.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: `info` is a valid out-pointer; WNOHANG never blocks and WNOWAIT leaves the child waitable.
+        let r = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                id,
+                &mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if r == 0 {
+            // SAFETY: waitid filled a SIGCHLD siginfo (or left it zeroed); these read its child fields.
+            let (got, status) = unsafe { (info.si_pid(), info.si_status()) };
+            if got != pid {
+                return Ok(None); // still running (POSIX leaves si_pid zero)
+            }
+            // Rebuild the wait(2) status word `ExitStatus` wraps from the siginfo's code.
+            let raw = match info.si_code {
+                libc::CLD_EXITED => (status & 0xff) << 8,
+                libc::CLD_DUMPED => status | 0x80,
+                _ => status, // CLD_KILLED: the signal number
+            };
+            return Ok(Some(ExitStatus::from_raw(raw)));
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() != io::ErrorKind::Interrupted {
+            return Err(err);
+        }
+    }
+}
+
+/// How a command's whole process group is ended (#1787): `escalation` as in [`end`], but each grace watches
+/// the leader without reaping it ([`peek`]). Once the leader exits, its status is returned at once (the
+/// caller does not wait out the grace), and the reaper thread SIGKILLs whatever is left of its group when
+/// that step's grace runs out, then reaps the leader. So a grandchild that ignores `SIGTERM` (`trap ''
+/// TERM`, a daemon-like helper) does not outlive the cancel, while one that handles it still gets the whole
+/// grace to clean up. nvim stops at the leader (`children_kill_cb` skips a job that has exited); this is a
+/// deliberate improvement over it. The leader's unreaped zombie holds the group id until the SIGKILL, so
+/// that signal cannot reach a stranger's group. `None` when the leader outlived every step (given up on) or
+/// was not our child.
+pub(crate) fn end_group(pid: libc::pid_t, escalation: &Escalation) -> Option<ExitStatus> {
+    for step in escalation {
+        signal(pid, step.signal);
+        let deadline = Instant::now() + step.grace;
+        loop {
+            match peek(pid) {
+                Ok(Some(status)) => {
+                    if step.signal == libc::SIGKILL || !reaper::hand_off_exited(pid, deadline) {
+                        // The group was already SIGKILLed, or there is no reaper thread: end what is left
+                        // of the group now and reap the leader here.
+                        signal(pid, libc::SIGKILL);
+                        let _ = try_reap(pid);
+                    }
+                    return Some(status);
+                }
+                Ok(None) if Instant::now() >= deadline => break,
+                Ok(None) => std::thread::sleep(POLL),
+                Err(_) => return None,
+            }
+        }
+    }
+    None
+}
+
 /// Wait up to `timeout` for `pid` to exit; if it has not, run `escalation` on it. Either way it is reaped
 /// (or given up on) before this returns. The exit status when it exited by itself in time; `None` when it
 /// had to be ended (or was not our child).
@@ -170,8 +243,19 @@ mod reaper {
     /// How often the reaper polls `waitpid` while it has children in hand.
     const POLL: Duration = Duration::from_millis(5);
 
-    /// A child handed off, already sent its escalation's first signal.
-    type Job = (libc::pid_t, &'static Escalation);
+    /// A child handed off: already sent its escalation's first signal, or (`hold` set) an exited group
+    /// leader whose zombie is kept until `hold`, when what is left of its group is SIGKILLed (#1787).
+    struct Job {
+        pid: libc::pid_t,
+        escalation: &'static Escalation,
+        hold: Option<Instant>,
+    }
+
+    /// What a held leader's job runs once its group was SIGKILLed: only the reap.
+    const KILLED: &Escalation = &[super::Step {
+        signal: libc::SIGKILL,
+        grace: super::KILL_GRACE,
+    }];
 
     /// The reaper's inbox, or `None` when its thread could not be started.
     static INBOX: OnceLock<Option<Sender<Job>>> = OnceLock::new();
@@ -182,6 +266,25 @@ mod reaper {
 
     /// Give `pid` to the reaper. `false` when there is no reaper thread, so the caller must end it itself.
     pub(super) fn hand_off(pid: libc::pid_t, escalation: &'static Escalation) -> bool {
+        send(Job {
+            pid,
+            escalation,
+            hold: None,
+        })
+    }
+
+    /// Give the reaper `pid`, an exited but unreaped group leader: at `until` it SIGKILLs what is left of
+    /// the group, then reaps the leader (#1787). `false` when there is no reaper thread.
+    pub(super) fn hand_off_exited(pid: libc::pid_t, until: Instant) -> bool {
+        send(Job {
+            pid,
+            escalation: KILLED,
+            hold: Some(until),
+        })
+    }
+
+    /// Queue `job` for the reaper thread, starting it on first use.
+    fn send(job: Job) -> bool {
         let inbox = INBOX.get_or_init(|| {
             let (tx, rx) = mpsc::channel();
             std::thread::Builder::new()
@@ -194,7 +297,7 @@ mod reaper {
             return false;
         };
         *PENDING.lock().unwrap_or_else(PoisonError::into_inner) += 1;
-        if tx.send((pid, escalation)).is_ok() {
+        if tx.send(job).is_ok() {
             return true;
         }
         done(); // the reaper is gone (it never exits, but never leak the count)
@@ -224,10 +327,13 @@ mod reaper {
         step: usize,
         /// When that grace ends.
         deadline: Instant,
+        /// An exited leader kept unreaped until `deadline`, when its group is SIGKILLed (#1787).
+        held: bool,
     }
 
-    /// The reaper loop: take new children, reap the ones that exited, move the ones whose grace ran out to
-    /// their next step, and give up on the ones that outlast the last step.
+    /// The reaper loop: take new children, SIGKILL the groups of held leaders whose hold ran out, reap the
+    /// ones that exited, move the ones whose grace ran out to their next step, and give up on the ones that
+    /// outlast the last step.
     fn run(inbox: &Receiver<Job>) {
         let mut children: Vec<Child> = Vec::new();
         loop {
@@ -237,12 +343,14 @@ mod reaper {
                 inbox.recv_timeout(POLL)
             };
             match next {
-                Ok((pid, escalation)) => children.push(Child {
-                    pid,
-                    escalation,
+                Ok(job) => children.push(Child {
+                    pid: job.pid,
+                    escalation: job.escalation,
                     step: 0,
-                    deadline: Instant::now()
-                        + escalation.first().map_or(Duration::ZERO, |s| s.grace),
+                    deadline: job.hold.unwrap_or_else(|| {
+                        Instant::now() + job.escalation.first().map_or(Duration::ZERO, |s| s.grace)
+                    }),
+                    held: job.hold.is_some(),
                 }),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) if children.is_empty() => return,
@@ -250,6 +358,14 @@ mod reaper {
             }
             let now = Instant::now();
             children.retain_mut(|c| {
+                if c.held {
+                    if now < c.deadline {
+                        return true; // the zombie holds the group id until then
+                    }
+                    signal(c.pid, libc::SIGKILL); // what is left of the group
+                    c.held = false;
+                    c.deadline = now + c.escalation.first().map_or(Duration::ZERO, |s| s.grace);
+                }
                 // `Err` is ECHILD: nothing left to reap.
                 if !matches!(try_reap(c.pid), Ok(None)) {
                     done();
@@ -292,6 +408,13 @@ mod tests {
 
     /// Spawn `sh -c script` leading its own group, and wait until it prints `READY` (its traps are set).
     fn spawn_ready(script: &str) -> (Child, libc::pid_t) {
+        let (child, pid, line) = spawn_line(script);
+        assert_eq!(line.trim(), "READY");
+        (child, pid)
+    }
+
+    /// Spawn `sh -c script` leading its own group, and return the first line it prints.
+    fn spawn_line(script: &str) -> (Child, libc::pid_t, String) {
         let mut child = Command::new("sh")
             .arg("-c")
             .arg(script)
@@ -303,10 +426,9 @@ mod tests {
             .expect("sh spawns");
         let mut line = String::new();
         let stdout = child.stdout.take().expect("piped stdout");
-        BufReader::new(stdout).read_line(&mut line).expect("READY");
-        assert_eq!(line.trim(), "READY");
+        BufReader::new(stdout).read_line(&mut line).expect("a line");
         let pid = libc::pid_t::try_from(child.id()).expect("pid fits");
-        (child, pid)
+        (child, pid, line)
     }
 
     /// Whether `pid` no longer exists (reaped; a zombie would still answer signal 0).
@@ -363,6 +485,48 @@ mod tests {
         let (_child, pid) = spawn_ready("echo READY; exit 3");
         let got = wait_or_end(pid, Duration::from_secs(5), QUICK);
         assert_eq!(got.and_then(|s| s.code()), Some(3));
+    }
+
+    /// #1787: ending a group returns once its leader exits, with the leader's own status; a member that
+    /// ignores SIGTERM keeps running through the grace and is SIGKILLed when it runs out; the leader is
+    /// reaped after that.
+    #[test]
+    fn ending_a_group_kills_a_member_that_ignores_sigterm_after_the_grace() {
+        let (_child, pid, line) = spawn_line(
+            "trap 'exit 7' TERM; (trap '' TERM; exec sleep 30) & echo $!; while :; do sleep 0.05; done",
+        );
+        let member: libc::pid_t = line.trim().parse().expect("the member's pid");
+        std::thread::sleep(Duration::from_millis(100)); // let the subshell set its trap
+        let t0 = Instant::now();
+        let status = end_group(pid, QUICK).expect("the leader exited");
+        assert_eq!(status.code(), Some(7), "{status:?}");
+        assert!(
+            t0.elapsed() < Duration::from_millis(250),
+            "waited out the grace"
+        );
+        assert!(
+            !gone(member),
+            "the member was killed before the grace ran out"
+        );
+        let until = Instant::now() + Duration::from_secs(5);
+        while !(gone(member) && gone(pid)) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(gone(member), "the member that ignores SIGTERM survived");
+        assert!(gone(pid), "the leader was never reaped");
+        assert!(
+            t0.elapsed() >= Duration::from_millis(250),
+            "killed before the grace"
+        );
+    }
+
+    /// #1787: a leader that ignores SIGTERM is SIGKILLed with its group, and its status says so.
+    #[test]
+    fn ending_a_group_whose_leader_ignores_sigterm_reports_the_kill() {
+        let (_child, pid) = spawn_ready("trap '' TERM; echo READY; sleep 30");
+        let status = end_group(pid, QUICK).expect("reaped");
+        assert_eq!(status.signal(), Some(libc::SIGKILL), "{status:?}");
+        assert!(gone(pid));
     }
 
     /// #1775: a background end returns at once and the reaper still runs the escalation to the end.

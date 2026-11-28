@@ -353,7 +353,13 @@ pub enum CancelReason { Superseded, DeadlineMissed, Shutdown, BudgetRevoked, Deg
    `:{range}!` / `!` / `gq` / `=` filters, `apps/tui/src/shell.rs`) poll the same user-interrupt checkpoint
    while they wait; CTRL-C sends `SIGTERM` to the shell's own process group, then `SIGKILL` if the shell is
    still there after 2 s (nvim's `proc_stop` and `KILL_TIMEOUT_MS`), reaps it, and leaves the buffer
-   unchanged (#855, #1748). Like nvim, the wait blocks until the shell is gone, so a cancelled filter never
+   unchanged (#855, #1748). **Deliberate improvement over nvim (#1787):** nvim stops at the shell, so a
+   process in its group that ignores `SIGTERM` (`trap '' TERM`, a daemon-like helper) outlives the cancel
+   (`children_kill_cb` skips a job that has exited). ruse watches the shell's exit with `waitid(WNOWAIT)`
+   (Linux and macOS), returns as soon as it exits, and keeps its zombie unreaped until the 2 s grace runs
+   out; then the reaper thread SIGKILLs whatever is left of the group and reaps the shell. The zombie holds
+   the group id until that SIGKILL, so the signal cannot reach a reused id; a member that handles `SIGTERM`
+   still gets the whole grace (`reap::end_group`). Like nvim, the wait blocks until the shell is gone, so a cancelled filter never
    races the buffer. Their output is capped (4 MiB, or 8× a filter's input), past which the command is ended
    the same way and the output reported truncated (a filter refuses it instead) (#855). The caps stay
    constants, not options: nvim has no cap at all, and an option would need the config loader, which does
