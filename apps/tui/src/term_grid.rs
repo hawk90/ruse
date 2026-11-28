@@ -692,6 +692,83 @@ impl Perform for Grid {
     }
 }
 
+/// The `vte` parser fed so that a PTY read boundary cannot change the grid (#1765). Feeding a stream in
+/// pieces must give the grid one feed gives, since a read can end anywhere.
+///
+/// vte 0.15 breaks that when a piece ends inside a UTF-8 sequence. It carries the partial sequence into the
+/// next `advance` and completes it from a 4-byte window. Two things go wrong there. When the window does
+/// not end on a char boundary, every byte in it after the char is skipped (`é` cut after `C3`, then
+/// `A9 0A E4 B8 AD`, loses the LF before `中`). A completed U+0080..=U+009F is also printed, where one feed
+/// executes it as C1.
+///
+/// So this parser never ends an `advance` call inside a UTF-8 sequence. It keeps an incomplete trailing
+/// sequence (a lead byte and fewer continuation bytes than it needs, at most 3 bytes) and puts it in front
+/// of the next piece. vte's partial path is then never taken. Holding bytes back is safe in any parser
+/// state: vte sees the same bytes in the same order. A stream that ends inside a sequence prints nothing
+/// for it either way.
+pub struct ChunkParser {
+    parser: vte::Parser,
+    carry: [u8; 3],
+    carry_len: usize,
+}
+
+impl Default for ChunkParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ChunkParser {
+    pub fn new() -> ChunkParser {
+        ChunkParser {
+            parser: vte::Parser::new(),
+            carry: [0; 3],
+            carry_len: 0,
+        }
+    }
+
+    /// Feed one piece of child output to `grid`.
+    pub fn advance(&mut self, grid: &mut Grid, bytes: &[u8]) {
+        if self.carry_len == 0 {
+            self.advance_whole_chars(grid, bytes);
+            return;
+        }
+        let mut joined = Vec::with_capacity(self.carry_len + bytes.len());
+        joined.extend_from_slice(&self.carry[..self.carry_len]);
+        joined.extend_from_slice(bytes);
+        self.carry_len = 0;
+        self.advance_whole_chars(grid, &joined);
+    }
+
+    /// Feed `bytes` without an incomplete trailing UTF-8 sequence, which is kept for the next call.
+    fn advance_whole_chars(&mut self, grid: &mut Grid, bytes: &[u8]) {
+        let keep = incomplete_utf8_tail(bytes);
+        let (now, later) = bytes.split_at(bytes.len() - keep);
+        self.parser.advance(grid, now);
+        self.carry[..keep].copy_from_slice(later);
+        self.carry_len = keep;
+    }
+}
+
+/// How many trailing bytes of `bytes` are an incomplete UTF-8 sequence: a lead byte followed only by
+/// continuation bytes, still a valid prefix and short of its length. 0 when the tail is complete or invalid.
+fn incomplete_utf8_tail(bytes: &[u8]) -> usize {
+    for k in 1..=bytes.len().min(3) {
+        let tail = &bytes[bytes.len() - k..];
+        match tail[0] {
+            0x80..=0xBF => continue, // a continuation byte: keep looking for the lead
+            0xC0..=0xFF => {
+                return match std::str::from_utf8(tail) {
+                    Err(e) if e.valid_up_to() == 0 && e.error_len().is_none() => k,
+                    _ => 0,
+                };
+            }
+            _ => return 0,
+        }
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -700,6 +777,42 @@ mod tests {
     fn feed(grid: &mut Grid, bytes: &[u8]) {
         let mut parser = Parser::new();
         parser.advance(grid, bytes);
+    }
+
+    #[test]
+    fn incomplete_utf8_tail_counts_only_a_valid_unfinished_sequence() {
+        assert_eq!(incomplete_utf8_tail(b""), 0);
+        assert_eq!(incomplete_utf8_tail(b"ab"), 0);
+        assert_eq!(incomplete_utf8_tail("a\u{e9}".as_bytes()), 0);
+        assert_eq!(incomplete_utf8_tail(b"a\xc3"), 1);
+        assert_eq!(incomplete_utf8_tail(b"a\xe4\xb8"), 2);
+        assert_eq!(incomplete_utf8_tail(b"\xf0\x9f\x98"), 3);
+        assert_eq!(incomplete_utf8_tail(b"\x80"), 0, "a lone continuation");
+        assert_eq!(incomplete_utf8_tail(b"\xff"), 0, "never a lead byte");
+        assert_eq!(incomplete_utf8_tail(b"\xf0\x80"), 0, "not a valid prefix");
+        assert_eq!(incomplete_utf8_tail(b"\xc3\x1b"), 0);
+    }
+
+    /// The vte defect `ChunkParser` works around (#1765): a char completed across `advance` calls swallows
+    /// the bytes after it when its 4-byte lookahead does not end on a char boundary (here the LF before
+    /// `中`). When this fails, a vte update fixed it and the carry in `ChunkParser` can go.
+    #[test]
+    fn raw_vte_drops_the_byte_after_a_split_char() {
+        let bytes = "\u{e9}\n\u{4e2d}".as_bytes();
+        let (mut whole, mut split) = (Grid::new(2, 4), Grid::new(2, 4));
+        feed(&mut whole, bytes);
+        let mut parser = Parser::new();
+        parser.advance(&mut split, &bytes[..1]);
+        parser.advance(&mut split, &bytes[1..]);
+        assert_eq!(whole.cursor(), (1, 3));
+        assert_eq!(split.cursor(), (0, 3), "vte skipped the LF");
+
+        let mut fixed = Grid::new(2, 4);
+        let mut parser = ChunkParser::new();
+        parser.advance(&mut fixed, &bytes[..1]);
+        parser.advance(&mut fixed, &bytes[1..]);
+        assert_eq!(fixed.cursor(), whole.cursor());
+        assert_eq!(row_text(&fixed, 1), row_text(&whole, 1));
     }
 
     fn row_text(grid: &Grid, row: u16) -> String {
@@ -1051,7 +1164,7 @@ mod tests {
                 (chunk(), proptest::option::of((0u16..14, 0u16..14))), 0..24),
         ) {
             let mut g = Grid::new(size.0, size.1);
-            let mut parser = Parser::new();
+            let mut parser = ChunkParser::new();
             for (bytes, resize) in parts {
                 parser.advance(&mut g, &bytes);
                 if let Some((r, c)) = resize {
