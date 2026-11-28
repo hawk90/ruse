@@ -21,6 +21,10 @@ use crate::screen::CellStyle;
 /// Off-screen rows kept above the visible screen (viewing them is slice 2b). Bounds memory.
 const SCROLLBACK_MAX: usize = 1000;
 
+/// Combining marks kept per cell; further marks are dropped (#780). xterm keeps 2 by default (up to 10 with
+/// `combiningChars`); 8 covers stacked diacritics and Hebrew points with cantillation and still bounds a cell.
+const COMBINING_MAX: usize = 8;
+
 /// One grid cell: the (usually single-char) text, its style, and whether it is the right half of a wide glyph
 /// to the left (the painter skips continuations — the wide glyph already covered two columns).
 #[derive(Clone)]
@@ -190,6 +194,29 @@ impl Grid {
                 style: self.style,
                 continuation: true,
             };
+        }
+    }
+
+    /// Join a zero-width (combining) char to the last written glyph (#780). With a wrap pending the cursor
+    /// still sits ON that glyph (the last column); otherwise it is one left of the cursor. A continuation
+    /// cell means the glyph is wide, and the painter skips continuations, so the mark goes on its left half.
+    /// No glyph to the left (column 0, no wrap pending) drops the mark. At most [`COMBINING_MAX`] marks are
+    /// kept per cell, so a flood of marks cannot grow one cell without bound.
+    fn combine(&mut self, c: char) {
+        let mut col = if self.wrap_next {
+            self.cx
+        } else if self.cx > 0 {
+            self.cx - 1
+        } else {
+            return;
+        };
+        if self.at(self.cy, col).is_some_and(|cell| cell.continuation) && col > 0 {
+            col -= 1;
+        }
+        let i = self.idx(self.cy, col);
+        let cell = &mut self.cells[i];
+        if cell.text.chars().count() <= COMBINING_MAX {
+            cell.text.push(c);
         }
     }
 
@@ -540,11 +567,7 @@ impl Perform for Grid {
     fn print(&mut self, c: char) {
         let w = UnicodeWidthChar::width(c).unwrap_or(0) as u16;
         if w == 0 {
-            // A combining mark: append to the last written cell if there is one.
-            if self.cx > 0 {
-                let i = self.idx(self.cy, self.cx - 1);
-                self.cells[i].text.push(c);
-            }
+            self.combine(c);
             return;
         }
         if self.wrap_next {
@@ -941,6 +964,39 @@ mod tests {
             feed(&mut g, bytes.as_bytes());
             assert_eq!(row_text(&g, 0), want, "after {bytes:?}");
         }
+    }
+
+    /// #780: a combining mark joins the glyph it follows: the last cell while a wrap is pending, the left
+    /// half of a wide glyph (never its skipped continuation), and at most `COMBINING_MAX` marks per cell.
+    #[test]
+    fn combining_marks_join_the_glyph_they_follow() {
+        let text = |g: &Grid, col: u16| {
+            g.cell(0, col)
+                .map_or("<cont>".into(), |(t, _)| t.to_string())
+        };
+        let mut g = Grid::new(2, 3);
+        feed(&mut g, "abc\u{301}".as_bytes()); // `c` is at the last column, wrap pending
+        assert_eq!(text(&g, 1), "b");
+        assert_eq!(text(&g, 2), "c\u{301}");
+        feed(&mut g, b"d"); // the pending wrap is untouched by the mark
+        assert_eq!(row_text(&g, 1).trim_end(), "d");
+
+        let mut g = Grid::new(1, 5);
+        feed(&mut g, "한\u{302}".as_bytes()); // after a wide glyph mid-line
+        assert_eq!(text(&g, 0), "한\u{302}");
+        assert_eq!(text(&g, 1), "<cont>");
+
+        let mut g = Grid::new(2, 4);
+        feed(&mut g, "ab한\u{302}".as_bytes()); // a wide glyph ending at the last column
+        assert_eq!(text(&g, 2), "한\u{302}");
+
+        let mut g = Grid::new(1, 4);
+        feed(&mut g, "\u{301}a".as_bytes()); // nothing to the left: dropped
+        assert_eq!(text(&g, 0), "a");
+
+        let mut g = Grid::new(1, 4);
+        feed(&mut g, format!("e{}", "\u{301}".repeat(1000)).as_bytes());
+        assert_eq!(text(&g, 0).chars().count(), 1 + COMBINING_MAX);
     }
 
     /// One piece of hostile terminal output: a CSI/ESC sequence with arbitrary (often huge) parameters, a
