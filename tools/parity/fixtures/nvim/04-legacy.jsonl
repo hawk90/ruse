@@ -1,0 +1,861 @@
+# nvim oracle fixture inputs (tools/parity/oracle.py, #1590): one JSON object per line, `#` comments.
+# Fixtures that predate the split, in their original order. Edit in place; add NEW fixtures to i<issue>.jsonl.
+
+# --- #760 `%` across quotes, and tag objects matching names without regard to case. ---
+{"name": "i760_pct_quoted_open", "lines": ["(\"(\")"], "keys": "%"}
+{"name": "i760_pct_quoted_open_x", "lines": ["(\"(\")"], "keys": "%x"}
+{"name": "i760_pct_quoted_close_back", "lines": ["(\")\")"], "keys": "$%"}
+{"name": "i760_pct_from_in_quote", "lines": ["x \"(a)\" y"], "keys": "f(%"}
+{"name": "i760_pct_from_in_quote_skip", "lines": ["x \"( \")\" )\" y"], "keys": "f(%"}
+{"name": "i760_pct_two_strings", "lines": ["(\"(\" \")\")"], "keys": "%"}
+{"name": "i760_pct_single_quote", "lines": ["(a '(' b)"], "keys": "%"}
+{"name": "i760_pct_d_quoted", "lines": ["(\"(\") z"], "keys": "d%"}
+{"name": "i760_pct_v_quoted", "lines": ["(\"(\") z"], "keys": "v%d"}
+{"name": "i760_pct_escaped_quote", "lines": ["(\"\\\"(\" )"], "keys": "%"}
+{"name": "i760_dit_mixed_case", "lines": ["<A>x</a>"], "keys": "dit"}
+{"name": "i760_dit_mixed_case_inside", "lines": ["<A>x</a>"], "keys": "fxdit"}
+{"name": "i760_dat_mixed_case", "lines": ["y<Div>x</DIV>z"], "keys": "fxdat"}
+{"name": "i760_cit_mixed_case", "lines": ["<P>hi</p>"], "keys": "fhcitZ<Esc>"}
+{"name": "i760_vit_mixed_case", "lines": ["<A>xy</a>"], "keys": "fxvitd"}
+{"name": "i760_yat_mixed_case", "lines": ["<B>x</b>"], "keys": "fxyat$p"}
+{"name": "i760_dit_nested_mixed", "lines": ["<a><B>x</b></A>"], "keys": "fx2dit"}
+{"name": "i760_dat_nested_mixed", "lines": ["<a><B>x</b></A>"], "keys": "fxdat"}
+{"name": "i760_dit_mixed_attrs", "lines": ["<Div class=\"c\">x</div>"], "keys": "fxdit"}
+{"name": "i760_dit_mixed_multiline", "lines": ["<Div>", "x", "</dIV>"], "keys": "jdit"}
+{"name": "i760_dit_same_tag_diff_case_nest", "lines": ["<a><A>x</a></A>"], "keys": "fxdit"}
+# --- #728 a jump to a mark whose line was shortened past it. ---
+{"name": "i728_bt_after_D", "lines": ["abc"], "keys": "$ma0lD`a"}
+{"name": "i728_bt_after_D_iZ", "lines": ["abc"], "keys": "$max`aiZ<Esc>"}
+{"name": "i728_bt_after_x", "lines": ["abcdef"], "keys": "$ma0d$`a"}
+{"name": "i728_bt_after_dw_line2", "lines": ["x", "abc def"], "keys": "j$mak0jdwgg`a"}
+{"name": "i728_bt_after_dw", "lines": ["abc def"], "keys": "$ma0dw`a"}
+{"name": "i728_qt_after_D", "lines": ["  abc def"], "keys": "$ma0wD'a"}
+{"name": "i728_bt_empty_line", "lines": ["abc", "x"], "keys": "$ma0Dj`a"}
+{"name": "i728_bt_empty_line_iZ", "lines": ["abc", "x"], "keys": "$ma0Dj`aiZ<Esc>"}
+{"name": "i728_qt_empty_line", "lines": ["abc", "x"], "keys": "$ma0Dj'a"}
+{"name": "i728_d_bt_after_D", "lines": ["abcdef", "xyz"], "keys": "$ma0llDj0d`a"}
+{"name": "i728_d_bt_after_D_fwd", "lines": ["abcdef", "xyz"], "keys": "$ma0llD0d`a"}
+{"name": "i728_y_bt_after_D", "lines": ["abcdef", "xyz"], "keys": "$ma0llDj0y`a"}
+{"name": "i728_v_bt_after_D", "lines": ["abcdef", "xyz"], "keys": "$ma0llDj0v`ad"}
+{"name": "i728_c_bt_after_D", "lines": ["abcdef", "xyz"], "keys": "$ma0llDj0c`aZ<Esc>"}
+{"name": "i728_bt_after_undo_redo", "lines": ["abc"], "keys": "$ma0lDu<C-r>`a"}
+{"name": "i728_bt_after_D_undo", "lines": ["abc"], "keys": "$ma0lDu0`a"}
+{"name": "i728_bt_bracket_after_D", "lines": ["abc def", "x"], "keys": "wyiw0lDj`]"}
+{"name": "i728_bt_lbracket_after_D", "lines": ["abc def", "x"], "keys": "wyiw0Dj`["}
+{"name": "i728_bt_gt_after_D", "lines": ["abc def", "x"], "keys": "wve<Esc>0lDj`>"}
+{"name": "i728_bt_lt_after_D", "lines": ["abc def", "x"], "keys": "wve<Esc>0Dj`<"}
+{"name": "i728_bt_dot_after_D", "lines": ["abc def", "x"], "keys": "$xx0Dj`."}
+{"name": "i728_bt_dot_after_ins", "lines": ["abc def", "x"], "keys": "AZZ<Esc>0Dj`."}
+{"name": "i728_gsemi_after_D", "lines": ["abc def", "x"], "keys": "$x0lDjg;"}
+{"name": "i728_bt_mark_in_visual", "lines": ["abcdef", "xyz"], "keys": "$ma0llDjv`ay"}
+{"name": "i728_v_qt_blank_line", "lines": ["  abc def", "xyz"], "keys": "$ma0wDjv'ay"}
+# #1342: `:put ={expr}` puts the expression's result as lines. The rest of the line is the expression:
+# an unescaped `"` starts a comment (`\"` is a quote), an empty one reuses the last expression (also
+# one typed at a `"=` or `<C-r>=` prompt), and a bad one is E15 with nothing put.
+{"name": "i1342_put_expr", "lines": ["a"], "keys": ":put ='z'<CR>"}
+{"name": "i1342_0put_expr", "lines": ["a"], "keys": ":0put ='z'<CR>"}
+{"name": "i1342_put_expr_empty_buf", "lines": [""], "keys": ":put ='z'<CR>"}
+{"name": "i1342_putbang_expr_j", "lines": ["a", "b"], "keys": "j:put! ='z'<CR>"}
+{"name": "i1342_put_expr_dotdot", "lines": ["a"], "keys": ":put ='x'..'y'<CR>"}
+{"name": "i1342_put_expr_dot", "lines": ["a"], "keys": ":put ='a'.'b'<CR>"}
+{"name": "i1342_put_reg_b", "lines": ["a"], "keys": "\"byy:put b<CR>"}
+{"name": "i1342_put_expr_reuse", "lines": ["a"], "keys": ":put ='z'<CR>:put =<CR>"}
+{"name": "i1342_put_expr_empty_first", "lines": ["a"], "keys": ":put =<CR>"}
+{"name": "i1342_3put_expr_empty_first", "lines": ["a", "b", "c", "d"], "keys": ":3put =<CR>"}
+{"name": "i1342_put_set_empty_reg", "lines": ["a"], "keys": "qaq:put a<CR>"}
+{"name": "i1342_put_expr_hex", "lines": ["a"], "keys": ":put =0x10<CR>"}
+{"name": "i1342_put_expr_float", "lines": ["a"], "keys": ":put =1.5<CR>"}
+{"name": "i1342_put_expr_newline", "lines": ["a"], "keys": ":put =\\\"a\\nb\\\"<CR>"}
+{"name": "i1342_put_expr_trailing_nl", "lines": ["a"], "keys": ":put =\\\"x\\n\\\"<CR>"}
+{"name": "i1342_put_expr_quote_comment", "lines": ["a"], "keys": ":put =\"a\"<CR>"}
+{"name": "i1342_put_expr_trailing_comment", "lines": ["a"], "keys": ":put ='a' \" c<CR>"}
+{"name": "i1342_put_expr_escaped_quote", "lines": ["a"], "keys": ":put =\\\"a\\\"<CR>"}
+{"name": "i1342_put_expr_empty_str", "lines": ["a"], "keys": ":put =''<CR>"}
+{"name": "i1342_put_expr_lead_space", "lines": ["a"], "keys": ":put = 'z'<CR>"}
+{"name": "i1342_put_expr_indent", "lines": ["  a"], "keys": ":put ='  z'<CR>"}
+{"name": "i1342_3put_expr", "lines": ["a", "b", "c", "d"], "keys": ":3put ='z'<CR>"}
+{"name": "i1342_dollar_put_expr", "lines": ["a", "b", "c"], "keys": ":$put ='z'<CR>"}
+{"name": "i1342_range_put_expr", "lines": ["a", "b", "c"], "keys": ":1,2put ='z'<CR>"}
+{"name": "i1342_putbang_expr_top", "lines": ["a", "b"], "keys": ":put! ='z'<CR>"}
+{"name": "i1342_put_expr_nospace", "lines": ["a"], "keys": ":put='z'<CR>"}
+{"name": "i1342_putbang_expr_nospace", "lines": ["a"], "keys": ":put!='z'<CR>"}
+{"name": "i1342_pu_expr", "lines": ["a"], "keys": ":pu ='z'<CR>"}
+{"name": "i1342_put_expr_bar", "lines": ["a"], "keys": ":put ='z'|put ='w'<CR>"}
+{"name": "i1342_put_expr_then_put", "lines": ["a"], "keys": ":put ='z'<CR>:put<CR>"}
+{"name": "i1342_put_expr_then_dot_reg", "lines": ["a"], "keys": ":put ='z'<CR>\".p"}
+{"name": "i1342_put_expr_then_eq_p", "lines": ["a"], "keys": ":put ='z'<CR>\"=<CR>p"}
+{"name": "i1342_eq_p_then_put_expr", "lines": ["a"], "keys": "\"='q'<CR>p:put =<CR>"}
+{"name": "i1342_ctrl_r_eq_then_put_expr", "lines": ["a"], "keys": "i<C-r>='q'<CR><Esc>:put =<CR>"}
+{"name": "i1342_put_expr_undo", "lines": ["a"], "keys": ":put ='z'<CR>u"}
+{"name": "i1342_put_expr_undo_walk", "lines": ["a"], "keys": ":put ='y'<CR>:put ='z'<CR>", "setup": "let &undolevels = &undolevels"}
+{"name": "i1342_put_expr_error", "lines": ["a"], "keys": ":put =1+<CR>"}
+{"name": "i1342_put_expr_error_cursor", "lines": ["a", "b", "c", "d"], "keys": ":3put =1+<CR>"}
+{"name": "i1342_put_expr_error_reuse", "lines": ["a"], "keys": ":put =1+<CR>:put =<CR>"}
+{"name": "i1342_put_expr_error_after", "lines": ["a"], "keys": ":put ='z'<CR>:put =1+<CR>"}
+# --- #1307 ---  :normal ends like <Esc> only an unfinished command; a Visual it starts stays.
+{"name": "i1307_normal_v", "lines": ["ab", "cd"], "keys": ":normal v<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl", "lines": ["abc", "cd"], "keys": ":normal vl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_then_d", "lines": ["abc", "cd"], "keys": ":normal vl<CR>d", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_then_o", "lines": ["abc", "cd"], "keys": ":normal vl<CR>o", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_then_esc", "lines": ["abc", "cd"], "keys": ":normal vl<CR><Esc>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_then_normal_l", "lines": ["abc", "cd"], "keys": ":normal vl<CR>:normal l<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_then_normal_x", "lines": ["abc", "cd"], "keys": ":normal vl<CR>:normal x<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_line_vj", "lines": ["abc", "cd"], "keys": ":normal Vj<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_block_j", "lines": ["abc", "cd"], "keys": ":normal <C-v><C-v>j<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vlo", "lines": ["abc", "cd"], "keys": ":normal vlo<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_viw", "lines": ["abc def", "cd"], "keys": ":normal viw<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vlv", "lines": ["abc", "cd"], "keys": ":normal vlv<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vld", "lines": ["abc", "cd"], "keys": ":normal vld<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_v_count", "lines": ["abc", "cd"], "keys": ":normal v3<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_register", "lines": ["abc", "cd"], "keys": ":normal vl\"a<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_find", "lines": ["abc", "cd"], "keys": ":normal vlf<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_g", "lines": ["abc", "cd"], "keys": ":normal vlg<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_r", "lines": ["abc", "cd"], "keys": ":normal vlr<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_i", "lines": ["abc", "cd"], "keys": ":normal vli<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_colon", "lines": ["abc", "cd"], "keys": ":normal vl:<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vfzx", "lines": ["abc", "cd"], "keys": ":normal vfzx<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_d", "lines": ["abc", "cd"], "keys": ":normal d<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_register", "lines": ["abc", "cd"], "keys": ":normal \"a<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_count", "lines": ["abc", "cd"], "keys": ":normal 3<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_f", "lines": ["abc", "cd"], "keys": ":normal f<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_ixy", "lines": ["abc", "cd"], "keys": ":normal ixy<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_R", "lines": ["abc", "cd"], "keys": ":normal R<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_gh", "lines": ["abc", "cd"], "keys": ":normal gh<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_ghl", "lines": ["abc", "cd"], "keys": ":normal ghl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_range1_normal_vl", "lines": ["abc", "cd", "ef"], "keys": ":2normal vl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_range2_normal_vl", "lines": ["abc", "cd", "ef"], "keys": ":1,2normal vl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_range2_normal_Vl", "lines": ["abc", "cd", "ef"], "keys": ":1,2normal Vl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_all_normal_vl", "lines": ["abc", "cd", "ef"], "keys": ":%normal vl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_all_normal_vlx", "lines": ["abc", "cd", "ef"], "keys": ":%normal vlx<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_g_first_normal_vl", "lines": ["abc", "cd", "ef"], "keys": ":g/a/normal vl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_g_mid_normal_vl", "lines": ["abc", "cd", "ef"], "keys": ":g/c/normal vl<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_q", "lines": ["abc", "cd"], "keys": ":normal vlq<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_z", "lines": ["abc", "cd"], "keys": ":normal vlz<CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_ctrl_w", "lines": ["abc", "cd"], "keys": ":normal vl<C-v><C-w><CR>", "observe": ["marks", "visual"]}
+{"name": "i1307_normal_vl_then_x", "lines": ["abc", "cd"], "keys": ":normal vl<CR>x", "observe": ["marks", "visual"]}
+# --- #1561 --- Visual it/at read the current area (nvim's current_tagblock): repeats widen.
+{"name": "i1561_vit_single_char_inner", "lines": ["<a>x</a>"], "keys": "fxvitd"}
+{"name": "i1561_vit_wider_inner", "lines": ["<a>xy</a>"], "keys": "fxvitd"}
+{"name": "i1561_vitit_widens", "lines": ["<a>xy</a>"], "keys": "fxvititd"}
+{"name": "i1561_vit_nested_single", "lines": ["<a><b>x</b></a>"], "keys": "fxvitd"}
+{"name": "i1561_vitit_nested", "lines": ["<a><b>x</b></a>"], "keys": "fxvititd"}
+{"name": "i1561_vititit_past_top", "lines": ["<a><b>x</b></a>"], "keys": "fxvitititd"}
+{"name": "i1561_vat_nested", "lines": ["<a><b>x</b></a>"], "keys": "fxvatd"}
+{"name": "i1561_vatat_nested", "lines": ["<a><b>x</b></a>"], "keys": "fxvatatd"}
+{"name": "i1561_vatatat_past_top", "lines": ["<a><b>x</b></a>"], "keys": "fxvatatatd"}
+{"name": "i1561_vitit_nested_wide", "lines": ["<a><b>xy</b></a>"], "keys": "fxvititd"}
+{"name": "i1561_vitat_nested_wide", "lines": ["<a><b>xy</b></a>"], "keys": "fxvitatd"}
+{"name": "i1561_vatit_nested_wide", "lines": ["<a><b>xy</b></a>"], "keys": "fxvatitd"}
+{"name": "i1561_v2it_nested_wide", "lines": ["<a><b>xy</b></a>"], "keys": "fxv2itd"}
+{"name": "i1561_vit2it_nested_wide", "lines": ["<a><b>xy</b></a>"], "keys": "fxvit2itd"}
+{"name": "i1561_v3it_too_deep", "lines": ["<a><b>x</b></a>"], "keys": "fxv3itd"}
+{"name": "i1561_vit_area_past_inner_end", "lines": ["<a><b>xy</b> z</a>"], "keys": "fxvfzitd"}
+{"name": "i1561_vit_area_backward", "lines": ["<a><b>xy</b> z</a>"], "keys": "fzvFxitd"}
+{"name": "i1561_vit_o_swapped", "lines": ["<a><b>xy</b></a>"], "keys": "fxvitoitd"}
+{"name": "i1561_vit_o_swapped_cursor", "lines": ["<a><b>xy</b></a>"], "keys": "fxvloit<Esc>"}
+{"name": "i1561_vit_reversed_area_equals_inner", "lines": ["<a><b>xy</b></a>"], "keys": "fyvhitd"}
+{"name": "i1561_vit_area_equals_inner", "lines": ["<a><b>xy</b></a>"], "keys": "fxvlitd"}
+{"name": "i1561_vit_area_fails_unchanged", "lines": ["<a>x</a>"], "keys": "fxvllitd"}
+{"name": "i1561_vit_empty_on_open", "lines": ["<a></a>"], "keys": "vitd"}
+{"name": "i1561_vit_empty_on_close_lt", "lines": ["<a></a>"], "keys": "f/hvitd"}
+{"name": "i1561_vit_empty_on_close", "lines": ["<a></a>"], "keys": "f/vitd"}
+{"name": "i1561_vit_on_open_lt", "lines": ["<a>x</a>"], "keys": "vitd"}
+{"name": "i1561_vit_on_open_gt", "lines": ["<a>x</a>"], "keys": "f>vitd"}
+{"name": "i1561_vit_on_close_slash", "lines": ["<a>x</a>"], "keys": "f/vitd"}
+{"name": "i1561_vit_on_close_lt", "lines": ["<a>x</a>"], "keys": "f/hvitd"}
+{"name": "i1561_vit_on_close_lt_wide", "lines": ["<a>xy</a>"], "keys": "f/hvitd"}
+{"name": "i1561_vit_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jvitd"}
+{"name": "i1561_vitit_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jvititd"}
+{"name": "i1561_vat_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jvatd"}
+{"name": "i1561_vit_multiline_cursor", "lines": ["<div>", "hello", "</div>"], "keys": "jvit<Esc>"}
+{"name": "i1561_linewise_vit_turns_charwise", "lines": ["<div>", "x", "</div>"], "keys": "jVitd"}
+{"name": "i1561_vit_indent", "lines": ["  <a>x</a>"], "keys": "vitd"}
+{"name": "i1561_vit_case_insensitive", "lines": ["<A>x</a>"], "keys": "fxvitd"}
+{"name": "i1561_vit_attrs", "lines": ["<a href=\"q\">xy</a>"], "keys": "fxvititd"}
+{"name": "i1561_vit_unclosed_outer", "lines": ["<p><a>xy</a>"], "keys": "fxvititd"}
+{"name": "i1561_vat_selfclose_inside", "lines": ["<a>x<br/>y</a>"], "keys": "fyvatd"}
+{"name": "i1561_vit_nested_same_name", "lines": ["<a><a>x</a>y</a>"], "keys": "fxvititd"}
+{"name": "i1561_vit_no_tag", "lines": ["plain"], "keys": "lvitd"}
+# --- #1573 ---
+#     `.` after a Visual put repeats only the Visual delete inside it (nvim `nv_put_opt`: the delete's
+#     `do_pending_operator` overwrites the redo buffer with `v` + `d`, `"_` for `P`); the put is not redone.
+{"name": "i1573_vp_dot", "lines": ["ab", "xy", "zw"], "keys": "yiwjvpj."}
+{"name": "i1573_viwp_w_dot", "lines": ["abc def uvw"], "keys": "yiwwviwpw."}
+{"name": "i1573_vP_dot", "lines": ["abc def uvw"], "keys": "yiwwviwPw."}
+{"name": "i1573_vlp_dot", "lines": ["abc defgh"], "keys": "yiwwvlp0."}
+{"name": "i1573_Vp_dot", "lines": ["a", "b", "c", "d", "e"], "keys": "yyjVp."}
+{"name": "i1573_Vjp_dot", "lines": ["a", "b", "c", "d", "e", "f"], "keys": "yyjVjpj."}
+{"name": "i1573_VP_dot", "lines": ["a", "b", "c", "d", "e"], "keys": "yyjVPj."}
+{"name": "i1573_ctrlv_p_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "yl<C-v>jlpjj0."}
+{"name": "i1573_ctrlv_P_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "yl<C-v>jlPjj0."}
+{"name": "i1573_v3p_dot", "lines": ["ab cd ef gh"], "keys": "yiwwviw3pw."}
+{"name": "i1573_v3p_count_dot", "lines": ["ab cd ef gh ij"], "keys": "yiwwviwp2w3."}
+{"name": "i1573_named_reg_dot", "lines": ["ab cd ef gh"], "keys": "\"ayiwwviw\"apw."}
+{"name": "i1573_named_reg_P_dot", "lines": ["ab cd ef gh"], "keys": "\"ayiwwviw\"aPw."}
+{"name": "i1573_dot_undo", "lines": ["ab cd ef gh"], "keys": "yiwwviwpw.u"}
+{"name": "i1573_dot_dot", "lines": ["ab cd ef gh ij"], "keys": "yiwwviwpw.w."}
+{"name": "i1573_line_reg_char_sel_dot", "lines": ["ab", "cd ef", "gh ij"], "keys": "yyjviwpj0."}
+{"name": "i1573_char_reg_line_sel_dot", "lines": ["ab", "cd", "ef", "gh"], "keys": "yiwjVpj."}
+{"name": "i1573_dotreg_dot", "lines": ["ab cd ef gh"], "keys": "iX<Esc>wviw\".pw."}
+# --- #1305 Visual D/X/Y/C/S/R: visualmode() is linewise, but gv and '< '> keep the area's kind. ---
+{"name": "i1305_v_Y_gv_charwise", "lines": ["abcd", "efgh", "ijkl"], "keys": "lvjYgvy", "observe": ["marks"]}
+{"name": "i1305_v_Y_gv_esc", "lines": ["abcd", "efgh", "ijkl"], "keys": "lvjYgv<Esc>", "observe": ["marks"]}
+{"name": "i1305_v_Y_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "lvjYjj.", "observe": ["marks"]}
+{"name": "i1305_V_Y_vmode", "lines": ["abcd", "efgh", "ijkl"], "keys": "lVjY", "observe": ["marks"]}
+# --- #1564 ---
+{"name": "i1564_vis_older", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;"}
+{"name": "i1564_vis_newer", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg,"}
+{"name": "i1564_vis_older_d", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;d"}
+{"name": "i1564_vis_older_esc", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;<Esc>"}
+{"name": "i1564_vline_older", "lines": ["abc", "def", "ghi"], "keys": "GxggVg;"}
+{"name": "i1564_vline_older_d", "lines": ["abc", "def", "ghi"], "keys": "GxggVg;d"}
+{"name": "i1564_block_older", "lines": ["abc", "def", "ghi"], "keys": "Gxgg<C-v>g;"}
+{"name": "i1564_block_older_d", "lines": ["abc", "def", "ghi"], "keys": "Gxgg<C-v>lg;d"}
+{"name": "i1564_vis_empty", "lines": ["abc", "def", "ghi"], "keys": "vg;"}
+{"name": "i1564_vis_empty_newer", "lines": ["abc", "def", "ghi"], "keys": "vg,"}
+{"name": "i1564_vis_count", "lines": ["abc", "def", "ghi"], "keys": "GxkxggvG2g;"}
+{"name": "i1564_vis_then_normal", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;<Esc>g;"}
+{"name": "i1564_vis_move_after", "lines": ["abc", "def", "ghi"], "keys": "Gxggvg;jd"}
+{"name": "i1564_op_older", "lines": ["abc", "def", "ghi"], "keys": "Gxggdg;"}
+{"name": "i1564_op_older_then", "lines": ["abc", "def", "ghi"], "keys": "Gxggdg;x"}
+{"name": "i1564_op_newer", "lines": ["abc", "def", "ghi"], "keys": "Gxggdg,"}
+{"name": "i1564_normal_older", "lines": ["abc", "def", "ghi"], "keys": "Gxggg;"}
+{"name": "i1564_normal_newer", "lines": ["abc", "def", "ghi"], "keys": "Gxggg;g,"}
+{"name": "i1564_vis_ctrl_o", "lines": ["abc", "def", "ghi"], "keys": "Gxggv<C-o>"}
+{"name": "i1564_vis_ctrl_o_d", "lines": ["abc", "def", "ghi"], "keys": "Gxggv<C-o>d"}
+# --- #1558 ---
+# 'nowrapscan': a search that finds nothing before the edge fails (E385 forward, E384 backward, also
+# for a pattern that matches nowhere), the cursor stays, a count that runs off fails whole, and an
+# operator over it does nothing. `*`/`#` still move to the keyword's start; gn/gN fail silently; an
+# Ex /pat/ address fails too. The option is set in the KEYS so ruse sees it too. With 'wrapscan' (the default) every one of them wraps.
+{"name": "i1558_nows_slash_bottom", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>G/a<CR>"}
+{"name": "i1558_ws_slash_wraps", "lines": ["a", "b", "a", "b"], "keys": "G/a<CR>"}
+{"name": "i1558_nows_slash_nowhere", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/zzz<CR>"}
+{"name": "i1558_nows_query_top", "lines": ["a", "b", "a"], "keys": ":set nows<CR>?b<CR>"}
+{"name": "i1558_ws_query_wraps", "lines": ["a", "b", "a"], "keys": "?b<CR>"}
+{"name": "i1558_nows_query_nowhere", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>G?zzz<CR>"}
+{"name": "i1558_nows_n_bottom", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>n"}
+{"name": "i1558_nows_N_finds", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>N"}
+{"name": "i1558_nows_N_top", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>NN"}
+{"name": "i1558_nows_n_then_x", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>nx"}
+{"name": "i1558_nows_count_slash", "lines": ["x", "a", "a", "b"], "keys": ":set nows<CR>3/a<CR>"}
+{"name": "i1558_nows_count_n", "lines": ["x", "a", "a", "a", "b"], "keys": ":set nows<CR>/a<CR>3n"}
+{"name": "i1558_nows_count_n_fits", "lines": ["x", "a", "a", "a", "b"], "keys": ":set nows<CR>/a<CR>2n"}
+{"name": "i1558_nows_count_query", "lines": ["a", "a", "x"], "keys": ":set nows<CR>G3?a<CR>"}
+{"name": "i1558_nows_end_offset", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>G/a/e<CR>"}
+{"name": "i1558_nows_line_offset", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>G/a/+1<CR>"}
+{"name": "i1558_nows_same_line", "lines": ["a b a", "b"], "keys": ":set nows<CR>$/a<CR>"}
+{"name": "i1558_nows_multiline", "lines": ["ax", "bx", "cx"], "keys": ":set nows<CR>/x\\nb<CR>n"}
+{"name": "i1558_nows_d_search", "lines": ["a", "b", "a"], "keys": ":set nows<CR>jd/b<CR>"}
+{"name": "i1558_ws_d_search_wraps", "lines": ["a", "b", "a"], "keys": "jd/b<CR>"}
+{"name": "i1558_nows_dn", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>Gdn"}
+{"name": "i1558_nows_dn_dot", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>x/a<CR>Gdn."}
+{"name": "i1558_nows_star_bottom", "lines": ["a", "b", "a"], "keys": ":set nows<CR>j*"}
+{"name": "i1558_nows_star_last", "lines": ["a", "b", "a"], "keys": ":set nows<CR>G*"}
+{"name": "i1558_nows_star_finds", "lines": ["a", "b", "a"], "keys": ":set nows<CR>*"}
+{"name": "i1558_nows_hash_top", "lines": ["a", "b", "a"], "keys": ":set nows<CR>#"}
+{"name": "i1558_nows_hash_finds", "lines": ["a", "b", "a"], "keys": ":set nows<CR>G#"}
+{"name": "i1558_nows_gstar", "lines": ["ab", "b", "a"], "keys": ":set nows<CR>jg*"}
+{"name": "i1558_nows_ghash", "lines": ["abc def"], "keys": ":set nows<CR>wlg#"}
+{"name": "i1558_nows_star_keyword_start", "lines": ["abc def"], "keys": ":set nows<CR>l*"}
+{"name": "i1558_nows_star_curswant", "lines": ["x", "abc def"], "keys": ":set nows<CR>jl*k"}
+{"name": "i1558_nows_count_star", "lines": ["abc abc"], "keys": ":set nows<CR>l2*"}
+{"name": "i1558_nows_d_star", "lines": ["abc def"], "keys": ":set nows<CR>ld*"}
+{"name": "i1558_nows_star_then_n", "lines": ["abc def abc"], "keys": ":set nows<CR>l*n"}
+{"name": "i1558_nows_visual_n", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>Gvn"}
+{"name": "i1558_nows_gn_bottom", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>Gdgn"}
+{"name": "i1558_nows_gN_top", "lines": ["b", "a", "b", "a"], "keys": ":set nows<CR>/a<CR>ggdgN"}
+{"name": "i1558_nows_gN_under_cursor", "lines": ["a", "b", "a"], "keys": ":set nows<CR>/a<CR>GdgN"}
+{"name": "i1558_nows_count_gN", "lines": ["a", "b", "a"], "keys": ":set nows<CR>/a<CR>G2dgN"}
+{"name": "i1558_nows_count_gN_off", "lines": ["a", "b", "a"], "keys": ":set nows<CR>/a<CR>G3dgN"}
+{"name": "i1558_nows_count_gn", "lines": ["b", "a", "b", "a"], "keys": ":set nows<CR>/a<CR>gg2dgn"}
+{"name": "i1558_nows_count_gn_off", "lines": ["b", "a", "b", "a"], "keys": ":set nows<CR>/a<CR>gg3dgn"}
+{"name": "i1558_nows_visual_gn_stops", "lines": ["xab ab"], "keys": ":set nows<CR>/ab<CR>0vgngngnd"}
+{"name": "i1558_ws_gn_wraps", "lines": ["a", "b", "a", "b"], "keys": "/a<CR>Gdgn"}
+{"name": "i1558_nows_ex_address_bottom", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>G:/a/d<CR>"}
+{"name": "i1558_nows_ex_address_top", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>:?b?d<CR>"}
+{"name": "i1558_nows_ex_address_finds", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>:2,/a/d<CR>"}
+{"name": "i1558_nows_ex_address_chain", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>:/a//a/d<CR>"}
+{"name": "i1558_nows_ex_address_last", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>/a<CR>G:\\/d<CR>"}
+{"name": "i1558_ws_ex_address_wraps", "lines": ["a", "b", "a", "b"], "keys": "G:/a/d<CR>"}
+{"name": "i1558_nows_substitute_unaffected", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>G:%s/a/X/<CR>"}
+{"name": "i1558_nows_gd_unaffected", "lines": ["foo", "b", "foo", "b"], "keys": ":set nows<CR>Ggd"}
+{"name": "i1558_nows_macro_aborts", "lines": ["a", "a", "b"], "keys": ":set nows<CR>qq/a<CR>xq@q"}
+{"name": "i1558_set_ws_back_on", "lines": ["a", "b", "a", "b"], "keys": ":set nows<CR>:set ws<CR>G/a<CR>"}
+{"name": "i1558_nows_short_name", "lines": ["a", "b", "a", "b"], "keys": ":set nowrapscan<CR>G/a<CR>"}
+# --- #1303 Ex edits set the change marks '[ '] '. ---
+{"name": "i1303_d_range", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": "ll:2,3d<CR>", "observe": ["marks"]}
+{"name": "i1303_d_last", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":5d<CR>", "observe": ["marks"]}
+{"name": "i1303_d_tail", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":4,5d<CR>", "observe": ["marks"]}
+{"name": "i1303_d_all", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,5d<CR>", "observe": ["marks"]}
+{"name": "i1303_d_count", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2d 2<CR>", "observe": ["marks"]}
+{"name": "i1303_s_each_line", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,3s/[0-9]/Z/<CR>", "observe": ["marks"]}
+{"name": "i1303_s_one_line", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,4s/x/Z/<CR>", "observe": ["marks"]}
+{"name": "i1303_s_from_2", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,4s/x/Z/<CR>", "observe": ["marks"]}
+{"name": "i1303_s_split", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,3s/$/\\r/<CR>", "observe": ["marks"]}
+{"name": "i1303_s_join", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,3s/\\n//<CR>", "observe": ["marks"]}
+{"name": "i1303_s_nomatch", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,3s/q/Z/<CR>", "observe": ["marks"]}
+{"name": "i1303_m_up", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":3m0<CR>", "observe": ["marks"]}
+{"name": "i1303_m_end", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,2m$<CR>", "observe": ["marks"]}
+{"name": "i1303_m_tail_up", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":4,5m1<CR>", "observe": ["marks"]}
+{"name": "i1303_m_down", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2m3<CR>", "observe": ["marks"]}
+{"name": "i1303_t_end", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1t$<CR>", "observe": ["marks"]}
+{"name": "i1303_t_top", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3t0<CR>", "observe": ["marks"]}
+{"name": "i1303_t_mid", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":4t1<CR>", "observe": ["marks"]}
+{"name": "i1303_j_two", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,2j<CR>", "observe": ["marks"]}
+{"name": "i1303_j_three", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,4j<CR>", "observe": ["marks"]}
+{"name": "i1303_j_bang", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2j!<CR>", "observe": ["marks"]}
+{"name": "i1303_j_tail", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":4,5j<CR>", "observe": ["marks"]}
+{"name": "i1303_shift_right", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3><CR>", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "i1303_shift_left", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3<<CR>", "observe": ["marks"]}
+{"name": "i1303_shift_twice", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2>><CR>", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "i1303_shift_count", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,2> 2<CR>", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "i1303_filter", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,4!sort -r<CR>", "observe": ["marks"]}
+{"name": "i1303_sort_all", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":%sort<CR>", "observe": ["marks"]}
+{"name": "i1303_sort_rev", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,4sort!<CR>", "observe": ["marks"]}
+{"name": "i1303_g_d_all", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/[0-9]/d<CR>", "observe": ["marks"]}
+{"name": "i1303_g_d_some", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/c\\|a/d<CR>", "observe": ["marks"]}
+{"name": "i1303_g_s", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/x/s/x/Y/<CR>", "observe": ["marks"]}
+{"name": "i1303_g_m", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/b/m0<CR>", "observe": ["marks"]}
+{"name": "i1303_normal_x", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2normal x<CR>", "observe": ["marks"]}
+{"name": "i1303_y_range", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3y<CR>", "observe": ["marks"]}
+{"name": "i1303_d_undo", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3d<CR>u", "observe": ["marks"]}
+{"name": "i1303_put_after", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": "yj:3put<CR>", "observe": ["marks"]}
+{"name": "i1303_put_top", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": "yy:0put<CR>", "observe": ["marks"]}
+{"name": "i1303_put_end", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": "yy:$put<CR>", "observe": ["marks"]}
+{"name": "i1303_read_cmd", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2r !printf 'p\\nqq\\n'<CR>", "observe": ["marks"]}
+{"name": "i1303_filter_fewer", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3!echo x<CR>", "observe": ["marks"]}
+{"name": "i1303_filter_empty", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3!true<CR>", "observe": ["marks"]}
+{"name": "i1303_filter_empty_tail", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":4,5!true<CR>", "observe": ["marks"]}
+{"name": "i1303_sort_noop", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3sort<CR>", "observe": ["marks"]}
+{"name": "i1303_j_last", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":5j<CR>", "observe": ["marks"]}
+{"name": "i1303_j_count", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2j 3<CR>", "observe": ["marks"]}
+{"name": "i1303_g_d_mid", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/x/d<CR>", "observe": ["marks"]}
+{"name": "i1303_g_d_last", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/e/d<CR>", "observe": ["marks"]}
+{"name": "i1303_g_m_all", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/[0-9]/m0<CR>", "observe": ["marks"]}
+{"name": "i1303_d_count_before", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": "3:d<CR>", "observe": ["marks"]}
+{"name": "i1303_shift_left_noop", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1<<CR>", "observe": ["marks"]}
+{"name": "i1303_m_noop", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2m1<CR>", "observe": ["marks"]}
+{"name": "i1303_filter_empty_top", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,2!true<CR>", "observe": ["marks"]}
+{"name": "i1303_s_split_mid", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":2,3s/a\\|c/Z\\r/g<CR>", "observe": ["marks"]}
+{"name": "i1303_g_s_split", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":g/b\\|d/s/[0-9]/\\r/<CR>", "observe": ["marks"]}
+{"name": "i1303_s_join_two", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":1,2s/\\n//<CR>", "observe": ["marks"]}
+{"name": "i1303_s_join_last", "lines": ["a1", "  b2", "c3 x", "d4", "e5"], "keys": ":5s/\\n//<CR>", "observe": ["marks"]}
+{"name": "i1303_retab_mid", "lines": ["a", "\tb", "\tc", "d"], "keys": ":set et<CR>:%retab<CR>", "setup": "set tabstop=4", "observe": ["marks"]}
+{"name": "i1303_retab", "lines": ["\ta", "b", "\tc"], "keys": ":set et<CR>:%retab<CR>", "setup": "set tabstop=4", "observe": ["marks"]}
+# --- #1595 --- case operators take a forced wise (o_v / o_V / o_CTRL-V).
+{"name": "i1595_gUvj", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUvj"}
+{"name": "i1595_guvj", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lguvj"}
+{"name": "i1595_tildevj", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lg~vj"}
+{"name": "i1595_rot13vj", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lg?vj"}
+{"name": "i1595_gUVe", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUVe"}
+{"name": "i1595_guVe", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lguVe"}
+{"name": "i1595_tildeVw", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lg~Vw"}
+{"name": "i1595_rot13Vw", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lg?Vw"}
+{"name": "i1595_gUvw", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "gUvw"}
+{"name": "i1595_gUve", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "gUve"}
+{"name": "i1595_tildevl", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "g~vl"}
+{"name": "i1595_gUvh", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "$gUvh"}
+{"name": "i1595_gUVl", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "gUVl"}
+{"name": "i1595_gU_ctrlv_j", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgU<C-v>j"}
+{"name": "i1595_gu_ctrlv_jl", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgu<C-v>jl"}
+{"name": "i1595_tilde_ctrlv_jl", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lg~<C-v>jl"}
+{"name": "i1595_rot13_ctrlv_e", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lg?<C-v>e"}
+{"name": "i1595_gU_ctrlv_k", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "jlgU<C-v>kl"}
+{"name": "i1595_2gUvj", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "l2gUvj"}
+{"name": "i1595_gUv2j", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUv2j"}
+{"name": "i1595_gUv2e", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "gUv2e"}
+{"name": "i1595_2gUVe", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "2gUVe"}
+{"name": "i1595_gUvj_dot", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUvjj."}
+{"name": "i1595_gUvj_count_dot", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUvj2."}
+{"name": "i1595_tildevl_dot", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "g~vlw."}
+{"name": "i1595_gUVe_dot", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "gUVejj."}
+{"name": "i1595_gU_ctrlv_jl_dot", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgU<C-v>jljj."}
+{"name": "i1595_gUvj_undo", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUvju"}
+{"name": "i1595_gU_ctrlv_jl_undo", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgU<C-v>jlu"}
+{"name": "i1595_gUvv_j", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUvvj"}
+{"name": "i1595_gUvV_e", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUvVe"}
+{"name": "i1595_gUVv_j", "lines": ["abc Def ghi", "JKL mno PQR", "stu VWX yz", "Aa bB cC dD"], "keys": "lgUVvj"}
+{"name": "i1595_dollar_gugk", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$gugk"}
+{"name": "i1595_dollar_tildegk", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$g~gk"}
+{"name": "i1595_dollar_rot13gk", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$g?gk"}
+{"name": "i1595_dollar_2gUgk", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$2gUgk"}
+{"name": "i1595_dollar_gUvgk", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$gUvgk"}
+{"name": "i1595_dollar_gUgk_dot", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$gUgkk."}
+{"name": "i1595_dollar_gUgk_undo", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "G$gUgku"}
+{"name": "i1595_dollar_gUgj", "lines": ["abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"], "keys": "$gUgj"}
+# --- #1557 ---
+# Visual `*`/`#` (nvim's default `v_star-default` mapping): search for the SELECTED text as `\V` with
+# `\` escaped and line breaks as `\n`, forward/backward, leaving Visual; no register is touched. A
+# backward search from past the selection's start counts it once more. `n`/`N` continue with it.
+{"name": "i1557_vstar_d_keeps_text", "lines": ["(foo) foo x"], "keys": "v*d"}
+{"name": "i1557_viw_star", "lines": ["(foo) foo x"], "keys": "lviw*"}
+{"name": "i1557_viw_hash_from_end", "lines": ["(foo) foo x"], "keys": "$viw#"}
+{"name": "i1557_vl_star", "lines": ["(foo) foo x"], "keys": "vl*"}
+{"name": "i1557_word", "lines": ["foo bar foo", "foo"], "keys": "viw*"}
+{"name": "i1557_word_n", "lines": ["foo bar foo", "foo"], "keys": "viw*n"}
+{"name": "i1557_word_N", "lines": ["foo bar foo", "foo"], "keys": "viw*N"}
+{"name": "i1557_dot", "lines": ["a.b axb a.b"], "keys": "vll*"}
+{"name": "i1557_dot_pattern", "lines": ["a.b axb a.b"], "keys": "vll*\"/P"}
+{"name": "i1557_backslash", "lines": ["a\\b x a\\b"], "keys": "vll*"}
+{"name": "i1557_backslash_pattern", "lines": ["a\\b x a\\b"], "keys": "vll*\"/P"}
+{"name": "i1557_slash", "lines": ["a/b x a/b"], "keys": "vll*"}
+{"name": "i1557_slash_pattern", "lines": ["a/b x a/b"], "keys": "vll*\"/P"}
+{"name": "i1557_multiline", "lines": ["ab", "cd", "x ab", "cd"], "keys": "lvj*"}
+{"name": "i1557_multiline_pattern", "lines": ["ab", "cd", "x ab", "cd"], "keys": "lvj*\"/P"}
+{"name": "i1557_to_eol", "lines": ["ab", "x", "ab", "y"], "keys": "v$*"}
+{"name": "i1557_to_eol_pattern", "lines": ["ab", "x", "ab", "y"], "keys": "v$*\"/P"}
+{"name": "i1557_hash", "lines": ["ab x ab x ab"], "keys": "$hvl#"}
+{"name": "i1557_hash_cursor_at_start", "lines": ["ab x ab x ab"], "keys": "$vh#"}
+{"name": "i1557_hash_n", "lines": ["ab x ab x ab"], "keys": "$vh#n"}
+{"name": "i1557_hash_N", "lines": ["ab x ab x ab"], "keys": "$vh#N"}
+{"name": "i1557_count_star", "lines": ["ab x ab x ab x ab"], "keys": "vl2*"}
+{"name": "i1557_count_hash", "lines": ["ab x ab x ab x ab"], "keys": "$vh2#"}
+{"name": "i1557_count_hash_from_end", "lines": ["ab x ab x ab x ab"], "keys": "$hvl2#"}
+{"name": "i1557_count_star_six", "lines": ["ab ab ab ab ab ab"], "keys": "vl3*"}
+{"name": "i1557_count_hash_six", "lines": ["ab ab ab ab ab ab"], "keys": "$hvl3#"}
+{"name": "i1557_history", "lines": ["ab x ab", "cd x cd"], "keys": "vl*/cd<CR>/<Up><Up><CR>"}
+{"name": "i1557_select_star_replaces", "lines": ["foo bar"], "keys": "gh*<Esc>"}
+{"name": "i1557_unnamed_unchanged", "lines": ["foo bar foo bar"], "keys": "yiwwviw*"}
+{"name": "i1557_unnamed_unchanged_put", "lines": ["foo bar foo bar"], "keys": "yiwwviw*P"}
+{"name": "i1557_nows_star_fails", "lines": ["foo", "x", "foo"], "keys": ":set nows<CR>Gviw*"}
+{"name": "i1557_nows_hash_fails", "lines": ["foo", "x", "foo"], "keys": ":set nows<CR>viw#"}
+{"name": "i1557_nows_star_finds", "lines": ["foo", "x", "foo"], "keys": ":set nows<CR>viw*"}
+{"name": "i1557_ignorecase", "lines": ["Foo x foo FOO"], "keys": ":set ic<CR>wwviw*"}
+{"name": "i1557_smartcase", "lines": ["Foo x foo FOO"], "keys": ":set ic scs<CR>viw*"}
+{"name": "i1557_smartcase_lower", "lines": ["foo x Foo foo"], "keys": ":set ic scs<CR>viw*"}
+{"name": "i1557_linewise", "lines": ["ab", "x", "ab", "y"], "keys": "V*"}
+{"name": "i1557_linewise_pattern", "lines": ["ab", "x", "ab", "y"], "keys": "V*\"/P"}
+{"name": "i1557_linewise_hash_mid", "lines": ["ab", "x", "ab", "y"], "keys": "GklV#"}
+{"name": "i1557_linewise_hash_col0", "lines": ["ab", "x", "ab", "y"], "keys": "GkV#"}
+{"name": "i1557_linewise_two_lines", "lines": ["ab", "cd", "ab", "cd"], "keys": "Vj*"}
+{"name": "i1557_block", "lines": ["ab", "cd", "x", "ab", "cd"], "keys": "<C-v>jl*"}
+{"name": "i1557_block_pattern", "lines": ["ab", "cd", "x", "ab", "cd"], "keys": "<C-v>jl*\"/P"}
+{"name": "i1557_block_hash", "lines": ["xab", "xcd", "ab", "cd"], "keys": "Gk<C-v>jl#"}
+{"name": "i1557_empty_line", "lines": ["", "a"], "keys": "v*"}
+{"name": "i1557_marks_after", "lines": ["foo bar foo"], "keys": "wviw*"}
+# --- #1259 --- a |-chained Ex line is one undo step: the step ends where the frontend syncs, before each
+# typed command (Vim's u_sync), so every edit of one typed line joins one group; two typed lines are two.
+{"name": "i1259_chain_t", "lines": ["a", "b", "c", "d"], "keys": ":1t0|4t0<CR>u"}
+{"name": "i1259_chain_d", "lines": ["a", "b", "c", "d"], "keys": ":1d|1d<CR>u"}
+{"name": "i1259_chain_s_s", "lines": ["a", "b", "c", "d"], "keys": ":1s/a/x/|2s/b/y/<CR>u"}
+{"name": "i1259_two_lines", "lines": ["a", "b", "c", "d"], "keys": ":1t0<CR>:4t0<CR>u"}
+{"name": "i1259_chain_after_x", "lines": ["a", "b", "c", "d"], "keys": "x:1t0|4t0<CR>u"}
+{"name": "i1259_chain_after_x_uu", "lines": ["ab", "b", "c", "d"], "keys": "x:1t0|4t0<CR>uu"}
+{"name": "i1259_chain_then_x_u", "lines": ["ab", "b", "c", "d"], "keys": ":1t0|4t0<CR>xu"}
+{"name": "i1259_chain_error_mid", "lines": ["a", "b", "c", "d"], "keys": ":1t0|bogus|2t0<CR>u"}
+{"name": "i1259_normal_then_ex_chain", "lines": ["ab", "b", "c", "d"], "keys": ":normal x<CR>:1t0|1d<CR>u"}
+{"name": "i1259_chain_undo_inside", "lines": ["a", "b", "c", "d"], "keys": ":1d|undo<CR>"}
+# --- #1304 '< '> 'a '^ keep their raw columns through an edit; a $ area's '> is past the last char ---
+#     a line shortened under the mark, then grown back (the mark finds its old column)
+{"name": "i1304_a_shortened", "lines": ["abcdef", "gh"], "keys": "4lma$xx", "observe": ["marks"]}
+{"name": "i1304_a_shortened_grown", "lines": ["abcdef", "gh"], "keys": "4lma$xx0P`ax", "observe": ["marks"]}
+{"name": "i1304_a_shortened_jump", "lines": ["abcdef", "gh"], "keys": "4lma$xx`ax", "observe": ["marks"]}
+{"name": "i1304_a_split_before", "lines": ["abcdef", "gh"], "keys": "4lma0lli<CR><Esc>", "observe": ["marks"]}
+{"name": "i1304_a_split_after", "lines": ["abcdef", "gh"], "keys": "lma04li<CR><Esc>", "observe": ["marks"]}
+{"name": "i1304_a_join_onto", "lines": ["abcdef", "gh"], "keys": "5lma$xxxJ", "observe": ["marks"]}
+{"name": "i1304_a_join_from_below", "lines": ["ab", "cdef"], "keys": "j3lma$xxkJ", "observe": ["marks"]}
+{"name": "i1304_a_line_deleted", "lines": ["abcdef", "gh", "ij"], "keys": "5lmaddj", "observe": ["marks"]}
+{"name": "i1304_a_line_above_deleted", "lines": ["ab", "cdefgh", "ij"], "keys": "j5lma$xxxkdd", "observe": ["marks"]}
+{"name": "i1304_a_undo", "lines": ["abcdef", "gh"], "keys": "4lma$xxu", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+#     the Visual marks
+{"name": "i1304_vis_shortened", "lines": ["abcdef", "gh"], "keys": "2lvll<Esc>$xxx", "observe": ["marks"]}
+{"name": "i1304_vis_shortened_gv", "lines": ["abcdef", "gh"], "keys": "2lvll<Esc>$xxxgvd", "observe": ["marks"]}
+{"name": "i1304_vis_shortened_grown_gv", "lines": ["abcdef", "gh"], "keys": "2lvll<Esc>$xxx0Pgvd", "observe": ["marks"]}
+{"name": "i1304_vis_line_deleted", "lines": ["abcdef", "gh", "ij"], "keys": "lvjl<Esc>jdd", "observe": ["marks"]}
+{"name": "i1304_vis_joined", "lines": ["abc", "defgh", "ij"], "keys": "jlvll<Esc>kJ", "observe": ["marks"]}
+{"name": "i1304_vis_split", "lines": ["abcdef", "gh"], "keys": "3lvll<Esc>0li<CR><Esc>", "observe": ["marks"]}
+{"name": "i1304_vis_undo", "lines": ["abcdef", "gh"], "keys": "2lvll<Esc>$xxxu", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+#     a $ area's '> is one past the last char; `$v` without a move keeps it on the last char
+{"name": "i1304_dollar_esc", "lines": ["abcdef", "abc"], "keys": "v$<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_j_esc", "lines": ["abcdef", "abc"], "keys": "vj$<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_v_esc", "lines": ["abcdef", "abc"], "keys": "$v<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_vj_esc", "lines": ["abcdef", "abc"], "keys": "$vj<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_vjk_esc", "lines": ["abcdef", "abc"], "keys": "$vjk<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_h_esc", "lines": ["abcdef", "abc"], "keys": "v$h<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_block_esc", "lines": ["abcdef", "abc"], "keys": "<C-v>j$<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_y", "lines": ["abcdef", "abc"], "keys": "v$y", "observe": ["marks"]}
+{"name": "i1304_dollar_empty_line", "lines": ["", "abc"], "keys": "v$<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_multibyte", "lines": ["abé", "abc"], "keys": "v$<Esc>", "observe": ["marks"]}
+{"name": "i1304_dollar_line_deleted_undo", "lines": ["abc", "def"], "keys": "v$<Esc>ddu", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1304_dollar_gv_d", "lines": ["abc", "def"], "keys": "v$<Esc>gvd", "observe": ["marks"]}
+#     `.` of a Visual operator does not make its area the last Visual one
+{"name": "i1304_dot_d_keeps_marks", "lines": ["abcdefgh", "ij"], "keys": "lvld.", "observe": ["marks"]}
+{"name": "i1304_dot_x_lines", "lines": ["a", "b", "c", "d", "e"], "keys": "vjxj.", "observe": ["marks"]}
+{"name": "i1304_dot_gv", "lines": ["abcdefgh", "ij"], "keys": "lvlUw.gvy", "observe": ["marks"]}
+{"name": "i1304_dot_block", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "<C-v>jlUjj.", "observe": ["marks"]}
+#     '^ keeps where Insert stopped through a later edit (#1306)
+{"name": "i1306_caret_shortened", "lines": ["abc", "def"], "keys": "jAxy<Esc>xx", "observe": ["marks"]}
+{"name": "i1306_caret_shortened_grown", "lines": ["abc", "def"], "keys": "jAxy<Esc>xx0yiwP`^x", "observe": ["marks"]}
+{"name": "i1306_caret_gi", "lines": ["abc", "def"], "keys": "jAxy<Esc>xxggguuGgiZ<Esc>", "observe": ["marks"]}
+{"name": "i1306_caret_line_deleted", "lines": ["abc", "def", "gh"], "keys": "jAxy<Esc>dd", "observe": ["marks"]}
+{"name": "i1306_caret_autoindent", "lines": ["  abc", "def"], "keys": "o<Esc>", "setup": "set ai", "observe": ["marks"]}
+{"name": "i1306_caret_block_insert", "lines": ["ab", "cd", "ef"], "keys": "l<C-v>jjIxy<Esc>", "observe": ["marks"]}
+{"name": "i1306_caret_block_append", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jj$Axy<Esc>", "observe": ["marks"]}
+# --- #1302 --- a Visual-block shift's change marks: '[ at the block's top-left as it was, '] on the
+#     last line's last byte, '. at column 0 of the top line (nvim's op_shift + changed_lines)
+{"name": "vb_shift_right_empty_top", "lines": ["", "abcd", "abcd"], "keys": ":set sw=4 et<CR><C-v>jjl>"}
+{"name": "vb_shift_right_all_empty", "lines": ["", "", "x"], "keys": ":set sw=4 et<CR><C-v>j>"}
+{"name": "vb_shift_right_wide_last_char", "lines": ["abc", "ab中"], "keys": ":set sw=4 et<CR>l<C-v>j>"}
+{"name": "vb_shift_left_tabs_noet", "lines": ["ab\t\tcd", "ef\t\tgh"], "keys": ":set ts=8 sw=4 noet<CR>2l<C-v>j<"}
+{"name": "vb_shift_left_noop_dot", "lines": ["ab    cd", "ef    gh", "ij"], "keys": ":set ts=8 sw=4 et<CR>l<C-v>j<j."}
+{"name": "vb_shift_right_dot_count", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>3."}
+{"name": "vb_shift_right_redo", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>u<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_shift_left_undo", "lines": ["ab      cd", "ef      gh", "ij      kl"], "keys": ":set ts=8 sw=4 et<CR>3l<C-v>jj<u", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_shift_right_from_bottom_right", "lines": ["abc def", "ghi jkl", "mno pqr"], "keys": ":set ts=8 sw=4 et<CR>jjwl<C-v>kkh>"}
+{"name": "vb_shift_right_ragged_middle", "lines": ["abcdefgh", "", "ab", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>4l<C-v>3j>"}
+{"name": "vb_shift_left_last_line_blank", "lines": ["ab    cd", "ab    "], "keys": ":set ts=8 sw=4 et<CR>2l<C-v>j<"}
+{"name": "vb_shift_right_gv", "lines": ["abc def", "ghi jkl"], "keys": ":set ts=8 sw=4 et<CR>w<C-v>j>gvy"}
+# --- #1302 (part 2) --- the change marks of the other Visual-block operators: '[ '] on the block's
+#     corners (a delete's '] at the top-left's column), '. where op_delete leaves the cursor, at the
+#     top-left for r and column 0 for ~; a block I/A/c that copies its text down puts '. at column 0 of
+#     the second line and (I/A) '] past the bottom row's copy
+{"name": "vb_mk_d_top_short", "lines": ["ab", "abcdefgh", "abcdefgh"], "keys": "jjlll<C-v>kkld"}
+{"name": "vb_mk_d_past_bottom", "lines": ["abcd", "ef"], "keys": "lll<C-v>jd"}
+{"name": "vb_mk_d_tab_straddle", "lines": ["abcdefghijk", "a\tbc"], "keys": ":set ts=8<CR>4l<C-v>jd"}
+{"name": "vb_mk_d_wide_top", "lines": ["a中b", "abcd"], "keys": "l<C-v>jd"}
+{"name": "vb_mk_d_wide_bottom", "lines": ["abcd", "a中b"], "keys": "ll<C-v>jd"}
+{"name": "vb_mk_y_bottom_short", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "jjl<C-v>kklllly"}
+{"name": "vb_mk_y_middle_short", "lines": ["abcd", "ef", "ghij"], "keys": "ll<C-v>jjy"}
+{"name": "vb_mk_tilde", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "l<C-v>jjlll~"}
+{"name": "vb_mk_U_bottom_short", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "jjl<C-v>kkllllU"}
+{"name": "vb_mk_r_bottom_short", "lines": ["abcdefgh", "abcdefgh", "ab"], "keys": "jjl<C-v>kkllllrx"}
+{"name": "vb_mk_I_short_rows", "lines": ["abcd", "a", "b"], "keys": "ll<C-v>jjIx<Esc>"}
+{"name": "vb_mk_A_pads", "lines": ["abcd", "a", "abcd"], "keys": "l<C-v>jjlAxy<Esc>"}
+{"name": "vb_mk_I_tab_split", "lines": ["abcdefghijkl", "ab\tx"], "keys": ":set ts=8<CR>4l<C-v>jIZ<Esc>"}
+{"name": "vb_mk_A_tab_split", "lines": ["abcdefghijkl", "ab\tx"], "keys": ":set ts=8<CR>4l<C-v>jAZ<Esc>"}
+{"name": "vb_mk_I_dot", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jIZ<Esc>jj."}
+{"name": "vb_mk_I_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjIZ<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_mk_c_two_chars", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjlcXY<Esc>"}
+{"name": "vb_mk_c_nothing_typed", "lines": ["ab", "cd", "ef"], "keys": "l<C-v>jjc<Esc>"}
+{"name": "vb_mk_lc_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjlc<Esc>"}
+{"name": "vb_mk_C_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjC<Esc>"}
+{"name": "vb_mk_I_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjI<Esc>"}
+{"name": "vb_mk_A_nothing_typed", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjA<Esc>"}
+{"name": "vb_mk_c_dot", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjlcXY<Esc>j."}
+# --- #1302 (part 3) --- the change marks of the non-block operators: a shift's '[ at the raw column
+#     it started at, '] on the last line's last byte, '. at col 0 (op_shift); a join's '[ where the
+#     first line ended, '] past the joined line, '. at col 0 of the line after it (do_join); gq's '] on
+#     the cursor it leaves, '. where its last join or break was (op_format); a delete's '[ '] at its
+#     start, '. at col 0 of the first deleted line or of the line after a joined start (op_delete); a
+#     linewise put's '] on the last line's last char; a charwise yank of a newline ends '] before it; a
+#     typed char's '. on that char
+{"name": "cm_shift_from_word", "lines": ["abc def", "ghi jkl", "mno"], "keys": "w>>", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "cm_shift_from_eol", "lines": ["abc def", "ghi jkl", "mno"], "keys": "$>>", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "cm_shift_motion_up", "lines": ["abc def", "ghi jkl", "mno"], "keys": "jw<k", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "cm_shift_noop_left", "lines": ["abc def", "ghi jkl", "mno"], "keys": "w<<", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "cm_shift_visual_up_eol", "lines": ["abc def", "ghi jkl", "mno"], "keys": "j$vk>", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "cm_shift_visual_line_dot", "lines": ["abc def", "ghi jkl", "mno"], "keys": "jwVk>j.", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "cm_shift_empty_last_line", "lines": ["abc def", "", "mno"], "keys": "Vj>", "setup": "set shiftwidth=4 expandtab", "observe": ["marks"]}
+{"name": "cm_join_count_to_end", "lines": ["a", "b", "c"], "keys": "3J", "observe": ["marks"]}
+{"name": "cm_join_middle", "lines": ["a", "b", "c"], "keys": "jJ", "observe": ["marks"]}
+{"name": "cm_join_empty_first", "lines": ["", "b", "c"], "keys": "J", "observe": ["marks"]}
+{"name": "cm_join_from_eol", "lines": ["abc", "d"], "keys": "$J", "observe": ["marks"]}
+{"name": "cm_gq_breaks_line", "lines": ["aa bb cc dd ee", "ff"], "keys": ":set tw=5<CR>gqq", "observe": ["marks"]}
+{"name": "cm_gq_joins_then_breaks", "lines": ["x", "yy zz ww", "q"], "keys": ":set tw=5<CR>gqj", "observe": ["marks"]}
+{"name": "cm_gq_paragraphs", "lines": ["aa", "bb", "", "cc", "dd", "ee"], "keys": "gqG", "observe": ["marks"]}
+{"name": "cm_gq_motion_up", "lines": ["aa", "bb", "cc"], "keys": "jlgqk", "observe": ["marks"]}
+{"name": "cm_gq_autoindent", "lines": ["  aa", "bb"], "keys": ":set ai<CR>Vjgq", "observe": ["marks"]}
+{"name": "cm_gw_keeps_cursor", "lines": ["aa bb cc dd ee", "ff"], "keys": ":set tw=5<CR>wgww", "observe": ["marks"]}
+{"name": "cm_dd_last_line", "lines": ["abc", "d", "efg"], "keys": "Gdd", "observe": ["marks"]}
+{"name": "cm_dd_keeps_column", "lines": ["abcdef", "xyzuvw"], "keys": "3ldd", "observe": ["marks"]}
+{"name": "cm_dk_from_column", "lines": ["abc", "def", "ghi"], "keys": "jlldk", "observe": ["marks"]}
+{"name": "cm_d_search_lines", "lines": ["abc", "d", "efg"], "keys": "ld/f<CR>", "observe": ["marks"]}
+{"name": "cm_visual_d_three_lines", "lines": ["abc", "d", "efg"], "keys": "lvjjd", "observe": ["marks"]}
+{"name": "cm_visual_line_d_up", "lines": ["abc", "def", "ghi"], "keys": "jlVkd", "observe": ["marks"]}
+{"name": "cm_put_lines_above", "lines": ["abc", "de"], "keys": "yjP", "observe": ["marks"]}
+{"name": "cm_put_lines_below", "lines": ["abc", "de", "f"], "keys": "yjGp", "observe": ["marks"]}
+{"name": "cm_put_line_wide_end", "lines": ["ab中", "x"], "keys": "yyjp", "observe": ["marks"]}
+{"name": "cm_yank_to_newline", "lines": ["abcdef", "xyz"], "keys": "lv$y", "observe": ["marks"]}
+{"name": "cm_yank_empty_line_newline", "lines": ["abc", "", "x"], "keys": "jv$y", "observe": ["marks"]}
+{"name": "cm_insert_one_char", "lines": ["abcd"], "keys": "liZ<Esc>", "observe": ["marks"]}
+{"name": "cm_insert_cr", "lines": ["abcd"], "keys": "lli<CR><Esc>", "observe": ["marks"]}
+{"name": "cm_insert_typed_run", "lines": ["abcd"], "keys": "lixyz<Esc>", "observe": ["marks"]}
+{"name": "cm_join_dot_jump_past_end", "lines": ["a", "b"], "keys": "J`.x", "observe": ["marks"]}
+{"name": "cm_join_dot_line_jump_past_end", "lines": ["a", "b"], "keys": "J'.x", "observe": ["marks"]}
+{"name": "cm_join_change_list_past_end", "lines": ["a", "b"], "keys": "Jg;x", "observe": ["marks"]}
+{"name": "cm_dd_dot_jump_past_end", "lines": ["abc", "d", "efg"], "keys": "Gdd`.x", "observe": ["marks"]}
+# --- #1618 a confirmed :s///c sets '[ '] over the whole range, not the accepted lines ---
+{"name": "i1618_s_confirm_one_yes", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>nynnn", "observe": ["marks"]}
+{"name": "i1618_s_confirm_global_one_line", "lines": ["a1", "  a2", "a3a", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/gc<CR>nnyynn", "observe": ["marks"]}
+{"name": "i1618_s_confirm_quit", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>nyq", "observe": ["marks"]}
+{"name": "i1618_s_confirm_sub_range", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:2,4s/a/x/c<CR>yq", "observe": ["marks"]}
+# --- #1617 ---
+# Normal `*`/`#`/`g*`/`g#` add the pattern they search for to the search history (`\<foo\>` for the
+# whole-word forms, `foo` for the `g` forms), so a later `/<Up>` recalls it; a count does not change it.
+{"name": "i1617_star_history", "lines": ["foo x foo", "cd x cd"], "keys": "*/cd<CR>gg/<Up><Up><CR>"}
+{"name": "i1617_star_history_pattern", "lines": ["foo x foo", "cd x cd"], "keys": "*/cd<CR>gg/<Up><Up><CR>\"/P"}
+{"name": "i1617_hash_history", "lines": ["foo x foo", "cd x cd"], "keys": "#/cd<CR>gg/<Up><Up><CR>"}
+{"name": "i1617_gstar_history", "lines": ["foo x foobar", "cd x cd"], "keys": "g*/cd<CR>gg/<Up><Up><CR>"}
+{"name": "i1617_gstar_history_pattern", "lines": ["foo x foobar", "cd x cd"], "keys": "g*/cd<CR>gg/<Up><Up><CR>\"/P"}
+{"name": "i1617_ghash_history", "lines": ["foobar x foo", "cd x cd"], "keys": "$g#/cd<CR>gg/<Up><Up><CR>"}
+{"name": "i1617_ghash_history_pattern", "lines": ["foobar x foo", "cd x cd"], "keys": "$g#/cd<CR>gg/<Up><Up><CR>\"/P"}
+{"name": "i1617_hash_history_pattern", "lines": ["foo x foo", "cd x cd"], "keys": "#/cd<CR>gg/<Up><Up><CR>\"/P"}
+{"name": "i1617_count_star_history", "lines": ["foo x foo foo", "cd x cd"], "keys": "2*/cd<CR>gg/<Up><Up><CR>"}
+{"name": "i1617_star_up_once", "lines": ["foo x foo", "cd x cd"], "keys": "*gg/<Up><CR>"}
+{"name": "i1617_star_no_word_no_history", "lines": ["foo x foo", "  "], "keys": "/x<CR>j*gg/<Up><CR>"}
+# --- #1612 a Visual-block operator is ONE undo entry (`op_shift`/`op_delete`/`op_tilde`/`op_replace`
+#     `u_save` over all its lines), so `u`/`CTRL-R` leave `'.` on the block's top line; a block insert's
+#     replicate is one entry under the typed top row's. ------------------------------------------------
+{"name": "vb_x_undo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjxu", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_x_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjxu<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_r_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjrzu", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_r_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjrzu<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_tilde_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jj~u", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_rot13_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjg?u<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_c_undo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjczz<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_c_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjczz<Esc>u<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_I_undo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjIzz<Esc>u", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_I_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjIzz<Esc>u<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_A_redo_three", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jjAzz<Esc>u<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_C_cr_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jCx<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_shift_right_ragged_undo", "lines": ["abcdefgh", "", "abcdefgh"], "keys": ":set ts=8 sw=4 et<CR>4l<C-v>jj>u", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_forced_d_undo", "lines": ["abcd", "efgh", "ijkl"], "keys": "ld<C-v>jju", "setup": "let &undolevels = &undolevels"}
+{"name": "vb_forced_d_redo", "lines": ["abcd", "efgh", "ijkl"], "keys": "ld<C-v>jju<C-r>", "setup": "let &undolevels = &undolevels"}
+# #1616: Visual gp / gP replace the selection like Visual p (both swap the register), leaving the cursor
+# just after the put text; gP puts a linewise register above a block, like P.
+{"name": "vput_gp_char_dot", "lines": ["ab cd ef gh"], "keys": "yiwwviwgpw."}
+{"name": "vput_gp_char", "lines": ["ab cd ef gh"], "keys": "yiwwviwgp"}
+{"name": "vput_gP_char_swaps", "lines": ["ab cd ef gh"], "keys": "yiwwviwgP"}
+{"name": "vput_gP_char_then_P", "lines": ["ab cd ef gh"], "keys": "yiwwviwgP0P"}
+{"name": "vput_gp_char_count", "lines": ["ab cd ef gh"], "keys": "yiwwviw2gp"}
+{"name": "vput_gp_char_line_end", "lines": ["ab cd ef gh"], "keys": "yiw$viwgp"}
+{"name": "vput_gp_line", "lines": ["ab cd", "ef", "gh"], "keys": "yyjVgp"}
+{"name": "vput_gP_line", "lines": ["ab cd", "ef", "gh"], "keys": "yyjVgP"}
+{"name": "vput_gp_line_count", "lines": ["ab cd", "ef", "gh"], "keys": "yyjV2gp"}
+{"name": "vput_gp_line_last", "lines": ["ab cd", "ef", "gh"], "keys": "yyGVgp"}
+{"name": "vput_gp_line_char_reg", "lines": ["ab cd", "ef", "gh"], "keys": "yiwjVgp"}
+{"name": "vput_gp_line_dot", "lines": ["ab", "cd", "ef", "gh"], "keys": "yyjVgpj."}
+{"name": "vput_gp_char_line_reg", "lines": ["ab cd", "ef gh"], "keys": "yywviwgp"}
+{"name": "vput_gp_char_line_reg_end", "lines": ["ab cd", "ef gh"], "keys": "yy$viwgp"}
+{"name": "vput_gp_block_char_reg", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jgp"}
+{"name": "vput_gP_block_char_reg", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jgP"}
+{"name": "vput_gp_block_char_reg_count", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jl2gp"}
+{"name": "vput_gp_block_line_reg", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yyl<C-v>jgp"}
+{"name": "vput_gP_block_line_reg", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yyl<C-v>jgP"}
+{"name": "vput_gp_block_block_reg", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jlyjj0<C-v>jlgp"}
+{"name": "vput_gP_block_block_reg", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlyj0<C-v>jgP"}
+{"name": "vput_gp_block_dot", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yiwl<C-v>jgpjj0."}
+{"name": "vput_block_char_reg_count", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jl2p"}
+# #1616: the Normal gp / gP cursor that the Visual forms share: past the last line, and after a block.
+{"name": "gp_line_last", "lines": ["ab", "cd"], "keys": "yyGgp"}
+{"name": "gp_line_last_terminated", "lines": ["ab", "cd", ""], "keys": "yyjgp"}
+{"name": "gP_line_last", "lines": ["ab", "cd"], "keys": "yyGgP"}
+{"name": "gp_block_past_eof", "lines": ["abcd", "efgh", "ij"], "keys": "l<C-v>jlyGgp"}
+{"name": "gP_block_mid", "lines": ["abcd", "efgh", "ij", "kl"], "keys": "l<C-v>jlyjjgP"}
+{"name": "gp_block_line_end", "lines": ["abcd", "efgh", "ij", "kl"], "keys": "l<C-v>jlyjj$gp"}
+# --- #1269 display-width leftovers ---
+# Virtual Replace (`gR`, `gr`) counts screen cells (nvim's ins_char_bytes under VREPLACE): a typed char
+# takes the chars its cells cover, spaces fill what a wider char leaves, and `<BS>` takes the spaces back.
+# The `gr` fixtures type `Z`: nvim v0.12 maps `grx` (and `grn`, `gra`, ...) by default, even under --clean.
+{"name": "i1269_gR_over_invalid", "lines": ["aÿbc"], "keys": "lgRx<Esc>", "bytes": true}
+{"name": "i1269_gR_over_invalid_two", "lines": ["aÿbc"], "keys": "lgRxy<Esc>", "bytes": true}
+{"name": "i1269_gR_over_invalid_bs", "lines": ["aÿbc"], "keys": "lgRx<BS><Esc>", "bytes": true}
+{"name": "i1269_gR_over_wide", "lines": ["a中bc"], "keys": "lgRx<Esc>"}
+{"name": "i1269_gR_over_wide_bs", "lines": ["a中bc"], "keys": "lgRx<BS><Esc>"}
+{"name": "i1269_gR_over_control", "lines": ["a\u0001bc"], "keys": "lgRx<Esc>"}
+{"name": "i1269_gR_type_wide", "lines": ["abcd"], "keys": "lgR中<Esc>"}
+{"name": "i1269_gR_type_wide_bs", "lines": ["abcd"], "keys": "lgR中<BS><Esc>"}
+{"name": "i1269_gR_type_wide_cut", "lines": ["a中b"], "keys": "gR中<Esc>"}
+{"name": "i1269_gR_type_wide_over_tab", "lines": ["a\tb"], "keys": ":set ts=8<CR>lgR中<Esc>"}
+{"name": "i1269_gR_type_wide_tab_end", "lines": ["abcdef\tb"], "keys": ":set ts=8<CR>6lgR中<Esc>"}
+{"name": "i1269_gr_over_invalid", "lines": ["aÿbc"], "keys": "lgrZ", "bytes": true}
+{"name": "i1269_gr_count_over_invalid", "lines": ["aÿbc"], "keys": "l2grZ", "bytes": true}
+{"name": "i1269_gr_over_wide", "lines": ["a中bc"], "keys": "lgrZ"}
+# Blockwise `A` whose right edge cuts through `<ff>`: nvim appends after the byte on that row and copies
+# it with the typed text into the other rows (for a cut wide char, only its bytes after the cut).
+{"name": "i1269_block_A_cut_invalid", "lines": ["abÿcd", "abcdefgh"], "keys": "l<C-v>jlAX<Esc>", "bytes": true}
+{"name": "i1269_block_A_cut_invalid_below", "lines": ["abcdefgh", "abÿcd"], "keys": "l<C-v>jlAX<Esc>", "bytes": true}
+{"name": "i1269_block_A_cut_wide", "lines": ["abä¸\u00adcd", "abcdefgh"], "keys": "l<C-v>jlAX<Esc>", "bytes": true}
+# `[:lower:]`/`[:upper:]` test a byte that is not UTF-8 as the Latin-1 char of its value.
+{"name": "i1269_coll_lower_byte", "lines": ["AZÉ×é"], "keys": "/[[:lower:]]<CR>", "bytes": true}
+{"name": "i1269_coll_upper_byte", "lines": ["az×éÉ"], "keys": "/[[:upper:]]<CR>", "bytes": true}
+{"name": "i1269_coll_lower_ff", "lines": ["AZÿ"], "keys": "/[[:lower:]]<CR>", "bytes": true}
+{"name": "i1269_coll_not_lower_byte", "lines": ["ééaÉ"], "keys": "/[^[:lower:]]<CR>", "bytes": true}
+{"name": "i1269_coll_lower_byte_ic", "lines": ["AZÉé"], "keys": "/[[:lower:]]\\c<CR>", "bytes": true}
+# `<cword>` holding a byte that is not UTF-8.
+{"name": "i1269_cword_invalid", "lines": ["fooÿbar baz"], "keys": ":s/<C-r><C-w>/Z/<CR>", "bytes": true}
+# --- #1615 '[ '] keep the raw column a linewise delete started at, past the end of the line that takes
+#     the deleted ones' place (or on the line past the buffer's end); a jump to them clamps onto the line.
+{"name": "i1615_dd_last_line", "lines": ["ab", "cdef"], "keys": "j3ldd", "observe": ["marks"]}
+{"name": "i1615_dd_count", "lines": ["abcdef", "g", "hi"], "keys": "5l2dd", "observe": ["marks"]}
+{"name": "i1615_dj_short", "lines": ["abcdef", "gh", "ij", "klmnop"], "keys": "4ldj", "observe": ["marks"]}
+{"name": "i1615_dk_from_long", "lines": ["ab", "abcdef", "ij"], "keys": "j5ldk", "observe": ["marks"]}
+{"name": "i1615_dd_jump_start", "lines": ["abcdef", "gh"], "keys": "5ldd`[", "observe": ["marks"]}
+{"name": "i1615_dd_jump_end_line", "lines": ["abcdef", "  gh"], "keys": "5ldd']", "observe": ["marks"]}
+{"name": "i1615_dd_d_to_mark", "lines": ["abcdef", "ghij", "kl"], "keys": "5lddjd`[", "observe": ["marks"]}
+{"name": "i1615_dd_undo", "lines": ["abcdef", "gh"], "keys": "5lddu", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1615_Vd_col", "lines": ["abcdef", "gh", "ij"], "keys": "5lVd", "observe": ["marks"]}
+{"name": "i1615_dd_multibyte", "lines": ["abcdef", "éé"], "keys": "3ldd", "observe": ["marks"]}
+# --- #1628 after a confirmed :s///c the cursor is on the last match prompted for (column 0 of its line
+#     when taken, on the match when skipped or quit at, the first non-blank after `a`), '. is on the
+#     last `y`/`l` line or the first `a` line, and `l` ends '] on its own line. -----------------------
+{"name": "i1628_s_confirm_all_yes", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>yyyyy", "observe": ["marks"]}
+{"name": "i1628_s_confirm_last_yes_dot", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>nyyny", "observe": ["marks"]}
+{"name": "i1628_s_confirm_all_after", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>nya", "observe": ["marks"]}
+{"name": "i1628_s_confirm_last", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>nyl", "observe": ["marks"]}
+{"name": "i1628_s_confirm_last_indented", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>nl", "observe": ["marks"]}
+{"name": "i1628_s_confirm_esc", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>ny<Esc>", "observe": ["marks"]}
+{"name": "i1628_s_confirm_quit_at_once", "lines": ["a1", "  a2", "a3", "a4", "a5", "a6"], "keys": "G:1,5s/a/x/c<CR>q", "observe": ["marks"]}
+{"name": "i1628_s_confirm_none", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x/c<CR>nnn", "observe": ["marks"]}
+{"name": "i1628_s_confirm_quit_on_match", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x/c<CR>nq", "observe": ["marks"]}
+{"name": "i1628_s_confirm_no_last", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x/c<CR>nyn", "observe": ["marks"]}
+{"name": "i1628_s_confirm_yes_col0", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x/c<CR>yyy", "observe": ["marks"]}
+{"name": "i1628_s_confirm_all_nonblank", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x/c<CR>a", "observe": ["marks"]}
+{"name": "i1628_s_confirm_global_quit_shifted", "lines": ["  a1a", " ba2aa", "  a3a", "b"], "keys": "G:1,3s/a/xy/gc<CR>nnynq", "observe": ["marks"]}
+{"name": "i1628_s_confirm_global_yes_all", "lines": ["  a1a", " ba2aa", "  a3a", "b"], "keys": "G:1,3s/a/x/gc<CR>yyya", "observe": ["marks"]}
+{"name": "i1628_s_confirm_global_last", "lines": ["  a1a", " ba2aa", "  a3a", "b"], "keys": "G:1,3s/a/x/gc<CR>nnnyl", "observe": ["marks"]}
+{"name": "i1628_s_confirm_cr_yes", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x\\r/c<CR>ynn", "observe": ["marks"]}
+{"name": "i1628_s_confirm_cr_all", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x\\r/c<CR>nya", "observe": ["marks"]}
+{"name": "i1628_s_confirm_cr_last", "lines": ["  a1", " ba2", "  a3", "b"], "keys": "G:1,3s/a/x\\r/c<CR>nl", "observe": ["marks"]}
+{"name": "i1628_s_confirm_cr_quit", "lines": ["  a1a", " ba2aa", "  a3a", "b"], "keys": "G:1,3s/a/x\\r/gc<CR>nnynq", "observe": ["marks"]}
+# #1631: text typed after an Insert-mode <CR> makes no undo entry of its own (it is under open_line's
+# save), so u / CTRL-R put the cursor and `[`/`]`/`.` from the entry of the line the Insert started on.
+{"name": "i1631_cr", "lines": ["abcd"], "keys": "lix<CR>y<Esc>", "observe": ["marks"]}
+{"name": "i1631_cr_undo", "lines": ["abcd"], "keys": "lix<CR>y<Esc>u", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_cr_redo", "lines": ["abcd"], "keys": "lix<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_two_cr_redo", "lines": ["abcd"], "keys": "lix<CR>y<CR>z<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_cr_first_redo", "lines": ["abcd"], "keys": "li<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_cr_only_redo", "lines": ["abcd"], "keys": "li<CR><Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_cr_bs_redo", "lines": ["abcd"], "keys": "lix<CR><BS>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_count_cr_redo", "lines": ["abcd"], "keys": "l3ix<CR><Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_line_start_redo", "lines": ["abc", "def"], "keys": "ix<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_A_cr_redo", "lines": ["abc", "def"], "keys": "Ax<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_o_cr_undo", "lines": ["abc", "def"], "keys": "ox<CR>y<Esc>u", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_o_cr_redo", "lines": ["abc", "def"], "keys": "ox<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_O_cr_redo", "lines": ["abc", "def"], "keys": "jOx<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_dot_redo", "lines": ["abcd", "efgh"], "keys": "lix<CR>y<Esc>G.u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_A_two_cr_redo", "lines": ["abc", "def"], "keys": "Ax<CR>y<CR>z<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_A_cr_first_redo", "lines": ["abc", "def"], "keys": "A<CR>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_A_count_cr_redo", "lines": ["abc", "def"], "keys": "3Ax<CR><Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_A_cr_bs_redo", "lines": ["abc", "def"], "keys": "Ax<CR><BS>y<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_A_cr_undo", "lines": ["abc", "def"], "keys": "Ax<CR>y<Esc>u", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_A_dot_redo", "lines": ["abc", "def"], "keys": "Ax<CR>y<Esc>j.u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_o_undo", "lines": ["abc", "def"], "keys": "ox<Esc>u", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+{"name": "i1631_o_redo", "lines": ["abc", "def"], "keys": "ox<Esc>u<C-r>", "setup": "let &undolevels = &undolevels", "observe": ["marks"]}
+# #1614: a Visual put leaves '< '> on the put's '[ '] (nv_put_opt copies b_op_start/b_op_end into
+# b_visual), keeping the Visual mode; undo brings back the replaced area and redo the put's again
+# (uh_visual); a dot-repeat's rebuilt area is not remembered. The `v_` prefix records the marks.
+{"name": "v_put_marks_char_char_p", "lines": ["ab cdef gh"], "keys": "yiwwviwp"}
+{"name": "v_put_marks_char_char_P", "lines": ["ab cdef gh"], "keys": "yiwwviwP"}
+{"name": "v_put_marks_char_char_gp", "lines": ["ab cdef gh"], "keys": "yiwwviwgp"}
+{"name": "v_put_marks_char_char_gP", "lines": ["ab cdef gh"], "keys": "yiwwviwgP"}
+{"name": "v_put_marks_char_char_count", "lines": ["ab cdef gh"], "keys": "yiwwviw2p"}
+{"name": "v_put_marks_char_char_undo", "lines": ["ab cdef gh"], "keys": "yiwwviwpu"}
+{"name": "v_put_marks_char_char_redo", "lines": ["ab cdef gh"], "keys": "yiwwviwpu<C-r>"}
+{"name": "v_put_marks_char_char_gv", "lines": ["ab cdef gh"], "keys": "yiwwviwpgvy"}
+{"name": "v_put_marks_char_char_dot", "lines": ["ab cdef gh ij"], "keys": "yiwwviwpw."}
+{"name": "v_put_marks_char_dollar", "lines": ["ab cdef", "gh"], "keys": "yiwwv$p"}
+{"name": "v_put_marks_char_multiline", "lines": ["ab cd", "ef gh"], "keys": "yiwwvjp"}
+{"name": "v_put_marks_char_line_reg", "lines": ["ab cd", "ef gh"], "keys": "yyjwviwp"}
+{"name": "v_put_marks_char_block_reg", "lines": ["abcd", "efgh", "ijkl"], "keys": "l<C-v>jlyjjwhviwp"}
+{"name": "v_put_marks_line_char_reg", "lines": ["ab", "cd", "ef"], "keys": "yiwjVp"}
+{"name": "v_put_marks_line_line_p", "lines": ["ab", "cd", "ef"], "keys": "yyjVp"}
+{"name": "v_put_marks_line_line_count", "lines": ["ab", "cd", "ef"], "keys": "yyjV2p"}
+{"name": "v_put_marks_line_line_gp", "lines": ["ab", "cd", "ef"], "keys": "yyjVgp"}
+{"name": "v_put_marks_line_line_undo", "lines": ["ab", "cd", "ef"], "keys": "yyjVpu"}
+{"name": "v_put_marks_line_block_reg", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jlyjjVp"}
+{"name": "v_put_marks_block_char_p", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jp"}
+{"name": "v_put_marks_block_char_P", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jP"}
+{"name": "v_put_marks_block_char_gp", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jgp"}
+{"name": "v_put_marks_block_char_count", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jl2p"}
+{"name": "v_put_marks_block_char_undo", "lines": ["abc", "def", "ghi"], "keys": "yiwl<C-v>jpu"}
+{"name": "v_put_marks_block_line_reg", "lines": ["abc", "def", "ghi", "jkl"], "keys": "yyl<C-v>jp"}
+{"name": "v_put_marks_block_block_reg", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jlyjj0<C-v>jlp"}
+# --- #1645 an operator to the `[ ] . '` `` ` `` marks, as to a named mark: `` ` `` is exclusive charwise
+# to the mark (clamped onto its line, as the jump), `'` linewise; an unset one fails with E20. Each
+# sets the context mark first (nvim's nv_cursormark calls setpcmark under an operator too).
+{"name": "i1645_d_to_change_start_clamped", "lines": ["abcdef", "gh", "ij"], "keys": "5lddjd`["}
+{"name": "i1645_d_to_change_start_line", "lines": ["abcdef", "gh", "ij"], "keys": "5lddjd'["}
+{"name": "i1645_y_to_change_start_put", "lines": ["abcdef", "gh", "ij"], "keys": "5lddjy`[P"}
+{"name": "i1645_d_to_change_end_clamped", "lines": ["abcdef", "gh", "ij"], "keys": "5lddjd`]"}
+{"name": "i1645_d_to_yank_start", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjd`["}
+{"name": "i1645_d_to_yank_end", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjd`]"}
+{"name": "i1645_c_to_yank_start", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjc`[X<Esc>"}
+{"name": "i1645_gU_to_yank_start", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjgU`["}
+{"name": "i1645_tilde_to_yank_end", "lines": ["abc def", "ghi", "jkl"], "keys": "jlyiwgg0g~`]"}
+{"name": "i1645_d_line_to_yank_start", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjd'["}
+{"name": "i1645_y_line_to_yank_end", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjy']"}
+{"name": "i1645_c_line_to_yank_start", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjc'[X<Esc>"}
+{"name": "i1645_gU_line_to_yank_start", "lines": ["abc def", "ghi", "jkl"], "keys": "wywjgU'["}
+{"name": "i1645_shift_to_yank_end", "lines": ["abc def", "ghi", "jkl"], "keys": "jlyiwgg0>`]", "setup": "set shiftwidth=4 expandtab"}
+{"name": "i1645_d_to_put_end", "lines": ["abcdef", "gh", "ij"], "keys": "$yyjpggd`]"}
+{"name": "i1645_d_line_to_put_end", "lines": ["abcdef", "gh", "ij"], "keys": "$yyjpggd']"}
+{"name": "i1645_d_to_put_end_above", "lines": ["abcdef", "gh", "ij"], "keys": "$yyjpkd`]"}
+{"name": "i1645_d_to_change_start_unset", "lines": ["abc def", "ghi", "jkl"], "keys": "jjld`["}
+{"name": "i1645_d_line_to_change_end_unset", "lines": ["abc def", "ghi", "jkl"], "keys": "jjld']"}
+{"name": "i1645_d_to_context", "lines": ["abc def", "ghi", "jkl"], "keys": "wGd``"}
+{"name": "i1645_d_line_to_context", "lines": ["abc def", "ghi", "jkl"], "keys": "wGd''"}
+{"name": "i1645_d_to_context_quote", "lines": ["abc def", "ghi", "jkl"], "keys": "wGd`'"}
+{"name": "i1645_d_line_to_context_backtick", "lines": ["abc def", "ghi", "jkl"], "keys": "wGd'`"}
+{"name": "i1645_y_to_context", "lines": ["abc def", "ghi", "jkl"], "keys": "lGy``"}
+{"name": "i1645_d_to_context_unset", "lines": ["abc def", "ghi", "jkl"], "keys": "jld``"}
+{"name": "i1645_d_line_to_context_unset", "lines": ["abc def", "ghi", "jkl"], "keys": "jld''"}
+{"name": "i1645_d_to_last_change", "lines": ["abc def", "ghi", "jkl"], "keys": "wxGd`."}
+{"name": "i1645_d_line_to_last_change", "lines": ["abc def", "ghi", "jkl"], "keys": "wxGd'."}
+{"name": "i1645_c_to_last_change", "lines": ["abc def", "ghi", "jkl"], "keys": "wxGc`.Z<Esc>"}
+{"name": "i1645_y_to_named_sets_context", "lines": ["abc def", "ghi", "jkl"], "keys": "jmaGy`a``x"}
+{"name": "i1645_y_line_to_named_sets_context", "lines": ["abc def", "ghi", "jkl"], "keys": "jmaGy'a``x"}
+{"name": "i1645_d_to_named_sets_context", "lines": ["abc def", "ghi", "jkl"], "keys": "jmaG$d`a``x"}
+{"name": "i1645_y_to_change_start_sets_context", "lines": ["abc def", "ghi", "jkl"], "keys": "jlyiwGy`[``x"}
+{"name": "i1645_y_to_context_sets_context", "lines": ["abc def", "ghi", "jkl"], "keys": "wGy````x"}
+{"name": "i1645_y_to_last_change_sets_context", "lines": ["abc def", "ghi", "jkl"], "keys": "wxjjy`.``x"}
+# --- #1613 `']` on a multibyte char: an inclusive yank (`mb_adjust_opend`) and a shift (`ml_get_len - 1`)
+#     put it on the char's LAST byte; an exclusive yank (`decl`), a put and `r` on its first byte. A jump
+#     to it lands on the char.
+{"name": "i1613_y_dollar_2byte", "lines": ["abé"], "keys": "y$", "observe": ["marks"]}
+{"name": "i1613_y_dollar_3byte", "lines": ["ab中"], "keys": "y$", "observe": ["marks"]}
+{"name": "i1613_y_dollar_4byte", "lines": ["ab😀"], "keys": "y$", "observe": ["marks"]}
+{"name": "i1613_y_dollar_jump", "lines": ["ab中"], "keys": "y$0`]", "observe": ["marks"]}
+{"name": "i1613_y_dollar_count", "lines": ["a中", "b中"], "keys": "2y$", "observe": ["marks"]}
+{"name": "i1613_yf_4byte", "lines": ["ab😀c"], "keys": "yf😀", "observe": ["marks"]}
+{"name": "i1613_yt_3byte", "lines": ["a中中b"], "keys": "ytb", "observe": ["marks"]}
+{"name": "i1613_yiw_2byte", "lines": ["x éé y"], "keys": "2lyiw", "observe": ["marks"]}
+{"name": "i1613_yiw_4byte", "lines": ["😀😀"], "keys": "yiw", "observe": ["marks"]}
+{"name": "i1613_yi_paren_wide", "lines": ["(a中)"], "keys": "lyi(", "observe": ["marks"]}
+{"name": "i1613_ygn_wide", "lines": ["a中b"], "keys": "/中<CR>0ygn", "observe": ["marks"]}
+{"name": "i1613_y2l_exclusive", "lines": ["a中中b"], "keys": "y2l", "observe": ["marks"]}
+{"name": "i1613_yl_on_wide", "lines": ["a中 b"], "keys": "lyl", "observe": ["marks"]}
+{"name": "i1613_vy_4byte", "lines": ["a😀b"], "keys": "vly", "observe": ["marks"]}
+{"name": "i1613_vy_back_4byte", "lines": ["a😀b"], "keys": "lvhy", "observe": ["marks"]}
+{"name": "i1613_vy_combining", "lines": ["aéb"], "keys": "vly", "observe": ["marks"]}
+{"name": "i1613_vy_jump", "lines": ["ab中 x"], "keys": "vlly0`]", "observe": ["marks"]}
+{"name": "i1613_v_dollar_y_wide", "lines": ["a😀"], "keys": "v$y", "observe": ["marks"]}
+{"name": "i1613_vb_y_wide", "lines": ["ab中", "xy中"], "keys": "l<C-v>jly", "observe": ["marks"]}
+{"name": "i1613_shift_line_3byte", "lines": ["ab中"], "keys": ":set sw=4 et<CR>>>", "observe": ["marks"]}
+{"name": "i1613_shift_line_4byte", "lines": ["ab😀"], "keys": ":set sw=4 et<CR>>>", "observe": ["marks"]}
+{"name": "i1613_shift_line_2byte", "lines": ["é"], "keys": ":set sw=4 et<CR>>>", "observe": ["marks"]}
+{"name": "i1613_shift_down_wide", "lines": ["ab", "x中"], "keys": ":set sw=4 et<CR>>j", "observe": ["marks"]}
+{"name": "i1613_V_shift_wide", "lines": ["ab", "x中"], "keys": ":set sw=4 et<CR>Vj>", "observe": ["marks"]}
+{"name": "i1613_unshift_wide", "lines": ["    ab中"], "keys": ":set sw=4 et<CR><<", "observe": ["marks"]}
+{"name": "i1613_shift_jump", "lines": ["ab中"], "keys": ":set sw=4 et<CR>>>0`]", "observe": ["marks"]}
+{"name": "i1613_put_line_wide", "lines": ["ab中", "x"], "keys": "yyjp", "observe": ["marks"]}
+{"name": "i1613_put_line_above_wide", "lines": ["ab中", "x"], "keys": "yyjP", "observe": ["marks"]}
+{"name": "i1613_put_char_wide", "lines": ["a中中b"], "keys": "lyl$p", "observe": ["marks"]}
+{"name": "i1613_gp_char_wide", "lines": ["a中中b"], "keys": "lyl$gp", "observe": ["marks"]}
+{"name": "i1613_r_count_wide", "lines": ["a中中中b"], "keys": "l3r好", "observe": ["marks"]}
+{"name": "i1613_yge_wide", "lines": ["ab 中x"], "keys": "3lyge", "observe": ["marks"]}
+{"name": "i1613_yh_wide", "lines": ["a中b"], "keys": "$yh", "observe": ["marks"]}
+{"name": "i1613_yw_line_end_wide", "lines": ["a 中", "b"], "keys": "wyw", "observe": ["marks"]}
+{"name": "i1613_yve_exclusive", "lines": ["ab中 x"], "keys": "yve", "observe": ["marks"]}
+{"name": "i1613_ysearch_e_wide", "lines": ["ab中x"], "keys": "y/中/e<CR>", "observe": ["marks"]}
+{"name": "i1613_vb_r_wide", "lines": ["ab中", "xy中"], "keys": "l<C-v>jlrZ", "observe": ["marks"]}
+{"name": "i1613_vb_U_wide", "lines": ["abé", "xyé"], "keys": "l<C-v>jlU", "observe": ["marks"]}
+# --- #1290 (RFC-0026 slice 1): the undo bound. nvim keeps 'undolevels' + 1 undo groups and frees the
+#     oldest at the next change (the oldest undone branch first); `u` past the oldest kept state fails
+#     (`Already at oldest change`). `:set ul` is itself an undo break, so no setup is needed. 0 is Vi's
+#     undo (`u` undoes the undo, CTRL-R fails); a negative value keeps no undo. ---------------------------
+{"name": "i1290_ul3_keeps_four_levels", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxx", "observe": ["undo"]}
+{"name": "i1290_ul3_u_past_the_oldest", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxxuuuuu"}
+{"name": "i1290_ul3_u_past_the_oldest_then_x", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxxuuuuux"}
+{"name": "i1290_ul3_g_minus_stops_at_the_root", "lines": ["abcdefgh"], "keys": ":set ul=3<CR>xxxxxg-g-g-g-g-g-"}
+{"name": "i1290_ul1_drops_the_undone_branch_first", "lines": ["abcdefgh"], "keys": ":set ul=1<CR>xu$xxg-g-g-"}
+{"name": "i1290_lowered_ul_trims_at_the_next_change", "lines": ["abcdefgh"], "keys": "xxxxx:set ul=1<CR>xuuuu"}
+{"name": "i1290_lowered_ul_keeps_until_a_change", "lines": ["abcdefgh"], "keys": "xxx:set ul=0<CR>uuu"}
+{"name": "i1290_ul0_u_undoes_the_undo", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>xxuu"}
+{"name": "i1290_ul0_u_toggles_back", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>xxuuu"}
+{"name": "i1290_ul0_ctrl_r_fails", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>xxu<C-r>"}
+{"name": "i1290_ul0_insert_toggles", "lines": ["abcdefgh"], "keys": ":set ul=0<CR>iXY<Esc>uu"}
+{"name": "i1290_ul_negative_no_undo", "lines": ["abcdefgh"], "keys": ":set ul=-1<CR>xxu"}
+{"name": "i1290_ul_negative_frees_the_history", "lines": ["abcdefgh"], "keys": "xx:set ul=-1<CR>x:set ul=1000<CR>uu"}
+{"name": "i1290_ul_negative_keeps_until_a_change", "lines": ["abcdefgh"], "keys": "xx:set ul=-5<CR>u:set ul=1000<CR>u"}
