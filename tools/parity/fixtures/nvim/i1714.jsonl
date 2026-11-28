@@ -1,0 +1,7 @@
+# #1714: CTRL-A/CTRL-X below the first line read the number from an absolute offset (the fuzz crash and
+# the numbers it cut short).
+{"name": "increment_fuzz_1714_after_o", "lines": ["🇰🇷漢字"], "keys": "o1<Esc> 9<C-a>"}
+{"name": "increment_second_line_single_digit", "lines": ["x", "1"], "keys": "j<C-a>"}
+{"name": "increment_second_line_multi_digit", "lines": ["x", "12345"], "keys": "j<C-a>"}
+{"name": "decrement_third_line_negative", "lines": ["abc", "def", " -7 y"], "keys": "jj<C-x>"}
+{"name": "increment_second_line_hex_counted", "lines": ["x", "a 0x0f"], "keys": "j3<C-a>"}

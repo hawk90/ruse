@@ -381,10 +381,10 @@ fn incr_number(
         col -= 1; // a negative number
         negative = true;
     }
-    // A Visual number is read no further than the selection (nvim's `maxlen`).
-    let maxlen = visual
-        .map_or(p.len(), |until| until.min(le))
-        .saturating_sub(ls + col);
+    // A Visual number is read no further than the selection (nvim's `maxlen`), any other to the line end.
+    // `le` and `until` are absolute offsets, as `ls + col` is (#1714: the line-relative `p.len()` here cut
+    // every number below the first line short, to nothing past a line start of `p.len()`).
+    let maxlen = visual.map_or(le, |until| until.min(le)) - (ls + col);
     let (pre, mut length, mut n, overflow) = str2nr(&p[col..col + maxlen]);
     if pre != 0 && negative {
         // A `-` before a hex or binary literal is not a sign.

@@ -214131,6 +214131,152 @@
         "failed": true,
         "mode": "n"
       }
+    },
+    {
+      "name": "increment_fuzz_1714_after_o",
+      "lines": [
+        "🇰🇷漢字"
+      ],
+      "keys": "o1<Esc> 9<C-a>",
+      "expect": {
+        "text": [
+          "🇰🇷漢字",
+          "10"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "increment_second_line_single_digit",
+      "lines": [
+        "x",
+        "1"
+      ],
+      "keys": "j<C-a>",
+      "expect": {
+        "text": [
+          "x",
+          "2"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "increment_second_line_multi_digit",
+      "lines": [
+        "x",
+        "12345"
+      ],
+      "keys": "j<C-a>",
+      "expect": {
+        "text": [
+          "x",
+          "12346"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "decrement_third_line_negative",
+      "lines": [
+        "abc",
+        "def",
+        " -7 y"
+      ],
+      "keys": "jj<C-x>",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          " -8 y"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
+    },
+    {
+      "name": "increment_second_line_hex_counted",
+      "lines": [
+        "x",
+        "a 0x0f"
+      ],
+      "keys": "j3<C-a>",
+      "expect": {
+        "text": [
+          "x",
+          "a 0x12"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "mode": "n"
+      }
     }
   ]
 }
