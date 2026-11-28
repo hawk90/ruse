@@ -275,33 +275,12 @@ fn load_startup(safe_mode: bool, status: String) -> Startup {
         Some(note) => format!("{status} · {note}"),
         None => status,
     };
-    // Profile selection (F-012 / F-013): `RUSE_PROFILE` for this run, else the config's `input.profile`.
-    // `emacs` = Emacs, `native` = Native, else Vim.
-    let configured_profile = config.get("input.profile").and_then(|e| match &e.value {
-        crate::config::Value::Str(s) => Some(s.clone()),
-        _ => None,
-    });
-    let profile = match std::env::var("RUSE_PROFILE")
-        .ok()
-        .or(configured_profile)
-        .as_deref()
-    {
-        Some("emacs") => "emacs",
-        Some("native") => "native",
-        _ => "vim",
-    };
+    let profile = startup_profile(std::env::var("RUSE_PROFILE").ok(), &config);
     // INV-TRUST-1 / D-058: language servers execute workspace code (build scripts, proc-macros), so they
     // start only once the user trusts the workspace: the user config's `workspace.trusted_roots` or
     // `RUSE_TRUSTED_WORKSPACES` at startup, or `:trust`.
-    let configured_roots: Vec<PathBuf> = match config.get("workspace.trusted_roots") {
-        Some(crate::config::Effective {
-            value: crate::config::Value::List(roots),
-            ..
-        }) => roots.iter().map(PathBuf::from).collect(),
-        _ => Vec::new(),
-    };
-    let trusted =
-        crate::trust::workspace_trusted(&cwd) || crate::trust::is_trusted(&cwd, configured_roots);
+    let trusted = crate::trust::workspace_trusted(&cwd)
+        || crate::trust::is_trusted(&cwd, configured_roots(&config));
     Startup {
         cwd,
         config,
@@ -311,6 +290,31 @@ fn load_startup(safe_mode: bool, status: String) -> Startup {
         status,
         profile,
         trusted,
+    }
+}
+
+/// Profile selection (F-012 / F-013): `RUSE_PROFILE` for this run (`env`), else the config's
+/// `input.profile`. `emacs` = Emacs, `native` = Native, else Vim.
+pub(super) fn startup_profile(env: Option<String>, config: &crate::config::Config) -> &'static str {
+    let configured = config.get("input.profile").and_then(|e| match &e.value {
+        crate::config::Value::Str(s) => Some(s.clone()),
+        _ => None,
+    });
+    match env.or(configured).as_deref() {
+        Some("emacs") => "emacs",
+        Some("native") => "native",
+        _ => "vim",
+    }
+}
+
+/// The config's `workspace.trusted_roots` (none when unset).
+pub(super) fn configured_roots(config: &crate::config::Config) -> Vec<PathBuf> {
+    match config.get("workspace.trusted_roots") {
+        Some(crate::config::Effective {
+            value: crate::config::Value::List(roots),
+            ..
+        }) => roots.iter().map(PathBuf::from).collect(),
+        _ => Vec::new(),
     }
 }
 

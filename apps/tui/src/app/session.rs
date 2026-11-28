@@ -479,6 +479,8 @@ mod editing;
 mod emacs_files;
 mod event_loop;
 pub(crate) use event_loop::run;
+#[cfg(test)]
+mod config_defaults_tests;
 mod ex_exec;
 mod ex_helpers;
 mod ex_line;
