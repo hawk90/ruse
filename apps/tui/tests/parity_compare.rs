@@ -532,6 +532,34 @@ fn comparator_detects_a_planted_mismatch() {
     );
 }
 
+/// Every entry of the committed list cites its open issue (#1583); checked apart from the corpus run so a
+/// missing cite fails fast.
+#[test]
+fn every_known_divergence_names_an_issue() {
+    let body = include_str!("../../../tests/parity/vim/known-divergences.txt");
+    if let Err(e) = parity_ratchet::check_issue_refs(body) {
+        panic!("tests/parity/vim/known-divergences.txt:\n{e}");
+    }
+}
+
+#[test]
+fn ratchet_rejects_an_entry_without_an_issue() {
+    assert_eq!(parity_ratchet::cited_issue("a # #1622: reason"), Some(1622));
+    assert_eq!(parity_ratchet::cited_issue("a #  #7: r"), Some(7));
+    for uncited in [
+        "a",
+        "a # reason (#728)",
+        "a # #: reason",
+        "a # #12x: reason",
+        "a # #1622 reason",
+    ] {
+        assert_eq!(parity_ratchet::cited_issue(uncited), None, "{uncited}");
+    }
+    assert!(parity_ratchet::check_issue_refs("# c\n\na # #1: r\n").is_ok());
+    let missing = parity_ratchet::check_issue_refs("a # #1: r\nb # r (#2)\n").unwrap_err();
+    assert!(missing.contains("line 2: `b` names no issue"), "{missing}");
+}
+
 #[test]
 fn ratchet_rejects_new_stale_and_unknown_entries() {
     let fixtures = ["a", "b", "c"];

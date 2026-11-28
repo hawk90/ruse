@@ -1553,3 +1553,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod compat_tests;

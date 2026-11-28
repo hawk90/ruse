@@ -9,7 +9,13 @@ the delta, biased (like spec-validate) toward ZERO false positives:
   * normative words (MUST/SHALL/REQUIRED/...) added to plain docs prose -> WARN
     (a real contract belongs in spec/, not in an explanation — ENG-DOC-001)
   * an `apps/…` / `crates/…` source path that names no file or directory -> WARN
-    (a split moved the code; dated reviews under docs/reviews/ are history and are skipped)
+    (a split moved the code). Scanned in docs/ and spec/ Markdown AND in spec/**/*.yaml, where
+    `evidence:`/`source:` lists cite code. Dated records quote the tree as it was and are
+    skipped: docs/reviews/, accepted/rejected RFCs, and the spec/DECISIONS.md log.
+  * a `path.rs::name` evidence reference whose file exists but defines no `name` -> WARN.
+    Rule: only the FIRST `::` segment is checked, and it must appear in the file as
+    `fn|struct|enum|trait|type|const|static|mod|union|macro_rules! <name>` (a plain grep, no
+    parsing), so `file.rs::Type::method` checks `Type`. A non-`.rs` path is not checked.
 
 Only same-file broken anchors fail the command; the rest is advisory.
 """
@@ -31,8 +37,22 @@ HEADING_RE = re.compile(r"^#{1,6}\s+(.*\S)\s*$")
 EXPLICIT_ID_RE = re.compile(r"\{#([\w-]+)\}\s*$")
 # A source path in prose: `apps/…` or `crates/…`. It stops at `:` (a `:line` or `::item` suffix).
 SRC_PATH_RE = re.compile(r"(?<![\w/.-])((?:apps|crates)/[\w./-]*\w)")
+# The `::name` evidence suffix right after a path (only its first segment is captured).
+ITEM_SUFFIX_RE = re.compile(r"::([A-Za-z_]\w*)")
 # Dated records quote the tree as it was; a path there is history, not a pointer.
-SRC_PATH_SKIP = ("docs/reviews/",)
+SRC_PATH_SKIP = ("docs/reviews/", "docs/rfc/accepted/", "docs/rfc/rejected/", "spec/DECISIONS.md")
+# Explicit exemptions, (file, reference) -> why. Only for a reference that is deliberately not a
+# live pointer (a quote of the tree as it was, a placeholder example) or whose code was deleted
+# rather than moved and awaits a follow-up decision. A moved path is fixed, never listed here.
+SRC_REF_ALLOW: dict[tuple[str, str], str] = {
+    ("spec/parity/concepts/irreconcilable.yaml", "crates/core/src/editor.rs"):
+        "history: 'the Mode enum then in crates/core/src/editor.rs' quotes the pre-split tree",
+    ("spec/parity/contracts/keymap-layers.yaml", "apps/tui/src/input.rs"):
+        "history: the text already says '(now `input/mod.rs`)'",
+    ("spec/waivers.yaml", "crates/workspace-runtime"):
+        "placeholder: a commented-out example waiver, not a crate of this repo",
+}
+_ITEM_KINDS = r"(?:fn|struct|enum|trait|type|const|static|mod|union|macro_rules!)"
 
 
 def slugify(text: str) -> str:
@@ -69,17 +89,40 @@ def headings_slugs(text: str) -> set[str]:
     return slugs
 
 
-def stale_source_paths(text: str, exists) -> list[tuple[int, str]]:
-    """(lineno, path) for each `apps/…`/`crates/…` path in `text` that `exists` rejects. A path
-    followed by `*`, `{` or `<` is a glob, a set or a placeholder, not a path, and is skipped."""
+def defines_item(source: str, name: str) -> bool:
+    """True when `source` declares `name` as a Rust item (the grep rule in the module doc)."""
+    return re.search(rf"\b{_ITEM_KINDS}\s+{re.escape(name)}\b", source) is not None
+
+
+def stale_source_paths(text: str, exists, has_item=None) -> list[tuple[int, str]]:
+    """(lineno, ref) for each `apps/…`/`crates/…` path in `text` that `exists` rejects. A path
+    followed by `*`, `{` or `<` is a glob, a set or a placeholder, not a path, and is skipped.
+    With `has_item(path, name)`, a live `.rs` path followed by `::name` is also reported, as
+    `path::name`, when `has_item` rejects the name."""
     out: list[tuple[int, str]] = []
     for lineno, line in enumerate(text.splitlines(), 1):
         for m in SRC_PATH_RE.finditer(line):
-            if line[m.end():].lstrip("/")[:1] in ("*", "{", "<"):
+            path, rest = m.group(1), line[m.end():]
+            if rest.lstrip("/")[:1] in ("*", "{", "<", "\\"):
                 continue
-            if not exists(m.group(1)):
-                out.append((lineno, m.group(1)))
+            if not exists(path):
+                out.append((lineno, path))
+                continue
+            item = ITEM_SUFFIX_RE.match(rest)
+            if has_item and item and path.endswith(".rs") and not has_item(path, item.group(1)):
+                out.append((lineno, f"{path}::{item.group(1)}"))
     return out
+
+
+def _repo_has_item():
+    cache: dict[str, str] = {}
+
+    def has_item(path: str, name: str) -> bool:
+        p = repo.path(path)
+        if p not in cache:
+            cache[p] = open(p, encoding="utf-8").read() if os.path.isfile(p) else ""
+        return defines_item(cache[p], name)
+    return has_item
 
 
 def _prose_lines(text: str):
@@ -106,6 +149,7 @@ def main(argv: list[str]) -> int:
 
     files = sorted(glob.glob(repo.path("docs/**/*.md"), recursive=True)
                    + glob.glob(repo.path("spec/**/*.md"), recursive=True))
+    spec_yaml = sorted(glob.glob(repo.path("spec/**/*.yaml"), recursive=True))
 
     errors: list[str] = []
     warns: list[str] = []
@@ -118,6 +162,23 @@ def main(argv: list[str]) -> int:
             slug_cache[relfile] = headings_slugs(open(p, encoding="utf-8").read()) \
                 if os.path.isfile(p) else set()
         return slug_cache[relfile]
+
+    exists = lambda q: os.path.exists(repo.path(q))  # noqa: E731
+    has_item = _repo_has_item()
+    allow_used: set[tuple[str, str]] = set()
+
+    def source_ref_warns(rel: str, text: str) -> None:
+        if rel.startswith(SRC_PATH_SKIP):
+            return
+        for lineno, ref in stale_source_paths(text, exists, has_item):
+            if (rel, ref) in SRC_REF_ALLOW:
+                allow_used.add((rel, ref))
+                continue
+            what = "names no item" if "::" in ref else "does not exist"
+            warns.append(f"{rel}:{lineno}: source reference '{ref}' {what}")
+
+    for p in spec_yaml:
+        source_ref_warns(repo.rel(p), open(p, encoding="utf-8").read())
 
     for p in files:
         rel = repo.rel(p)
@@ -153,9 +214,7 @@ def main(argv: list[str]) -> int:
                     warns.append(f"{rel}: anchor '{filepart}#{anchor}' not found in target")
 
         # source paths (advisory)
-        if not rel.startswith(SRC_PATH_SKIP):
-            for lineno, sp in stale_source_paths(text, lambda q: os.path.exists(repo.path(q))):
-                warns.append(f"{rel}:{lineno}: source path '{sp}' does not exist")
+        source_ref_warns(rel, text)
 
         # normative leak (advisory)
         if leak_re and rel.startswith("docs/") and not rel.startswith(LEAK_SKIP):
@@ -167,8 +226,12 @@ def main(argv: list[str]) -> int:
                     warns.append(f"{rel}:{lineno}: normative '{m.group(1)}' in docs prose "
                                  f"(belongs in spec/ if it is a contract)")
 
+    for rel, ref in sorted(set(SRC_REF_ALLOW) - allow_used):
+        warns.append(f"{rel}: allowlisted source reference '{ref}' no longer occurs — drop it "
+                     f"from SRC_REF_ALLOW")
+
     render.heading("docs-check")
-    render.field("Files scanned", str(len(files)))
+    render.field("Files scanned", f"{len(files)} Markdown, {len(spec_yaml)} spec YAML")
     render.field("Generated (skipped)", str(len(generated)))
     render.field("Errors", str(len(errors)))
     render.field("Warnings", str(len(warns)))

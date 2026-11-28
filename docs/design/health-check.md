@@ -1,3 +1,14 @@
+---
+doc: health-check
+project: ruse
+title: "Runtime health check — `:checkhealth` (F-030 / CAP-HEALTHCHECK)"
+summary: >
+  Design of the user-facing runtime self-check (F-030): which subsystems `:checkhealth` probes and how
+  it reports them.
+audience: [maintainers, contributors, llm-agents]
+status: draft
+---
+
 # Runtime health check — `:checkhealth` (F-030 / CAP-HEALTHCHECK)
 
 ## Why

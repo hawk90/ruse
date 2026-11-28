@@ -1629,7 +1629,8 @@ items:
       - Fault-injection CI (disk full, permission loss, crash, packet loss, truncated journal)
       - Quarantined tests carry expiry + owner
     evidence:
-      - apps/tui/src/persist/journal.rs::torn_header_tail_is_discarded
+      - apps/tui/src/persist/rj01.rs::a_torn_last_record_at_every_offset_replays_the_prefix
+      - apps/tui/tests/journal_torn_write.rs::the_crash_path_truncates_a_torn_tail_before_it_appends
       - docs/operations/ci-cd-and-release.md
     legacy_ids:
       - DR-OPS-3
